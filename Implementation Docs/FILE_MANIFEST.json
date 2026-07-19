@@ -1,0 +1,164 @@
+[
+  {
+    "path": "00_Start_Here/15_Agent_Implementation_Plan.md",
+    "size_bytes": 79147,
+    "sha256": "1c83bf326bb4aba21c0f122b86b12a2518de07f120b515c04365c231c3301c40",
+    "lines": 2495
+  },
+  {
+    "path": "00_Start_Here/16_Implementation_Documentation_Index.md",
+    "size_bytes": 45632,
+    "sha256": "a071282345bd384498020417b38ed181e865f1ddccc6e87591ac1b95644fd23a",
+    "lines": 1157
+  },
+  {
+    "path": "00_Start_Here/20_Agent_Usage_Instructions.md",
+    "size_bytes": 44336,
+    "sha256": "2680c7e9e0a2cc19618db72cd302d9a0f14950e3ba7ede7ad21f07dc718c44bd",
+    "lines": 1699
+  },
+  {
+    "path": "00_Start_Here/Documentation_Contents.md",
+    "size_bytes": 3229,
+    "sha256": "3a9e9e2c6cd3901d551477ec8877c9e7745f13f08fd5011da852f8c7f7307d7d",
+    "lines": 29
+  },
+  {
+    "path": "00_Start_Here/Implementation_Kickoff_Checklist.md",
+    "size_bytes": 3316,
+    "sha256": "9a465cd55549f12a1960b779ad9fa7cd08a9c745ceeba14be33e1eabe550f017",
+    "lines": 80
+  },
+  {
+    "path": "00_Start_Here/Open_ADR_Register.md",
+    "size_bytes": 3886,
+    "sha256": "2050263efddc20b891a841e6a0cb29153a8c1c591dd851bde9452fe20a8e618c",
+    "lines": 63
+  },
+  {
+    "path": "01_Product_and_Domain/00_Master_Implementation_Blueprint.md",
+    "size_bytes": 53039,
+    "sha256": "9244b57241f1da9acd4d8d03d861553f24901339500348a348479164e5644985",
+    "lines": 1772
+  },
+  {
+    "path": "01_Product_and_Domain/01_Product_Requirements_PRD.md",
+    "size_bytes": 77489,
+    "sha256": "6de9d648844b460917cf6a18f029960ee567037fdcaaa64a78a7e5ccc11a5a5a",
+    "lines": 1998
+  },
+  {
+    "path": "01_Product_and_Domain/02_Domain_Model_and_Business_Rules.md",
+    "size_bytes": 73946,
+    "sha256": "d7208c141a46be1d48016e79745c98b28bbab17400a3865898e16876547b11a0",
+    "lines": 2151
+  },
+  {
+    "path": "02_Architecture_and_Contracts/03_System_Architecture.md",
+    "size_bytes": 65445,
+    "sha256": "6502f32638f2186fa1cd10b4c26427c8b734d532595686317725b3296f262fb0",
+    "lines": 1788
+  },
+  {
+    "path": "02_Architecture_and_Contracts/04_Database_Schema.md",
+    "size_bytes": 70184,
+    "sha256": "a8ff7892669a5006269b97ce09974f27621462713180b9a545f84df4ba54c867",
+    "lines": 1944
+  },
+  {
+    "path": "02_Architecture_and_Contracts/05_API_Specification.md",
+    "size_bytes": 64689,
+    "sha256": "f36125e39f9a54ccf2df8373b655f574ad74fa6f5ae0b3e18b743c3c064ac1ec",
+    "lines": 2606
+  },
+  {
+    "path": "02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md",
+    "size_bytes": 62501,
+    "sha256": "31456aa4b93dfaad08264e581f4f3557df9141bd7fa6f821eba87ee8612d1134",
+    "lines": 1841
+  },
+  {
+    "path": "03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md",
+    "size_bytes": 48688,
+    "sha256": "9fdcdc5e025fefb779a5ca9b8e8d15adf4583ec74f0ed03b1966d5bb0462fa77",
+    "lines": 1807
+  },
+  {
+    "path": "03_Banking_and_Intelligence/09_OCR_AI_Module_Specification.md",
+    "size_bytes": 57625,
+    "sha256": "64b8f1f5d450d6f5f7e0eff67610345e68688e1ca8c19eb93250428f60292185",
+    "lines": 2234
+  },
+  {
+    "path": "04_Frontend_and_Experience/07_UI_UX_Specification.md",
+    "size_bytes": 62326,
+    "sha256": "acb7ac68e17f115286e86fa239485b376553fd022e12a7a260d4e5a3c7dbca25",
+    "lines": 2404
+  },
+  {
+    "path": "04_Frontend_and_Experience/11_Frontend_Implementation_Guide.md",
+    "size_bytes": 65178,
+    "sha256": "0b488da5eac2157c2b3b02f6edec0c78fe5848959bb84d59e957c2740606e507",
+    "lines": 2602
+  },
+  {
+    "path": "04_Frontend_and_Experience/21_UI_Design_System_and_Screen_Specification.md",
+    "size_bytes": 54888,
+    "sha256": "31dcec75a47d7e1c990aaee0ed130cb044a1d32fc8e12b93b70110dc13197dcd",
+    "lines": 2427
+  },
+  {
+    "path": "04_Frontend_and_Experience/22_UX_User_Journeys_and_Interaction_Guide.md",
+    "size_bytes": 64666,
+    "sha256": "c20b4fb1f4052aea9d3a129968abf422005229b8e6c4da88401188a20b87bcb6",
+    "lines": 2255
+  },
+  {
+    "path": "05_Backend_and_Security/10_Backend_Implementation_Guide.md",
+    "size_bytes": 66969,
+    "sha256": "38688a5ed713ffc381e55fdf2a00cd53c46c1dc0826242dd33a6f54ff4cbb4b7",
+    "lines": 2318
+  },
+  {
+    "path": "05_Backend_and_Security/12_Security_RBAC_Audit.md",
+    "size_bytes": 81641,
+    "sha256": "e1119f1a6dc6353d00bcdf1a42cc45518f369ff7e81dc33ef4976c79ce3b0fe2",
+    "lines": 2622
+  },
+  {
+    "path": "06_DevOps_QA_and_Operations/13_DevOps_Deployment_Operations.md",
+    "size_bytes": 71912,
+    "sha256": "f64709b6bad4efc9a9c6ba501f139416b18eb4dfc5855a759ca95d2a77badaf1",
+    "lines": 2509
+  },
+  {
+    "path": "06_DevOps_QA_and_Operations/14_Testing_QA_Acceptance.md",
+    "size_bytes": 61295,
+    "sha256": "025c9b345f062eef2c38ecfd28b6e42f414e5e53a2e2bc5bf0dac80629eaba43",
+    "lines": 2086
+  },
+  {
+    "path": "06_DevOps_QA_and_Operations/18_Production_Setup_and_Runbook.md",
+    "size_bytes": 63042,
+    "sha256": "a81c236e8e1096289b93a3c91562efd4d2f191e4dbc922957778739e7d1cc9e7",
+    "lines": 2436
+  },
+  {
+    "path": "06_DevOps_QA_and_Operations/19_Client_Packaging_and_Distribution_Guide.md",
+    "size_bytes": 53508,
+    "sha256": "5ffd027a29de021adf8d1863a72f365f0a2145f82f417d0043db5a5efac70e31",
+    "lines": 1868
+  },
+  {
+    "path": "07_Planning_and_Roadmap/17_Future_Phases_Roadmap_and_Backlog.md",
+    "size_bytes": 53282,
+    "sha256": "2f056161b128408e085b7939fb62a2f32fda5d2adaefdef906559779a78c8db8",
+    "lines": 1468
+  },
+  {
+    "path": "README.md",
+    "size_bytes": 3059,
+    "sha256": "f3b87a73be2f835c56ab2d71e0659cbdbaf0bd3092debd2ae83414808e256ba6",
+    "lines": 42
+  }
+]
