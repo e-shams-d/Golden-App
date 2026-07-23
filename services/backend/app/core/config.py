@@ -1,0 +1,201 @@
+"""Typed, fail-closed service configuration."""
+
+from __future__ import annotations
+
+import re
+from datetime import datetime
+from pathlib import Path
+from typing import Literal, Self
+from urllib.parse import urlsplit
+
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app import __version__
+from app.core.time import (
+    BUSINESS_TIMEZONE_NAME,
+    INTERNAL_TIMEZONE_NAME,
+    ensure_utc,
+)
+
+_COMMIT_PATTERN = re.compile(r"^(?:unknown|(?:sha256:)?[0-9a-f]{7,64})$")
+
+
+class Settings(BaseSettings):
+    """Backend-only settings loaded from environment variables.
+
+    Secrets remain ``SecretStr`` instances so repr/traceback output does not
+    reveal connection credentials.  Business rules do not belong here.
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="forbid",
+        populate_by_name=True,
+        validate_default=True,
+    )
+
+    app_env: Literal["local", "test", "staging", "production"] = Field(
+        default="local", validation_alias="APP_ENV"
+    )
+    service_name: str = Field(
+        default="backend-api",
+        min_length=1,
+        max_length=64,
+        validation_alias="SERVICE_NAME",
+    )
+    # Keep the field name distinct from the common process-level DEBUG
+    # variable. With populate_by_name enabled, a field named ``debug`` could
+    # otherwise consume an unrelated host setting such as DEBUG=release.
+    app_debug: bool = Field(default=False, validation_alias="APP_DEBUG")
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
+        default="INFO", validation_alias="LOG_LEVEL"
+    )
+
+    release_version: str = Field(
+        default=__version__,
+        min_length=1,
+        max_length=64,
+        validation_alias=AliasChoices("RELEASE_VERSION", "APP_VERSION"),
+    )
+    release_commit: str = Field(
+        default="unknown", min_length=7, max_length=71, validation_alias="RELEASE_COMMIT"
+    )
+    release_built_at: datetime | None = Field(
+        default=None, validation_alias="RELEASE_BUILT_AT"
+    )
+
+    business_timezone: str = Field(
+        default=BUSINESS_TIMEZONE_NAME, validation_alias="BUSINESS_TIMEZONE"
+    )
+    internal_timezone: str = Field(
+        default=INTERNAL_TIMEZONE_NAME, validation_alias="INTERNAL_TIMEZONE"
+    )
+
+    database_url: SecretStr = Field(validation_alias="DATABASE_URL")
+    redis_url: SecretStr = Field(validation_alias="REDIS_URL")
+    storage_backend: Literal["local"] = Field(
+        default="local", validation_alias="STORAGE_BACKEND"
+    )
+    local_storage_root: Path = Field(
+        validation_alias=AliasChoices("LOCAL_STORAGE_ROOT", "STORAGE_ROOT")
+    )
+
+    dependency_timeout_seconds: float = Field(
+        default=1.5, gt=0.05, le=10.0, validation_alias="DEPENDENCY_TIMEOUT_SECONDS"
+    )
+    worker_probe_timeout_seconds: float = Field(
+        default=1.5, gt=0.05, le=10.0, validation_alias="WORKER_PROBE_TIMEOUT_SECONDS"
+    )
+    redis_required_for_readiness: bool = Field(
+        default=True, validation_alias="REDIS_REQUIRED_FOR_READINESS"
+    )
+
+    operations_health_token: SecretStr | None = Field(
+        default=None, validation_alias="OPERATIONS_HEALTH_TOKEN"
+    )
+
+    celery_queues: str = Field(
+        default="files,exports,notifications,reports,maintenance,ai",
+        validation_alias="CELERY_QUEUES",
+    )
+    celery_task_always_eager: bool = Field(
+        default=False, validation_alias="CELERY_TASK_ALWAYS_EAGER"
+    )
+
+    @field_validator("release_commit")
+    @classmethod
+    def validate_release_commit(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if not _COMMIT_PATTERN.fullmatch(normalized):
+            raise ValueError("RELEASE_COMMIT must be 'unknown' or a hexadecimal digest")
+        return normalized
+
+    @field_validator("release_built_at")
+    @classmethod
+    def validate_release_built_at(cls, value: datetime | None) -> datetime | None:
+        return None if value is None else ensure_utc(value)
+
+    @field_validator("business_timezone")
+    @classmethod
+    def validate_business_timezone(cls, value: str) -> str:
+        if value != BUSINESS_TIMEZONE_NAME:
+            raise ValueError("BUSINESS_TIMEZONE must be Asia/Tehran")
+        return value
+
+    @field_validator("internal_timezone")
+    @classmethod
+    def validate_internal_timezone(cls, value: str) -> str:
+        if value != INTERNAL_TIMEZONE_NAME:
+            raise ValueError("INTERNAL_TIMEZONE must be UTC")
+        return value
+
+    @field_validator("database_url")
+    @classmethod
+    def validate_database_url(cls, value: SecretStr) -> SecretStr:
+        raw_value = value.get_secret_value()
+        scheme = urlsplit(raw_value).scheme.lower()
+        if scheme not in {"postgres", "postgresql", "postgresql+psycopg"}:
+            raise ValueError("DATABASE_URL must use PostgreSQL with the psycopg driver")
+        if scheme != "postgresql+psycopg":
+            raw_value = "postgresql+psycopg://" + raw_value.split("://", 1)[1]
+        return SecretStr(raw_value)
+
+    @field_validator("redis_url")
+    @classmethod
+    def validate_redis_url(cls, value: SecretStr) -> SecretStr:
+        if urlsplit(value.get_secret_value()).scheme.lower() not in {"redis", "rediss"}:
+            raise ValueError("REDIS_URL must use redis:// or rediss://")
+        return value
+
+    @field_validator("local_storage_root")
+    @classmethod
+    def validate_storage_root(cls, value: Path) -> Path:
+        if not value.is_absolute():
+            raise ValueError("LOCAL_STORAGE_ROOT must be an absolute path")
+        return value
+
+    @field_validator("celery_queues")
+    @classmethod
+    def validate_celery_queues(cls, value: str) -> str:
+        names = [part.strip() for part in value.split(",") if part.strip()]
+        if not names or len(names) != len(set(names)):
+            raise ValueError("CELERY_QUEUES must contain unique comma-separated names")
+        invalid = [name for name in names if not re.fullmatch(r"[a-z][a-z0-9_-]{0,62}", name)]
+        if invalid:
+            raise ValueError("CELERY_QUEUES contains an invalid queue name")
+        return ",".join(names)
+
+    @model_validator(mode="after")
+    def validate_environment_safety(self) -> Self:
+        if self.app_debug and self.app_env in {"staging", "production"}:
+            raise ValueError("APP_DEBUG must be disabled outside local/test environments")
+
+        token = (
+            self.operations_health_token.get_secret_value()
+            if self.operations_health_token is not None
+            else ""
+        )
+        if token and len(token) < 32:
+            raise ValueError("OPERATIONS_HEALTH_TOKEN must contain at least 32 characters")
+
+        if self.app_env == "production":
+            if not token:
+                raise ValueError("OPERATIONS_HEALTH_TOKEN is required in production")
+            if self.release_commit == "unknown" or self.release_built_at is None:
+                raise ValueError("production requires immutable release commit and build time")
+            if not self.redis_required_for_readiness:
+                raise ValueError("Redis readiness cannot be disabled in production")
+        return self
+
+    @property
+    def queue_names(self) -> tuple[str, ...]:
+        return tuple(self.celery_queues.split(","))
+
+
+def load_settings() -> Settings:
+    """Load and validate backend configuration from the process environment."""
+
+    return Settings()

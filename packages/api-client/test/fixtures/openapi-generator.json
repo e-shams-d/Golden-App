@@ -1,0 +1,119 @@
+{
+  "components": {
+    "schemas": {
+      "Widget": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "active",
+              "archived"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "state"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "FixtureToken": {
+        "in": "header",
+        "name": "X-Fixture-Token",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "title": "Generator fixture",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/widgets/{widget_id}": {
+      "get": {
+        "operationId": "getWidget",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_history",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Widget"
+                }
+              }
+            },
+            "description": "Widget"
+          }
+        },
+        "security": [
+          {
+            "FixtureToken": []
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "widget_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "replaceWidget",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "validate_only",
+            "required": true,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Widget"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Replaced"
+          }
+        }
+      }
+    }
+  }
+}

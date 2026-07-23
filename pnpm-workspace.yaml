@@ -1,0 +1,39 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Node 24 LTS is the M1 runtime baseline. Do not silently install under an EOL
+# runtime and produce artifacts that CI/production cannot reproduce.
+engineStrict: true
+
+# Exact versions are intentional until the first reviewed lockfile is generated
+# in a Node 24 environment. Internal packages use workspace:* separately.
+catalog:
+  "@axe-core/playwright": "4.12.1"
+  "@eslint/js": "9.39.5"
+  "@playwright/test": "1.61.1"
+  "@tailwindcss/postcss": "4.3.3"
+  "@tanstack/react-query": "5.101.2"
+  "@types/node": "24.13.3"
+  "@types/react": "19.2.17"
+  "@types/react-dom": "19.1.9"
+  "eslint": "9.39.5"
+  "eslint-config-next": "16.2.10"
+  "next": "16.2.10"
+  "postcss": "8.5.5"
+  "react": "19.2.7"
+  "react-dom": "19.2.7"
+  "react-hook-form": "7.82.0"
+  "tailwindcss": "4.3.3"
+  "turbo": "2.10.0"
+  "typescript": "6.0.3"
+  "typescript-eslint": "8.64.0"
+  "vitest": "4.1.10"
+  "zod": "4.4.3"
+
+allowBuilds:
+  # Both packages are transitive native dependencies of the pinned Next.js /
+  # ESLint toolchain. Their lifecycle scripts only prepare the platform binary
+  # already selected by the lockfile; all other dependency scripts stay denied.
+  sharp: true
+  unrs-resolver: true

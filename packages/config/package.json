@@ -1,0 +1,34 @@
+{
+  "name": "@gold/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./eslint/base": "./eslint/base.mjs",
+    "./eslint/next": "./eslint/next.mjs",
+    "./security-headers": {
+      "types": "./src/security-headers.d.mts",
+      "default": "./src/security-headers.mjs"
+    },
+    "./styles/tokens.css": "./styles/tokens.css"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@eslint/js": "catalog:",
+    "eslint-config-next": "catalog:",
+    "typescript-eslint": "catalog:"
+  },
+  "devDependencies": {
+    "eslint": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "eslint": ">=9 <11"
+  },
+  "engines": {
+    "node": ">=24.0.0 <25"
+  }
+}

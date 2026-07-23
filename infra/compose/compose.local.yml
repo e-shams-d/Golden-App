@@ -1,0 +1,307 @@
+name: ${COMPOSE_PROJECT_NAME:-gold-platform-local}
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-application-security: &application-security
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  read_only: true
+  init: true
+  restart: unless-stopped
+  logging: *default-logging
+
+services:
+  nginx:
+    <<: *application-security
+    build:
+      context: ../..
+      dockerfile: infra/docker/nginx.Dockerfile
+    depends_on:
+      trader-pwa:
+        condition: service_healthy
+      admin-web:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${HTTP_PORT:-8080}:8080"
+    tmpfs:
+      - /var/cache/nginx:size=128m,uid=101,gid=101,mode=0750
+      - /var/run:size=1m,uid=101,gid=101,mode=0750
+      - /tmp:size=8m,uid=101,gid=101,mode=0750
+    networks:
+      - public_net
+      - app_net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/nginx-health"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  trader-pwa:
+    <<: *application-security
+    build:
+      context: ../..
+      dockerfile: infra/docker/trader-pwa.Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api/v1}
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api/v1}
+      INTERNAL_API_BASE_URL: http://backend:8000/api/v1
+    expose:
+      - "3000"
+    tmpfs:
+      - /tmp:size=32m,uid=10001,gid=10001,mode=0700
+    networks:
+      - app_net
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  admin-web:
+    <<: *application-security
+    build:
+      context: ../..
+      dockerfile: infra/docker/admin-web.Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api/v1}
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api/v1}
+      INTERNAL_API_BASE_URL: http://backend:8000/api/v1
+    expose:
+      - "3000"
+    tmpfs:
+      - /tmp:size=32m,uid=10001,gid=10001,mode=0700
+    networks:
+      - app_net
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  backend:
+    <<: *application-security
+    build:
+      context: ../..
+      dockerfile: infra/docker/backend.Dockerfile
+    environment: &backend-environment
+      APP_ENV: ${APP_ENV:-local}
+      RELEASE_VERSION: ${RELEASE_VERSION:-0.1.0}
+      RELEASE_COMMIT: ${RELEASE_COMMIT:-unknown}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      BUSINESS_TIMEZONE: ${BUSINESS_TIMEZONE:-Asia/Tehran}
+      INTERNAL_TIMEZONE: UTC
+      DATABASE_URL: postgresql+psycopg://${APP_DB_USER:?APP_DB_USER must be set}:${APP_DB_PASSWORD:?APP_DB_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB must be set}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0
+      LOCAL_STORAGE_ROOT: ${LOCAL_STORAGE_ROOT:-/app/storage}
+      OPERATIONS_HEALTH_TOKEN: ${OPERATIONS_HEALTH_TOKEN:?OPERATIONS_HEALTH_TOKEN must be set}
+    expose:
+      - "8000"
+    volumes:
+      - ${LOCAL_DATA_ROOT:-../../.local}/storage:/app/storage
+    tmpfs:
+      - /tmp:size=64m,uid=10001,gid=10001,mode=0700
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      storage-init:
+        condition: service_completed_successfully
+    networks:
+      - app_net
+      - data_net
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/ready', timeout=3)"
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  migrate:
+    <<: *application-security
+    restart: "no"
+    build:
+      context: ../..
+      dockerfile: infra/docker/backend.Dockerfile
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      <<: *backend-environment
+      DATABASE_URL: postgresql+psycopg://${MIGRATION_DB_USER:?MIGRATION_DB_USER must be set}:${MIGRATION_DB_PASSWORD:?MIGRATION_DB_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB must be set}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - data_net
+
+  storage-init:
+    build:
+      context: ../..
+      dockerfile: infra/docker/backend.Dockerfile
+    user: "0:0"
+    command:
+      - sh
+      - -c
+      - "mkdir -p /app/storage && chown -R 10001:10001 /app/storage && chmod 0700 /app/storage"
+    volumes:
+      - ${LOCAL_DATA_ROOT:-../../.local}/storage:/app/storage
+    read_only: true
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    logging: *default-logging
+
+  worker:
+    <<: *application-security
+    build:
+      context: ../..
+      dockerfile: infra/docker/backend.Dockerfile
+    command:
+      - celery
+      - -A
+      - app.workers.entrypoint:celery_app
+      - worker
+      - --queues=files,exports,notifications,reports,maintenance,ai
+      - --loglevel=INFO
+    environment: *backend-environment
+    volumes:
+      - ${LOCAL_DATA_ROOT:-../../.local}/storage:/app/storage
+    tmpfs:
+      - /tmp:size=128m,uid=10001,gid=10001,mode=0700
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      storage-init:
+        condition: service_completed_successfully
+    networks:
+      - data_net
+
+  scheduler:
+    <<: *application-security
+    build:
+      context: ../..
+      dockerfile: infra/docker/backend.Dockerfile
+    command:
+      - celery
+      - -A
+      - app.workers.entrypoint:celery_app
+      - beat
+      - --schedule=/tmp/celerybeat-schedule
+      - --loglevel=INFO
+    environment: *backend-environment
+    tmpfs:
+      - /tmp:size=32m,uid=10001,gid=10001,mode=0700
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - data_net
+
+  postgres:
+    image: postgres:16.14-alpine3.24
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      APP_DB_USER: ${APP_DB_USER:?APP_DB_USER must be set in .env}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?APP_DB_PASSWORD must be set in .env}
+      MIGRATION_DB_USER: ${MIGRATION_DB_USER:?MIGRATION_DB_USER must be set in .env}
+      MIGRATION_DB_PASSWORD: ${MIGRATION_DB_PASSWORD:?MIGRATION_DB_PASSWORD must be set in .env}
+    volumes:
+      - ${LOCAL_DATA_ROOT:-../../.local}/postgres:/var/lib/postgresql/data
+      - ../postgres/init:/docker-entrypoint-initdb.d:ro
+    expose:
+      - "5432"
+    networks:
+      - data_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  redis:
+    image: redis:7.4.9-alpine3.21
+    restart: unless-stopped
+    command:
+      - sh
+      - -c
+      - 'exec redis-server /usr/local/etc/redis/redis.conf --requirepass "$${REDIS_PASSWORD}"'
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
+    volumes:
+      - ../redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    expose:
+      - "6379"
+    networks:
+      - data_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging: *default-logging
+
+networks:
+  public_net:
+    driver: bridge
+  app_net:
+    driver: bridge
+    internal: true
+  data_net:
+    driver: bridge
+    internal: true

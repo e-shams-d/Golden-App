@@ -1,0 +1,43 @@
+{
+  "name": "@gold/trader-pwa",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:a11y": "node ../../packages/config/scripts/run-next-a11y.mjs trader-pwa 3100 playwright.config.ts"
+  },
+  "dependencies": {
+    "@gold/api-client": "workspace:*",
+    "@gold/auth-client": "workspace:*",
+    "@gold/config": "workspace:*",
+    "@gold/localization": "workspace:*",
+    "@gold/ui": "workspace:*",
+    "@tanstack/react-query": "catalog:",
+    "next": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-hook-form": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "catalog:",
+    "@playwright/test": "catalog:",
+    "@tailwindcss/postcss": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "eslint": "catalog:",
+    "postcss": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=24.0.0 <25"
+  }
+}

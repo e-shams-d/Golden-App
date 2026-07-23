@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "package": "gold_platform_m0_governance_working_baseline",
+  "manifest_status": "working_baseline_scoped_decisions_approved_m0_incomplete",
+  "generated_on": "2026-07-20",
+  "hash_algorithm": "SHA-256",
+  "manifest_self_included": false,
+  "decision_state": {
+    "approval_date": "2026-07-20",
+    "approval_evidence": "workspace owner approval via conversation; legal name/organizational role not supplied",
+    "approved_canonical_decisions": [
+      "ADR-006",
+      "POL-005 (Phase 1A: break-glass disabled)"
+    ],
+    "resolved_conflicts": [
+      "DOC-CONFLICT-009",
+      "DOC-CONFLICT-017",
+      "DOC-CONFLICT-018",
+      "DOC-CONFLICT-019",
+      "DOC-CONFLICT-020",
+      "DOC-CONFLICT-021",
+      "DOC-CONFLICT-022"
+    ],
+    "open_conflicts": 26,
+    "m0_exit_gate_complete": false
+  },
+  "summary": {
+    "file_count": 17,
+    "total_bytes": 267572,
+    "total_lines": 3450
+  },
+  "validation": {
+    "utf8": true,
+    "yaml_catalogs_parsed": 5,
+    "status_aggregates": 23,
+    "canonical_states": 156,
+    "canonical_permissions": 118,
+    "permission_aliases": 24,
+    "api_errors": 25,
+    "commands": 52,
+    "audit_actions": 57,
+    "outbox_events": 11,
+    "explicit_source_refs_checked": 715,
+    "source_ref_errors": 0,
+    "cross_catalog_reference_errors": 0
+  },
+  "files": [
+    {
+      "path": "docs/adr/ADR-006_Business_Timezone_and_Calendar_Rules.md",
+      "bytes": 5637,
+      "lines": 120,
+      "sha256": "b1d1011e9a61c0ed54c5c627e19faee89ac4a61cc25f347d97deed6e6c024289"
+    },
+    {
+      "path": "docs/adr/ADR_INDEX.md",
+      "bytes": 16335,
+      "lines": 91,
+      "sha256": "dd27e44a1f042bfa1b7b1b3fb59da125be0e60db6428c6ad57a2ae1da69d83dc"
+    },
+    {
+      "path": "docs/adr/ADR_TEMPLATE.md",
+      "bytes": 1734,
+      "lines": 84,
+      "sha256": "f612269ecf31215e13e68ea0baf53c713ec4c39d4506ad256e1ae84486c30d90"
+    },
+    {
+      "path": "docs/adr/README.md",
+      "bytes": 1402,
+      "lines": 30,
+      "sha256": "6da3edbf9ae4da78466859d4ea70baf96a7a5577f44328f7ac4eeeafe9bdca34"
+    },
+    {
+      "path": "docs/governance/api_error_catalog.yaml",
+      "bytes": 3322,
+      "lines": 47,
+      "sha256": "bbd67f0a306548af594ac194aeced0aac1bea825fc4cbc2e098681620d746aeb"
+    },
+    {
+      "path": "docs/governance/audit_outbox_catalog.yaml",
+      "bytes": 3938,
+      "lines": 112,
+      "sha256": "25bb71b5f3e382eebedd0dfd0f9a20e755dda80edb729ebed21b81548cd3ed6a"
+    },
+    {
+      "path": "docs/governance/command_catalog.yaml",
+      "bytes": 29932,
+      "lines": 712,
+      "sha256": "886b95eb5824de903aa3c308a3ea4667169b949d6f8fb48f5476a9b54f1daa48"
+    },
+    {
+      "path": "docs/governance/CONFLICT_REGISTER.md",
+      "bytes": 29413,
+      "lines": 94,
+      "sha256": "e18988272d51bbee7458c97ec98a7febfd2e6e3288c912dac0a456f75003292f"
+    },
+    {
+      "path": "docs/governance/DOCUMENT_APPROVAL_REGISTER.md",
+      "bytes": 5296,
+      "lines": 74,
+      "sha256": "d8e11da1142f9796c8922fd424bff2f73aa0b30794a8b7bddf2cf88d1ae64631"
+    },
+    {
+      "path": "docs/governance/FINANCIAL_INTEGRITY_BASELINE.md",
+      "bytes": 7650,
+      "lines": 126,
+      "sha256": "57cbcc725438a1f9301d4c5f214b15da33e6b4237e1c9b09b293c3eb9167d80b"
+    },
+    {
+      "path": "docs/governance/M0_READINESS.md",
+      "bytes": 6468,
+      "lines": 97,
+      "sha256": "3d94d42a0ee2ea479932ebcd51dbee78834012e53a39b8272361fd83f0f0dc2a"
+    },
+    {
+      "path": "docs/governance/MONEY_TIME_CONTRACT.md",
+      "bytes": 3581,
+      "lines": 74,
+      "sha256": "0d906fc82bcba07360f7aca03492f0ce6e6ba76e55982027f724612d064047ff"
+    },
+    {
+      "path": "docs/governance/permission_catalog.yaml",
+      "bytes": 45513,
+      "lines": 896,
+      "sha256": "233370532e4f1721a11ac27f2aa71dbf92a51e775ccfbac250599dd397fbf1ac"
+    },
+    {
+      "path": "docs/governance/README.md",
+      "bytes": 3523,
+      "lines": 64,
+      "sha256": "395b7c9eef9b6be29e929541def853914accaae7374067232105693df3ecd34b"
+    },
+    {
+      "path": "docs/governance/REPOSITORY_BASELINE.md",
+      "bytes": 3897,
+      "lines": 94,
+      "sha256": "2e4ceea1403a76b57ef181825427cd35c7514d31100fe76325f010d13ff9b905"
+    },
+    {
+      "path": "docs/governance/status_catalog.yaml",
+      "bytes": 62674,
+      "lines": 677,
+      "sha256": "c636ca676bc7a26abaaf6204378e1658fdccef69a75a0ec745aa262058eafc8a"
+    },
+    {
+      "path": "docs/governance/TRACEABILITY_MATRIX.md",
+      "bytes": 37257,
+      "lines": 58,
+      "sha256": "9d4b3c0cd14ab0586f3d83fb3514309899f4d19498bcf5c80b6fb6b6ec6d3b23"
+    }
+  ]
+}

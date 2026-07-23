@@ -1,0 +1,677 @@
+schema_version: 1
+catalog_status: provisional_pending_m0_approval
+title: "Gold Trade Settlement Platform status catalog"
+canonical_authority:
+  document: "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md"
+  version: "1.1"
+  source:
+    - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:5-10"
+    - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:30-49"
+  notes: "Document 06 is the requested M0 canonical authority. This catalog remains provisional and does not resolve conflicts by itself."
+
+flag_semantics:
+  terminal:
+    true: "No normal outgoing transition is defined for this state in document 06. Governed correction, replacement, or reopen may still exist when noted."
+    false: "Document 06 defines or clearly implies a normal outgoing transition."
+    null: "Document 06 does not establish terminality clearly enough for M0."
+  derived:
+    true: "Document 06 explicitly describes the state as an aggregate/usage summary derived from authoritative child records or conditions."
+    false: "The state is entered by an explicit command or lifecycle transition and is not identified as derived."
+    null: "The state mixes command side effects and recalculation, or document 06 does not classify it clearly."
+
+catalog_notes:
+  - "Aliases are compatibility observations, not approved API values."
+  - "An unresolved alias has canonical: null and must not be implemented as an automatic mapping before M0 approval."
+  - "Terminal flags describe the normal document-06 workflow, not physical deletion or loss of audit history."
+  - "Backend values remain English snake_case; localized labels are outside this catalog."
+
+aggregates:
+  trader:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:244-281"
+    notes: "Trader onboarding/business lifecycle. Identity login states are a separate unresolved status set below."
+    states:
+      - canonical: pending_approval
+        aliases: []
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:246-268"
+        terminal: false
+        derived: false
+        notes: "Initial onboarding state; approve, reject, or governed resubmission paths are defined."
+      - canonical: active
+        aliases: []
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:246-281"
+        terminal: false
+        derived: false
+        notes: "Normal operational state; suspension or deactivation is possible."
+      - canonical: suspended
+        aliases: []
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:246-281"
+        terminal: false
+        derived: false
+        notes: "May return to active or become inactive."
+      - canonical: rejected
+        aliases: []
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:246-268"
+        terminal: false
+        derived: false
+        notes: "Document 06 permits governed resubmission to pending_approval."
+      - canonical: inactive
+        aliases: []
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:246-281"
+        terminal: true
+        derived: false
+        notes: "Normal diagram has no outgoing transition; history remains preserved."
+    unresolved_aliases:
+      - canonical: null
+        aliases: [blocked]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/04_Database_Schema.md:450-467"
+          - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:468-472"
+        terminal: null
+        derived: null
+        notes: "blocked exists in database/API vocabulary but not in the document-06 trader state machine; do not collapse it into suspended without policy approval."
+      - canonical: null
+        aliases: [approved]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/04_Database_Schema.md:458-460"
+        terminal: null
+        derived: null
+        notes: "approved is a separate approval_status dimension in document 04, not a safe one-to-one alias for document-06 active."
+
+  beneficiary:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:285-319"
+    notes: "Reusable trader-owned beneficiary lifecycle."
+    states:
+      - canonical: active
+        aliases: []
+        source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:287-317"]
+        terminal: false
+        derived: false
+        notes: "Usable for new requests subject to guards."
+      - canonical: inactive
+        aliases: []
+        source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:287-317"]
+        terminal: false
+        derived: false
+        notes: "May be reactivated or blocked."
+      - canonical: blocked
+        aliases: []
+        source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:287-319"]
+        terminal: false
+        derived: false
+        notes: "May be unblocked or superseded; override requires governed permission."
+      - canonical: superseded
+        aliases: []
+        source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:287-317"]
+        terminal: true
+        derived: false
+        notes: "Historical identity record retained after replacement."
+
+  gold_sale_order:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:323-398"
+    notes: "Gold sale, incoming-payment sufficiency, and dispatch readiness aggregate."
+    states:
+      - {canonical: draft, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:325-379"], terminal: false, derived: false, notes: "Initial editable order state."}
+      - {canonical: submitted, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:325-379"], terminal: false, derived: false, notes: "Awaiting center review."}
+      - {canonical: under_center_review, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:325-379"], terminal: false, derived: false, notes: "Center review and pricing decision state."}
+      - {canonical: priced, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:325-379"], terminal: false, derived: false, notes: "Immutable pricing snapshot exists."}
+      - {canonical: waiting_for_incoming_payment, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:325-379"], terminal: false, derived: false, notes: "Expected payment has been requested."}
+      - {canonical: payment_evidence_submitted, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:325-379"], terminal: false, derived: false, notes: "Receipt/details submitted but not authoritative confirmation."}
+      - {canonical: waiting_for_bank_statement, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:325-379"], terminal: false, derived: false, notes: "Bank data is not yet available or resolved."}
+      - {canonical: needs_review, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:325-379"], terminal: false, derived: null, notes: "Mismatch, duplicate, ambiguity, or returned manager review."}
+      - {canonical: incoming_payment_partially_confirmed, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:325-379"], terminal: false, derived: true, notes: "Aggregate confirmed amount is positive but insufficient."}
+      - {canonical: incoming_payment_confirmed, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:325-386"], terminal: false, derived: true, notes: "Payment sufficiency is confirmed; dispatch or override policy is evaluated."}
+      - {canonical: manager_approval_required, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:325-379"], terminal: false, derived: false, notes: "Configured override/risk decision is pending."}
+      - {canonical: ready_for_dispatch, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:325-386"], terminal: false, derived: null, notes: "Payment/override guard has been satisfied."}
+      - {canonical: dispatched, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:325-379"], terminal: false, derived: false, notes: "Physical dispatch recorded; receipt may follow."}
+      - {canonical: received_by_trader, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:325-379"], terminal: false, derived: false, notes: "Trader receipt acknowledged; closure remains."}
+      - {canonical: settled_or_offset, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:325-379"], terminal: false, derived: false, notes: "Non-physical settlement recorded; closure remains."}
+      - {canonical: closed, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:325-379"], terminal: true, derived: false, notes: "Normal terminal business state; records remain auditable."}
+      - {canonical: rejected, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:325-379"], terminal: true, derived: false, notes: "No normal outgoing transition is shown in document 06."}
+      - {canonical: cancelled, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:325-346"], terminal: true, derived: false, notes: "Cancellation preserves history."}
+
+  incoming_payment_receipt:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:402-447"
+    notes: "A submitted receipt is a claim; confirmation remains a human command."
+    states:
+      - {canonical: submitted, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:404-439"], terminal: false, derived: false, notes: "Initial claim state."}
+      - {canonical: waiting_for_bank_statement, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:404-439"], terminal: false, derived: false, notes: "Awaiting bank data."}
+      - {canonical: candidate_match, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:404-439"], terminal: false, derived: true, notes: "One or more candidate rows exist; not confirmed."}
+      - {canonical: needs_review, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:404-439"], terminal: false, derived: null, notes: "Manual resolution is required."}
+      - {canonical: duplicate_suspected, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:404-439"], terminal: false, derived: true, notes: "Warning state; it does not reject or confirm automatically."}
+      - {canonical: partially_confirmed, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:404-447"], terminal: true, derived: true, notes: "Document 06 shows no same-receipt outgoing transition; further receipts may update the order aggregate."}
+      - {canonical: confirmed, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:404-447"], terminal: true, derived: false, notes: "Authoritative confirmation for this receipt; corrections preserve history."}
+      - {canonical: rejected, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:404-439"], terminal: true, derived: false, notes: "Invalid claim disposition."}
+      - {canonical: superseded, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:404-447"], terminal: true, derived: false, notes: "Replacement preserves original record and file."}
+
+  bank_statement_file:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:451-489"
+    notes: "Lifecycle of the immutable source statement file and its matching readiness."
+    states:
+      - {canonical: uploaded, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:453-489"], terminal: false, derived: false, notes: "Source uploaded; parse run may follow."}
+      - {canonical: parsed, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:453-489"], terminal: false, derived: true, notes: "At least one parse run succeeded; validation remains."}
+      - {canonical: parse_failed, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:453-489"], terminal: false, derived: true, notes: "A later parse run may succeed without overwriting earlier runs."}
+      - {canonical: ready_for_matching, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:453-489"], terminal: false, derived: null, notes: "Row validation is complete; document 08 adds a human import confirmation not represented here."}
+      - {canonical: archived, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:453-489"], terminal: true, derived: false, notes: "Operationally retired; source remains immutable."}
+
+  bank_statement_import_run:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:463-479"
+    notes: "Document 06 models technical execution states. Document 08 defines a richer preview/confirmation lifecycle and is intentionally not silently collapsed."
+    states:
+      - {canonical: queued, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:463-479"], terminal: false, derived: false, notes: "Waiting for parser execution."}
+      - canonical: running
+        aliases: [parsing]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:463-479"
+          - "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:465-477"
+        terminal: false
+        derived: false
+        notes: "parsing is a direct execution-state alias from document 08."
+      - {canonical: succeeded, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:463-479"], terminal: true, derived: false, notes: "Technical run completed successfully; this does not by itself resolve document-08 human confirmation semantics."}
+      - canonical: failed
+        aliases: [parse_failed]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:463-479"
+          - "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:465-477"
+        terminal: true
+        derived: false
+        notes: "Failure is terminal for this run; reprocessing creates another run."
+      - {canonical: cancelled, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:463-479"], terminal: true, derived: false, notes: "Cancelled execution remains historical."}
+    unresolved_aliases:
+      - canonical: null
+        aliases: [draft, preview_ready, partial_preview, confirmed, rejected, superseded]
+        source:
+          - "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:449-477"
+          - "Implementation Docs/05_Backend_and_Security/10_Backend_Implementation_Guide.md:1151-1174"
+        terminal: null
+        derived: null
+        notes: "These document-08 business review states have no equivalent in the simpler document-06 import-run state set; M0 must choose a two-axis model or extend the canonical lifecycle."
+
+  incoming_match_candidate:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:493-519"
+    notes: "Incoming receipt-to-statement candidate lifecycle; distinct from outgoing receipt-segment MatchingCandidate."
+    states:
+      - {canonical: proposed, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:495-519"], terminal: null, derived: false, notes: "Candidate proposal; detailed transitions are not enumerated in document 06."}
+      - {canonical: accepted_for_review, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:495-519"], terminal: null, derived: false, notes: "Acceptance is not incoming financial confirmation."}
+      - {canonical: rejected, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:495-519"], terminal: null, derived: false, notes: "Terminality is not explicitly defined for this candidate row."}
+      - {canonical: superseded, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:495-519"], terminal: null, derived: false, notes: "Stale candidate history is preserved."}
+      - {canonical: expired, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:495-519"], terminal: null, derived: false, notes: "Expiry semantics are not expanded in document 06."}
+
+  incoming_confirmed_match:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:505-519"
+    notes: "Authoritative incoming receipt-to-statement relationship."
+    states:
+      - {canonical: active, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:505-519"], terminal: false, derived: false, notes: "May be corrected through replacement or revocation."}
+      - {canonical: replaced, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:505-519"], terminal: true, derived: false, notes: "Historical match retained after correction."}
+      - {canonical: revoked, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:505-519"], terminal: true, derived: false, notes: "Governed revocation retains history."}
+
+  gold_dispatch:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:522-549"
+    notes: "Physical dispatch, receipt, offset, or manual settlement record lifecycle."
+    states:
+      - {canonical: pending, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:533-549"], terminal: false, derived: false, notes: "Dispatch/settlement command has not completed."}
+      - {canonical: dispatched, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:533-549"], terminal: false, derived: false, notes: "Physical movement recorded; delivery may follow."}
+      - {canonical: delivered, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:533-549"], terminal: true, derived: false, notes: "Normal completed physical-delivery state."}
+      - {canonical: settled, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:533-549"], terminal: true, derived: false, notes: "Normal completed non-physical settlement state."}
+      - {canonical: cancelled, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:533-549"], terminal: true, derived: false, notes: "Only appropriate before real movement; later corrections preserve evidence."}
+      - {canonical: superseded, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:533-549"], terminal: true, derived: false, notes: "Replacement record is authoritative; old record remains historical."}
+
+  payment_request:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:553-653"
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1175-1199"
+    notes: "Stable outgoing-payment business-intent aggregate; manager approval is intentionally not a request state."
+    states:
+      - {canonical: draft, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:555-607"], terminal: false, derived: false, notes: "Editable current revision exists."}
+      - {canonical: submitted_to_center, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:555-607"], terminal: false, derived: false, notes: "Current revision submitted for center review."}
+      - {canonical: under_accountant_review, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:555-607"], terminal: false, derived: false, notes: "Accountant review in progress."}
+      - {canonical: needs_trader_correction, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:555-633"], terminal: false, derived: false, notes: "Trader may create and submit a new immutable revision."}
+      - {canonical: eligible_for_batching, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:555-653", "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1186-1199"], terminal: false, derived: null, notes: "Entered by accountant command and also represented in aggregate recalculation conditions."}
+      - canonical: batched
+        aliases: [included_in_batch]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:555-653"
+          - "Implementation Docs/01_Product_and_Domain/01_Product_Requirements_PRD.md:667-689"
+        terminal: false
+        derived: true
+        notes: "Legacy PRD alias included_in_batch maps to canonical batched; current active attempt allocation is the authoritative condition."
+      - canonical: sent_to_bank
+        aliases: [bank_result_pending]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:555-607"
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1186-1199"
+          - "Implementation Docs/01_Product_and_Domain/01_Product_Requirements_PRD.md:667-689"
+          - "Implementation Docs/05_Backend_and_Security/10_Backend_Implementation_Guide.md:929-952"
+        terminal: false
+        derived: true
+        notes: "Provisional legacy mapping: document 06 uses sent_to_bank for a request with sent unresolved attempts; bank_result_pending remains canonical only for PaymentAttempt."
+      - {canonical: partially_paid, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:555-607", "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1177-1199"], terminal: false, derived: true, notes: "0 < authoritative paid sum < required amount."}
+      - {canonical: paid, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:555-607", "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1177-1199"], terminal: false, derived: true, notes: "Authoritative paid sum equals the exact request amount; publication flow remains."}
+      - {canonical: failed, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:555-607", "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1186-1199"], terminal: false, derived: true, notes: "May transition to retry_required."}
+      - canonical: retry_required
+        aliases: [needs_retry]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:555-607"
+          - "Implementation Docs/01_Product_and_Domain/01_Product_Requirements_PRD.md:667-689"
+        terminal: false
+        derived: true
+        notes: "Unpaid amount has an explicit retry decision or retry preparation."
+      - {canonical: result_ready_for_trader, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:555-607"], terminal: false, derived: false, notes: "Publication preview has been validated; no active publication yet."}
+      - {canonical: result_published, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:555-607"], terminal: false, derived: false, notes: "Immutable publication exists; acknowledgment, dispute, or controlled close may follow."}
+      - canonical: trader_acknowledged
+        aliases: [confirmed_by_trader]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:555-607"
+          - "Implementation Docs/01_Product_and_Domain/01_Product_Requirements_PRD.md:667-689"
+        terminal: false
+        derived: false
+        notes: "Trader acknowledgment does not alter bank facts; operational close may follow."
+      - canonical: trader_disputed
+        aliases: [disputed_by_trader]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:555-607"
+          - "Implementation Docs/01_Product_and_Domain/01_Product_Requirements_PRD.md:667-689"
+        terminal: false
+        derived: false
+        notes: "Explicit governance overlay; correction/current publication may resolve it."
+      - {canonical: cancelled, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:555-575", "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1363-1375"], terminal: true, derived: false, notes: "Normal terminal cancellation; sent requests use reconciliation instead."}
+      - {canonical: closed, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:555-607", "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1345-1355"], terminal: true, derived: false, notes: "Normal terminal state; exceptional governed reopen is explicitly possible."}
+
+  payment_attempt:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:656-748"
+    notes: "Exact split/retry/correction execution row; distinct from PaymentRequest."
+    states:
+      - {canonical: created, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:658-689"], terminal: false, derived: false, notes: "Unsent attempt not yet included in an operational batch version."}
+      - {canonical: included_in_batch_version, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:658-700"], terminal: false, derived: false, notes: "Allocated to a version; active multi-version allocation is forbidden."}
+      - {canonical: sent_to_bank, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:658-689"], terminal: false, derived: false, notes: "Exact final export has been marked sent."}
+      - canonical: bank_result_pending
+        aliases: [pending, unknown]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:658-689"
+          - "Implementation Docs/01_Product_and_Domain/01_Product_Requirements_PRD.md:917-928"
+        terminal: false
+        derived: false
+        notes: "Awaiting authoritative human result confirmation; PRD terms pending/unknown are provisional presentation aliases."
+      - canonical: paid
+        aliases: [success]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:658-724"
+          - "Implementation Docs/01_Product_and_Domain/01_Product_Requirements_PRD.md:917-928"
+        terminal: true
+        derived: false
+        notes: "Normal terminal attempt outcome; a governed correction may create superseding history."
+      - canonical: failed
+        aliases: [failure]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:658-733"
+          - "Implementation Docs/01_Product_and_Domain/01_Product_Requirements_PRD.md:917-928"
+        terminal: false
+        derived: false
+        notes: "May transition to retry_required."
+      - {canonical: retry_required, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:658-733"], terminal: false, derived: false, notes: "A replacement retry attempt may be created, superseding this attempt operationally."}
+      - {canonical: superseded, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:658-748"], terminal: true, derived: false, notes: "Historical attempt retained after replacement/correction."}
+      - {canonical: cancelled, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:658-689"], terminal: true, derived: false, notes: "Only unsent attempts are normally cancellable."}
+    unresolved_aliases:
+      - canonical: null
+        aliases: [needs_review]
+        source:
+          - "Implementation Docs/01_Product_and_Domain/01_Product_Requirements_PRD.md:917-928"
+        terminal: null
+        derived: null
+        notes: "Document 06 represents review as task/queue context, not a canonical PaymentAttempt state."
+
+  payment_batch:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:752-806"
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1201-1215"
+    notes: "Mutable logical container; exact approval targets PaymentBatchVersion."
+    states:
+      - {canonical: draft, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:754-804", "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1201-1215"], terminal: false, derived: true, notes: "Current version is draft."}
+      - {canonical: ready_for_approval, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:754-804", "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1201-1215"], terminal: false, derived: true, notes: "Current exact version is finalized and ready."}
+      - {canonical: approved, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:754-804", "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1201-1215"], terminal: false, derived: true, notes: "Current exact version has valid approval."}
+      - {canonical: approval_invalidated, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:754-804", "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1201-1215"], terminal: false, derived: true, notes: "Replacement/material change prevents operational use of prior approval."}
+      - {canonical: exported, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:754-804", "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1201-1215"], terminal: false, derived: true, notes: "A valid final export exists."}
+      - {canonical: sent_to_bank, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:754-804", "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1201-1215"], terminal: false, derived: true, notes: "Exact export has been marked sent."}
+      - {canonical: result_received, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:754-804", "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1201-1215"], terminal: false, derived: true, notes: "At least one result has been registered."}
+      - {canonical: partially_resolved, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:754-804", "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1201-1215"], terminal: false, derived: true, notes: "Some attempts are terminal while others remain unresolved."}
+      - {canonical: resolved, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:754-806", "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1201-1215"], terminal: true, derived: true, notes: "All attempts have final dispositions; resolved does not mean all paid."}
+      - {canonical: rejected, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:754-804"], terminal: false, derived: false, notes: "A replacement draft version may be created."}
+      - {canonical: cancelled, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:754-806"], terminal: true, derived: false, notes: "Only unsent eligible batch states are normally cancellable."}
+
+  payment_batch_version:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:770-842"
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:846-903"
+    notes: "Immutable ordered snapshot after finalization; approval is exact-version and hash-bound."
+    states:
+      - {canonical: draft, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:770-842"], terminal: false, derived: false, notes: "Version/items may be prepared before finalization."}
+      - {canonical: ready_for_approval, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:770-903"], terminal: false, derived: false, notes: "Finalized and immutable; manager decision pending."}
+      - {canonical: approved, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:770-903"], terminal: false, derived: false, notes: "May later become historical/superseded when a replacement version is made current."}
+      - {canonical: rejected, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:770-903"], terminal: true, derived: false, notes: "Rejected version is not edited; replacement is a new version."}
+      - {canonical: superseded, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:770-842"], terminal: true, derived: false, notes: "Historical immutable version retained."}
+
+  bank_export:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:905-970"
+    notes: "Lifecycle applies to preview/final artifacts; export_type is a separate dimension."
+    states:
+      - {canonical: generating, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:914-942"], terminal: false, derived: false, notes: "Rendering job is in progress."}
+      - {canonical: generated, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:914-957"], terminal: false, derived: false, notes: "Artifact exists but final validation may remain."}
+      - {canonical: validated, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:914-970"], terminal: false, derived: false, notes: "Integrity checks passed."}
+      - {canonical: downloaded, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:914-970"], terminal: false, derived: false, notes: "Download does not prove bank submission."}
+      - {canonical: sent_to_bank_marked, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:914-970"], terminal: true, derived: false, notes: "Exact final export was explicitly marked sent."}
+      - {canonical: voided, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:914-940"], terminal: true, derived: false, notes: "Unsent artifact invalidated through controlled workflow."}
+      - {canonical: quarantined, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:914-957"], terminal: true, derived: false, notes: "Integrity mismatch blocks operational use; correction/regeneration creates separate work."}
+      - canonical: generation_failed
+        aliases: [failed]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:914-925"
+          - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:532-537"
+          - "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:852-863"
+        terminal: true
+        derived: false
+        notes: "Document 05 uses the broader failed alias; document 06/08 use generation_failed. A retry should create or re-drive controlled job state without mutating financial approval."
+    unresolved_aliases:
+      - canonical: null
+        aliases: [superseded]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:532-537"
+        terminal: null
+        derived: null
+        notes: "Document 05 includes superseded but document 06 has no corresponding export transition; M0 must decide whether voided or a distinct historical status applies."
+
+  bank_result_bundle:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:974-1013"
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1217-1220"
+    notes: "Raw mixed evidence container; bundle-to-batch association never proves payment."
+    states:
+      - {canonical: uploaded, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:976-1004"], terminal: false, derived: false, notes: "Original files are registered."}
+      - canonical: processing
+        aliases: [normalization_pending, preparing_preview]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:976-1004"
+          - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:539-553"
+          - "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:933-946"
+        terminal: false
+        derived: false
+        notes: "Provisional compatibility aliases for preview/normalization work in progress."
+      - canonical: ready_for_manual_review
+        aliases: [manual_review_required]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:976-1013"
+          - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:539-553"
+        terminal: false
+        derived: false
+        notes: "Manual review can begin; under_manual_review remains unresolved as a distinct external state."
+      - canonical: partially_matched
+        aliases: [partially_resolved]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:976-1013"
+          - "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:933-946"
+        terminal: false
+        derived: true
+        notes: "Some meaningful segments/items are dispositioned while others remain."
+      - canonical: matched
+        aliases: [resolved]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:976-1013"
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1217-1220"
+          - "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:933-946"
+        terminal: false
+        derived: true
+        notes: "Every meaningful item has a documented disposition; explicit close may follow."
+      - {canonical: closed, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:976-1013"], terminal: true, derived: false, notes: "Closure with unresolved content requires explicit dispositions and reason."}
+      - canonical: failed
+        aliases: [processing_failed]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:976-1013"
+          - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:539-553"
+          - "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:933-946"
+        terminal: false
+        derived: false
+        notes: "Technical failure may fall back to ready_for_manual_review."
+      - {canonical: voided, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:976-987"], terminal: true, derived: false, notes: "Document 06 lists voided but does not draw a transition; use only through governed command."
+        }
+    unresolved_aliases:
+      - canonical: null
+        aliases: [files_stored, normalized, under_manual_review, needs_attention, archived]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:539-553"
+          - "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:933-946"
+        terminal: null
+        derived: null
+        notes: "These finer-grained API/processing states do not have exact document-06 equivalents. Preserve as unresolved rather than applying lossy automatic mappings."
+
+  receipt_segment:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1017-1074"
+    notes: "Segment status summarizes usage; confirmed-link history is authoritative for the relationship."
+    states:
+      - canonical: created
+        aliases: [draft, available]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1019-1074"
+          - "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:1092-1105"
+        terminal: false
+        derived: false
+        notes: "Document-08 draft/available are provisionally collapsed into the document-06 initial state; M0 may choose a separate processing axis."
+      - {canonical: unmatched, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1019-1074", "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:1092-1105"], terminal: false, derived: true, notes: "No candidate or confirmed target currently exists."}
+      - canonical: candidate_found
+        aliases: [candidate_exists]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1019-1074"
+          - "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:1092-1105"
+        terminal: false
+        derived: true
+        notes: "One or more non-authoritative candidates exist."
+      - canonical: confirmed_linked
+        aliases: [confirmed_evidence]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1019-1074"
+          - "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:1092-1105"
+        terminal: false
+        derived: true
+        notes: "An active confirmed evidence link exists; this does not itself imply publication."
+      - {canonical: published, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1019-1074"], terminal: false, derived: true, notes: "Segment is included in an active publication; correction may supersede it."}
+      - {canonical: superseded, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1019-1074", "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:1092-1105"], terminal: true, derived: true, notes: "Evidence/publication replacement preserves the old segment."}
+      - canonical: voided
+        aliases: [irrelevant]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1019-1074"
+          - "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:1092-1105"
+        terminal: true
+        derived: false
+        notes: "Invalid/irrelevant disposition; history remains."
+    unresolved_aliases:
+      - canonical: null
+        aliases: [processing, archived]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:555-566"
+          - "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:1092-1105"
+        terminal: null
+        derived: null
+        notes: "Document 06 has no processing or archived segment state; M0 must decide whether these are lifecycle axes or canonical states."
+
+  matching_candidate:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1078-1096"
+    notes: "Outgoing receipt-segment to payment-attempt suggestion; non-authoritative."
+    states:
+      - {canonical: proposed, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1080-1096", "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:1120-1130"], terminal: false, derived: false, notes: "Awaiting human review."}
+      - {canonical: accepted_for_confirmation, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1080-1096", "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:1120-1130"], terminal: false, derived: false, notes: "Acceptance opens confirmation context but does not mark paid."}
+      - {canonical: rejected, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1080-1096", "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:1120-1130"], terminal: true, derived: false, notes: "Rejected suggestion retained for audit/reasoning."}
+      - {canonical: superseded, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1080-1096", "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:1120-1130"], terminal: true, derived: false, notes: "Source/target change made the suggestion stale."}
+      - {canonical: expired, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1080-1096", "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:1120-1130"], terminal: true, derived: false, notes: "Suggestion is no longer eligible for confirmation."}
+
+  confirmed_evidence_link:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1100-1131"
+    notes: "Authoritative human-confirmed segment-to-attempt relationship."
+    states:
+      - {canonical: active, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1102-1131"], terminal: false, derived: false, notes: "Current authoritative relationship."}
+      - {canonical: replaced, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1102-1131"], terminal: true, derived: false, notes: "Historical relationship retained after atomic replacement."}
+      - canonical: revoked
+        aliases: [voided]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1102-1131"
+          - "Implementation Docs/02_Architecture_and_Contracts/04_Database_Schema.md:1276-1306"
+          - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:574-578"
+          - "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:1157-1173"
+        terminal: true
+        derived: false
+        notes: "Document 06/08 use revoked; documents 04/05 use voided. This alias is provisional pending schema/API reconciliation."
+
+  payment_result_publication:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1135-1171"
+    notes: "Immutable trader-visible result snapshot; content is never edited in place."
+    states:
+      - {canonical: active, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1137-1171", "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:1299-1305"], terminal: false, derived: false, notes: "Current trader-visible publication."}
+      - {canonical: superseded, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1137-1171", "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:1299-1305"], terminal: true, derived: false, notes: "Prior version retained after publication N+1."}
+      - {canonical: revoked, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1137-1171", "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:1299-1305"], terminal: true, derived: false, notes: "Governed invalidation without replacement; reason required by workflow policy."}
+
+  manual_review_task:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1223-1261"
+    notes: "Operational work item; resolving a task alone does not change financial truth."
+    states:
+      - {canonical: open, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1225-1261"], terminal: false, derived: false, notes: "Actionable unresolved work."}
+      - {canonical: in_progress, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1225-1261"], terminal: false, derived: false, notes: "Assigned/started work; assignment itself is a field."}
+      - {canonical: resolved, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1225-1261"], terminal: true, derived: false, notes: "Requires an explicit disposition and normally a domain command."}
+      - {canonical: cancelled, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1225-1261"], terminal: true, derived: false, notes: "Task no longer actionable; underlying history remains."}
+
+  notification:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1265-1291"
+    notes: "Delivery/read projection only; never workflow truth."
+    states:
+      - {canonical: unread, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1267-1291"], terminal: false, derived: false, notes: "Recipient has not marked the notification read."}
+      - {canonical: read, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1267-1291"], terminal: null, derived: false, notes: "Document 06 does not define whether read may later become dismissed."}
+      - {canonical: dismissed, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1267-1291"], terminal: null, derived: false, notes: "Terminality is not explicitly specified."}
+
+  outbox_event:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1275-1291"
+    notes: "Transactional outbox delivery lifecycle; business state is already committed."
+    states:
+      - {canonical: pending, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1275-1291"], terminal: false, derived: false, notes: "Awaiting claim/delivery."}
+      - {canonical: processing, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1275-1291"], terminal: false, derived: false, notes: "Claimed by dispatcher."}
+      - {canonical: published, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1275-1291"], terminal: true, derived: false, notes: "Handler delivery completed idempotently."}
+      - {canonical: failed, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1275-1291"], terminal: false, derived: false, notes: "Retry/dead-letter behavior may follow."}
+      - {canonical: dead_lettered, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1275-1291"], terminal: true, derived: false, notes: "Automatic delivery exhausted; operational review is required."}
+    unresolved_aliases:
+      - canonical: null
+        aliases: [retry]
+        source:
+          - "Implementation Docs/02_Architecture_and_Contracts/04_Database_Schema.md:1422-1434"
+        terminal: null
+        derived: null
+        notes: "Document 04 indexes status retry, while document 06 has failed plus retry rules but no retry state. M0 must choose failed-with-available_at or an explicit retry state."
+
+  processing_job:
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1295-1317"
+    notes: "PostgreSQL-authoritative technical job lifecycle; workers have no financial authority."
+    states:
+      - {canonical: queued, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1297-1317"], terminal: false, derived: false, notes: "Waiting for worker claim."}
+      - {canonical: running, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1297-1317"], terminal: false, derived: false, notes: "Worker lease/heartbeat active."}
+      - {canonical: succeeded, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1297-1317"], terminal: true, derived: false, notes: "Technical output completed; it does not confer human authority."}
+      - {canonical: failed, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1297-1317"], terminal: null, derived: false, notes: "May be terminal or may lead to retry_scheduled/manual retry depending on failure policy."}
+      - {canonical: retry_scheduled, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1297-1317"], terminal: false, derived: false, notes: "Bounded retry is scheduled."}
+      - {canonical: cancelled, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1297-1317"], terminal: true, derived: false, notes: "Cancelled technical work remains recorded."}
+      - {canonical: dead_lettered, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1297-1317"], terminal: true, derived: false, notes: "Retries exhausted and operational intervention required."}
+      - {canonical: fallback_to_manual, aliases: [], source: ["Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1297-1317"], terminal: true, derived: false, notes: "Automated path ended; manual workflow remains available."}
+
+status_sets_without_document_06_canonical:
+  - aggregate: file_object
+    canonical: null
+    aliases:
+      - pending
+      - quarantined
+      - available
+      - processing_failed
+      - archived
+      - retention_pending
+      - deleted
+      - deleted_by_policy
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/04_Database_Schema.md:619-655"
+      - "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:364-376"
+      - "Implementation Docs/05_Backend_and_Security/10_Backend_Implementation_Guide.md:1349-1363"
+    notes: "Document 06 declares originals immutable but does not define a FileObject state machine. deleted versus deleted_by_policy is unresolved and must not be canonicalized here."
+  - aggregate: bank_profile_version
+    canonical: null
+    aliases: [draft, active, retired]
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/04_Database_Schema.md:543-573"
+    notes: "Document 06 discusses versioned bank configuration but provides no canonical state machine for profile versions."
+  - aggregate: bank_mapping
+    canonical: null
+    aliases: [draft, active, retired]
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/04_Database_Schema.md:588-613"
+    notes: "Document 06 discusses activation/immutability but provides no canonical BankMapping state machine."
+  - aggregate: idempotency_record
+    canonical: null
+    aliases: [in_progress, completed, failed]
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/04_Database_Schema.md:1391-1420"
+    notes: "Document 06 specifies idempotency behavior but does not define an idempotency-record status catalog."
+  - aggregate: identity_account
+    canonical: null
+    aliases: [pending, active, suspended, inactive, locked, recovery_required, deactivated]
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/04_Database_Schema.md:310-365"
+      - "Implementation Docs/05_Backend_and_Security/10_Backend_Implementation_Guide.md:1031-1042"
+    notes: "Document 06 canonicalizes Trader business onboarding, not the full authentication-account lifecycle. Keep identity state separate from trader business state."
+
+m0_decisions_required:
+  - canonical: bank_statement_import_run
+    aliases: [preview_ready, partial_preview, confirmed, rejected, superseded]
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:463-479"
+      - "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:449-477"
+    notes: "Decide whether parsing execution and accountant import review are separate state axes or one extended lifecycle."
+  - canonical: bank_result_bundle
+    aliases: [files_stored, normalized, under_manual_review, needs_attention, archived]
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:974-1013"
+      - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:539-553"
+      - "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:933-946"
+    notes: "Choose a single lifecycle granularity before database checks and OpenAPI enums are generated."
+  - canonical: confirmed_evidence_link.revoked
+    aliases: [confirmed_evidence_link.voided]
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1102-1131"
+      - "Implementation Docs/02_Architecture_and_Contracts/04_Database_Schema.md:1282-1306"
+      - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:574-578"
+    notes: "Select one persisted enum value and retain the other only as a migration/API compatibility alias if approved."
+  - canonical: payment_request.sent_to_bank
+    aliases: [payment_request.bank_result_pending]
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:555-607"
+      - "Implementation Docs/01_Product_and_Domain/01_Product_Requirements_PRD.md:667-689"
+      - "Implementation Docs/05_Backend_and_Security/10_Backend_Implementation_Guide.md:929-952"
+    notes: "Confirm that bank_result_pending is attempt-only in the approved API/schema and migrate legacy request values accordingly."
+  - canonical: receipt_segment
+    aliases: [processing, draft, available, archived]
+    source:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:1017-1074"
+      - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:555-566"
+      - "Implementation Docs/03_Banking_and_Intelligence/08_Bank_File_and_Result_Processing.md:1092-1105"
+    notes: "Decide whether technical processing/storage readiness is a separate axis from usage/matching state."

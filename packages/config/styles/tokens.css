@@ -1,0 +1,36 @@
+:root {
+  color-scheme: light;
+  --gold-50: #fff9e8;
+  --gold-100: #f8edc5;
+  --gold-500: #a97216;
+  --gold-700: #70470b;
+  --ink-950: #15130f;
+  --ink-800: #2e2a22;
+  --ink-600: #5b5549;
+  --surface: #ffffff;
+  --surface-subtle: #f6f4ef;
+  --surface-raised: #fffdf8;
+  --border: #d9d3c5;
+  --focus: #0b63ce;
+  --success: #17663a;
+  --warning: #8b4a08;
+  --danger: #9f2727;
+  --info: #175c8b;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.875rem;
+  --radius-lg: 1.25rem;
+  --shadow-raised: 0 12px 32px rgb(36 30 17 / 9%);
+  --space-page: clamp(1rem, 2vw, 2rem);
+  --font-sans: Tahoma, Arial, sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

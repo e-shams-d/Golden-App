@@ -1,0 +1,48 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local persistent data and runtime output. Anchor these at the repository root
+# so source packages such as services/backend/app/storage remain trackable.
+/.local/
+/.pnpm-store/
+/storage/
+/logs/
+/tmp/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# Node / Next.js / Turborepo / Playwright
+node_modules/
+.next/
+.turbo/
+out/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

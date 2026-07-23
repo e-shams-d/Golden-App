@@ -1,0 +1,26 @@
+{
+  "name": "@gold/api-client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "openapi:types": "node scripts/openapi-contract.mjs --write",
+    "openapi:check": "node scripts/openapi-contract.mjs --check"
+  },
+  "devDependencies": {
+    "@gold/config": "workspace:*",
+    "eslint": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=24.0.0 <25"
+  }
+}

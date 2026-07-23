@@ -1,0 +1,46 @@
+{
+  "metadata": {
+    "catalog": "phase1a_api_errors",
+    "status": "provisional_pending_m0_approval",
+    "version": "0.1.0",
+    "source": "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:408",
+    "error_envelope": {
+      "root": "error",
+      "fields": ["code", "message", "details", "request_id"],
+      "sensitive_values_must_be_masked": true
+    }
+  },
+  "errors": [
+    {"http": 400, "code": "BAD_REQUEST", "meaning": "Malformed or semantically invalid request"},
+    {"http": 400, "code": "INVALID_STATE_TRANSITION", "meaning": "Command is not allowed from current state"},
+    {"http": 400, "code": "BUSINESS_RULE_VIOLATION", "meaning": "Domain rule failed"},
+    {"http": 400, "code": "AMOUNT_UNIT_MISMATCH", "meaning": "Entered amount does not equal canonical IRR"},
+    {"http": 400, "code": "IBAN_INVALID", "meaning": "IBAN normalization or format failed"},
+    {"http": 401, "code": "UNAUTHENTICATED", "meaning": "No valid session"},
+    {"http": 401, "code": "RECENT_AUTH_REQUIRED", "meaning": "Critical action requires reauthentication"},
+    {"http": 403, "code": "FORBIDDEN", "meaning": "Permission denied"},
+    {"http": 404, "code": "NOT_FOUND", "meaning": "Missing or intentionally hidden resource"},
+    {"http": 409, "code": "CONFLICT", "meaning": "Duplicate or incompatible command"},
+    {"http": 409, "code": "IDEMPOTENCY_KEY_REUSED", "meaning": "Same key used with a different request hash"},
+    {"http": 409, "code": "ACTIVE_BATCH_MEMBERSHIP_EXISTS", "meaning": "Attempt or request is already allocated"},
+    {"http": 409, "code": "ACTIVE_PRIMARY_EVIDENCE_EXISTS", "meaning": "Primary evidence cardinality conflict"},
+    {"http": 409, "code": "APPROVAL_INVALIDATED", "meaning": "Approval no longer matches the current version"},
+    {"http": 409, "code": "EXPORT_INTEGRITY_MISMATCH", "meaning": "Export differs from the approved snapshot"},
+    {"http": 409, "code": "RECONCILIATION_REQUIRED", "meaning": "Paid sum exceeds or conflicts with the request"},
+    {"http": 412, "code": "VERSION_CONFLICT", "meaning": "If-Match value is stale"},
+    {"http": 413, "code": "FILE_TOO_LARGE", "meaning": "Approved size limit exceeded"},
+    {"http": 415, "code": "UNSUPPORTED_FILE_TYPE", "meaning": "File type is not allowed for its purpose"},
+    {"http": 422, "code": "VALIDATION_ERROR", "meaning": "DTO or field validation failed"},
+    {"http": 428, "code": "PRECONDITION_REQUIRED", "meaning": "Required If-Match or Idempotency-Key is missing"},
+    {"http": 429, "code": "RATE_LIMITED", "meaning": "Rate limit exceeded"},
+    {"http": 500, "code": "INTERNAL_ERROR", "meaning": "Unexpected error without sensitive details"},
+    {"http": 503, "code": "DEPENDENCY_UNAVAILABLE", "meaning": "A required dependency is unavailable"},
+    {"http": 503, "code": "BACKGROUND_PROCESSING_UNAVAILABLE", "meaning": "Redis or worker processing path is unavailable"}
+  ],
+  "m0_rules": [
+    "Codes are stable machine contracts; localized UI text is not part of the code.",
+    "NOT_FOUND may intentionally hide the existence of an unauthorized resource.",
+    "Validation details may contain multiple field entries but no secret or raw sensitive value.",
+    "Adding or changing a code requires API, generated client, frontend mapping, tests, and documentation changes."
+  ]
+}

@@ -1,0 +1,896 @@
+schema_version: "1.0"
+catalog_id: gold_platform_phase_1a_permissions
+status: provisional_pending_m0_approval
+phase_scope: phase_1a
+language: en
+
+authority:
+  canonical_source:
+    document: "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md"
+    sections:
+      - "8 Authorization Model"
+      - "9 Separation of Duties"
+      - "10 Permission Catalogue"
+      - "11 Baseline RBAC Matrix"
+      - "12 Command Authorization Contract"
+  api_alias_source:
+    document: "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md"
+    sections:
+      - "8 Permission Naming"
+      - "11 Admin Users and RBAC API"
+      - "12 Traders and Trader Self-Service API"
+  precedence_rule: >-
+    Canonical permission identifiers and baseline grants come from document 12.
+    Document 05 names are compatibility/migration aliases only. An alias never
+    broadens a grant and ambiguous aliases fail closed pending M0 approval.
+
+enforcement:
+  default_effect: deny
+  unknown_permission_effect: deny
+  unknown_role_effect: deny
+  unknown_alias_effect: deny
+  role_name_alone_is_authorization: false
+  frontend_permission_check_is_authorization: false
+  backend_is_authoritative: true
+  aliases_accepted_at_runtime: false
+  permissions_must_be_explicitly_assigned: true
+  object_scope_and_domain_guards_required: true
+  command_check_order:
+    - session_and_identity_domain
+    - account_state_and_session_revocation
+    - authoritative_role_and_permission_resolution
+    - ownership_or_business_scope
+    - recent_auth_and_dual_control
+    - idempotency_and_request_hash
+    - etag_or_immutable_version_hash
+    - aggregate_locking
+    - state_machine_and_domain_guards
+    - business_change
+    - atomic_audit_and_outbox
+    - idempotency_completion
+    - single_unit_of_work_commit
+  source_refs:
+    - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:119-136"
+    - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:562-575"
+    - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:623-630"
+    - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:972-990"
+    - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:2458-2465"
+
+roles:
+  trader_owner:
+    identity_domain: trader
+    baseline_purpose: own trader records, requests, publications, acknowledgements, and disputes
+  accountant:
+    identity_domain: internal
+    baseline_purpose: operational review, batching, bank results, evidence, and confirmation
+  manager:
+    identity_domain: internal
+    baseline_purpose: exact batch-version approval and configured high-risk decisions
+  warehouse_operator:
+    identity_domain: internal
+    baseline_purpose: dispatch and receipt operations only
+  business_admin:
+    identity_domain: internal
+    baseline_purpose: user/trader administration and approved business configuration
+  technical_admin:
+    identity_domain: internal
+    baseline_purpose: technical configuration and operational support without implicit financial authority
+  read_only_auditor:
+    identity_domain: internal
+    baseline_purpose: masked read-only records, reports, and audit
+  support_operator:
+    identity_domain: internal
+    baseline_purpose: optional limited support workflow without financial mutation
+    default_enabled: false
+  system_worker:
+    identity_domain: system
+    baseline_purpose: technical asynchronous work without human financial authority
+
+role_source_refs:
+  - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:607-621"
+
+constraint_profiles:
+  authenticated_active:
+    ownership: permission-specific scope is still required
+    state: valid non-revoked session and allowed account state
+    recent_auth: not_required_by_this_profile
+    separation_of_duties: none
+  own_actor_scope:
+    ownership: derive trader or user identity from the authenticated actor; never trust a client-selected owner id
+    state: referenced resource must remain in an allowed state
+    recent_auth: not_required_by_default
+    separation_of_duties: none
+  internal_business_scope:
+    ownership: require assigned or approved business scope and field-level shaping
+    state: backend allowed-actions and domain guards apply
+    recent_auth: not_required_by_default
+    separation_of_duties: none
+  read_only_masked:
+    ownership: approved read scope only
+    state: no state-changing side effect; sensitive fields are masked by policy
+    recent_auth: not_required
+    separation_of_duties: none
+  state_guarded_command:
+    ownership: own or internal scope according to the permission and actor domain
+    state: explicit command endpoint, current allowed state, idempotency, and If-Match/hash when specified
+    recent_auth: not_required_unless_an_overlay_profile_requires_it
+    separation_of_duties: none_unless_an_overlay_profile_requires_it
+  high_risk_role_grant:
+    ownership: authorized identity-governance scope
+    state: reason, before/after audit, authorization refresh or session invalidation
+    recent_auth: required when granting high-risk financial authority
+    separation_of_duties: recipient separation is policy-dependent and must fail closed when required
+  batch_finalize:
+    ownership: internal batch-preparation scope
+    state: exact current draft version is valid and becomes immutable on success
+    recent_auth: not_required_by_canonical_baseline
+    separation_of_duties: finalizer identity is recorded and cannot approve the same version
+  exact_batch_approval:
+    ownership: manager approval scope
+    state: exact current immutable ready_for_approval version, matching hash, row count, total, bank profile, mapping, and source account
+    recent_auth: required and bound to actor, session, and action class
+    separation_of_duties: approver must differ from creator/finalizer; approval never transfers to a replacement version
+  approval_invalidation:
+    ownership: configured manager or governance scope
+    state: exact approved version and explicit invalidation/cancellation command
+    recent_auth: required for configured cancellation or invalidation of an approved version
+    separation_of_duties: no silent bypass; break-glass is a separately governed exception
+  final_export_generation:
+    ownership: authorized internal export scope
+    state: exact approved immutable version and approval/hash/mapping/source-account match
+    recent_auth: not_required_by_canonical_baseline
+    separation_of_duties: upstream exact approval must already satisfy separation of duties
+  exact_export_mark_sent:
+    ownership: authorized internal export scope
+    state: exact final available non-quarantined export; integrity and checksum revalidated; idempotent
+    recent_auth: not_required_by_canonical_baseline
+    separation_of_duties: human command required; download alone has no effect
+  file_authorized_access:
+    ownership: re-evaluate resource link, category, actor scope, and publication scope for every request
+    state: normally only available and policy-clean files; signed access is short-lived
+    recent_auth: not_required_by_default
+    separation_of_duties: none
+  sensitive_bundle_access:
+    ownership: explicit internal grant; never trader scope
+    state: lifecycle and scan policy permit access
+    recent_auth: not_required_by_default
+    separation_of_duties: technical support access is temporary and explicitly granted
+  crop_creation:
+    ownership: authorized source bundle/file/page scope
+    state: source is available/clean; normalized bounds valid; provenance immutable; crop creates no financial result
+    recent_auth: not_required
+    separation_of_duties: worker cannot confirm evidence, payment, or publication
+  candidate_only:
+    ownership: authorized result-review scope
+    state: suggestion only; no evidence or financial-state effect
+    recent_auth: not_required
+    separation_of_duties: human confirmation remains separate
+  evidence_confirmation:
+    ownership: authorized accountant result-review scope
+    state: exact source and attempt; active-primary cardinality constraints; append-only replacement history
+    recent_auth: not_required_by_default
+    separation_of_duties: configured high-risk replacement review may require manager approval
+  payment_result_confirmation:
+    ownership: authorized accountant result scope
+    state: exact sent attempt or approved exception; evidence policy; exact amount; no superseded/cancelled attempt; overpayment blocked
+    recent_auth: not_required_by_default; text-only exception policy is unresolved
+    separation_of_duties: AI and workers cannot execute; published-paid correction uses a separate higher-assurance profile
+  publication_control:
+    ownership: authorized internal publisher and exact trader/request scope
+    state: immutable snapshot from confirmed results; privacy-approved evidence; full mixed bundle prohibited
+    recent_auth: not_required_by_default
+    separation_of_duties: correction of a published paid result uses published_paid_correction
+  published_paid_correction:
+    ownership: exact current result/publication scope
+    state: append-only correction, aggregate recalculation, publication N+1, prior version superseded, trader notification
+    recent_auth: conditional on the approved manager/dual-control policy; unresolved values fail closed
+    separation_of_duties: second authorized human is the conservative default; exact permission/threshold remains ADR-SEC-009
+  incoming_payment_control:
+    ownership: authorized incoming-payment and gold-order scope
+    state: exact receipt/statement/import-run context; partial/excess/ambiguity produces review, not silent success
+    recent_auth: not_required_by_canonical_baseline
+    separation_of_duties: manager exception/threshold is policy-dependent
+  dispatch_control:
+    ownership: warehouse dispatch scope for the exact order
+    state: settlement and dispatch guards pass; explicit dispatch type and evidence policy
+    recent_auth: not_required_by_canonical_baseline
+    separation_of_duties: warehouse cannot override financial verification
+  bank_configuration_change:
+    ownership: approved business or technical configuration scope
+    state: create immutable versions; used versions are not edited; activation is audited
+    recent_auth: policy_pending_for_high_risk_activation
+    separation_of_duties: business/technical approval split is risk-dependent and unresolved
+  feature_flag_change:
+    ownership: technical configuration scope
+    state: flags never bypass authorization, audit, manager approval, or manual Phase 1A controls
+    recent_auth: policy_pending_for_sensitive_enablement
+    separation_of_duties: external AI, text-only confirmation, and sensitive download changes require separate approval
+  retention_governance:
+    ownership: appointed business/legal governance scope
+    state: proposal, review, approval, legal-hold check, dry-run, backup coordination, activation, separate execution
+    recent_auth: policy_pending_for_approval_and_activation
+    separation_of_duties: technical_admin cannot unilaterally shorten retention and execute deletion
+  legal_hold_governance:
+    ownership: appointed legal/governance scope
+    state: explicit scope, authority, effective time, release process, and audit; hold blocks deletion
+    recent_auth: policy_pending
+    separation_of_duties: release authority is unresolved and must be explicitly assigned
+  break_glass_activation:
+    ownership: incident-specific explicit scope
+    state: disabled for Phase 1A by approved POL-005; no endpoint, grant, feature flag, runtime activation, or financial bypass; future enablement requires a new explicit decision
+    recent_auth: required strong/recent authentication
+    separation_of_duties: cannot silently bypass SoD; financial use requires immediate secondary review
+  phase_1b_disabled:
+    ownership: no Phase 1A operational grant
+    state: feature disabled until provider/privacy/cost/evaluation ADRs are approved
+    recent_auth: not_applicable
+    separation_of_duties: no financial authority if enabled later
+
+permission_groups:
+  identity_and_access:
+    domain: identity_access
+    source_refs:
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:702-718"
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:876-887"
+    permissions:
+      auth.session.read_own:
+        default_roles: [trader_owner, accountant, manager, warehouse_operator, business_admin, technical_admin, read_only_auditor, support_operator]
+        constraints: [authenticated_active, own_actor_scope]
+      auth.session.revoke_own:
+        default_roles: [trader_owner, accountant, manager, warehouse_operator, business_admin, technical_admin, read_only_auditor, support_operator]
+        constraints: [authenticated_active, own_actor_scope, state_guarded_command]
+      auth.session.read_all:
+        default_roles: [business_admin]
+        constraints: [authenticated_active, internal_business_scope]
+      auth.session.revoke_all:
+        default_roles: [business_admin]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      user.read:
+        default_roles: [business_admin]
+        constraints: [authenticated_active, internal_business_scope]
+      user.create:
+        default_roles: [business_admin]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      user.update:
+        default_roles: [business_admin]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      user.deactivate:
+        default_roles: [business_admin]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      role.read:
+        default_roles: [manager, business_admin, read_only_auditor]
+        constraints: [authenticated_active, internal_business_scope]
+      role.manage:
+        default_roles: [business_admin]
+        constraints: [authenticated_active, high_risk_role_grant, state_guarded_command]
+      permission.read:
+        default_roles: [manager, business_admin, read_only_auditor]
+        constraints: [authenticated_active, internal_business_scope]
+      break_glass.activate:
+        default_roles: []
+        assignment: disabled_for_phase_1a
+        availability: disabled_by_approved_POL_005
+        constraints: [authenticated_active, break_glass_activation]
+      break_glass.review:
+        default_roles: []
+        assignment: explicitly_appointed_security_or_governance_reviewer
+        constraints: [authenticated_active, internal_business_scope, read_only_masked]
+
+  trader_and_beneficiary:
+    domain: trader_beneficiary
+    source_refs:
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:720-735"
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:876-889"
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:1362-1433"
+    permissions:
+      trader.read:
+        default_roles: [trader_owner, accountant, manager, business_admin, read_only_auditor]
+        conditional_roles:
+          technical_admin: limited_metadata_only
+          warehouse_operator: dispatch_order_context_only
+          support_operator: assigned_issue_context_only
+        constraints: [authenticated_active, internal_business_scope]
+      trader.create:
+        default_roles: [business_admin]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      trader.approve:
+        default_roles: [manager, business_admin]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      trader.reject:
+        default_roles: [manager, business_admin]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      trader.suspend:
+        default_roles: [manager, business_admin]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      trader.reactivate:
+        default_roles: [manager, business_admin]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      trader.update_business:
+        default_roles: [business_admin]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      beneficiary.read:
+        default_roles: [trader_owner, accountant, manager, business_admin, read_only_auditor]
+        constraints: [authenticated_active, internal_business_scope]
+      beneficiary.create:
+        default_roles: [accountant]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      beneficiary.create_own:
+        default_roles: [trader_owner]
+        constraints: [authenticated_active, own_actor_scope, state_guarded_command]
+      beneficiary.update_future:
+        default_roles: [trader_owner, accountant]
+        constraints: [authenticated_active, own_actor_scope, state_guarded_command]
+      beneficiary.deactivate:
+        default_roles: [accountant, manager, business_admin]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+
+  gold_sale_and_incoming_payment:
+    domain: gold_incoming_payment
+    source_refs:
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:737-754"
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:940-951"
+    permissions:
+      gold_sale.read:
+        default_roles: [trader_owner, accountant, manager, warehouse_operator, read_only_auditor]
+        constraints: [authenticated_active, internal_business_scope]
+      gold_sale.create_own:
+        default_roles: [trader_owner]
+        constraints: [authenticated_active, own_actor_scope, state_guarded_command]
+      gold_sale.review:
+        default_roles: [accountant]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      gold_sale.price:
+        default_roles: [accountant]
+        conditional_roles:
+          manager: only_when_configured_as_approver
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      gold_sale.cancel:
+        default_roles: [accountant]
+        conditional_roles:
+          manager: exception_policy_only
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      gold_sale.dispatch:
+        default_roles: [warehouse_operator]
+        constraints: [authenticated_active, dispatch_control, state_guarded_command]
+      incoming_receipt.create_own:
+        default_roles: [trader_owner]
+        constraints: [authenticated_active, own_actor_scope, state_guarded_command]
+      incoming_receipt.read:
+        default_roles: [accountant, manager, read_only_auditor]
+        constraints: [authenticated_active, internal_business_scope]
+      incoming_payment.match:
+        default_roles: [accountant]
+        conditional_roles:
+          manager: exception_policy_only
+        constraints: [authenticated_active, incoming_payment_control, state_guarded_command]
+      incoming_payment.confirm:
+        default_roles: [accountant]
+        conditional_roles:
+          manager: exception_or_policy_approval_only
+        constraints: [authenticated_active, incoming_payment_control, state_guarded_command]
+      incoming_payment.correct:
+        default_roles: [accountant]
+        conditional_roles:
+          manager: configured_high_risk_review
+        constraints: [authenticated_active, incoming_payment_control, state_guarded_command]
+      bank_statement.upload:
+        default_roles: [accountant]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      bank_statement.import:
+        default_roles: [accountant]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      bank_statement.read:
+        default_roles: [accountant, manager]
+        conditional_roles:
+          read_only_auditor: explicit_sensitive_read_grant
+        constraints: [authenticated_active, internal_business_scope]
+
+  outgoing_payment_request:
+    domain: outgoing_payment_request
+    source_refs:
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:756-770"
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:891-904"
+    permissions:
+      payment_request.create_own:
+        default_roles: [trader_owner]
+        constraints: [authenticated_active, own_actor_scope, state_guarded_command]
+      payment_request.read_own:
+        default_roles: [trader_owner]
+        constraints: [authenticated_active, own_actor_scope]
+      payment_request.read:
+        default_roles: [accountant, manager, business_admin, read_only_auditor]
+        constraints: [authenticated_active, internal_business_scope]
+      payment_request.create_internal:
+        default_roles: [accountant]
+        assignment: only_where_business_policy_permits
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      payment_request.create_revision_own:
+        default_roles: [trader_owner]
+        constraints: [authenticated_active, own_actor_scope, state_guarded_command]
+      payment_request.create_revision_internal:
+        default_roles: [accountant]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      payment_request.submit:
+        default_roles: [trader_owner]
+        constraints: [authenticated_active, own_actor_scope, state_guarded_command]
+      payment_request.review:
+        default_roles: [accountant]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      payment_request.request_correction:
+        default_roles: [accountant]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      payment_request.mark_eligible:
+        default_roles: [accountant]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      payment_request.cancel:
+        default_roles: [trader_owner, accountant]
+        conditional_roles:
+          manager: exception_policy_only
+        constraints: [authenticated_active, state_guarded_command]
+
+  batch_version_approval_and_export:
+    domain: batch_approval_export
+    source_refs:
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:772-790"
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:906-922"
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:1086-1215"
+    permissions:
+      payment_batch.read:
+        default_roles: [accountant, manager, business_admin, read_only_auditor]
+        conditional_roles:
+          technical_admin: technical_metadata_only
+        constraints: [authenticated_active, internal_business_scope]
+      payment_batch.create:
+        default_roles: [accountant]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      payment_batch.cancel_draft:
+        default_roles: [accountant]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      payment_batch_version.create:
+        default_roles: [accountant]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      payment_batch_version.finalize:
+        default_roles: [accountant]
+        constraints: [authenticated_active, batch_finalize, state_guarded_command]
+      payment_batch_version.read_approval_view:
+        default_roles: [accountant, manager, read_only_auditor]
+        conditional_roles:
+          business_admin: explicit_grant_only
+        constraints: [authenticated_active, internal_business_scope]
+      payment_batch_version.approve:
+        default_roles: [manager]
+        constraints: [authenticated_active, exact_batch_approval, state_guarded_command]
+      payment_batch_version.reject:
+        default_roles: [manager]
+        constraints: [authenticated_active, exact_batch_approval, state_guarded_command]
+      payment_batch_version.invalidate_approval:
+        default_roles: [manager]
+        constraints: [authenticated_active, approval_invalidation, state_guarded_command]
+      bank_export.generate_preview:
+        default_roles: [accountant]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      bank_export.generate_final:
+        default_roles: [accountant]
+        constraints: [authenticated_active, final_export_generation, state_guarded_command]
+      bank_export.read:
+        default_roles: [accountant, manager, read_only_auditor]
+        constraints: [authenticated_active, internal_business_scope]
+      bank_export.download:
+        default_roles: [accountant]
+        conditional_roles:
+          manager: policy_grant_only
+          technical_admin: temporary_support_grant_only
+        constraints: [authenticated_active, file_authorized_access]
+      bank_export.mark_sent:
+        default_roles: [accountant]
+        constraints: [authenticated_active, exact_export_mark_sent, state_guarded_command]
+      bank_export.quarantine:
+        default_roles: []
+        assignment: explicitly_authorized_security_or_operations_actor
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+
+  results_evidence_and_publication:
+    domain: results_evidence_publication
+    source_refs:
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:792-818"
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:924-938"
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:1231-1358"
+    permissions:
+      bank_result_bundle.upload:
+        default_roles: [accountant]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      bank_result_bundle.read:
+        default_roles: [accountant, manager]
+        conditional_roles:
+          technical_admin: temporary_support_grant_only
+          read_only_auditor: explicit_sensitive_read_grant
+        constraints: [authenticated_active, sensitive_bundle_access]
+      bank_result_bundle.link_batch:
+        default_roles: [accountant]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      bank_result_bundle.close:
+        default_roles: [accountant]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      receipt_segment.create_external:
+        default_roles: [accountant]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      receipt_segment.create_crop:
+        default_roles: [accountant]
+        constraints: [authenticated_active, crop_creation, state_guarded_command]
+      receipt_segment.read:
+        default_roles: [accountant, manager]
+        conditional_roles:
+          read_only_auditor: explicit_sensitive_read_grant
+        constraints: [authenticated_active, internal_business_scope]
+      matching_candidate.create:
+        default_roles: [accountant, system_worker]
+        constraints: [authenticated_active, candidate_only]
+      matching_candidate.review:
+        default_roles: [accountant]
+        constraints: [authenticated_active, candidate_only, state_guarded_command]
+      evidence_link.confirm:
+        default_roles: [accountant]
+        constraints: [authenticated_active, evidence_confirmation, state_guarded_command]
+      evidence_link.replace:
+        default_roles: [accountant]
+        conditional_roles:
+          manager: configured_high_risk_approval_only
+        constraints: [authenticated_active, evidence_confirmation, state_guarded_command]
+      evidence_link.revoke:
+        default_roles: [accountant]
+        conditional_roles:
+          manager: configured_high_risk_approval_only
+        constraints: [authenticated_active, evidence_confirmation, state_guarded_command]
+      payment_attempt.read:
+        default_roles: [accountant, manager, read_only_auditor]
+        constraints: [authenticated_active, internal_business_scope]
+      payment_attempt.confirm_paid:
+        default_roles: [accountant]
+        constraints: [authenticated_active, payment_result_confirmation, state_guarded_command]
+      payment_attempt.confirm_failed:
+        default_roles: [accountant]
+        constraints: [authenticated_active, payment_result_confirmation, state_guarded_command]
+      payment_attempt.create_retry:
+        default_roles: [accountant]
+        constraints: [authenticated_active, payment_result_confirmation, state_guarded_command]
+      payment_attempt.correct_result:
+        default_roles: []
+        assignment: correction_preparer_and_approver_permissions_must_be_split_after_ADR_SEC_009
+        constraints: [authenticated_active, published_paid_correction, state_guarded_command]
+      payment_publication.preview:
+        default_roles: [accountant]
+        constraints: [authenticated_active, publication_control, state_guarded_command]
+      payment_publication.publish:
+        default_roles: [accountant]
+        constraints: [authenticated_active, publication_control, state_guarded_command]
+      payment_publication.correct:
+        default_roles: []
+        assignment: correction_preparer_and_approver_permissions_must_be_split_after_ADR_SEC_009
+        constraints: [authenticated_active, published_paid_correction, state_guarded_command]
+      payment_publication.read_own:
+        default_roles: [trader_owner]
+        constraints: [authenticated_active, own_actor_scope]
+      payment_publication.acknowledge_own:
+        default_roles: [trader_owner]
+        constraints: [authenticated_active, own_actor_scope, state_guarded_command]
+      payment_publication.dispute_own:
+        default_roles: [trader_owner]
+        constraints: [authenticated_active, own_actor_scope, state_guarded_command]
+
+  files_and_operations:
+    domain: files_operations
+    source_refs:
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:820-838"
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:1437-1571"
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:1689-1705"
+    permissions:
+      file.upload:
+        default_roles: [trader_owner, accountant, warehouse_operator]
+        constraints: [authenticated_active, file_authorized_access, state_guarded_command]
+      file.read_metadata:
+        default_roles: [trader_owner, accountant, manager, warehouse_operator, technical_admin, read_only_auditor]
+        constraints: [authenticated_active, file_authorized_access]
+      file.preview:
+        default_roles: [trader_owner, accountant, manager, warehouse_operator]
+        conditional_roles:
+          read_only_auditor: explicit_sensitive_read_grant
+        constraints: [authenticated_active, file_authorized_access]
+      file.download:
+        default_roles: [trader_owner, accountant, warehouse_operator]
+        conditional_roles:
+          manager: policy_grant_only
+          read_only_auditor: explicit_sensitive_read_grant
+        constraints: [authenticated_active, file_authorized_access]
+      file.download_bank_export:
+        default_roles: [accountant]
+        conditional_roles:
+          manager: policy_grant_only
+          technical_admin: temporary_support_grant_only
+        constraints: [authenticated_active, file_authorized_access]
+      file.read_sensitive_bundle:
+        default_roles: [accountant, manager]
+        conditional_roles:
+          technical_admin: temporary_support_grant_only
+          read_only_auditor: explicit_sensitive_read_grant
+        constraints: [authenticated_active, sensitive_bundle_access]
+      file.quarantine_review:
+        default_roles: [technical_admin]
+        assignment: financial_content_access_is_not_implied
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      manual_review.read:
+        default_roles: [accountant, manager]
+        conditional_roles:
+          technical_admin: technical_task_types_only
+          support_operator: assigned_issue_types_only
+        constraints: [authenticated_active, internal_business_scope]
+      manual_review.assign:
+        default_roles: [accountant]
+        conditional_roles:
+          technical_admin: technical_task_types_only
+          support_operator: assigned_issue_types_only
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      manual_review.resolve:
+        default_roles: [accountant]
+        conditional_roles:
+          technical_admin: technical_task_types_only
+          support_operator: assigned_non_financial_issue_types_only
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      report.read:
+        default_roles: [accountant, manager, business_admin, read_only_auditor]
+        constraints: [authenticated_active, internal_business_scope]
+      report.export:
+        default_roles: []
+        assignment: explicit_report_export_grant
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      audit.read:
+        default_roles: [accountant, manager, business_admin, read_only_auditor]
+        conditional_roles:
+          technical_admin: technical_subset_only
+        constraints: [authenticated_active, read_only_masked]
+      audit.export:
+        default_roles: []
+        assignment: explicit_audit_export_grant
+        constraints: [authenticated_active, read_only_masked, state_guarded_command]
+      security_event.read:
+        default_roles: [technical_admin, read_only_auditor]
+        assignment: security_scope_and_masking_required
+        constraints: [authenticated_active, read_only_masked]
+
+  configuration_and_governance:
+    domain: configuration_governance
+    source_refs:
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:840-858"
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:953-968"
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:2022-2036"
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:2040-2094"
+    permissions:
+      bank_profile.read:
+        default_roles: [accountant, manager, business_admin, technical_admin, read_only_auditor]
+        constraints: [authenticated_active, internal_business_scope]
+      bank_profile.create_version:
+        default_roles: [business_admin]
+        conditional_roles:
+          manager: approval_or_review_only
+          technical_admin: technical_validation_only
+        constraints: [authenticated_active, bank_configuration_change, state_guarded_command]
+      bank_mapping.create_version:
+        default_roles: [technical_admin]
+        conditional_roles:
+          business_admin: read_or_business_review_only
+          manager: approval_or_review_only
+        constraints: [authenticated_active, bank_configuration_change, state_guarded_command]
+      source_bank_account.manage:
+        default_roles: [business_admin]
+        conditional_roles:
+          manager: approval_or_review_only
+          technical_admin: technical_support_only
+        constraints: [authenticated_active, bank_configuration_change, state_guarded_command]
+      feature_flag.read:
+        default_roles: [manager, business_admin, technical_admin, read_only_auditor]
+        constraints: [authenticated_active, internal_business_scope]
+      feature_flag.update:
+        default_roles: [technical_admin]
+        constraints: [authenticated_active, feature_flag_change, state_guarded_command]
+      ai_configuration.read:
+        phase: phase_1b_plus
+        default_roles: [business_admin, technical_admin]
+        constraints: [authenticated_active, phase_1b_disabled]
+      ai_configuration.update:
+        phase: phase_1b_plus
+        default_roles: []
+        assignment: approved_provider_configuration_role_after_ADR_SEC_014
+        constraints: [authenticated_active, phase_1b_disabled, feature_flag_change]
+      retention.read:
+        default_roles: [manager, business_admin, read_only_auditor]
+        conditional_roles:
+          technical_admin: technical_input_only
+        constraints: [authenticated_active, read_only_masked]
+      retention.propose:
+        default_roles: [business_admin]
+        conditional_roles:
+          technical_admin: technical_input_only
+        constraints: [authenticated_active, retention_governance, state_guarded_command]
+      retention.approve:
+        default_roles: []
+        assignment: appointed_business_or_legal_authority
+        constraints: [authenticated_active, retention_governance, state_guarded_command]
+      retention.activate:
+        default_roles: []
+        assignment: appointed_executor_after_approved_policy_and_dry_run
+        constraints: [authenticated_active, retention_governance, state_guarded_command]
+      legal_hold.read:
+        default_roles: [manager, business_admin, read_only_auditor]
+        constraints: [authenticated_active, read_only_masked]
+      legal_hold.manage:
+        default_roles: []
+        assignment: appointed_legal_or_governance_authority
+        constraints: [authenticated_active, legal_hold_governance, state_guarded_command]
+      backup_status.read:
+        default_roles: [technical_admin, read_only_auditor]
+        constraints: [authenticated_active, read_only_masked]
+
+api_permission_aliases:
+  policy: documentation_and_migration_only_until_m0_approval
+  source_refs:
+    - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:618-676"
+    - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:863-878"
+  aliases:
+    admin_user.read:
+      status: deprecated_exact
+      canonical_targets: [user.read]
+    admin_user.manage:
+      status: deprecated_ambiguous
+      canonical_targets: [user.create, user.update, user.deactivate]
+      resolution: select the action-specific canonical permission per endpoint
+    beneficiary.manage:
+      status: deprecated_ambiguous
+      canonical_targets: [beneficiary.create, beneficiary.update_future, beneficiary.deactivate]
+      resolution: select the action-specific canonical permission and actor scope
+    payment_request.create:
+      status: deprecated_ambiguous
+      canonical_targets: [payment_request.create_own, payment_request.create_internal]
+      resolution: select from authenticated identity domain; never trust client trader_id
+    payment_batch.version.create:
+      status: deprecated_exact
+      canonical_targets: [payment_batch_version.create]
+    payment_batch.version.finalize:
+      status: deprecated_exact
+      canonical_targets: [payment_batch_version.finalize]
+    payment_batch.approve:
+      status: deprecated_exact
+      canonical_targets: [payment_batch_version.approve]
+    payment_batch.reject:
+      status: deprecated_exact
+      canonical_targets: [payment_batch_version.reject]
+    bank_export.preview:
+      status: deprecated_exact
+      canonical_targets: [bank_export.generate_preview]
+    payment_attempt.retry:
+      status: deprecated_exact
+      canonical_targets: [payment_attempt.create_retry]
+    bank_result_bundle.review:
+      status: deprecated_ambiguous
+      canonical_targets: [bank_result_bundle.read, manual_review.read, manual_review.resolve]
+      resolution: use the action-specific permission; review must not imply close or financial confirmation
+    receipt_segment.create:
+      status: deprecated_exact
+      canonical_targets: [receipt_segment.create_external]
+    receipt_segment.crop:
+      status: deprecated_exact
+      canonical_targets: [receipt_segment.create_crop]
+    receipt_segment.update:
+      status: unresolved_no_exact_canonical_target
+      canonical_targets: []
+      resolution: deny until an explicitly scoped pre-finalization update permission is approved
+    matching.suggest:
+      status: deprecated_exact
+      canonical_targets: [matching_candidate.create]
+    matching.confirm_link:
+      status: deprecated_exact
+      canonical_targets: [evidence_link.confirm]
+    matching.replace_link:
+      status: deprecated_exact
+      canonical_targets: [evidence_link.replace]
+    payment_result.publish:
+      status: deprecated_exact
+      canonical_targets: [payment_publication.publish]
+    payment_result.correct:
+      status: deprecated_ambiguous
+      canonical_targets: [payment_attempt.correct_result, payment_publication.correct]
+      resolution: correction preparation, approval, result change, and publication replacement must remain separate
+    gold_dispatch.create:
+      status: deprecated_exact
+      canonical_targets: [gold_sale.dispatch]
+    settings.bank.read:
+      status: deprecated_exact
+      canonical_targets: [bank_profile.read]
+    settings.bank.manage:
+      status: deprecated_ambiguous
+      canonical_targets: [bank_profile.create_version, bank_mapping.create_version, source_bank_account.manage]
+      resolution: select action-specific permission and preserve business/technical approval boundaries
+    settings.feature_flags.manage:
+      status: deprecated_exact
+      canonical_targets: [feature_flag.update]
+    system.health.read:
+      status: unresolved_no_exact_canonical_target
+      canonical_targets: []
+      resolution: deny until document 12 defines an operations-health permission or approved network-only policy
+
+endpoint_permission_discrepancies:
+  - endpoint: "POST /api/v1/traders/{id}/reject"
+    document_05_declared_permission: trader.approve
+    canonical_permission: trader.reject
+    status: provisional_pending_m0_approval
+    runtime_effect_until_approved: deny_if_only_trader_approve_is_present
+    source_refs:
+      - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:893-895"
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:723-728"
+  - endpoint: "POST /api/v1/traders/{id}/reactivate"
+    document_05_declared_permission: trader.suspend
+    canonical_permission: trader.reactivate
+    status: provisional_pending_m0_approval
+    runtime_effect_until_approved: deny_if_only_trader_suspend_is_present
+    source_refs:
+      - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:895-896"
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:727-729"
+
+catalog_gaps_pending_m0:
+  - id: health_operations_permission
+    description: document 05 names system.health.read but document 12 has no exact canonical permission
+    conservative_effect: deny_or_restrict_to_network_control_until_approved
+  - id: receipt_segment_update_permission
+    description: document 05 permits a guarded pre-finalization segment PATCH but document 12 has no exact update permission
+    conservative_effect: deny_update_until_action-specific_permission_is_approved
+    source_refs:
+      - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:1788-1795"
+  - id: published_paid_correction_permission_split
+    description: canonical catalogue has correct_result and publication.correct but does not split preparer from second-person approver
+    conservative_effect: no default role grant for either correction command
+  - id: bank_configuration_activation_permissions
+    description: catalogue names version creation but not separate activate/retire permissions for bank profiles and mappings
+    conservative_effect: creation permission_does_not_imply_activation
+    source_refs:
+      - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:2104-2125"
+  - id: trader_self_profile_permission
+    description: trader.read is broader in name than the own-profile capability shown in the RBAC matrix
+    conservative_effect: trader_owner grant is always constrained by authenticated own scope
+  - id: text_only_confirmation_permission
+    description: text-only paid confirmation requires an explicit permission if enabled, but no canonical permission is named
+    conservative_effect: disabled
+    source_refs:
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:1304-1315"
+
+open_decisions:
+  - id: ADR-SEC-001
+    topic: authentication_session_transport_and_csrf
+  - id: ADR-SEC-002
+    topic: session_idle_and_absolute_timeouts
+  - id: ADR-SEC-003
+    topic: initial_production_mfa
+  - id: ADR-SEC-004
+    topic: recent_auth_factor_timeout_scope_and_replay
+  - id: ADR-SEC-005
+    topic: separation_of_duty_exceptions_and_break_glass_authority
+  - id: ADR-SEC-006
+    topic: malware_scanner_and_compensating_controls
+  - id: ADR-SEC-007
+    topic: iban_masking_by_role_and_publication
+  - id: ADR-SEC-008
+    topic: evidence_requirement_and_text_only_confirmation
+  - id: ADR-SEC-009
+    topic: published_paid_result_correction_dual_control
+  - id: ADR-SEC-010
+    topic: audit_and_security_event_retention_and_export_authority
+  - id: ADR-SEC-011
+    topic: financial_file_retention_legal_hold_and_deletion_authority
+  - id: ADR-SEC-012
+    topic: hosting_admin_network_restrictions_and_ip_allowlist
+  - id: ADR-SEC-013
+    topic: rpo_rto_backup_and_restore_cadence
+  - id: ADR-SEC-014
+    topic: external_ai_provider_data_governance
+  - id: ADR-SEC-015
+    topic: monitoring_alert_destinations_and_incident_ownership
+
+open_decision_source_refs:
+  - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:2547-2569"

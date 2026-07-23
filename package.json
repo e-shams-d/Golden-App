@@ -1,0 +1,30 @@
+{
+  "name": "gold-trade-platform",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Phase 1A gold trade settlement platform workspace",
+  "packageManager": "pnpm@11.15.1",
+  "engines": {
+    "node": ">=24.0.0 <25",
+    "pnpm": ">=11.15.1 <12"
+  },
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:a11y": "turbo run test:a11y",
+    "openapi:export": "uv run --project services/backend --frozen python services/backend/scripts/export_openapi.py --write",
+    "openapi:types": "pnpm --filter @gold/api-client openapi:types",
+    "openapi:generate": "pnpm openapi:export && pnpm openapi:types",
+    "openapi:check": "uv run --project services/backend --frozen python services/backend/scripts/export_openapi.py --check && pnpm --filter @gold/api-client openapi:check",
+    "check:public-env": "node packages/config/scripts/validate-public-env.mjs",
+    "validate:static": "node packages/config/scripts/static-validate.mjs",
+    "check": "pnpm validate:static && pnpm check:public-env && pnpm openapi:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm test:a11y"
+  },
+  "devDependencies": {
+    "turbo": "catalog:",
+    "typescript": "catalog:"
+  }
+}
