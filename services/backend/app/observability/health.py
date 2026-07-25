@@ -213,10 +213,14 @@ class CeleryWorkerHealthProbe:
         return tuple(snapshots)
 
     async def check(self) -> WorkerProbeResult:
+        # _inspect issues three sequential broadcast gathers (ping,
+        # active_queues, active); each waits the full inspect timeout, and the
+        # first also pays broker-connection setup. The outer watchdog must
+        # cover that deterministic duration or the probe always times out.
         try:
             workers = await asyncio.wait_for(
                 asyncio.to_thread(self._inspect),
-                timeout=self._timeout_seconds,
+                timeout=self._timeout_seconds * 3 + 3.0,
             )
         except TimeoutError:
             return WorkerProbeResult(False, (), "WORKER_PROBE_TIMEOUT")
