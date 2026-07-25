@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "next typegen && tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:a11y": "node ../../packages/config/scripts/run-next-a11y.mjs admin-web 3200 playwright.config.ts"
   },
