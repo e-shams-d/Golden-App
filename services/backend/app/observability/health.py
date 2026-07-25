@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Callable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from threading import Lock
@@ -183,13 +184,25 @@ class CeleryWorkerHealthProbe:
         self._timeout_seconds = timeout_seconds
         self._release_version = release_version
 
-    def _inspect(self) -> tuple[WorkerSnapshot, ...]:
+    def _broadcast(self, command: str) -> Mapping[str, Any]:
         inspector = self._app.control.inspect(timeout=self._timeout_seconds)
-        ping: Mapping[str, Any] = inspector.ping() or {}
+        reply: Mapping[str, Any] | None = getattr(inspector, command)()
+        return reply or {}
+
+    def _inspect(self) -> tuple[WorkerSnapshot, ...]:
+        # Each broadcast gather waits the full inspect timeout. Run the three
+        # gathers concurrently so the probe answers within roughly one window;
+        # operational clients (including the Docker verifier) use short
+        # request timeouts and cannot wait for three sequential windows.
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            ping_future = pool.submit(self._broadcast, "ping")
+            queues_future = pool.submit(self._broadcast, "active_queues")
+            active_future = pool.submit(self._broadcast, "active")
+            ping = ping_future.result()
+            queues = queues_future.result()
+            active = active_future.result()
         if not ping:
             raise SafeProbeFailure("WORKERS_UNAVAILABLE")
-        queues: Mapping[str, Any] = inspector.active_queues() or {}
-        active: Mapping[str, Any] = inspector.active() or {}
         checked_at = utc_now()
         snapshots: list[WorkerSnapshot] = []
         for name in sorted(ping):
@@ -213,14 +226,13 @@ class CeleryWorkerHealthProbe:
         return tuple(snapshots)
 
     async def check(self) -> WorkerProbeResult:
-        # _inspect issues three sequential broadcast gathers (ping,
-        # active_queues, active); each waits the full inspect timeout, and the
-        # first also pays broker-connection setup. The outer watchdog must
-        # cover that deterministic duration or the probe always times out.
+        # _inspect runs its broadcast gathers concurrently, so one inspect
+        # window plus broker-connection setup bounds the duration. The outer
+        # watchdog must stay above that or the probe times out spuriously.
         try:
             workers = await asyncio.wait_for(
                 asyncio.to_thread(self._inspect),
-                timeout=self._timeout_seconds * 3 + 3.0,
+                timeout=self._timeout_seconds + 3.0,
             )
         except TimeoutError:
             return WorkerProbeResult(False, (), "WORKER_PROBE_TIMEOUT")
