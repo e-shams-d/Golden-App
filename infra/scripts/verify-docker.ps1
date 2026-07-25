@@ -264,8 +264,11 @@ function Assert-StorageInitSecurity {
         throw "storage-init must use a read-only root filesystem."
     }
 
-    $capAdd = @($capAddJson | ConvertFrom-Json) | ForEach-Object { "$_".ToUpperInvariant() }
-    $capDrop = @($capDropJson | ConvertFrom-Json) | ForEach-Object { "$_".ToUpperInvariant() }
+    # Docker 25+/Compose v2 may report capabilities in CAP_-prefixed form.
+    $capAdd = @($capAddJson | ConvertFrom-Json) |
+        ForEach-Object { "$_".ToUpperInvariant() -replace '^CAP_', '' }
+    $capDrop = @($capDropJson | ConvertFrom-Json) |
+        ForEach-Object { "$_".ToUpperInvariant() -replace '^CAP_', '' }
     $securityOptions = @($securityOptionsJson | ConvertFrom-Json)
     $expectedCapabilities = @("CHOWN", "DAC_OVERRIDE", "FOWNER")
     $missingCapabilities = @(

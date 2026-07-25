@@ -351,10 +351,11 @@ assert_storage_init_security() {
         return 1
     fi
 
+    # Docker 25+/Compose v2 may report capabilities in CAP_-prefixed form.
     cap_add=$(
         docker inspect \
             --format '{{range .HostConfig.CapAdd}}{{println .}}{{end}}' \
-            "$container_id"
+            "$container_id" | sed 's/^CAP_//'
     )
     for capability in CHOWN DAC_OVERRIDE FOWNER; do
         if ! printf '%s\n' "$cap_add" |
@@ -374,7 +375,7 @@ assert_storage_init_security() {
     cap_drop=$(
         docker inspect \
             --format '{{range .HostConfig.CapDrop}}{{println .}}{{end}}' \
-            "$container_id"
+            "$container_id" | sed 's/^CAP_//'
     )
     if ! printf '%s\n' "$cap_drop" | grep -Fx ALL >/dev/null 2>&1; then
         printf '%s\n' "storage-init must drop all capabilities first." >&2
