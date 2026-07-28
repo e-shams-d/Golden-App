@@ -12,7 +12,7 @@ license = { text = "Proprietary" }
 dependencies = [
   "alembic==1.17.2",
   "celery[redis]==5.5.3",
-  "fastapi==0.116.1",
+  "fastapi==0.139.0",
   "pydantic==2.11.10",
   "pydantic-settings==2.10.1",
   "psycopg[binary]==3.2.12",
@@ -36,6 +36,10 @@ include = ["app*"]
 
 [tool.uv]
 required-version = "==0.8.22"
+# annotated-doc reaches the tree only through FastAPI. Hold it at the
+# release that predates this upgrade so a same-day publish never enters
+# the lock unreviewed; raise it deliberately when FastAPI needs more.
+constraint-dependencies = ["annotated-doc==0.0.4"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers"

@@ -1,0 +1,16 @@
+# Reviewed vulnerability exceptions. Every entry needs a reason and an expiry
+# so it comes back for review instead of becoming permanent. Remove an entry as
+# soon as a fixed release reaches the dependency tree.
+vulnerabilities:
+  - id: CVE-2026-14257
+    statement: >-
+      brace-expansion 1.1.16 reaches the tree only through minimatch 3, which
+      only ESLint and its plugins depend on. The 1.x line has no fixed release
+      (1.1.16 is the newest), and the fix exists only in 5.0.8, four majors
+      above the API minimatch 3 expects, so forcing it would break linting.
+      The 5.x copy in the tree is already overridden to 5.0.8. Exposure is
+      limited to lint runs over the repository's own glob patterns on developer
+      and CI machines; no shipped container image contains this package.
+      Owner: @e-shams-d. Revisit when ESLint moves off minimatch 3 or a fixed
+      1.x release appears.
+    expired_at: 2026-10-31

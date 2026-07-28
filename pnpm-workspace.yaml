@@ -18,9 +18,9 @@ catalog:
   "@types/react": "19.2.17"
   "@types/react-dom": "19.1.9"
   "eslint": "9.39.5"
-  "eslint-config-next": "16.2.10"
-  "next": "16.2.10"
-  "postcss": "8.5.5"
+  "eslint-config-next": "16.2.11"
+  "next": "16.2.11"
+  "postcss": "8.5.18"
   "react": "19.2.7"
   "react-dom": "19.2.7"
   "react-hook-form": "7.82.0"
@@ -37,3 +37,16 @@ allowBuilds:
   # already selected by the lockfile; all other dependency scripts stay denied.
   sharp: true
   unrs-resolver: true
+
+# Security overrides lift transitive packages to their lowest fixed release.
+# Next.js ships postcss 8.4.31 (GHSA-r28c-9q8g-f849 path traversal) and
+# sharp 0.34.5 (GHSA-f88m-g3jw-g9cj libvips issues); minimatch 10 pulls
+# brace-expansion 5.0.7 (CVE-2026-14257 denial of service). sharp is held at
+# 0.35.1 rather than the 0.35.0 the advisory names, because 0.35.0 ships type
+# declarations that TypeScript cannot resolve through its package exports and
+# breaks the Next.js image-optimizer types. Re-check these whenever Next.js is
+# upgraded, and drop an entry once upstream ships the fix.
+overrides:
+  "postcss@<8.5.18": "8.5.18"
+  "sharp@<0.35.1": "0.35.1"
+  "brace-expansion@^5.0.0": "5.0.8"

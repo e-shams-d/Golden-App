@@ -184,8 +184,9 @@ jobs:
       - name: Dependency vulnerability scan (gate 6)
         run: |
           trivy fs --severity HIGH,CRITICAL --scanners vuln \
+            --ignorefile .trivyignore.yaml --show-suppressed \
             --format json --output trivy-deps.json .
-          trivy convert --format table --exit-code 1 trivy-deps.json
+          trivy convert --format table --exit-code 1 --show-suppressed trivy-deps.json
       - name: Image vulnerability scans (gate 6)
         run: |
           mkdir -p scan-reports
@@ -193,9 +194,11 @@ jobs:
           for img in $(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep '^gold-platform-m1-verify-'); do
             safe=$(printf '%s' "$img" | tr '/:' '__')
             trivy image --severity HIGH,CRITICAL --scanners vuln \
+              --ignorefile .trivyignore.yaml --show-suppressed \
               --format json --output "scan-reports/${safe}.json" "$img"
             echo "::group::${img}"
-            trivy convert --format table --exit-code 1 "scan-reports/${safe}.json" || status=1
+            trivy convert --format table --exit-code 1 --show-suppressed \
+              "scan-reports/${safe}.json" || status=1
             echo "::endgroup::"
           done
           exit "${status}"
