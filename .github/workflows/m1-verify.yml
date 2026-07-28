@@ -178,18 +178,27 @@ jobs:
           "${RUNNER_TEMP}/scanners/trivy" --version
           "${RUNNER_TEMP}/scanners/syft" --version
           echo "${RUNNER_TEMP}/scanners" >> "${GITHUB_PATH}"
+      # Each scan writes JSON evidence, then converts it to a table so the log
+      # states what a red gate found instead of failing silently. Secrets are
+      # covered by the dedicated gitleaks job, so scan for vulnerabilities only.
       - name: Dependency vulnerability scan (gate 6)
         run: |
-          trivy fs --severity HIGH,CRITICAL --exit-code 1 \
+          trivy fs --severity HIGH,CRITICAL --scanners vuln \
             --format json --output trivy-deps.json .
+          trivy convert --format table --exit-code 1 trivy-deps.json
       - name: Image vulnerability scans (gate 6)
         run: |
           mkdir -p scan-reports
+          status=0
           for img in $(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep '^gold-platform-m1-verify-'); do
             safe=$(printf '%s' "$img" | tr '/:' '__')
-            trivy image --severity HIGH,CRITICAL --exit-code 1 \
+            trivy image --severity HIGH,CRITICAL --scanners vuln \
               --format json --output "scan-reports/${safe}.json" "$img"
+            echo "::group::${img}"
+            trivy convert --format table --exit-code 1 "scan-reports/${safe}.json" || status=1
+            echo "::endgroup::"
           done
+          exit "${status}"
       - name: SBOM per application image (gate 7)
         run: |
           mkdir -p sboms
