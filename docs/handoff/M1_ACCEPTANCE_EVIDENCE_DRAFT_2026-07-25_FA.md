@@ -17,9 +17,9 @@ Draft date: 2026-07-25
 | ارائه‌دهنده‌ی مخزن | `GitHub (github.com/e-shams-d/Golden-App)` |
 | نام remote | `origin` |
 | شاخه‌ی تحویل | `main` |
-| SHA مورد انتظار (TRANSFER_SHA) | `64fd4762202b8b63f1ff5c4b0f8f1c469536fcf9` — شامل پنج اصلاح پذیرش، سه کامیت CI و وصله‌های امنیتی وابستگی‌ها |
-| SHA دریافت‌شده از remote | تا `b41c13b` تطبیق شد (push مالک ۲۰۲۶-۰۷-۲۵). push کامیت‌های بعدی تا `64fd476` باقی است |
-| SHA در clone تمیز | `64fd4762202b8b63f1ff5c4b0f8f1c469536fcf9` — هر دو verifier روی همین SHA با درخت تمیز اجرا و پاس شدند |
+| SHA مورد انتظار (TRANSFER_SHA) | `3a8e04d5202ec0fdf0ad1c26cb5c4fd81229331d` — شامل پنج اصلاح پذیرش، کامیت‌های CI و وصله‌های امنیتی وابستگی و image |
+| SHA دریافت‌شده از remote | تا `b41c13b` تطبیق شد (push مالک ۲۰۲۶-۰۷-۲۵). push کامیت‌های بعدی تا `3a8e04d` باقی است |
+| SHA در clone تمیز | `3a8e04d5202ec0fdf0ad1c26cb5c4fd81229331d` — هر دو verifier روی همین SHA با درخت تمیز اجرا و پاس شدند |
 | سیستم‌عامل و معماری مقصد | `Windows 11 Pro 10.0.26200 + WSL2 Ubuntu 24.04.4 LTS / x86_64` |
 | اجراکننده | `Ehsans@blanclabs.com (با Claude Code)` |
 | بازبین | **PENDING — مالک پروژه (@e-shams-d)** |
@@ -84,10 +84,11 @@ Log artifacts (خارج از Git): `.local/m1-evidence/verify-native-2026-07-25.
 ## 5. شواهد Docker
 
 اجرای کامل `infra/scripts/verify-docker.sh` روی clone تمیز: **PASS** —
-«automated Docker gates passed». آخرین اجرا روی `64fd476` با ایمیج‌های
-بازسازی‌شده پس از وصله‌های امنیتی؛ digest جدید هر ده image در log ثبت شد.
+«automated Docker gates passed». آخرین اجرا روی `3a8e04d` با ایمیج‌های
+بازسازی‌شده پس از وصله‌های وابستگی و حذف npm از ایمیج‌های وب؛ digest جدید هر
+ده image در log ثبت شد.
 Log artifacts (خارج از Git): `.local/m1-evidence/verify-docker-2026-07-25.log`،
-`verify-docker-final-deps-2026-07-28.log`
+`verify-docker-final-deps-2026-07-28.log`، `verify-docker-no-npm-2026-07-28.log`
 
 | کنترل | نتیجه | شاهد |
 |---|---|---|
@@ -119,8 +120,8 @@ Log artifacts (خارج از Git): `.local/m1-evidence/verify-docker-2026-07-25.
 | scanner داخلی `infra/scripts/scan_secrets.py` | PASS | داخل verify-native |
 | secret scan نگهداری‌شده | PASS | gitleaks در CI (job «Repository secret scan») — سبز روی GitHub |
 | vulnerability scan وابستگی‌ها | PASS با یک استثنا | Trivy 0.72.0؛ ۱۱ از ۱۲ یافته‌ی HIGH وصله شد، مورد باقی‌مانده در `.trivyignore.yaml` با دلیل/مالک/سررسید ثبت و در لاگ CI چاپ می‌شود |
-| vulnerability scan imageها | **PENDING** | مرحله‌ی CI پیاده شده ولی هنوز روی GitHub اجرا نشده (قبلاً پشت نصب اسکنر متوقف می‌شد) |
-| SBOM هر image | **PENDING** | مرحله‌ی Syft 1.49.0 در CI پیاده شده؛ منتظر اولین اجرای موفق |
+| vulnerability scan imageها | PASS | Trivy روی هر ۸ image: صفر یافته‌ی دارای وصله. یافته‌های بدون وصله‌ی پایه‌ی Debian ثبت و شمرده می‌شوند ولی گیت نمی‌شوند (بند ۱۰ یادداشت‌ها) |
+| SBOM هر image | **PENDING** | مرحله‌ی Syft 1.49.0 در CI پیاده شده؛ منتظر اولین اجرای کامل و بایگانی artifact |
 | ثبت digest imageها و SHA منبع | PASS | ده image ID/digest + SHA منبع در log artifact پذیرش Docker |
 | نبود secret در frontend/`NEXT_PUBLIC_*` | PASS | «Public environment variable scan passed» |
 
@@ -194,7 +195,23 @@ Log artifacts (خارج از Git): `.local/m1-evidence/verify-docker-2026-07-25.
    و اصلاح چهار نسخه‌ی اصلی بالاتر است؛ تحمیل آن lint را می‌شکند و این بسته در
    هیچ image تولیدی نیست. در `.trivyignore.yaml` با دلیل، مالک `@e-shams-d` و
    سررسید `2026-10-31` ثبت شد و CI موارد سرکوب‌شده را با متن توجیه چاپ می‌کند.
-9. **Python 3.12.13:** uv پین‌شده 0.8.22 این نسخه را در مانیفست ندارد؛ نصب
+9. **یافته‌ی امنیتی — CVE بحرانی داخل ایمیج‌های وب:** اولین اسکن image ‏۲۴ تا
+   ۲۶ یافته‌ی HIGH/CRITICAL به‌ازای هر image گزارش کرد. چهار مورد واقعی و
+   قابل‌رفع بودند و به تولید هم می‌رفتند: `npm` که در ایمیج پایه‌ی Node قرار
+   دارد نسخه‌های آسیب‌پذیر `tar 7.5.15` (‏CVE-2026-59873 با شدت CRITICAL و
+   CVE-2026-59874)، `undici 6.26.0` و `brace-expansion 5.0.6` را حمل می‌کرد.
+   این‌ها در lockfile پروژه نبودند، به همین دلیل اسکن وابستگی‌ها آن‌ها را
+   نمی‌دید. چون مرحله‌ی runtime هر دو اپ فقط سرور standalone را اجرا می‌کند و
+   هرگز npm را صدا نمی‌زند، npm از ایمیج runtime حذف شد (کامیت `3a8e04d`)؛ هر
+   چهار یافته پاک شد و یک package manager هم از ایمیج تولیدی خارج شد.
+10. **سیاست گیت اسکن image:** بقیه‌ی یافته‌ها (‏۲۲ تا ۲۴ مورد) بسته‌های پایه‌ی
+    Debian با وضعیت `affected`/`fix_deferred`/`will_not_fix` هستند؛ یعنی
+    upstream هیچ وصله‌ای منتشر نکرده و rebuild پاکشان نمی‌کند. گیت اسکن image
+    فقط روی یافته‌های **دارای وصله** شکست می‌دهد؛ همه‌ی یافته‌ها همچنان در
+    artifact شواهد ثبت و تعدادشان در لاگ چاپ می‌شود. اسکن **وابستگی‌ها**
+    عمداً سخت‌گیر ماند، چون آنجا انتخاب نسخه با پروژه است و یافته‌ی بدون وصله
+    قابل اقدام است. شاهد پشتیبان: ایمیج nginx با پایه‌ی Alpine صفر یافته دارد.
+11. **Python 3.12.13:** uv پین‌شده 0.8.22 این نسخه را در مانیفست ندارد؛ نصب
    یک‌باره با uv جدیدتر در دایرکتوری اشتراکی انجام شد و uv 0.8.22 همان را
    استفاده می‌کند (سازگار با قید نسخه‌ی verify-native).
 
@@ -208,8 +225,9 @@ Log artifacts (خارج از Git): `.local/m1-evidence/verify-docker-2026-07-25.
 
 | مورد باز | شدت | مالک | موعد | شرط بستن |
 |---|---|---|---|---|
-| push کامیت‌های `5b99877`..`64fd476` و تطبیق `ls-remote` | بالا | مالک پروژه | — | `ls-remote` برابر آخرین SHA |
-| اجرای موفق image scan و SBOM در CI | متوسط | اجراکننده/حاکمیت | — | اولین اجرای سبز job «Docker acceptance + scans + SBOM» و بایگانی artifactها |
+| push کامیت‌های `5b99877`..`3a8e04d` و تطبیق `ls-remote` | بالا | مالک پروژه | — | `ls-remote` برابر آخرین SHA |
+| اجرای موفق SBOM در CI و بایگانی artifactها | متوسط | اجراکننده | — | اولین اجرای سبز job «Docker acceptance + scans + SBOM» |
+| بازبینی دوره‌ای یافته‌های بدون وصله‌ی پایه‌ی Debian | متوسط | حاکمیت/امنیت | فصلی | تصمیم درباره‌ی تغییر image پایه یا پذیرش مستمر |
 | تأیید رسمی ابزارهای امنیتی انتخاب‌شده (gitleaks/Trivy/Syft) | متوسط | حاکمیت/امنیت | — | تصویب یا جایگزینی؛ نشانه‌های `TODO(governance)` در workflow برداشته شود |
 | بازبینی استثنای `CVE-2026-14257` | متوسط | مالک پروژه | 2026-10-31 | حذف استثنا پس از عبور ESLint از minimatch 3 |
 | فعال‌سازی branch protection و registry | متوسط | مالک/حاکمیت | — | پس از اولین CI کاملاً سبز |
