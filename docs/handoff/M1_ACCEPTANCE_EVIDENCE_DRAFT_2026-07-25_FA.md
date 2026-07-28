@@ -17,9 +17,9 @@ Draft date: 2026-07-25
 | ارائه‌دهنده‌ی مخزن | `GitHub (github.com/e-shams-d/Golden-App)` |
 | نام remote | `origin` |
 | شاخه‌ی تحویل | `main` |
-| SHA مورد انتظار (TRANSFER_SHA جدید) | `b41c13be80e1768f2c245e383c7c078e8188fbee` = `f44ecc5` + پنج اصلاح پذیرش (`df23b69`، `c963c2c`، `aa53051`، `4c8c099`، `b41c13b`) |
-| SHA دریافت‌شده از remote | `b41c13be80e1768f2c245e383c7c078e8188fbee` — push مالک در ۲۰۲۶-۰۷-۲۵: `4c8c099..b41c13b  main -> main` |
-| SHA در clone تمیز | `b41c13be80e1768f2c245e383c7c078e8188fbee` — هر دو verifier روی همین SHA اجرا و پاس شدند |
+| SHA مورد انتظار (TRANSFER_SHA) | `64fd4762202b8b63f1ff5c4b0f8f1c469536fcf9` — شامل پنج اصلاح پذیرش، سه کامیت CI و وصله‌های امنیتی وابستگی‌ها |
+| SHA دریافت‌شده از remote | تا `b41c13b` تطبیق شد (push مالک ۲۰۲۶-۰۷-۲۵). push کامیت‌های بعدی تا `64fd476` باقی است |
+| SHA در clone تمیز | `64fd4762202b8b63f1ff5c4b0f8f1c469536fcf9` — هر دو verifier روی همین SHA با درخت تمیز اجرا و پاس شدند |
 | سیستم‌عامل و معماری مقصد | `Windows 11 Pro 10.0.26200 + WSL2 Ubuntu 24.04.4 LTS / x86_64` |
 | اجراکننده | `Ehsans@blanclabs.com (با Claude Code)` |
 | بازبین | **PENDING — مالک پروژه (@e-shams-d)** |
@@ -57,11 +57,13 @@ Draft date: 2026-07-25
 
 ## 4. شواهد Native
 
-اجرای کامل `infra/scripts/verify-native.sh` در clone تمیز: **PASS** — دو بار:
-یک‌بار روی `df23b69` و بار نهایی روی `b41c13b` (پس از اصلاح‌های پروب worker)؛
-هر دو با `Native M1 verification passed.` و drift صفر پس از اجرا.
-Log artifacts: `.local/m1-evidence/verify-native-2026-07-25.log` و
-`.local/m1-evidence/verify-native-final-b41c13b-2026-07-25.log` (خارج از Git)
+اجرای کامل `infra/scripts/verify-native.sh` در clone تمیز: **PASS** — آخرین
+اجرا روی `64fd476` (پس از وصله‌های امنیتی وابستگی‌ها) با
+`Native M1 verification passed.` و drift صفر. شمارش تست‌ها پیش و پس از ارتقای
+وابستگی‌ها یکسان ماند.
+Log artifacts (خارج از Git): `.local/m1-evidence/verify-native-2026-07-25.log`،
+`verify-native-final-b41c13b-2026-07-25.log`،
+`verify-native-final-deps-2026-07-28.log`
 
 | کنترل | نتیجه | شمار/خلاصه |
 |---|---|---|
@@ -81,9 +83,11 @@ Log artifacts: `.local/m1-evidence/verify-native-2026-07-25.log` و
 
 ## 5. شواهد Docker
 
-اجرای کامل `infra/scripts/verify-docker.sh` روی clone تمیز در SHA
-`b41c13b…`: **PASS** — «automated Docker gates passed».
-Log artifact: `.local/m1-evidence/verify-docker-2026-07-25.log` (خارج از Git)
+اجرای کامل `infra/scripts/verify-docker.sh` روی clone تمیز: **PASS** —
+«automated Docker gates passed». آخرین اجرا روی `64fd476` با ایمیج‌های
+بازسازی‌شده پس از وصله‌های امنیتی؛ digest جدید هر ده image در log ثبت شد.
+Log artifacts (خارج از Git): `.local/m1-evidence/verify-docker-2026-07-25.log`،
+`verify-docker-final-deps-2026-07-28.log`
 
 | کنترل | نتیجه | شاهد |
 |---|---|---|
@@ -113,10 +117,10 @@ Log artifact: `.local/m1-evidence/verify-docker-2026-07-25.log` (خارج از G
 | کنترل | نتیجه | شاهد |
 |---|---|---|
 | scanner داخلی `infra/scripts/scan_secrets.py` | PASS | داخل verify-native |
-| secret scan نگهداری‌شده (ابزار مصوب تیم امنیت) | **PENDING** | ابزار هنوز در حاکمیت انتخاب نشده |
-| vulnerability scan وابستگی‌ها | **PENDING** | ابزار مصوب انتخاب نشده |
-| vulnerability scan imageها | **PENDING** | ابزار مصوب انتخاب نشده |
-| SBOM هر image | **PENDING** | ابزار مصوب انتخاب نشده |
+| secret scan نگهداری‌شده | PASS | gitleaks در CI (job «Repository secret scan») — سبز روی GitHub |
+| vulnerability scan وابستگی‌ها | PASS با یک استثنا | Trivy 0.72.0؛ ۱۱ از ۱۲ یافته‌ی HIGH وصله شد، مورد باقی‌مانده در `.trivyignore.yaml` با دلیل/مالک/سررسید ثبت و در لاگ CI چاپ می‌شود |
+| vulnerability scan imageها | **PENDING** | مرحله‌ی CI پیاده شده ولی هنوز روی GitHub اجرا نشده (قبلاً پشت نصب اسکنر متوقف می‌شد) |
+| SBOM هر image | **PENDING** | مرحله‌ی Syft 1.49.0 در CI پیاده شده؛ منتظر اولین اجرای موفق |
 | ثبت digest imageها و SHA منبع | PASS | ده image ID/digest + SHA منبع در log artifact پذیرش Docker |
 | نبود secret در frontend/`NEXT_PUBLIC_*` | PASS | «Public environment variable scan passed» |
 
@@ -171,7 +175,26 @@ Log artifact: `.local/m1-evidence/verify-docker-2026-07-25.log` (خارج از G
    موجود) تنظیم شد. دانلود مرورگر Playwright به‌دلیل مسدودیت جغرافیایی
    `cdn.playwright.dev` از mirror (`PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright`)
    انجام شد — بدون تغییر در مخزن. دیسک WSL به `D:\wsl` منتقل شد (کمبود فضای C:).
-7. **Python 3.12.13:** uv پین‌شده 0.8.22 این نسخه را در مانیفست ندارد؛ نصب
+7. **یافته‌ی امنیتی — ۱۲ آسیب‌پذیری HIGH در وابستگی‌ها:** اولین گیت
+   vulnerability در CI ‏۱۲ مورد HIGH (صفر CRITICAL) گزارش کرد؛ جدی‌ترین‌ها:
+   دور زدن Middleware/Proxy و دو SSRF در Next.js، و SSRF/نشت NTLM در
+   starlette. یازده مورد با ارتقا وصله شد (کامیت `64fd476`): next ‏16.2.11،
+   fastapi ‏0.139.0، starlette ‏1.3.1، و postcss/sharp/brace-expansion از راه
+   pnpm override. اصل انتخاب نسخه: **کمترین نسخه‌ای که یافته را رفع کند و
+   جاافتاده باشد**، نه جدیدترین — گیت «حداقل سن انتشار» pnpm نسخه‌ی
+   `postcss@8.5.24` (همان‌روز منتشرشده) را رد کرد و خودش برایش استثنا نوشت که
+   بازگردانده شد؛ به همین دلیل fastapi هم از `0.140.13` (همان‌روز) به
+   `0.139.0` برگشت و وابستگی جدیدش `annotated-doc` روی `0.0.4` مقید شد، چون
+   uv برخلاف pnpm چنین گیتی ندارد. دو نکته‌ی فنی: `sharp 0.35.0` که خود
+   توصیه‌نامه نام می‌برد تایپ‌چک هر دو اپ را می‌شکند (تعاریف تایپ از مسیر
+   package exports قابل resolve نیست) پس `0.35.1` انتخاب شد؛ و ارتقای بزرگ
+   FastAPI قرارداد OpenAPI را تغییر نداد.
+8. **استثنای امنیتی ثبت‌شده:** `brace-expansion 1.1.16` تنها از راه
+   `minimatch@3` داخل ESLint وارد می‌شود، خط ۱.x هیچ نسخه‌ی اصلاح‌شده‌ای ندارد
+   و اصلاح چهار نسخه‌ی اصلی بالاتر است؛ تحمیل آن lint را می‌شکند و این بسته در
+   هیچ image تولیدی نیست. در `.trivyignore.yaml` با دلیل، مالک `@e-shams-d` و
+   سررسید `2026-10-31` ثبت شد و CI موارد سرکوب‌شده را با متن توجیه چاپ می‌کند.
+9. **Python 3.12.13:** uv پین‌شده 0.8.22 این نسخه را در مانیفست ندارد؛ نصب
    یک‌باره با uv جدیدتر در دایرکتوری اشتراکی انجام شد و uv 0.8.22 همان را
    استفاده می‌کند (سازگار با قید نسخه‌ی verify-native).
 
@@ -185,8 +208,11 @@ Log artifact: `.local/m1-evidence/verify-docker-2026-07-25.log` (خارج از G
 
 | مورد باز | شدت | مالک | موعد | شرط بستن |
 |---|---|---|---|---|
-| secret/vulnerability scan نگهداری‌شده + SBOM | بالا | حاکمیت/امنیت | — | انتخاب ابزار مصوب و اجرای آن (پیش‌نویس CI ابزارهای gitleaks/Trivy/Syft را پیشنهاد می‌کند) |
-| فعال‌سازی CI adapter، `CODEOWNERS`، branch protection، registry | متوسط | مالک/حاکمیت | — | commit پیش‌نویس‌ها پس از بازبینی + تنظیمات GitHub |
+| push کامیت‌های `5b99877`..`64fd476` و تطبیق `ls-remote` | بالا | مالک پروژه | — | `ls-remote` برابر آخرین SHA |
+| اجرای موفق image scan و SBOM در CI | متوسط | اجراکننده/حاکمیت | — | اولین اجرای سبز job «Docker acceptance + scans + SBOM» و بایگانی artifactها |
+| تأیید رسمی ابزارهای امنیتی انتخاب‌شده (gitleaks/Trivy/Syft) | متوسط | حاکمیت/امنیت | — | تصویب یا جایگزینی؛ نشانه‌های `TODO(governance)` در workflow برداشته شود |
+| بازبینی استثنای `CVE-2026-14257` | متوسط | مالک پروژه | 2026-10-31 | حذف استثنا پس از عبور ESLint از minimatch 3 |
+| فعال‌سازی branch protection و registry | متوسط | مالک/حاکمیت | — | پس از اولین CI کاملاً سبز |
 | تصویب فرم شواهد و تصمیم نهایی M1 | بالا | مالک پروژه | — | امضای بخش ۸ |
 
 تصویب‌کننده: **PENDING**
