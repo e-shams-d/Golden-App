@@ -1,0 +1,15 @@
+# Reviewer: @e-shams-d (repository owner; confirmed 2026-07-25).
+# Sensitive-area reviewers below follow 15_Agent_Implementation_Plan.md §24.3.
+# With a single-person team every line resolves to the owner; split these into
+# real team handles once the payment/security reviewers exist.
+
+# Default owner for everything
+* @e-shams-d
+
+# Payment/approval/export, auth/RBAC, migrations (security-sensitive areas —
+# require the designated reviewer even after teams are added)
+/services/backend/ @e-shams-d
+/services/backend/alembic/ @e-shams-d
+/packages/auth-client/ @e-shams-d
+/infra/ @e-shams-d
+/docs/governance/ @e-shams-d

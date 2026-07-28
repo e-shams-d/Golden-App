@@ -1,0 +1,192 @@
+# DRAFT — GitHub Actions adapter for the provider-neutral CI contract
+# (infra/ci/README.md). Pending owner review/approval before it becomes a
+# required check. TODO items marked below are open governance decisions:
+#   - pinned OpenAPI breaking-change detector version + waiver process
+#   - artifact retention policy and evidence storage location
+#   - container registry and digest-promotion workflow
+name: m1-verify
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m1-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.8.22"
+  PNPM_VERSION: "11.15.1"
+
+jobs:
+  secret-scan:
+    name: Repository secret scan (gate 4)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks (maintained scanner, full history)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  native:
+    name: Native verification (gates 1-2)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Enable corepack pnpm
+        run: |
+          corepack enable
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
+          pnpm --version
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+      - name: Install pinned uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Frozen frontend graph + Playwright Chromium (per CI contract)
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @gold/trader-pwa exec playwright install --with-deps chromium
+      - name: Native verifier (exact-version, frozen, full gates)
+        run: sh infra/scripts/verify-native.sh
+      - name: Reject post-run drift (lockfiles, OpenAPI, generated types)
+        run: |
+          git status --porcelain
+          test -z "$(git status --porcelain)"
+      - name: Record toolchain versions
+        if: always()
+        run: |
+          {
+            echo "source_commit=${GITHUB_SHA}"
+            echo "node=$(node --version)"
+            echo "pnpm=$(pnpm --version)"
+            echo "uv=$(uv --version)"
+            echo "python=$(uv run --project services/backend --frozen python --version)"
+          } | tee toolchain-versions.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-evidence
+          path: toolchain-versions.txt
+
+  openapi-compat:
+    name: OpenAPI merge-base compatibility (gate 3)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Extract merge-base contract
+        run: |
+          git fetch origin "${{ github.base_ref }}"
+          MERGE_BASE=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
+          echo "merge_base=${MERGE_BASE}" >> "$GITHUB_ENV"
+          git show "${MERGE_BASE}:services/backend/openapi/v1.json" > /tmp/openapi-base.json
+      # TODO(governance): confirm pinned detector version and the approved
+      # waiver mechanism for intentional breaking changes (contract-version bump).
+      - name: Breaking-change detection (oasdiff, pinned)
+        run: |
+          docker run --rm \
+            -v /tmp/openapi-base.json:/base.json:ro \
+            -v "${PWD}/services/backend/openapi/v1.json:/rev.json:ro" \
+            ghcr.io/oasdiff/oasdiff:v1.11.7 breaking --fail-on ERR /base.json /rev.json
+
+  docker-acceptance:
+    name: Docker acceptance + scans + SBOM (gates 5-8)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    needs: [native]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate ephemeral CI-only .env (never committed, masked charset)
+        run: |
+          python3 - <<'EOF'
+          import secrets, string, pathlib
+          alphabet = string.ascii_letters + string.digits + "._~-"
+          first = string.ascii_letters + string.digits
+          def gen(n):
+              return secrets.choice(first) + "".join(secrets.choice(alphabet) for _ in range(n - 1))
+          template = pathlib.Path(".env.example").read_text(encoding="utf-8")
+          import os, re
+          values = {
+              "RELEASE_COMMIT": os.environ["GITHUB_SHA"],
+              "POSTGRES_PASSWORD": gen(24),
+              "APP_DB_PASSWORD": gen(24),
+              "MIGRATION_DB_PASSWORD": gen(24),
+              "REDIS_PASSWORD": gen(24),
+              "OPERATIONS_HEALTH_TOKEN": gen(48),
+          }
+          out = []
+          for line in template.splitlines():
+              key = line.split("=", 1)[0].strip() if "=" in line else None
+              if key in values:
+                  out.append(f"{key}={values[key]}")
+              else:
+                  out.append(line)
+          pathlib.Path(".env").write_text("\n".join(out) + "\n", encoding="utf-8")
+          EOF
+      - name: Docker acceptance verifier
+        run: sh infra/scripts/verify-docker.sh
+      - name: Dependency vulnerability scan (gate 6, pinned Trivy)
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: json
+          output: trivy-deps.json
+      - name: Image vulnerability scans (gate 6)
+        run: |
+          mkdir -p scan-reports
+          for img in $(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep '^gold-platform-m1-verify-'); do
+            safe=$(echo "$img" | tr '/:' '__')
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+              -v "${PWD}/scan-reports:/out" \
+              aquasec/trivy:0.58.1 image --severity HIGH,CRITICAL --exit-code 1 \
+              --format json --output "/out/${safe}.json" "$img"
+          done
+      - name: SBOM per application image (gate 7, pinned Syft)
+        run: |
+          mkdir -p sboms
+          for img in $(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep '^gold-platform-m1-verify-'); do
+            safe=$(echo "$img" | tr '/:' '__')
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+              -v "${PWD}/sboms:/out" \
+              anchore/syft:v1.18.1 "$img" -o "spdx-json=/out/${safe}.spdx.json"
+          done
+      - name: Record image digests + source commit (gate 8)
+        run: |
+          {
+            echo "source_commit=${GITHUB_SHA}"
+            docker image ls --digests --format '{{.Repository}}:{{.Tag}} {{.ID}} {{.Digest}}' | grep m1-verify || true
+          } | tee image-manifest.txt
+      - name: Remove ephemeral .env (always)
+        if: always()
+        run: rm -f .env
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: docker-evidence
+          path: |
+            image-manifest.txt
+            trivy-deps.json
+            scan-reports/
+            sboms/
