@@ -26,6 +26,11 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0 \
     PORT=3000
 
+# The runtime only ever runs the standalone server, so the npm that ships in
+# the base image is unused weight. Dropping it also removes its bundled
+# dependency tree (tar, undici, brace-expansion) from the shipped image.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+
 RUN groupadd --gid 10001 app \
     && useradd --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app \
     && mkdir -p /app \
