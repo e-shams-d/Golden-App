@@ -22,6 +22,8 @@ concurrency:
 env:
   UV_VERSION: "0.8.22"
   PNPM_VERSION: "11.15.1"
+  TRIVY_VERSION: "0.58.1"
+  SYFT_VERSION: "1.18.1"
 
 jobs:
   secret-scan:
@@ -144,33 +146,37 @@ jobs:
           EOF
       - name: Docker acceptance verifier
         run: sh infra/scripts/verify-docker.sh
-      - name: Dependency vulnerability scan (gate 6, pinned Trivy)
-        uses: aquasecurity/trivy-action@0.29.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          severity: HIGH,CRITICAL
-          exit-code: "1"
-          format: json
-          output: trivy-deps.json
+      # Scanners run as runner-local pinned binaries. The repository forbids
+      # handing any container access to the host Docker daemon socket, which a
+      # containerized scanner would require to read locally built images.
+      - name: Install pinned scanners
+        run: |
+          mkdir -p "${RUNNER_TEMP}/scanners"
+          curl -sSfL -o "${RUNNER_TEMP}/trivy.tar.gz" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          tar -xzf "${RUNNER_TEMP}/trivy.tar.gz" -C "${RUNNER_TEMP}/scanners" trivy
+          curl -sSfL -o "${RUNNER_TEMP}/syft.tar.gz" \
+            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+          tar -xzf "${RUNNER_TEMP}/syft.tar.gz" -C "${RUNNER_TEMP}/scanners" syft
+          echo "${RUNNER_TEMP}/scanners" >> "${GITHUB_PATH}"
+      - name: Dependency vulnerability scan (gate 6)
+        run: |
+          trivy fs --severity HIGH,CRITICAL --exit-code 1 \
+            --format json --output trivy-deps.json .
       - name: Image vulnerability scans (gate 6)
         run: |
           mkdir -p scan-reports
           for img in $(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep '^gold-platform-m1-verify-'); do
-            safe=$(echo "$img" | tr '/:' '__')
-            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-              -v "${PWD}/scan-reports:/out" \
-              aquasec/trivy:0.58.1 image --severity HIGH,CRITICAL --exit-code 1 \
-              --format json --output "/out/${safe}.json" "$img"
+            safe=$(printf '%s' "$img" | tr '/:' '__')
+            trivy image --severity HIGH,CRITICAL --exit-code 1 \
+              --format json --output "scan-reports/${safe}.json" "$img"
           done
-      - name: SBOM per application image (gate 7, pinned Syft)
+      - name: SBOM per application image (gate 7)
         run: |
           mkdir -p sboms
           for img in $(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep '^gold-platform-m1-verify-'); do
-            safe=$(echo "$img" | tr '/:' '__')
-            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-              -v "${PWD}/sboms:/out" \
-              anchore/syft:v1.18.1 "$img" -o "spdx-json=/out/${safe}.spdx.json"
+            safe=$(printf '%s' "$img" | tr '/:' '__')
+            syft "$img" -o "spdx-json=sboms/${safe}.spdx.json"
           done
       - name: Record image digests + source commit (gate 8)
         run: |
