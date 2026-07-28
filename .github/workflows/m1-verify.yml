@@ -22,8 +22,8 @@ concurrency:
 env:
   UV_VERSION: "0.8.22"
   PNPM_VERSION: "11.15.1"
-  TRIVY_VERSION: "0.58.1"
-  SYFT_VERSION: "1.18.1"
+  TRIVY_VERSION: "0.72.0"
+  SYFT_VERSION: "1.49.0"
 
 jobs:
   secret-scan:
@@ -151,13 +151,32 @@ jobs:
       # containerized scanner would require to read locally built images.
       - name: Install pinned scanners
         run: |
+          install_release() {
+            base=$1 archive=$2 checksums=$3 binary=$4
+            curl -sSfL -o "${RUNNER_TEMP}/${archive}" "${base}/${archive}"
+            curl -sSfL -o "${RUNNER_TEMP}/${checksums}" "${base}/${checksums}"
+            expected=$(awk -v f="${archive}" '$2 == f { print; exit }' "${RUNNER_TEMP}/${checksums}")
+            if [ -z "${expected}" ]; then
+              echo "No published checksum for ${archive}" >&2
+              exit 1
+            fi
+            (cd "${RUNNER_TEMP}" && printf '%s\n' "${expected}" | sha256sum -c -)
+            tar -xzf "${RUNNER_TEMP}/${archive}" -C "${RUNNER_TEMP}/scanners" "${binary}"
+          }
           mkdir -p "${RUNNER_TEMP}/scanners"
-          curl -sSfL -o "${RUNNER_TEMP}/trivy.tar.gz" \
-            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
-          tar -xzf "${RUNNER_TEMP}/trivy.tar.gz" -C "${RUNNER_TEMP}/scanners" trivy
-          curl -sSfL -o "${RUNNER_TEMP}/syft.tar.gz" \
-            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz"
-          tar -xzf "${RUNNER_TEMP}/syft.tar.gz" -C "${RUNNER_TEMP}/scanners" syft
+          install_release \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}" \
+            "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+            "trivy_${TRIVY_VERSION}_checksums.txt" \
+            trivy
+          install_release \
+            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}" \
+            "syft_${SYFT_VERSION}_linux_amd64.tar.gz" \
+            "syft_${SYFT_VERSION}_checksums.txt" \
+            syft
+          # GITHUB_PATH only affects later steps, so smoke-test by full path.
+          "${RUNNER_TEMP}/scanners/trivy" --version
+          "${RUNNER_TEMP}/scanners/syft" --version
           echo "${RUNNER_TEMP}/scanners" >> "${GITHUB_PATH}"
       - name: Dependency vulnerability scan (gate 6)
         run: |
