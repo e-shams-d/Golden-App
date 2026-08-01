@@ -1,8 +1,8 @@
 # M0 Governance and Contract Readiness
 
-Status: IN PROGRESS — twelve decisions approved; **all five Critical conflicts are now
-resolved**; M0 exit gate not yet satisfied
-Last reviewed: 2026-08-01
+Status: IN PROGRESS — fourteen decisions approved; **no Critical conflict is open**;
+M0 exit gate not yet satisfied
+Last reviewed: 2026-08-02
 Authority: subordinate to the authoritative implementation documents in Implementation Docs
 
 ## Purpose
@@ -33,7 +33,7 @@ API, or workflow implementation starts.
 | Artifact | State | Approval needed |
 |---|---|---|
 | ADR index and alias mapping | 33 canonical rows: ADR-006, POL-005 and POL-002 Approved; 30 Open. Alias namespace resolved 2026-08-01; no `needs_mapping` blocks Phase 1A | Remaining decision owners |
-| Conflict register | 33 total: 12 Resolved/Approved; 21 Open (**0 Critical**) | Topic owners for remaining conflicts; implementation evidence for resolved decisions |
+| Conflict register | 35 total: 14 Resolved/Approved; 21 Open (**0 Critical**) | Topic owners for remaining conflicts; implementation evidence for resolved decisions |
 | Document approval register | Drafted | Project owner |
 | Status catalogue | **Approved 2026-08-01**: 23 aggregates / 156 states; document 06 names canonical, PRD spellings are legacy aliases | Implementation evidence that DB, API, backend, frontend and QA use these values |
 | Permission catalogue | **Approved 2026-08-01**: 118 permissions / 24 API aliases; document 12 identifiers canonical, document 05 spellings deprecated aliases | Generation evidence into seed, OpenAPI and frontend constants |

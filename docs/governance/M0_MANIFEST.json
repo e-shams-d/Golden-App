@@ -31,8 +31,11 @@
       "DOC-CONFLICT-019",
       "DOC-CONFLICT-020",
       "DOC-CONFLICT-021",
-      "DOC-CONFLICT-022"
+      "DOC-CONFLICT-022",
+      "DOC-CONFLICT-034",
+      "DOC-CONFLICT-035"
     ],
+    "total_conflicts": 35,
     "open_conflicts": 21,
     "open_critical_conflicts": 0,
     "m0_exit_gate_complete": false,
@@ -40,8 +43,8 @@
   },
   "summary": {
     "file_count": 17,
-    "total_bytes": 277554,
-    "total_lines": 3541
+    "total_bytes": 280420,
+    "total_lines": 3549
   },
   "validation": {
     "utf8": true,
@@ -103,9 +106,9 @@
     },
     {
       "path": "docs/governance/CONFLICT_REGISTER.md",
-      "bytes": 31656,
-      "lines": 98,
-      "sha256": "417ae58899026ada4490971e8c5a5693a7485565c8e7e7c1aaea271622378d9e"
+      "bytes": 34536,
+      "lines": 106,
+      "sha256": "85ac3e4a91da0af3cfaa88cf8699f113e0a828e5300afbd16c808c5b81417987"
     },
     {
       "path": "docs/governance/DOCUMENT_APPROVAL_REGISTER.md",
@@ -121,9 +124,9 @@
     },
     {
       "path": "docs/governance/M0_READINESS.md",
-      "bytes": 9015,
+      "bytes": 9001,
       "lines": 129,
-      "sha256": "caea7c05153978999665b7097042fb686accc9f7eb3ab51e7733306df94c3f8f"
+      "sha256": "571b586b3f2e80b7aaa53f17562725e4c3c2e0199b21524dfb645326ed7117c4"
     },
     {
       "path": "docs/governance/MONEY_TIME_CONTRACT.md",

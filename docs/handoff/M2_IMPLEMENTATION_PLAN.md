@@ -1639,6 +1639,28 @@ records.
 
 # 8. Owner decisions required before slice 1 starts
 
+**All five were approved by the project owner on 2026-08-02**, recorded on their instruction under
+the convention `M0_READINESS.md` uses. Slice 1 may start. The decisions, as approved:
+
+| # | Decision | Approved outcome | Recorded in |
+|---|---|---|---|
+| 1 | Audit `actor_type` vocabulary | Document 12's four values — `trader_user`, `admin_user`, `system_worker`, `system_maintenance` — as a **named** CHECK, matching the precedence set for permission identifiers in DOC-CONFLICT-013 | `CONFLICT_REGISTER.md` DOC-CONFLICT-034 |
+| 2 | Audit column vocabulary and index rename | The approved `FINANCIAL_INTEGRITY_BASELINE.md` §4 wording wins; doc 04 §15.3 is the stale record. `idx_audit_event_time` becomes `idx_audit_action_time`; the entity and actor index names stand | `CONFLICT_REGISTER.md` DOC-CONFLICT-035 |
+| 3 | Redis in the fast CI gate | A pinned `redis:7.4.9-alpine3.21` service container joins the `native` job alongside the PostgreSQL service M2 needs anyway, so Redis-dependent evidence does not wait on the Docker gate | `infra/ci/README.md`; slice 1 |
+| 4 | Database role identity strategy | Role names are **configuration**, resolved from `Settings`; doc 04 §3.2 names are recorded as labels. A test asserts byte-identity between the locked-down role and the runtime `DATABASE_URL` username | slice 2, section 4.2 |
+| 5 | Credential provisioning for the three new roles | Out-of-band provisioning by a migrator-identity script reading passwords from the environment, extending the pattern `infra/postgres/init/010-create-runtime-roles.sh` already uses. No password may enter a migration file | slice 2, section 4.2 |
+
+Decision 4 carries the most weight. Renaming the deployment identities instead would require
+`.env.example`, `infra/compose/compose.local.yml`, `infra/postgres/init/010-create-runtime-roles.sh`
+and `infra/scripts/validate_repository.py` to change in lockstep, plus migrating every existing
+volume including the environment certified for M1. If any one of them lagged, the revocation would
+bind a role nothing connects as while the real application role kept `UPDATE`/`DELETE` on the audit
+table — a security control that looks correct and enforces nothing. That failure is not
+hypothetical: it is the critical gap the plan audit found in this document's own draft.
+
+The original statement of the five items follows, retained so the approval can be read against what
+was asked.
+
 Slice 1 is not blocked by any Open decision, but three items must be settled or explicitly accepted
 before its pull request can merge, and two more before slice 2.
 
