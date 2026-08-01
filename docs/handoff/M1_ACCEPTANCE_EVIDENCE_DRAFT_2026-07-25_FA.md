@@ -1,6 +1,6 @@
 # فرم شواهد انتقال و پذیرش M1 — پیش‌نویس اجرای مقصد
 
-Status: **DRAFT / M1 NOT ACCEPTED — در حال تکمیل**
+Status: **همه‌ی کنترل‌های فنی و تحویل بسته شده‌اند — منتظر امضای مالک**
 Milestone: M1 — Repository and Runtime Foundation
 Draft date: 2026-07-25
 
@@ -133,7 +133,7 @@ Log artifacts (خارج از Git): `.local/m1-evidence/verify-docker-1541f14-202
 | secret scan نگهداری‌شده | PASS | gitleaks در CI (job «Repository secret scan») — سبز روی GitHub |
 | vulnerability scan وابستگی‌ها | PASS با یک استثنا | Trivy 0.72.0؛ ۱۱ از ۱۲ یافته‌ی HIGH وصله شد، مورد باقی‌مانده در `.trivyignore.yaml` با دلیل/مالک/سررسید ثبت و در لاگ CI چاپ می‌شود |
 | vulnerability scan imageها | PASS | Trivy روی هر ۸ image: صفر یافته‌ی دارای وصله. یافته‌های بدون وصله‌ی پایه‌ی Debian ثبت و شمرده می‌شوند ولی گیت نمی‌شوند (بند ۱۰ یادداشت‌ها) |
-| SBOM هر image | **PENDING** | مرحله‌ی Syft 1.49.0 در CI پیاده شده؛ منتظر اولین اجرای کامل و بایگانی artifact |
+| SBOM هر image | PASS | Syft 1.49.0 در job «Docker acceptance + scans + SBOM» — سبز روی GitHub و بایگانی‌شده در artifact `docker-evidence`. تأیید محلی نمونه: خروجی SPDX-2.3 با ۱۵۷ بسته برای image بک‌اند |
 | ثبت digest imageها و SHA منبع | PASS | ده image ID/digest + SHA منبع در log artifact پذیرش Docker |
 | نبود secret در frontend/`NEXT_PUBLIC_*` | PASS | «Public environment variable scan passed» |
 
@@ -233,16 +233,28 @@ Log artifacts (خارج از Git): `.local/m1-evidence/verify-docker-1541f14-202
 - [x] **M1 NOT ACCEPTED** — موارد باز:
 
 **تمام کنترل‌های فنی بسته شده‌اند.** هر دو verifier روی `1541f14` — همان SHA
-منتشرشده روی remote — پاس شده‌اند، CI روی runner مستقل GitHub سبز است، و هر سه
-مقدار SHA تطبیق دارند. موارد باز باقی‌مانده **هیچ‌کدام فنی نیستند** و همگی
-تصمیم یا تأیید می‌خواهند:
+منتشرشده روی remote — پاس شده‌اند، هر سه مقدار SHA تطبیق دارند، و زنجیره روی
+runner مستقل GitHub نیز تکرار شده است.
+
+کنترل‌های تحویل که پس از آن بسته شدند:
+
+- **هر چهار گیت CI روی یک Pull Request واقعی اجرا و سبز شدند** (PR #1، ۲۰۲۶-۰۸-۰۱).
+  گیت مقایسه‌ی OpenAPI با merge-base تا آن لحظه هرگز زنده اجرا نشده بود، چون فقط
+  روی رویداد pull request فعال می‌شود؛ همین اجرا دو نقص را آشکار کرد که هر دو
+  اصلاح شدند (نسخه‌ی نامعتبر ابزار تشخیص، و کمبود دسترسی `pull-requests: read`
+  برای اسکنر secret).
+- **protected branch روی `main` فعال شد** (ruleset `protect-main`، بدون هیچ
+  استثنا در bypass list): الزام Pull Request، الزام عبور هر چهار status check،
+  مسدودسازی force push، و منع حذف شاخه. الزام تأیید بازبین عمداً روی صفر است،
+  چون تیم تک‌نفره است و GitHub اجازه‌ی تأیید PR توسط نویسنده‌ی خودش را نمی‌دهد؛
+  با افزوده‌شدن نفر دوم باید فعال شود و `CODEOWNERS` از پیش آماده است.
+
+موارد باز باقی‌مانده **هیچ‌کدام فنی نیستند** و همگی تصمیم یا تأیید می‌خواهند:
 
 | مورد باز | شدت | مالک | موعد | شرط بستن |
 |---|---|---|---|---|
 | تصویب فرم شواهد و تصمیم نهایی M1 | بالا | مالک پروژه | — | امضای بخش ۸ |
-| اجرای زنده‌ی گیت OpenAPI روی یک Pull Request واقعی | بالا | مالک پروژه | — | تنها گیتی که هنوز زنده اجرا نشده؛ شاخه‌ی `chore/ci-adapter-docs` برای همین آماده است |
-| فعال‌سازی protected branch و required checks | بالا | مالک پروژه | — | پس از اولین PR سبز، تا اسم checkها در فهرست ظاهر شود |
-| تصویب سیاست default branch، review و release | متوسط | مالک/حاکمیت | — | ثبت مکتوب سیاست |
+| تصویب سیاست release (سیاست شاخه و بازبینی عملاً اعمال شده) | متوسط | مالک/حاکمیت | — | ثبت مکتوب سیاست انتشار |
 | تصمیم درباره‌ی generator داخلی OpenAPI در برابر ابزار نگهداری‌شده | متوسط | راهبر فنی | پیش از اولین API مالی | بند ۱۳ سند تحویل |
 | تأیید رسمی ابزارهای امنیتی (gitleaks/Trivy/Syft/oasdiff) | متوسط | حاکمیت/امنیت | — | تصویب یا جایگزینی؛ نشانه‌های `TODO(governance)` برداشته شود |
 | انتخاب registry و سیاست نگهداری شواهد | متوسط | حاکمیت | پیش از استقرار | ثبت تصمیم |
