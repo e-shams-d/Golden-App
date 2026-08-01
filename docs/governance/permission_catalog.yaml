@@ -1,6 +1,26 @@
 schema_version: "1.0"
 catalog_id: gold_platform_phase_1a_permissions
-status: provisional_pending_m0_approval
+status: approved_phase_1a
+approval:
+  date: "2026-08-01"
+  approver: "Ehsan Shams — project owner"
+  evidence: >-
+    Owner approval in the M0 decision session, recorded on their instruction.
+    Same convention as M0_READINESS.md; legal name and organizational role are
+    not supplied.
+  resolves: ["DOC-CONFLICT-013"]
+  rationale: >-
+    Document 12 identifiers win, and not only for consistency. They name the
+    exact object a permission acts on: payment_batch_version.approve binds the
+    manager's approval to the specific version that was reviewed, while
+    document 05's payment_batch.approve names the mutable container and would
+    let an approval outlive the content it approved. Document 05 spellings stay
+    as deprecated aliases with explicit canonical_targets; an alias never
+    broadens a grant and an ambiguous alias fails closed.
+  scope: >-
+    Approves the identifiers and the baseline role grants in this file for
+    Phase 1A. It does not approve any command implementation, nor the open
+    ADR-009 recent-auth factor, nor break-glass, which stays disabled.
 phase_scope: phase_1a
 language: en
 

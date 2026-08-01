@@ -1,5 +1,20 @@
 schema_version: 1
-catalog_status: provisional_pending_m0_approval
+catalog_status: approved_phase_1a
+approval:
+  date: "2026-08-01"
+  approver: "Ehsan Shams — project owner"
+  evidence: >-
+    Owner approval in the M0 decision session, recorded on their instruction.
+    Same convention as M0_READINESS.md; legal name and organizational role are
+    not supplied.
+  resolves: ["DOC-CONFLICT-001"]
+  scope: >-
+    Approves the canonical state names and the alias mappings in this file for
+    Phase 1A. Document 06 wins every naming conflict with the PRD: the PRD
+    spellings are recorded as legacy aliases and must never be implemented as
+    API or database values. This approval does not freeze transition guards,
+    which stay with document 06, nor any financial schema that consumes these
+    states.
 title: "Gold Trade Settlement Platform status catalog"
 canonical_authority:
   document: "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md"
@@ -7,7 +22,7 @@ canonical_authority:
   source:
     - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:5-10"
     - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:30-49"
-  notes: "Document 06 is the requested M0 canonical authority. This catalog remains provisional and does not resolve conflicts by itself."
+  notes: "Document 06 is the approved M0 canonical authority for state names (owner approval 2026-08-01). Where the PRD spells a state differently, document 06 wins and the PRD spelling is a legacy alias."
 
 flag_semantics:
   terminal:
@@ -22,6 +37,7 @@ flag_semantics:
 catalog_notes:
   - "Aliases are compatibility observations, not approved API values."
   - "An unresolved alias has canonical: null and must not be implemented as an automatic mapping before M0 approval."
+  - "Approved 2026-08-01 for Phase 1A. payment_request.sent_to_bank and payment_attempt.bank_result_pending are two different facts and stay separate: sent_to_bank is the request-level state while unresolved attempts exist, bank_result_pending is one attempt awaiting its bank result. Neither is an alias of the other."
   - "Terminal flags describe the normal document-06 workflow, not physical deletion or loss of audit history."
   - "Backend values remain English snake_case; localized labels are outside this catalog."
 
@@ -663,11 +679,21 @@ m0_decisions_required:
     notes: "Select one persisted enum value and retain the other only as a migration/API compatibility alias if approved."
   - canonical: payment_request.sent_to_bank
     aliases: [payment_request.bank_result_pending]
+    decision: decided
+    decided_on: "2026-08-01"
     source:
       - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:555-607"
       - "Implementation Docs/01_Product_and_Domain/01_Product_Requirements_PRD.md:667-689"
       - "Implementation Docs/05_Backend_and_Security/10_Backend_Implementation_Guide.md:929-952"
-    notes: "Confirm that bank_result_pending is attempt-only in the approved API/schema and migrate legacy request values accordingly."
+    notes: >-
+      Decided: the two values describe different facts and both stay, on
+      different aggregates. payment_request.sent_to_bank is the request-level
+      state while unresolved attempts exist; bank_result_pending belongs to
+      PaymentAttempt only, where it means one attempt awaiting its bank result.
+      payment_request.bank_result_pending is therefore a legacy value with no
+      canonical meaning and must not appear in schema, API or UI. Collapsing
+      them would lose the distinction between a whole request and a single
+      bank transaction, which split and retry flows depend on.
   - canonical: receipt_segment
     aliases: [processing, draft, available, archived]
     source:
