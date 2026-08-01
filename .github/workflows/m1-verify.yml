@@ -1,7 +1,7 @@
-# DRAFT — GitHub Actions adapter for the provider-neutral CI contract
-# (infra/ci/README.md). Pending owner review/approval before it becomes a
-# required check. TODO items marked below are open governance decisions:
-#   - pinned OpenAPI breaking-change detector version + waiver process
+# GitHub Actions adapter for the provider-neutral CI contract
+# (infra/ci/README.md). Pending owner approval before it becomes a required
+# check. Open governance decisions, marked TODO below where they bite:
+#   - waiver process for an intentional OpenAPI breaking change
 #   - artifact retention policy and evidence storage location
 #   - container registry and digest-promotion workflow
 name: m1-verify
@@ -31,6 +31,12 @@ jobs:
     name: Repository secret scan (gate 4)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    # On a pull request the scanner lists the PR's commits through the API, so
+    # it needs read access to pull requests. Granted here rather than at the
+    # workflow level so no other job gets the extra scope.
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
