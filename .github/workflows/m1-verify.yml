@@ -71,6 +71,12 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm --filter @gold/trader-pwa exec playwright install --with-deps chromium
+      # The manifest is the checksum chain behind every M0 citation, and a
+      # governance document can change without it. Checked in its own step, not
+      # inside the native verifier, because that script is part of the accepted
+      # M1 acceptance evidence and is not being altered here.
+      - name: M0 governance manifest hashes match their files
+        run: python3 infra/scripts/m0_manifest.py
       - name: Native verifier (exact-version, frozen, full gates)
         run: sh infra/scripts/verify-native.sh
       - name: Reject post-run drift (lockfiles, OpenAPI, generated types)
