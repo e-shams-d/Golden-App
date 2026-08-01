@@ -2,18 +2,30 @@
   "schema_version": 1,
   "package": "gold_platform_m0_governance_working_baseline",
   "manifest_status": "working_baseline_scoped_decisions_approved_m0_incomplete",
-  "generated_on": "2026-07-20",
+  "generated_on": "2026-08-01",
   "hash_algorithm": "SHA-256",
   "manifest_self_included": false,
+  "provenance": {
+    "regenerated_on": "2026-08-01",
+    "regenerated_by": "infra/scripts/m0_manifest.py --write",
+    "verifier": "infra/scripts/m0_manifest.py, enforced in CI",
+    "note": "This manifest establishes provenance from 2026-08-01 forward, not retroactively. Regeneration corrected 10 of the 17 entries. Two had drifted legitimately, because commit ae93d79 changed status_catalog.yaml and permission_catalog.yaml without regenerating the manifest. The other eight never matched their files at the commit that introduced this manifest, so the recorded chain did not hold from the start and no earlier citation can be treated as hash-backed. Recorded byte counts were also larger than the files they described, which is consistent with the manifest being generated mid-edit and never refreshed before the transfer commit."
+  },
   "decision_state": {
-    "approval_date": "2026-07-20",
-    "approval_evidence": "workspace owner approval via conversation; legal name/organizational role not supplied",
+    "approval_date": "2026-07-20, extended 2026-08-01",
+    "approval_evidence": "workspace owner approval via conversation; legal name/organizational role not supplied. The 2026-08-01 additions were approved by the project owner Ehsan Shams and recorded on their instruction under the same convention.",
     "approved_canonical_decisions": [
       "ADR-006",
-      "POL-005 (Phase 1A: break-glass disabled)"
+      "POL-005 (Phase 1A: break-glass disabled)",
+      "POL-002 (Phase 1A: published-paid-result correction requires manager authority or dual control)"
     ],
     "resolved_conflicts": [
+      "DOC-CONFLICT-001",
+      "DOC-CONFLICT-002",
+      "DOC-CONFLICT-003",
+      "DOC-CONFLICT-004",
       "DOC-CONFLICT-009",
+      "DOC-CONFLICT-013",
       "DOC-CONFLICT-017",
       "DOC-CONFLICT-018",
       "DOC-CONFLICT-019",
@@ -21,13 +33,15 @@
       "DOC-CONFLICT-021",
       "DOC-CONFLICT-022"
     ],
-    "open_conflicts": 26,
-    "m0_exit_gate_complete": false
+    "open_conflicts": 21,
+    "open_critical_conflicts": 0,
+    "m0_exit_gate_complete": false,
+    "owner_reapproval_of_this_baseline": "pending"
   },
   "summary": {
     "file_count": 17,
-    "total_bytes": 267572,
-    "total_lines": 3450
+    "total_bytes": 277554,
+    "total_lines": 3541
   },
   "validation": {
     "utf8": true,
@@ -47,15 +61,15 @@
   "files": [
     {
       "path": "docs/adr/ADR-006_Business_Timezone_and_Calendar_Rules.md",
-      "bytes": 5637,
-      "lines": 120,
-      "sha256": "b1d1011e9a61c0ed54c5c627e19faee89ac4a61cc25f347d97deed6e6c024289"
+      "bytes": 5618,
+      "lines": 119,
+      "sha256": "8c2662b00ddab322695fba3cca728fd7611d3af5bda96416e8f0835f5c2c045b"
     },
     {
       "path": "docs/adr/ADR_INDEX.md",
-      "bytes": 16335,
-      "lines": 91,
-      "sha256": "dd27e44a1f042bfa1b7b1b3fb59da125be0e60db6428c6ad57a2ae1da69d83dc"
+      "bytes": 18900,
+      "lines": 103,
+      "sha256": "dd4d5ac8a807f6348b78840264e960493b4776d6089135ec2a692d1884f16041"
     },
     {
       "path": "docs/adr/ADR_TEMPLATE.md",
@@ -71,9 +85,9 @@
     },
     {
       "path": "docs/governance/api_error_catalog.yaml",
-      "bytes": 3322,
-      "lines": 47,
-      "sha256": "bbd67f0a306548af594ac194aeced0aac1bea825fc4cbc2e098681620d746aeb"
+      "bytes": 3321,
+      "lines": 46,
+      "sha256": "aa4c38d9f732ceb4b6ccac24de2a45f26d437734ce5f4f5920d4b468e821961d"
     },
     {
       "path": "docs/governance/audit_outbox_catalog.yaml",
@@ -89,27 +103,27 @@
     },
     {
       "path": "docs/governance/CONFLICT_REGISTER.md",
-      "bytes": 29413,
-      "lines": 94,
-      "sha256": "e18988272d51bbee7458c97ec98a7febfd2e6e3288c912dac0a456f75003292f"
+      "bytes": 31656,
+      "lines": 98,
+      "sha256": "417ae58899026ada4490971e8c5a5693a7485565c8e7e7c1aaea271622378d9e"
     },
     {
       "path": "docs/governance/DOCUMENT_APPROVAL_REGISTER.md",
-      "bytes": 5296,
+      "bytes": 5294,
       "lines": 74,
-      "sha256": "d8e11da1142f9796c8922fd424bff2f73aa0b30794a8b7bddf2cf88d1ae64631"
+      "sha256": "ef9c87cb2449c8888024fa65c8e885645b85d542221acfa7b16709d8db66fc33"
     },
     {
       "path": "docs/governance/FINANCIAL_INTEGRITY_BASELINE.md",
-      "bytes": 7650,
-      "lines": 126,
-      "sha256": "57cbcc725438a1f9301d4c5f214b15da33e6b4237e1c9b09b293c3eb9167d80b"
+      "bytes": 7645,
+      "lines": 125,
+      "sha256": "d7777810c4d5abe0c8f2d6fc0bb08af20b31482336629723265ee3a0097f78f2"
     },
     {
       "path": "docs/governance/M0_READINESS.md",
-      "bytes": 6468,
-      "lines": 97,
-      "sha256": "3d94d42a0ee2ea479932ebcd51dbee78834012e53a39b8272361fd83f0f0dc2a"
+      "bytes": 9015,
+      "lines": 129,
+      "sha256": "caea7c05153978999665b7097042fb686accc9f7eb3ab51e7733306df94c3f8f"
     },
     {
       "path": "docs/governance/MONEY_TIME_CONTRACT.md",
@@ -119,9 +133,9 @@
     },
     {
       "path": "docs/governance/permission_catalog.yaml",
-      "bytes": 45513,
-      "lines": 896,
-      "sha256": "233370532e4f1721a11ac27f2aa71dbf92a51e775ccfbac250599dd397fbf1ac"
+      "bytes": 46564,
+      "lines": 916,
+      "sha256": "b2486d7336b832ccf13c82e07446d57b3721ee7947c019d0448b6cfdfb09e6a3"
     },
     {
       "path": "docs/governance/README.md",
@@ -137,15 +151,15 @@
     },
     {
       "path": "docs/governance/status_catalog.yaml",
-      "bytes": 62674,
-      "lines": 677,
-      "sha256": "c636ca676bc7a26abaaf6204378e1658fdccef69a75a0ec745aa262058eafc8a"
+      "bytes": 64285,
+      "lines": 703,
+      "sha256": "165b8c68e9681ea652d4c7647ddb399fc07d5d86db282a385a0c6fb70dd011ab"
     },
     {
       "path": "docs/governance/TRACEABILITY_MATRIX.md",
-      "bytes": 37257,
+      "bytes": 37249,
       "lines": 58,
-      "sha256": "9d4b3c0cd14ab0586f3d83fb3514309899f4d19498bcf5c80b6fb6b6ec6d3b23"
+      "sha256": "8e149ed729046570418a493a6782bad8c577f4656a63fc2474cfc01052852abe"
     }
   ]
 }
