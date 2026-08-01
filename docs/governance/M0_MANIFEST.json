@@ -43,8 +43,8 @@
   },
   "summary": {
     "file_count": 17,
-    "total_bytes": 280420,
-    "total_lines": 3549
+    "total_bytes": 280649,
+    "total_lines": 3552
   },
   "validation": {
     "utf8": true,
@@ -72,7 +72,7 @@
       "path": "docs/adr/ADR_INDEX.md",
       "bytes": 18900,
       "lines": 103,
-      "sha256": "dd4d5ac8a807f6348b78840264e960493b4776d6089135ec2a692d1884f16041"
+      "sha256": "87d2c103df300e072435a930e083a34318b030121524aff747d7b6da13444119"
     },
     {
       "path": "docs/adr/ADR_TEMPLATE.md",
@@ -106,9 +106,9 @@
     },
     {
       "path": "docs/governance/CONFLICT_REGISTER.md",
-      "bytes": 34536,
-      "lines": 106,
-      "sha256": "85ac3e4a91da0af3cfaa88cf8699f113e0a828e5300afbd16c808c5b81417987"
+      "bytes": 34731,
+      "lines": 109,
+      "sha256": "079c6fa43a8ae692e059e943d39d4e1aea5b524980493d6a38ef793c6571ff22"
     },
     {
       "path": "docs/governance/DOCUMENT_APPROVAL_REGISTER.md",
@@ -142,9 +142,9 @@
     },
     {
       "path": "docs/governance/README.md",
-      "bytes": 3523,
+      "bytes": 3548,
       "lines": 64,
-      "sha256": "395b7c9eef9b6be29e929541def853914accaae7374067232105693df3ecd34b"
+      "sha256": "1a818d2deb063cdf34ef7785f3afd15a56cb1e5dc0f6d15d481b184056e0e1fe"
     },
     {
       "path": "docs/governance/REPOSITORY_BASELINE.md",
@@ -160,9 +160,9 @@
     },
     {
       "path": "docs/governance/TRACEABILITY_MATRIX.md",
-      "bytes": 37249,
+      "bytes": 37258,
       "lines": 58,
-      "sha256": "8e149ed729046570418a493a6782bad8c577f4656a63fc2474cfc01052852abe"
+      "sha256": "6851062f459ce585b572118e232e7e0ca26bba527ac591c2bf5e85f62e1ab2fe"
     }
   ]
 }

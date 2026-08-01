@@ -1,8 +1,11 @@
 # M0 Documentation Conflict Register
 
-Status: Active working register — 7 decisions Resolved/Approved; 26 conflicts Open
+Status: Active working register — 14 decisions Resolved/Approved; 21 conflicts Open; no
+Critical conflict is open
 Scope: Conflicts and material gaps detected across the current implementation documentation
-Last decision update: 2026-07-20
+Last decision update: 2026-08-02
+Count authority: the rows below. This header and the summary table are derived from them and
+must be reconciled by enumeration whenever a row is added or resolved.
 
 ## Resolution protocol
 
