@@ -22,6 +22,25 @@ workflow record what the security owner still has to confirm or replace. The
 artifact registry, protected-branch rules, required status-check names, and evidence
 retention remain open decisions.
 
+## Service containers in the native job
+
+Approved 2026-08-02. From M2 the native job carries pinned PostgreSQL and Redis service
+containers, matching the images the Compose model already pins. The native job is where fast
+feedback lives; leaving integrity evidence that needs a real broker or database to the Docker
+gate would put a common failure class behind a full eight-image build. Integration tests must
+still use real PostgreSQL, never SQLite, and connect as three distinct identities — migrator,
+application runtime and worker runtime — so a least-privilege regression fails rather than
+passes silently.
+
+## Governance manifest
+
+`docs/governance/M0_MANIFEST.json` records a SHA-256 over the raw bytes of every governed
+document. `infra/scripts/m0_manifest.py` verifies it and runs as its own step in the native
+job, so a governance document can no longer change without its recorded hash. Regenerate with
+`--write` in the same commit as the document change; the script refuses to write if its own
+serialisation would reformat the file, and never touches editorial fields such as
+`decision_state`.
+
 Reviewed vulnerability exceptions live in `.trivyignore.yaml`. Every entry carries a
 reason, an owner and an expiry, and the scans run with `--show-suppressed` so a
 suppressed finding is printed with its justification rather than disappearing.

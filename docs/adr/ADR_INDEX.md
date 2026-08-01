@@ -83,8 +83,8 @@ Owner role/name and due date: TBD for every remaining Open entry
 | Packaging | 3 |
 | AI ADR | 8 |
 | Total | 33 |
-| Approved | 2 |
-| Open | 31 |
+| Approved | 3 |
+| Open | 30 |
 
 ## Unrepresented or composite alias scopes
 

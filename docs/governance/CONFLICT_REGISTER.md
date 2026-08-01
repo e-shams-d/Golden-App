@@ -1,8 +1,11 @@
 # M0 Documentation Conflict Register
 
-Status: Active working register — 7 decisions Resolved/Approved; 26 conflicts Open
+Status: Active working register — 14 decisions Resolved/Approved; 21 conflicts Open; no
+Critical conflict is open
 Scope: Conflicts and material gaps detected across the current implementation documentation
-Last decision update: 2026-07-20
+Last decision update: 2026-08-02
+Count authority: the rows below. This header and the summary table are derived from them and
+must be reconciled by enumeration whenever a row is added or resolved.
 
 ## Resolution protocol
 
@@ -52,6 +55,8 @@ Last decision update: 2026-07-20
 | DOC-CONFLICT-030 | Important | Readiness behavior during Redis/worker/storage outage | 03_System_Architecture.md:1271-1276; 05_API_Specification.md:2267-2279; 06_Workflows_and_State_Machines.md:1392-1408 | Architecture permits some safe synchronous degradation, while readiness examples can treat Redis/storage as universally required. | Orchestration may restart a usable API, or the API may accept commands whose required async/file path is unavailable. | Define live, ready, degraded, and command-specific dependency guards separately; financial commands fail closed when their required dependency is unavailable. | Operations Lead + Backend Lead | M1 health contract; M12 operations | Open — readiness policy required |
 | DOC-CONFLICT-031 | Important | Dispatch role name | 07_UI_UX_Specification.md:567-571; 21_UI_Design_System_and_Screen_Specification.md:646-653; 22_UX_User_Journeys_and_Interaction_Guide.md:432-446 | Dispatch user, Warehouse operator, and Warehouse/Dispatch are used for the same operational role. | Permission seeds, route guards, navigation, UAT users, and audit actor labels may drift. | Use warehouse_operator from document 12 as the provisional machine role; other terms are display aliases only. | Security Lead + Product/UX Lead | M3 role seed; M10 dispatch UI | Open — role/display alias approval required |
 | DOC-CONFLICT-032 | Important | Pilot worker topology and queue ownership | 13_DevOps_Deployment_Operations.md:350-366; 18_Production_Setup_and_Runbook.md:158-177 | DevOps shows a shared worker_default, while the runbook lists separate worker-files/exports/notifications/maintenance services but permits sharing. | Health checks, queue routing, resource limits, scaling, and incident runbooks cannot identify the authoritative pilot topology. | Keep logical queues separate even if one pilot process consumes several; select concrete containers and health ownership before M1 Compose is frozen. | Operations Lead + Backend Lead | M1 Compose; M11/M12 operations | Open — topology decision required |
+| DOC-CONFLICT-034 | Critical | Audit `actor_type` vocabulary | 12_Security_RBAC_Audit.md §20.3; 04_Database_Schema.md §15.3 | Document 12 lists four actor types — `trader_user`, `admin_user`, `system_worker`, `system_maintenance` — while document 04 records a different set for the same column. The disagreement was never logged; it surfaced during M2 planning on 2026-08-02. | The audit actor vocabulary becomes a database CHECK constraint. An applied migration is never edited, and while a named CHECK can be altered later, values already written cannot be rewritten — so a divergent implementation permanently corrupts the audit trail's actor dimension. | **Approved resolution:** document 12's four values are canonical, matching the precedence already established for permission identifiers in DOC-CONFLICT-013. The CHECK is explicitly named so it stays alterable, and the four values cover both human identity domains plus the two non-human actor classes Phase 1A needs. Document 04's set is a documentation-only divergence to be corrected there. | Approval identity recorded without inferred organizational role; Security/Database leads own implementation evidence | M2 audit migration; M12 audit evidence | Resolved — Approved (2026-08-02) |
+| DOC-CONFLICT-035 | Critical | Audit column vocabulary and correlation columns | `FINANCIAL_INTEGRITY_BASELINE.md` §4; 04_Database_Schema.md §15.3 | The approved financial-integrity baseline requires `action`, `outcome`, `audit_schema_version` and three distinct columns for request, correlation and causation. Document 04 §15.3 names the column `event_type` and conflates request with correlation in a single `request_id`. | Conflating request and correlation makes it impossible to reconstruct which commands belonged to one business operation, which is exactly the reconstruction an audit exists for. A column-name divergence would also leave an index named after a column that does not exist. | **Approved resolution:** the approved baseline wins; document 04 §15.3 was not updated when the baseline was approved on 2026-07-20 and is the stale record. `idx_audit_event_time` is renamed `idx_audit_action_time` so the index name matches its column; `idx_audit_entity_time` and `idx_audit_actor_time` keep their document-04 names. | Approval identity recorded without inferred organizational role; Security/Database leads own implementation evidence | M2 audit migration; M11 audit views | Resolved — Approved (2026-08-02) |
 | DOC-CONFLICT-033 | Important | Crop review versus publication privacy approval | 08_Bank_File_and_Result_Processing.md:1054-1061; 21_UI_Design_System_and_Screen_Specification.md:1777-1787; 22_UX_User_Journeys_and_Interaction_Guide.md:1148-1164 | UI material can imply privacy review during crop creation, while bank-processing authority makes privacy review a publication guard. | A crop-quality acknowledgement may be incorrectly treated as authorization to disclose evidence to a trader. | Record crop quality/privacy observation separately from explicit publication privacy approval; only the latter authorizes trader-visible evidence. | Security Lead + Product/UX Lead | M8 crop; M9 publication | Open — event and UI contract required |
 
 ## Approved resolution evidence
@@ -74,13 +79,19 @@ technical, or organizational title is inferred from that evidence.
 
 | Severity | Open | Resolved — Approved | Total |
 |---|---:|---:|---:|
-| Critical | 0 | 10 | 10 |
+| Critical | 0 | 12 | 12 |
 | Important | 21 | 2 | 23 |
-| Total | 21 | 12 | 33 |
+| Total | 21 | 14 | 35 |
 
 Updated 2026-08-01: the last five Critical conflicts (001, 002, 003, 004, 013)
 were approved in the M0 decision session. No Critical conflict remains open. The
 21 Important conflicts each still block the work that depends on them.
+
+Updated 2026-08-02: M2 planning surfaced two audit-schema conflicts that had
+never been logged (034, 035). Both are Critical because they would have written
+a permanently wrong audit trail, and both were approved on the day they were
+recorded, so no Critical conflict is open. Their absence until now is the more
+useful finding: the register only contains conflicts somebody noticed.
 
 ## M0 blocking order
 
