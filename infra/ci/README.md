@@ -1,9 +1,36 @@
 # Provider-neutral CI contract
 
-The CI provider and artifact registry are still governance decisions. Any provider
-adapter must execute this contract without weakening or skipping a failing step.
-Provider-specific workflow files, repository owners, protected branches, and required
-status-check names must be configured after the private-repository host is selected.
+This contract stays provider-neutral. Any adapter must execute it without weakening
+or skipping a failing step.
+
+## Current adapter
+
+GitHub Actions, in `.github/workflows/m1-verify.yml`, implemented 2026-07-28. It
+runs every gate below on pull requests and on pushes to `main`. Tool versions are
+pinned in the workflow's `env` block and each downloaded binary is verified against
+its publisher's checksums file before use:
+
+| Purpose | Tool | Version |
+|---|---|---|
+| Repository secret scan | gitleaks-action | v2 |
+| Dependency and image vulnerabilities | Trivy | 0.72.0 |
+| SBOM per application image | Syft | 1.49.0 |
+| OpenAPI breaking-change detection | oasdiff | 1.26.1 |
+
+These choices are implemented, not yet approved: `TODO(governance)` markers in the
+workflow record what the security owner still has to confirm or replace. The
+artifact registry, protected-branch rules, required status-check names, and evidence
+retention remain open decisions.
+
+Reviewed vulnerability exceptions live in `.trivyignore.yaml`. Every entry carries a
+reason, an owner and an expiry, and the scans run with `--show-suppressed` so a
+suppressed finding is printed with its justification rather than disappearing.
+
+Image scans gate on findings that have a published fix. Base-image advisories the
+distribution has marked deferred or will-not-fix cannot be cleared by rebuilding, so
+they are recorded in the evidence artifact and counted in the log instead of failing
+the build. Dependency scanning stays strict, because the project chooses those
+versions.
 
 ## Toolchains
 
