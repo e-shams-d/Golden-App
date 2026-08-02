@@ -15,6 +15,10 @@
 /storage/
 /logs/
 /tmp/
+
+# Redacted container logs written by infra/scripts/verify-docker.sh when the
+# stack fails. Kept out of .local/ because Docker owns that directory as root.
+/.verify-diagnostics/
 *.log
 
 # Python

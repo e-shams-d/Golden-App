@@ -148,9 +148,63 @@ stack_started=0
 database_sentinel_created=0
 storage_sentinel_created=0
 persistence_sentinel=
+
+# Container logs are never printed: they can carry .env values, and this script
+# runs in CI where its output is world-readable to anyone with repository access.
+# On failure they are written to a gitignored directory instead, with every
+# credential this script knows about replaced first, so a failure is diagnosable
+# without a maintainer having to reproduce the whole stack locally to see why a
+# container was unhealthy.
+DIAGNOSTIC_SECRETS="POSTGRES_PASSWORD APP_DB_PASSWORD MIGRATION_DB_PASSWORD REDIS_PASSWORD OPERATIONS_HEALTH_TOKEN"
+
+capture_diagnostics() {
+    # Deliberately not under .local/. Compose bind-mounts the data root, so
+    # Docker creates .local as root, and the unprivileged user running this
+    # script then cannot add a sibling directory there. On a fresh CI runner
+    # .local does not exist yet and the write would succeed, which is the shape
+    # that passes in CI and fails on the machine that signs the acceptance off.
+    # The repository root is owned by whoever checked it out, so this always
+    # works. Repository-root relative because this runs in the shell;
+    # LOCAL_DATA_ROOT's ../../ prefix is resolved by Compose against the compose
+    # file instead and must not be copied here.
+    diagnostics_dir=".verify-diagnostics/$verification_project_name"
+    if ! mkdir -p "$diagnostics_dir" 2>/dev/null; then
+        printf '%s\n' "Could not create $diagnostics_dir; skipping log capture." >&2
+        return 0
+    fi
+
+    redaction_script=$(
+        for secret_name in $DIAGNOSTIC_SECRETS; do
+            secret_value=$(dotenv_value "$secret_name" 2>/dev/null) || continue
+            [ -n "$secret_value" ] || continue
+            printf 's|%s|<redacted:%s>|g\n' \
+                "$(printf '%s' "$secret_value" | sed 's/[|\\&]/\\&/g')" "$secret_name"
+        done
+    )
+
+    for service in $(compose config --services 2>/dev/null); do
+        target="$diagnostics_dir/$service.log"
+        if [ -n "$redaction_script" ]; then
+            compose logs --no-color --timestamps "$service" 2>&1 |
+                sed "$redaction_script" >"$target" 2>/dev/null || true
+        else
+            compose logs --no-color --timestamps "$service" >"$target" 2>&1 || true
+        fi
+    done
+    compose ps -a >"$diagnostics_dir/compose-ps.txt" 2>&1 || true
+
+    printf '%s\n' \
+        "Container logs written to $diagnostics_dir with known credentials redacted." >&2
+    printf '%s\n' \
+        "They are not printed here because this output is not a private channel." >&2
+}
+
 cleanup() {
     result=$?
     trap - EXIT HUP INT TERM
+    if [ "$result" -ne 0 ] && [ "$stack_started" -eq 1 ]; then
+        capture_diagnostics
+    fi
     if \
         [ "$stack_started" -eq 1 ] &&
         { [ "$database_sentinel_created" -eq 1 ] ||
