@@ -111,11 +111,21 @@ jobs:
       - name: M0 governance manifest hashes match their files
         run: python3 infra/scripts/m0_manifest.py
       # Fail here rather than forty minutes into the verifier, and keep Redis
-      # from becoming infrastructure nothing ever looks at.
+      # from becoming infrastructure nothing ever looks at. Deliberately a bare
+      # TCP check: redis-cli is not guaranteed on the runner image, and a gate
+      # that depends on an unpinned preinstalled tool fails for the wrong
+      # reason. Each container already runs its own client-side health command.
       - name: Backing services are reachable
+        shell: bash
         run: |
-          pg_isready -h 127.0.0.1 -p 5432 -U postgres
-          redis-cli -h 127.0.0.1 -p 6379 ping
+          for service in postgres:5432 redis:6379; do
+            port=${service##*:}
+            if ! timeout 5 bash -c "cat < /dev/null > /dev/tcp/127.0.0.1/${port}"; then
+              echo "${service%%:*} is not accepting connections on ${port}" >&2
+              exit 1
+            fi
+            echo "${service%%:*} reachable on ${port}"
+          done
       - name: Native verifier (exact-version, frozen, full gates)
         run: sh infra/scripts/verify-native.sh
       - name: Reject post-run drift (lockfiles, OpenAPI, generated types)
