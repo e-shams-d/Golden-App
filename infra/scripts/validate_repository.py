@@ -62,6 +62,11 @@ def main() -> int:
         "pnpm-lock.yaml",
         "infra/compose/compose.local.yml",
         "infra/postgres/init/010-create-runtime-roles.sh",
+        # The init hook is a thin wrapper over these; they are replayed on every
+        # stack start because docker-entrypoint-initdb.d never runs again on an
+        # existing volume. Deleting either silently stops provisioning.
+        "infra/postgres/bootstrap/010-required-extensions.sql",
+        "infra/postgres/bootstrap/020-runtime-roles.sql",
         "infra/nginx/nginx.conf",
         "services/backend/uv.lock",
         "services/backend/openapi/v1.json",

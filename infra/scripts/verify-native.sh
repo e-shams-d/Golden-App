@@ -78,11 +78,16 @@ printf '%s\n' "Running backend lint, type, and test gates..."
 uv run --project services/backend --frozen \
     ruff check --config services/backend/pyproject.toml \
     services/backend/app services/backend/alembic services/backend/scripts \
-    tests/backend infra/scripts/validate_repository.py infra/scripts/scan_secrets.py
+    tests/backend tests/integration \
+    infra/scripts/validate_repository.py infra/scripts/scan_secrets.py
 uv run --project services/backend --frozen \
     mypy --config-file services/backend/pyproject.toml services/backend/app
+# tests/integration is listed explicitly because an explicit path argument
+# overrides testpaths entirely. Those tests skip when
+# INTEGRATION_ADMIN_DATABASE_URL is unset, so a developer without PostgreSQL
+# still gets a clean run; CI sets it and they fail rather than skip.
 uv run --project services/backend --frozen \
-    pytest -c services/backend/pyproject.toml tests/backend
+    pytest -c services/backend/pyproject.toml tests/backend tests/integration
 
 printf '%s\n' "Installing the frozen frontend dependency graph..."
 pnpm install --frozen-lockfile

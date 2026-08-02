@@ -1,0 +1,105 @@
+"""Fixtures for tests that need a real PostgreSQL.
+
+These never run against SQLite. The behaviour under test — extensions, role
+privileges, constraint enforcement, transactional guarantees — either does not
+exist in SQLite or behaves differently there, so a passing SQLite run would be
+evidence of nothing.
+
+Configuration is one environment variable, `INTEGRATION_ADMIN_DATABASE_URL`,
+pointing at an identity allowed to create databases. Each test that asks for one
+gets a disposable database created from it and dropped afterwards.
+
+When that variable is absent the tests skip, so a developer without a database
+still gets a useful `verify-native` run. Skipping is dangerous in CI though: a
+silently skipped gate looks exactly like a passing one. So when `CI` is set the
+tests fail instead, and say what to configure.
+"""
+
+from __future__ import annotations
+
+import os
+import uuid
+from collections.abc import Iterator
+from urllib.parse import urlsplit, urlunsplit
+
+import psycopg
+import pytest
+
+ADMIN_URL_VARIABLE = "INTEGRATION_ADMIN_DATABASE_URL"
+
+
+def _admin_url() -> str | None:
+    value = os.environ.get(ADMIN_URL_VARIABLE, "").strip()
+    return value or None
+
+
+def _running_in_ci() -> bool:
+    return os.environ.get("CI", "").strip().lower() in {"1", "true", "yes"}
+
+
+@pytest.fixture(scope="session")
+def admin_url() -> str:
+    """The privileged connection string, or a skip/failure explaining its absence."""
+
+    value = _admin_url()
+    if value:
+        return value
+    message = (
+        f"{ADMIN_URL_VARIABLE} is not set, so no real PostgreSQL is available. "
+        "Set it to a connection string for an identity that may create databases, "
+        "for example "
+        "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
+    )
+    if _running_in_ci():
+        pytest.fail(
+            f"{message}\n"
+            "Failing rather than skipping: in CI a skipped integration gate is "
+            "indistinguishable from a passing one, and these tests are the only "
+            "check that the schema behaves against the database it targets."
+        )
+    pytest.skip(message)
+
+
+def _with_database(url: str, database: str) -> str:
+    parts = urlsplit(url)
+    return urlunsplit((parts.scheme, parts.netloc, f"/{database}", parts.query, parts.fragment))
+
+
+def _psycopg_url(url: str) -> str:
+    """psycopg does not accept SQLAlchemy's ``postgresql+psycopg://`` prefix."""
+
+    return url.replace("postgresql+psycopg://", "postgresql://", 1)
+
+
+@pytest.fixture
+def disposable_database(admin_url: str) -> Iterator[str]:
+    """Create an empty database for one test and drop it afterwards.
+
+    Empty means empty: no extensions and no schema beyond a fresh `public`. A
+    migration that assumes something already provisioned has to fail here, which
+    is the point of testing against a database rather than a developer's own.
+    """
+
+    name = f"itest_{uuid.uuid4().hex[:16]}"
+    admin = _psycopg_url(admin_url)
+
+    with psycopg.connect(admin, autocommit=True) as connection:
+        connection.execute(f'CREATE DATABASE "{name}"')
+    try:
+        yield _with_database(admin_url, name)
+    finally:
+        with psycopg.connect(admin, autocommit=True) as connection:
+            # Terminate stragglers first; a lingering session makes DROP fail and
+            # would leak a database per failed test run.
+            connection.execute(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                "WHERE datname = %s AND pid <> pg_backend_pid()",
+                (name,),
+            )
+            connection.execute(f'DROP DATABASE IF EXISTS "{name}"')
+
+
+@pytest.fixture
+def disposable_connection(disposable_database: str) -> Iterator[psycopg.Connection]:
+    with psycopg.connect(_psycopg_url(disposable_database), autocommit=True) as connection:
+        yield connection
