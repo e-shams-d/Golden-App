@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import os
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,7 @@ from app.observability.health import (  # noqa: E402
     ProbeResult,
     WorkerProbeResult,
 )
+from settings_environment import settings_environment_names  # noqa: E402
 
 
 class StaticProbe:
@@ -60,6 +62,29 @@ class FakeRuntime:
 
     def close(self) -> None:
         self.closed = True
+
+
+@pytest.fixture(autouse=True)
+def isolated_settings_environment(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Hide the ambient environment from every test in this directory.
+
+    These tests assert what Settings does with values they supply, so reading
+    the developer's shell makes the result depend on the machine. Worse, the
+    failure is actively misleading: Settings declares `validation_alias` with
+    `populate_by_name` and `extra="forbid"`, so when DATABASE_URL or REDIS_URL
+    is exported, the environment fills the field through its alias, the value
+    passed here by field name is left over, and pydantic reports it as an extra
+    input. Nineteen tests then fail claiming `redis_url` is not permitted on a
+    model that plainly declares it.
+
+    A shell with DATABASE_URL set is entirely ordinary, and the CI job that
+    provisions PostgreSQL sets these too, so this is not a hypothetical.
+    """
+
+    for name in list(os.environ):
+        if name.upper() in settings_environment_names():
+            monkeypatch.delenv(name, raising=False)
+    yield
 
 
 @pytest.fixture

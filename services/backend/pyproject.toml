@@ -43,7 +43,14 @@ constraint-dependencies = ["annotated-doc==0.0.4"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers"
-testpaths = ["../../tests/backend"]
+testpaths = ["../../tests/backend", "../../tests/integration"]
+# --strict-markers is on, so a marker must be registered before it is used or the
+# whole run errors. Integration tests need a real PostgreSQL: they skip locally
+# when INTEGRATION_ADMIN_DATABASE_URL is unset and fail in CI, because a silently
+# skipped gate there is indistinguishable from a passing one.
+markers = [
+    "integration: requires a real PostgreSQL reached through INTEGRATION_ADMIN_DATABASE_URL",
+]
 
 [tool.coverage.run]
 branch = true

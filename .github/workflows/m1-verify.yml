@@ -50,6 +50,39 @@ jobs:
     name: Native verification (gates 1-2)
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    # Persistence work needs a real PostgreSQL: extensions, privileges, and
+    # constraint enforcement either do not exist in SQLite or behave differently
+    # there, so a green SQLite run would be evidence of nothing. Redis joins it
+    # per the approved M2 decision, ahead of the queue and idempotency work that
+    # needs it, so the shape of this job stops changing every slice.
+    services:
+      postgres:
+        image: postgres:16.14-alpine3.24
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7.4.9-alpine3.21
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      # The integration tests create and drop a database per test, so this is a
+      # superuser-capable identity. It exists only inside this ephemeral job.
+      INTEGRATION_ADMIN_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+      REDIS_URL: redis://127.0.0.1:6379/0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -77,6 +110,22 @@ jobs:
       # M1 acceptance evidence and is not being altered here.
       - name: M0 governance manifest hashes match their files
         run: python3 infra/scripts/m0_manifest.py
+      # Fail here rather than forty minutes into the verifier, and keep Redis
+      # from becoming infrastructure nothing ever looks at. Deliberately a bare
+      # TCP check: redis-cli is not guaranteed on the runner image, and a gate
+      # that depends on an unpinned preinstalled tool fails for the wrong
+      # reason. Each container already runs its own client-side health command.
+      - name: Backing services are reachable
+        shell: bash
+        run: |
+          for service in postgres:5432 redis:6379; do
+            port=${service##*:}
+            if ! timeout 5 bash -c "cat < /dev/null > /dev/tcp/127.0.0.1/${port}"; then
+              echo "${service%%:*} is not accepting connections on ${port}" >&2
+              exit 1
+            fi
+            echo "${service%%:*} reachable on ${port}"
+          done
       - name: Native verifier (exact-version, frozen, full gates)
         run: sh infra/scripts/verify-native.sh
       - name: Reject post-run drift (lockfiles, OpenAPI, generated types)

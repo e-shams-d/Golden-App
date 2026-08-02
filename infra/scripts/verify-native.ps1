@@ -162,6 +162,7 @@ try {
             "services/backend/alembic",
             "services/backend/scripts",
             "tests/backend",
+            "tests/integration",
             "infra/scripts/validate_repository.py",
             "infra/scripts/scan_secrets.py"
         ) `
@@ -187,7 +188,11 @@ try {
             "pytest",
             "-c",
             "services/backend/pyproject.toml",
-            "tests/backend"
+            "tests/backend",
+            # Explicit, because an explicit path argument overrides testpaths
+            # entirely. These skip when INTEGRATION_ADMIN_DATABASE_URL is unset
+            # and fail rather than skip in CI, where it is always set.
+            "tests/integration"
         ) `
         -FailureMessage "Backend tests failed"
 
