@@ -174,6 +174,19 @@ jobs:
           EOF
       - name: Docker acceptance verifier
         run: sh infra/scripts/verify-docker.sh
+      # The verifier never prints container logs, so a failure here otherwise
+      # says only that a container was unhealthy and the cause has to be
+      # reproduced locally. On failure it writes them to .local/diagnostics with
+      # every known credential redacted; upload that so the reason is visible
+      # from the run itself.
+      - name: Capture stack diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-stack-diagnostics
+          path: .verify-diagnostics/
+          if-no-files-found: warn
+          retention-days: 7
       # Scanners run as runner-local pinned binaries. The repository forbids
       # handing any container access to the host Docker daemon socket, which a
       # containerized scanner would require to read locally built images.
