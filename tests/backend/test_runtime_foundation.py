@@ -1,20 +1,42 @@
 from __future__ import annotations
 
-from app.db.base import Base
+import app.db.models  # noqa: F401  # registers every mapped table on Base.metadata
+from app.db.base import Base, over_length_identifiers
 from app.workers.celery_app import create_celery_app
 from fastapi.testclient import TestClient
 
+EXPECTED_TABLES = frozenset(
+    {
+        "audit_logs",
+        "center_profile",
+        "idempotency_records",
+        "outbox_events",
+    }
+)
 
-def test_no_business_tables_are_mapped_yet() -> None:
-    """M2 slice 1a adds extensions and column conventions, not tables.
 
-    The head assertion that used to live here duplicated the literal from
-    `app.db.migrations`, so the two could only ever agree or go stale together.
-    `test_migration_heads.py` replaces it by resolving the heads from Alembic
-    itself, which is the thing the constant is supposed to track.
+def test_exactly_the_slice_one_tables_are_mapped() -> None:
+    """Pin the mapped set, so a table cannot arrive without a decision.
+
+    Every table here is a permanent migration and a governance commitment. An
+    accidental import bringing a half-finished model into `Base.metadata` would
+    otherwise reach autogenerate, and from there a migration, with nothing having
+    said so out loud.
     """
 
-    assert list(Base.metadata.tables) == []
+    assert frozenset(Base.metadata.tables) == EXPECTED_TABLES
+
+
+def test_no_identifier_would_be_silently_truncated() -> None:
+    """PostgreSQL truncates at 63 bytes without warning.
+
+    Two constraints on a wide table can collapse into the same name, and the
+    second CREATE then fails — or worse, succeeds against the wrong object.
+    `audit_logs` is wide enough for this to be a live risk rather than a
+    theoretical one.
+    """
+
+    assert over_length_identifiers() == []
 
 
 def test_celery_uses_named_utc_queues_and_no_authoritative_result_backend(

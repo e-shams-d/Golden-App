@@ -175,8 +175,23 @@ def test_the_three_handled_sqlstates_are_what_the_driver_actually_raises() -> No
     assert psycopg.errors.FeatureNotSupported("x").sqlstate in revision.UNAVAILABLE_SQLSTATES
 
 
-def test_expected_head_matches_the_revision_chain() -> None:
+def test_the_extension_revision_still_precedes_every_table() -> None:
+    """The extensions must be installed before anything can depend on them.
+
+    This revision was the head when it was written. It is not any more, so
+    asserting that would only pin how many revisions exist. What has to stay true
+    is its position: `gen_random_uuid()` is the primary-key default on every table
+    that follows, so a chain that reordered this revision would fail at the first
+    CREATE TABLE rather than anywhere near the cause.
+
+    `test_migration_heads.py` owns the head assertion, resolving it from Alembic
+    rather than from a literal repeated here.
+    """
+
     revision = load_revision()
 
     assert revision.down_revision == "20260720_0001"
-    assert frozenset({revision.revision}) == EXPECTED_MIGRATION_HEADS
+    assert revision.revision not in EXPECTED_MIGRATION_HEADS, (
+        "this revision creates extensions and no tables; if it is the head again, "
+        "the table revisions have been lost rather than this test being wrong"
+    )
