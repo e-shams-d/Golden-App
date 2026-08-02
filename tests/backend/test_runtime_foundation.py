@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 from app.db.base import Base
-from app.db.migrations import EXPECTED_MIGRATION_HEADS
 from app.workers.celery_app import create_celery_app
 from fastapi.testclient import TestClient
 
 
-def test_m1_has_no_business_tables() -> None:
+def test_no_business_tables_are_mapped_yet() -> None:
+    """M2 slice 1a adds extensions and column conventions, not tables.
+
+    The head assertion that used to live here duplicated the literal from
+    `app.db.migrations`, so the two could only ever agree or go stale together.
+    `test_migration_heads.py` replaces it by resolving the heads from Alembic
+    itself, which is the thing the constant is supposed to track.
+    """
+
     assert list(Base.metadata.tables) == []
-    assert frozenset({"20260720_0001"}) == EXPECTED_MIGRATION_HEADS
 
 
 def test_celery_uses_named_utc_queues_and_no_authoritative_result_backend(

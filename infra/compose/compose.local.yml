@@ -160,6 +160,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      db-bootstrap:
+        condition: service_completed_successfully
     networks:
       - data_net
 
@@ -254,12 +256,17 @@ services:
     volumes:
       - ${LOCAL_DATA_ROOT:-../../.local}/postgres:/var/lib/postgresql/data
       - ../postgres/init:/docker-entrypoint-initdb.d:ro
+      - ../postgres/bootstrap:/bootstrap:ro
     expose:
       - "5432"
     networks:
       - data_net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      # -h forces a TCP probe. Without it pg_isready answers on the Unix socket,
+      # which the entrypoint's temporary initdb server serves with
+      # listen_addresses='' -- so the service reports healthy while nothing is
+      # listening on 5432 yet.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -267,6 +274,65 @@ services:
     security_opt:
       - no-new-privileges:true
     logging: *default-logging
+
+  # Replayable provisioning. docker-entrypoint-initdb.d runs only when a data
+  # directory is first initialised, so anything placed there alone never reaches
+  # an existing volume -- including the acceptance clone's, which has survived
+  # every `compose down` since it was created. This one-shot replays the same
+  # idempotent SQL on every stack start, so a developer's existing database and a
+  # fresh CI runner follow the identical path.
+  db-bootstrap:
+    image: postgres:16.14-alpine3.24
+    user: "70:70"
+    restart: "no"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging: *default-logging
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${POSTGRES_USER:?POSTGRES_USER must be set in .env}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      PGDATABASE: ${POSTGRES_DB:?POSTGRES_DB must be set in .env}
+      APP_DB_USER: ${APP_DB_USER:?APP_DB_USER must be set in .env}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?APP_DB_PASSWORD must be set in .env}
+      MIGRATION_DB_USER: ${MIGRATION_DB_USER:?MIGRATION_DB_USER must be set in .env}
+      MIGRATION_DB_PASSWORD: ${MIGRATION_DB_PASSWORD:?MIGRATION_DB_PASSWORD must be set in .env}
+    volumes:
+      - ../postgres/bootstrap:/bootstrap:ro
+    tmpfs:
+      - /tmp:size=8m,uid=70,gid=70,mode=0700
+      - /var/lib/postgresql/data:size=1m,uid=70,gid=70,mode=0700
+    networks:
+      - data_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - sh
+      - -eu
+      - -c
+      - |
+        deadline=$$(( $$(date +%s) + 60 ))
+        until pg_isready --quiet --host "$$PGHOST" --port "$$PGPORT" \
+            --username "$$PGUSER" --dbname "$$PGDATABASE"; do
+          if [ "$$(date +%s)" -ge "$$deadline" ]; then
+            echo "PostgreSQL did not accept TCP connections within 60s." >&2
+            exit 1
+          fi
+          sleep 1
+        done
+        psql --set=ON_ERROR_STOP=1 --file /bootstrap/010-required-extensions.sql
+        psql --set=ON_ERROR_STOP=1 \
+          --set=database="$$PGDATABASE" \
+          --set=app_role="$$APP_DB_USER" \
+          --set=app_password="$$APP_DB_PASSWORD" \
+          --set=migration_role="$$MIGRATION_DB_USER" \
+          --set=migration_password="$$MIGRATION_DB_PASSWORD" \
+          --file /bootstrap/020-runtime-roles.sql
 
   redis:
     image: redis:7.4.9-alpine3.21
