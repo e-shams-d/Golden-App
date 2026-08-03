@@ -12,18 +12,23 @@ Two conventions live side by side and are never normalised by a shared helper:
 audit actions are dotted lowercase, outbox event types are PascalCase. A single
 normaliser would look tidy and would silently rewrite one of them at the M0
 freeze, which is the moment both must stay exactly as approved.
+
+This module holds the names and nothing else. It deliberately does **not** read
+the catalogue file. An earlier version resolved it as
+``Path(__file__).resolve().parents[4] / "docs" / ...``, which is correct in the
+repository and raises IndexError inside the container, where the package sits at
+``/app/app`` and has no fourth parent — and `docs/` is not shipped in the image
+anyway. The application crashed on import the moment a router pulled this in.
+
+The rule that prevents the next one: runtime code never reads a repository
+document. Checking these names against governance is a test's job, and
+`tests/backend/test_name_registry_and_errors.py` does it from the repository,
+where the file certainly exists.
 """
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
-from functools import lru_cache
-from pathlib import Path
-
-CATALOG_PATH = (
-    Path(__file__).resolve().parents[4] / "docs" / "governance" / "audit_outbox_catalog.yaml"
-)
 
 
 @dataclass(frozen=True)
@@ -70,23 +75,3 @@ RENAME_CENTER_PROFILE = CommandNames(
 )
 
 ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (RENAME_CENTER_PROFILE,)
-
-
-@lru_cache(maxsize=1)
-def catalog() -> dict[str, object]:
-    loaded: object = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
-    if not isinstance(loaded, dict):
-        raise ValueError(f"{CATALOG_PATH} does not contain a mapping")
-    return {str(key): value for key, value in loaded.items()}
-
-
-def catalogued_audit_actions() -> frozenset[str]:
-    actions = catalog()["audit_actions"]
-    assert isinstance(actions, list)
-    return frozenset(str(action) for action in actions)
-
-
-def catalogued_outbox_events() -> frozenset[str]:
-    events = catalog()["outbox_events"]
-    assert isinstance(events, list)
-    return frozenset(str(event) for event in events)

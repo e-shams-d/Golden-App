@@ -8,14 +8,38 @@ sweep plus a migration.
 
 from __future__ import annotations
 
+import json
+from functools import lru_cache
+from pathlib import Path
+
 import pytest
-from app.audit.registry import (
-    ALL_COMMAND_NAMES,
-    RENAME_CENTER_PROFILE,
-    CommandNames,
-    catalogued_audit_actions,
-    catalogued_outbox_events,
+from app.audit.registry import ALL_COMMAND_NAMES, RENAME_CENTER_PROFILE, CommandNames
+
+# Resolved from this test file, not from inside the package. The application must
+# never read a repository document — it is not shipped in the container image, and
+# the path arithmetic that reaches it is only valid in a source checkout.
+CATALOG_PATH = (
+    Path(__file__).resolve().parents[2] / "docs" / "governance" / "audit_outbox_catalog.yaml"
 )
+
+
+@lru_cache(maxsize=1)
+def catalog() -> dict[str, object]:
+    loaded: object = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+    assert isinstance(loaded, dict), f"{CATALOG_PATH} does not contain a mapping"
+    return {str(key): value for key, value in loaded.items()}
+
+
+def catalogued_audit_actions() -> frozenset[str]:
+    actions = catalog()["audit_actions"]
+    assert isinstance(actions, list)
+    return frozenset(str(action) for action in actions)
+
+
+def catalogued_outbox_events() -> frozenset[str]:
+    events = catalog()["outbox_events"]
+    assert isinstance(events, list)
+    return frozenset(str(event) for event in events)
 from app.core.errors import (
     AppError,
     BusinessRuleViolationError,
