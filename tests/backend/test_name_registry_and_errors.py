@@ -14,6 +14,15 @@ from pathlib import Path
 
 import pytest
 from app.audit.registry import ALL_COMMAND_NAMES, RENAME_CENTER_PROFILE, CommandNames
+from app.core.errors import (
+    AppError,
+    BusinessRuleViolationError,
+    IdempotencyKeyReusedError,
+    InvalidStateTransitionError,
+    NotFoundError,
+    PreconditionRequiredError,
+    VersionConflictError,
+)
 
 # Resolved from this test file, not from inside the package. The application must
 # never read a repository document — it is not shipped in the container image, and
@@ -40,15 +49,6 @@ def catalogued_outbox_events() -> frozenset[str]:
     events = catalog()["outbox_events"]
     assert isinstance(events, list)
     return frozenset(str(event) for event in events)
-from app.core.errors import (
-    AppError,
-    BusinessRuleViolationError,
-    IdempotencyKeyReusedError,
-    InvalidStateTransitionError,
-    NotFoundError,
-    PreconditionRequiredError,
-    VersionConflictError,
-)
 
 
 class TestNameRegistry:
