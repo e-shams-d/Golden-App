@@ -24,6 +24,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 import psycopg
 import pytest
+from alembic_runner import run_alembic
 
 ADMIN_URL_VARIABLE = "INTEGRATION_ADMIN_DATABASE_URL"
 
@@ -103,3 +104,62 @@ def disposable_database(admin_url: str) -> Iterator[str]:
 def disposable_connection(disposable_database: str) -> Iterator[psycopg.Connection]:
     with psycopg.connect(_psycopg_url(disposable_database), autocommit=True) as connection:
         yield connection
+
+
+@pytest.fixture(scope="module")
+def migrated_database(admin_url: str) -> Iterator[str]:
+    """One migrated database shared by a module's tests.
+
+    Module scope rather than function scope because `alembic upgrade head` costs
+    several seconds per run, and a constraint test that pays that to insert one
+    bad row would make the suite slow enough that people stop running it.
+
+    Sharing is safe here only because these tests assert rejections. A test that
+    commits rows must clean up after itself; `migrated_connection` below does it
+    unconditionally so forgetting is not possible.
+    """
+
+    name = f"itest_mig_{uuid.uuid4().hex[:12]}"
+    admin = _psycopg_url(admin_url)
+
+    with psycopg.connect(admin, autocommit=True) as connection:
+        connection.execute(f'CREATE DATABASE "{name}"')
+
+    url = _with_database(admin_url, name)
+    result = run_alembic(url, "upgrade", "head")
+    if result.returncode != 0:
+        with psycopg.connect(admin, autocommit=True) as connection:
+            connection.execute(f'DROP DATABASE IF EXISTS "{name}"')
+        pytest.fail(
+            "alembic upgrade head failed while preparing the shared test database.\n"
+            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
+
+    try:
+        yield url
+    finally:
+        with psycopg.connect(admin, autocommit=True) as connection:
+            connection.execute(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                "WHERE datname = %s AND pid <> pg_backend_pid()",
+                (name,),
+            )
+            connection.execute(f'DROP DATABASE IF EXISTS "{name}"')
+
+
+@pytest.fixture
+def migrated_connection(migrated_database: str) -> Iterator[psycopg.Connection]:
+    """A connection to the shared migrated database, emptied after every test.
+
+    Cleanup is DELETE rather than TRUNCATE: the app runtime role holds no TRUNCATE
+    privilege, and a fixture that only works as the owner would stop working the
+    moment these tests run under the identity they are meant to exercise.
+    """
+
+    with psycopg.connect(_psycopg_url(migrated_database), autocommit=True) as connection:
+        try:
+            yield connection
+        finally:
+            connection.rollback()
+            for table in ("audit_logs", "outbox_events", "idempotency_records", "center_profile"):
+                connection.execute(f"DELETE FROM {table}")

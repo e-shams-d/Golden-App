@@ -9,6 +9,11 @@ from app.core.config import load_settings
 from app.db.base import Base
 from sqlalchemy import engine_from_config, pool
 
+# Imported for the side effect of registering every mapped table on Base.metadata.
+# Without it autogenerate sees an empty model set and proposes dropping the whole
+# schema, which reviews as a small diff and is not one.
+import app.db.models  # noqa: F401  # isort: skip
+
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
