@@ -1,16 +1,19 @@
 # Reviewed vulnerability exceptions. Every entry needs a reason and an expiry
 # so it comes back for review instead of becoming permanent. Remove an entry as
 # soon as a fixed release reaches the dependency tree.
-vulnerabilities:
-  - id: CVE-2026-14257
-    statement: >-
-      brace-expansion 1.1.16 reaches the tree only through minimatch 3, which
-      only ESLint and its plugins depend on. The 1.x line has no fixed release
-      (1.1.16 is the newest), and the fix exists only in 5.0.8, four majors
-      above the API minimatch 3 expects, so forcing it would break linting.
-      The 5.x copy in the tree is already overridden to 5.0.8. Exposure is
-      limited to lint runs over the repository's own glob patterns on developer
-      and CI machines; no shipped container image contains this package.
-      Owner: @e-shams-d. Revisit when ESLint moves off minimatch 3 or a fixed
-      1.x release appears.
-    expired_at: 2026-10-31
+#
+# Empty, and that is the intended state.
+#
+# CVE-2026-14257 (brace-expansion) was carried here because the 1.x line had no
+# fixed release at all: the fix existed only four majors up, in an API minimatch
+# 3 cannot use. The entry said so, and said to revisit when a 1.x fix appeared.
+# 1.1.18 now exists, so both major lines are pinned to fixed releases in
+# pnpm-workspace.yaml and the exception is removed rather than extended. An
+# exception whose stated reason has expired is worse than none, because it still
+# reads as reviewed.
+#
+# CVE-2026-69152 was never added. It explicitly bypasses the CVE-2026-14257
+# mitigation, so the earlier fix stopped being sufficient and 5.0.8 became
+# affected again — an exception written against the superseded advisory would
+# have covered nothing while appearing to cover it.
+vulnerabilities: []
