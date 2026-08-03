@@ -33,12 +33,16 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
     schemas = schema["components"]["schemas"]
 
     assert len(operation_ids) == len(set(operation_ids))
+    # Every published operation is a contract other people generate clients from,
+    # so the set is pinned rather than counted. Adding one here is a deliberate
+    # act; `renameCenterProfile` is M2's exemplar command.
     assert set(operation_ids) == {
         "getHealthDependencies",
         "getHealthLiveness",
         "getHealthReadiness",
         "getHealthWorkers",
         "getReleaseMetadata",
+        "renameCenterProfile",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

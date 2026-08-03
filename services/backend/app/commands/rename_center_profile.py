@@ -77,12 +77,14 @@ def execute(
     """Run the command, or return what the first identical request produced."""
 
     name = _validate(command)
-    assert actor.actor_id is not None  # AuditActor rejects a human actor without one
 
     resolver = IdempotencyResolver(uow)
     claim = resolver.claim(
         actor_type=actor.actor_type,
-        actor_id=actor.actor_id,
+        # Not `actor.actor_id`: a system actor has none, and idempotency still
+        # needs a scope. See AuditActor.idempotency_scope_id for why the two
+        # columns differ.
+        actor_id=actor.idempotency_scope_id,
         operation=OPERATION,
         idempotency_key=idempotency_key,
         payload={
