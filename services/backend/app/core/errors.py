@@ -68,6 +68,82 @@ class BackgroundProcessingUnavailableError(AppError):
         )
 
 
+# The five below were reachable only by raising a bare StarletteHTTPException and
+# letting `_http_error` map the status. That works for the status code and loses
+# everything else: a command could not distinguish a stale version from a missing
+# precondition, and no handler could attach a field-level detail. Codes and
+# statuses match `docs/governance/api_error_catalog.yaml`.
+
+
+class IdempotencyKeyReusedError(AppError):
+    """Same key, different request. Never the same key with the same request.
+
+    Replaying an identical request is the feature; this is the case where a
+    client reused a key for different content, which would otherwise return the
+    first request's response for the second request's parameters.
+    """
+
+    DEFAULT_MESSAGE = "The idempotency key was used for a different request."
+
+    def __init__(self, message: str = DEFAULT_MESSAGE) -> None:
+        super().__init__("IDEMPOTENCY_KEY_REUSED", message, 409)
+
+
+class VersionConflictError(AppError):
+    """The caller's expected version is not the current one."""
+
+    def __init__(self, message: str = "The record changed after it was loaded.") -> None:
+        super().__init__("VERSION_CONFLICT", message, 412)
+
+
+class PreconditionRequiredError(AppError):
+    """A required If-Match or Idempotency-Key was absent.
+
+    Distinct from a stale precondition on purpose: 412 tells a client to reload
+    and retry, while 428 tells it that its request was never safe to begin with.
+    Collapsing them would have clients retrying a request that can only fail
+    again.
+    """
+
+    def __init__(self, header: str) -> None:
+        super().__init__(
+            "PRECONDITION_REQUIRED",
+            f"The {header} header is required for this command.",
+            428,
+            (ErrorDetail(field=header, reason="required"),),
+        )
+
+
+class InvalidStateTransitionError(AppError):
+    """The command is not permitted from the aggregate's current state."""
+
+    def __init__(self, message: str = "The command is not allowed from the current state.") -> None:
+        super().__init__("INVALID_STATE_TRANSITION", message, 400)
+
+
+class BusinessRuleViolationError(AppError):
+    """A domain rule refused the command."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__("BUSINESS_RULE_VIOLATION", message, 400)
+
+
+class NotFoundError(AppError):
+    """Missing, or deliberately hidden from this caller.
+
+    A sixth alongside the five the plan named, because the exemplar command needs
+    to distinguish a missing aggregate from a stale version and raising a bare
+    StarletteHTTPException would leave it unable to. The code and status are the
+    catalogue's.
+
+    The message never says which of the two it is: telling an unauthorised caller
+    that a resource exists is itself a disclosure.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("NOT_FOUND", "The requested resource was not found.", 404)
+
+
 def _response(error: AppError) -> JSONResponse:
     envelope = ErrorEnvelope(
         error=ErrorBody(
