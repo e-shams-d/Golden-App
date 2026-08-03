@@ -27,6 +27,11 @@ from app.db.models.audit_log import ACTOR_TYPES, CURRENT_AUDIT_SCHEMA_VERSION, A
 
 SYSTEM_ACTOR_TYPES = frozenset({"system_worker", "system_maintenance"})
 
+# A fixed namespace for deriving a stable scope ID for the non-human actors.
+# Constant forever: a change would make every existing system idempotency key
+# unreachable, so the second run of a maintenance command would execute again.
+SYSTEM_ACTOR_NAMESPACE = uuid.UUID("6f1b4c30-6f4a-5e2b-9a11-8c0d5f2e7a44")
+
 
 @dataclass(frozen=True)
 class AuditActor:
@@ -53,6 +58,26 @@ class AuditActor:
                 f"{self.actor_type} must carry an actor_id; an unattributed human "
                 "action is indistinguishable from a scheduled one"
             )
+
+    @property
+    def idempotency_scope_id(self) -> uuid.UUID:
+        """The value that scopes this actor's idempotency keys.
+
+        `idempotency_records.actor_id` is NOT NULL, while `audit_logs.actor_id` is
+        nullable — the difference is deliberate. Audit records that a system actor
+        has no identity to name; idempotency needs *something* to scope keys by,
+        or one caller's key could collide with another's and the second caller
+        would receive the first's stored response.
+
+        A system actor is not anonymous. It is a specific, named identity that
+        simply has no row in an identity table, because that table does not exist
+        until M3. Deriving a stable UUID from its type scopes its keys without
+        weakening the column or inventing a human.
+        """
+
+        if self.actor_id is not None:
+            return self.actor_id
+        return uuid.uuid5(SYSTEM_ACTOR_NAMESPACE, self.actor_type)
 
 
 @dataclass(frozen=True)

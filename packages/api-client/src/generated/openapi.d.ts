@@ -4,6 +4,9 @@
  */
 
 export interface paths {
+  "/api/v1/center-profile/rename": {
+    post: operations["renameCenterProfile"];
+  };
   "/api/v1/health/dependencies": {
     get: operations["getHealthDependencies"];
   };
@@ -23,6 +26,7 @@ export interface paths {
 
 export interface components {
   schemas: {
+    "CenterProfileResponse": { name: string; profile_id: string; record_version: number; replayed: boolean };
     "DependenciesResponse": { dependencies: { [key: string]: components["schemas"]["DependencyStatus"] }; status: "ok" | "degraded" };
     "DependencyStatus": { error_code?: string | null; last_success_at?: string | null; latency_ms: number; required: boolean; status: "ok" | "unavailable" };
     "ErrorBody": { code: string; details: Array<components["schemas"]["ErrorDetail"]>; message: string; request_id: string };
@@ -31,6 +35,7 @@ export interface components {
     "LivenessResponse": { service: string; status?: "alive"; version: string };
     "ReadinessResponse": { checks: { [key: string]: "ok" | "unavailable" }; status: "ready" | "not_ready" };
     "ReleaseResponse": { built_at: string | null; commit: string; environment: string; service: string; version: string };
+    "RenameCenterProfileRequest": { new_name: string; profile_id: string; reason?: string | null };
     "WorkerStatus": { active_job_count: number; last_heartbeat_at: string; name: string; queues: Array<string>; release_version: string; status: "running" | "stale" };
     "WorkersResponse": { workers: Array<components["schemas"]["WorkerStatus"]> };
   };
@@ -45,4 +50,5 @@ export interface operations {
   "getHealthReadiness": { responses: { "200": { content: { "application/json": components["schemas"]["ReadinessResponse"] } }; "503": { content: { "application/json": components["schemas"]["ReadinessResponse"] } } } };
   "getHealthWorkers": { security: Array<{ OperationsToken: Array<never> }>; responses: { "200": { content: { "application/json": components["schemas"]["WorkersResponse"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "503": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getReleaseMetadata": { responses: { "200": { content: { "application/json": components["schemas"]["ReleaseResponse"] } } } };
+  "renameCenterProfile": { parameters?: { header?: { "Idempotency-Key"?: string | null; "If-Match"?: string | null; "X-Correlation-Id"?: string | null } }; requestBody: { content: { "application/json": components["schemas"]["RenameCenterProfileRequest"] } }; security: Array<{ OperationsToken: Array<never> }>; responses: { "200": { content: { "application/json": components["schemas"]["CenterProfileResponse"] } }; "400": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "409": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "412": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "428": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
 }
