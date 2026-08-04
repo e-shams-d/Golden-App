@@ -34,6 +34,22 @@ ADMIN_URL_VARIABLE = "INTEGRATION_ADMIN_DATABASE_URL"
 MIGRATOR = "role_migrator"
 APP = "role_app"
 WORKER = "role_worker"
+READONLY = "role_readonly"
+BACKUP = "role_backup"
+
+ROLE_PASSWORD = "itest-password"
+
+
+def _role_names(suffix: str) -> dict[str, str]:
+    """Per-run role names. Roles are cluster-wide, so a leak must not collide."""
+
+    return {
+        "migration_role": f"{MIGRATOR}_{suffix}",
+        "app_role": f"{APP}_{suffix}",
+        "worker_role": f"{WORKER}_{suffix}",
+        "readonly_role": f"{READONLY}_{suffix}",
+        "backup_role": f"{BACKUP}_{suffix}",
+    }
 
 
 def _admin_url() -> str | None:
@@ -123,24 +139,16 @@ def provisioned_database(disposable_database: str, admin_url: str) -> Iterator[R
     """
 
     suffix = uuid.uuid4().hex[:10]
-    roles = {
-        "migration_role": f"{MIGRATOR}_{suffix}",
-        "app_role": f"{APP}_{suffix}",
-        "worker_role": f"{WORKER}_{suffix}",
-    }
-    password = "itest-password"
+    roles = _role_names(suffix)
+    password = ROLE_PASSWORD
     database = urlsplit(_psycopg_url(disposable_database)).path.lstrip("/")
 
     with psycopg.connect(_psycopg_url(disposable_database), autocommit=True) as connection:
         replay_all(
             connection,
             database=database,
-            migration_role=roles["migration_role"],
-            migration_password=password,
-            app_role=roles["app_role"],
-            app_password=password,
-            worker_role=roles["worker_role"],
-            worker_password=password,
+            **{f"{key.removesuffix('_role')}_password": password for key in roles},
+            **roles,
         )
 
     def as_role(role: str) -> str:
@@ -155,9 +163,13 @@ def provisioned_database(disposable_database: str, admin_url: str) -> Iterator[R
             migrator_url=as_role(roles["migration_role"]),
             app_url=as_role(roles["app_role"]),
             worker_url=as_role(roles["worker_role"]),
+            readonly_url=as_role(roles["readonly_role"]),
+            backup_url=as_role(roles["backup_role"]),
             migrator_role=roles["migration_role"],
             app_role=roles["app_role"],
             worker_role=roles["worker_role"],
+            readonly_role=roles["readonly_role"],
+            backup_role=roles["backup_role"],
         )
     finally:
         # Roles are cluster-wide and outlive the database, so dropping the
@@ -186,16 +198,50 @@ def migrated_database(admin_url: str) -> Iterator[str]:
     """
 
     name = f"itest_mig_{uuid.uuid4().hex[:12]}"
+    suffix = uuid.uuid4().hex[:10]
+    roles = _role_names(suffix)
     admin = _psycopg_url(admin_url)
 
     with psycopg.connect(admin, autocommit=True) as connection:
         connection.execute(f'CREATE DATABASE "{name}"')
 
     url = _with_database(admin_url, name)
-    result = run_alembic(url, "upgrade", "head")
-    if result.returncode != 0:
+
+    def teardown() -> None:
+        with psycopg.connect(_psycopg_url(url), autocommit=True) as connection:
+            for role in roles.values():
+                connection.execute(f'DROP OWNED BY "{role}" CASCADE')
         with psycopg.connect(admin, autocommit=True) as connection:
+            connection.execute(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                "WHERE datname = %s AND pid <> pg_backend_pid()",
+                (name,),
+            )
             connection.execute(f'DROP DATABASE IF EXISTS "{name}"')
+            for role in roles.values():
+                connection.execute(f'DROP ROLE IF EXISTS "{role}"')
+
+    # Provisioned before migrating, in that order, because that is the order the
+    # stack runs them in and migration 20260801_0005 grants against roles that
+    # must already exist. A fixture that migrated an unprovisioned database would
+    # be testing a sequence no deployment performs.
+    with psycopg.connect(_psycopg_url(url), autocommit=True) as connection:
+        replay_all(
+            connection,
+            database=name,
+            **{f"{key.removesuffix('_role')}_password": ROLE_PASSWORD for key in roles},
+            **roles,
+        )
+
+    result = run_alembic(
+        url,
+        "upgrade",
+        "head",
+        app_role=roles["app_role"],
+        worker_role=roles["worker_role"],
+    )
+    if result.returncode != 0:
+        teardown()
         pytest.fail(
             "alembic upgrade head failed while preparing the shared test database.\n"
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
@@ -204,13 +250,7 @@ def migrated_database(admin_url: str) -> Iterator[str]:
     try:
         yield url
     finally:
-        with psycopg.connect(admin, autocommit=True) as connection:
-            connection.execute(
-                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                "WHERE datname = %s AND pid <> pg_backend_pid()",
-                (name,),
-            )
-            connection.execute(f'DROP DATABASE IF EXISTS "{name}"')
+        teardown()
 
 
 @pytest.fixture

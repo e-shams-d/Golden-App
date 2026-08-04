@@ -76,6 +76,28 @@ class Settings(BaseSettings):
 
     database_url: SecretStr = Field(validation_alias="DATABASE_URL")
     redis_url: SecretStr = Field(validation_alias="REDIS_URL")
+
+    # Role names the *migrations* grant against. Read from the same variables the
+    # Compose stack already uses to build each service's connection string, via
+    # AliasChoices, so there is one source of truth per role rather than a second
+    # variable that can drift from the one the application actually connects as —
+    # which is the exact failure SEC-ROLE-000 exists to catch.
+    #
+    # Optional because the API and worker never need them; only a migration does.
+    # A migration that finds one unset fails loudly and names it, rather than
+    # skipping a grant and leaving the runtime to discover it.
+    app_db_role: str | None = Field(
+        default=None, validation_alias=AliasChoices("APP_DB_ROLE", "APP_DB_USER")
+    )
+    worker_db_role: str | None = Field(
+        default=None, validation_alias=AliasChoices("WORKER_DB_ROLE", "WORKER_DB_USER")
+    )
+    readonly_db_role: str | None = Field(
+        default=None, validation_alias=AliasChoices("READONLY_DB_ROLE", "READONLY_DB_USER")
+    )
+    backup_db_role: str | None = Field(
+        default=None, validation_alias=AliasChoices("BACKUP_DB_ROLE", "BACKUP_DB_USER")
+    )
     storage_backend: Literal["local"] = Field(
         default="local", validation_alias="STORAGE_BACKEND"
     )

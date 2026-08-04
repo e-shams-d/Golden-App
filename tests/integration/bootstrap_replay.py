@@ -49,9 +49,13 @@ class RuntimeIdentities:
     migrator_url: str
     app_url: str
     worker_url: str
+    readonly_url: str
+    backup_url: str
     migrator_role: str
     app_role: str
     worker_role: str
+    readonly_role: str
+    backup_role: str
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 BOOTSTRAP_DIR = REPOSITORY_ROOT / "infra" / "postgres" / "bootstrap"

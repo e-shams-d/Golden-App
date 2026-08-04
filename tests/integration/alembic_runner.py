@@ -17,12 +17,22 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 BACKEND_ROOT = REPOSITORY_ROOT / "services" / "backend"
 
 
-def run_alembic(database_url: str, *arguments: str) -> subprocess.CompletedProcess[str]:
+def run_alembic(
+    database_url: str,
+    *arguments: str,
+    app_role: str | None = None,
+    worker_role: str | None = None,
+) -> subprocess.CompletedProcess[str]:
     """Run an Alembic command against `database_url` from the backend project root.
 
     Settings resolve `env_file` against the working directory, so a repository-root
     .env is invisible from services/backend. Everything required is passed as real
     environment variables instead, which is how the container and CI supply them.
+
+    `app_role` and `worker_role` are what migration 20260801_0005 grants against.
+    They are optional here so a test that only needs the schema does not have to
+    provision roles, and that revision fails loudly when they are absent rather
+    than skipping the grant.
     """
 
     environment = {
@@ -37,6 +47,10 @@ def run_alembic(database_url: str, *arguments: str) -> subprocess.CompletedProce
         ),
         "RELEASE_COMMIT": os.environ.get("RELEASE_COMMIT", "0" * 40),
     }
+    if app_role:
+        environment["APP_DB_ROLE"] = app_role
+    if worker_role:
+        environment["WORKER_DB_ROLE"] = worker_role
     Path(environment["LOCAL_STORAGE_ROOT"]).mkdir(parents=True, exist_ok=True)
     return subprocess.run(
         [sys.executable, "-m", "alembic", *arguments],

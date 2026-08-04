@@ -31,6 +31,7 @@ from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from alembic_runner import run_alembic
 from sqlalchemy import create_engine
+from test_migrations_apply import SCHEMA_HEAD
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 BACKEND_ROOT = REPOSITORY_ROOT / "services" / "backend"
@@ -78,7 +79,9 @@ def schema_differences(database_url: str) -> list[object]:
 
 
 def test_migrated_database_matches_the_models_exactly(disposable_database: str) -> None:
-    assert run_alembic(disposable_database, "upgrade", "head").returncode == 0
+    # The schema head, not the full head: 20260801_0005 only grants privileges and
+    # needs provisioned roles, while what this file compares is table structure.
+    assert run_alembic(disposable_database, "upgrade", SCHEMA_HEAD).returncode == 0
 
     differences = schema_differences(disposable_database)
 
@@ -97,7 +100,9 @@ def test_every_expected_table_exists_after_upgrade(disposable_database: str) -> 
     compare an empty model set against an empty database and pass.
     """
 
-    assert run_alembic(disposable_database, "upgrade", "head").returncode == 0
+    # The schema head, not the full head: 20260801_0005 only grants privileges and
+    # needs provisioned roles, while what this file compares is table structure.
+    assert run_alembic(disposable_database, "upgrade", SCHEMA_HEAD).returncode == 0
 
     with psycopg.connect(
         disposable_database.replace("postgresql+psycopg://", "postgresql://", 1)
