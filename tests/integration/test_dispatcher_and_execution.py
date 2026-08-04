@@ -32,10 +32,22 @@ from app.workers.dispatcher import (  # noqa: E402
     outbox_lag,
 )
 from app.workers.execution import backoff_delay, decide_outcome, run_job  # noqa: E402
+from app.workers.tasks.maintenance import recover_stale_leases  # noqa: E402
 
 pytestmark = pytest.mark.integration
 
 QUEUE = "notifications"
+
+
+class _FakeRuntime:
+    """Only the attribute the maintenance sweep uses.
+
+    Constructing a real RuntimeServices here would open a Redis connection and a
+    Celery app for a function that touches neither.
+    """
+
+    def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
+        self.uow_factory = uow_factory
 
 
 def _sqlalchemy_url(url: str) -> str:
@@ -234,6 +246,104 @@ class TestOutboxLag:
         assert lag.pending == 0
         assert lag.oldest_pending_age_seconds is None
         assert lag.has_dead_letters is False
+
+
+class TestStaleLeaseRecovery:
+    """The sweep reports; it must not reset rows.
+
+    Resetting here would race the claim query, which already treats a stale lease
+    as claimable — two writers deciding the same row is free is precisely what the
+    lease exists to prevent.
+    """
+
+    def test_a_live_claim_is_not_counted_as_stale(
+        self, session_factory: sessionmaker[Session], uow_factory: UnitOfWorkFactory
+    ) -> None:
+        with session_factory() as session:
+            session.add(new_job(job_type="scan", queue_name=QUEUE))
+            session.commit()
+        with session_factory() as session:
+            claim_jobs(session, queue_name=QUEUE, worker_id="w1")
+            session.commit()
+
+        assert recover_stale_leases(_FakeRuntime(uow_factory)) == 0
+
+    def test_a_stale_claim_is_counted(
+        self, session_factory: sessionmaker[Session], uow_factory: UnitOfWorkFactory
+    ) -> None:
+        with session_factory() as session:
+            session.add(new_job(job_type="scan", queue_name=QUEUE))
+            session.commit()
+        with session_factory() as session:
+            claim_jobs(session, queue_name=QUEUE, worker_id="dead")
+            session.commit()
+        with session_factory() as session:
+            session.execute(
+                text("UPDATE processing_jobs SET heartbeat_at = now() - interval '30 minutes'")
+            )
+            session.commit()
+
+        assert recover_stale_leases(_FakeRuntime(uow_factory)) == 1
+
+    def test_the_sweep_does_not_modify_the_rows_it_counts(
+        self, session_factory: sessionmaker[Session], uow_factory: UnitOfWorkFactory
+    ) -> None:
+        """A read-only signal. If it wrote, it would race the claim query."""
+
+        with session_factory() as session:
+            session.add(new_job(job_type="scan", queue_name=QUEUE))
+            session.commit()
+        with session_factory() as session:
+            claim_jobs(session, queue_name=QUEUE, worker_id="dead")
+            session.commit()
+        with session_factory() as session:
+            session.execute(
+                text("UPDATE processing_jobs SET heartbeat_at = now() - interval '30 minutes'")
+            )
+            session.commit()
+
+        with session_factory() as session:
+            before = session.execute(
+                text("SELECT status, locked_by, attempt_count FROM processing_jobs")
+            ).one()
+
+        recover_stale_leases(_FakeRuntime(uow_factory))
+
+        with session_factory() as session:
+            after = session.execute(
+                text("SELECT status, locked_by, attempt_count FROM processing_jobs")
+            ).one()
+
+        assert tuple(before) == tuple(after), (
+            "the sweep changed the rows it was only meant to count, which races "
+            "the claim query for the same rows"
+        )
+
+    def test_a_stale_row_is_still_claimable_afterwards(
+        self, session_factory: sessionmaker[Session], uow_factory: UnitOfWorkFactory
+    ) -> None:
+        """The sweep observes; the claim query is what actually recovers the job."""
+
+        with session_factory() as session:
+            session.add(new_job(job_type="scan", queue_name=QUEUE))
+            session.commit()
+        with session_factory() as session:
+            claim_jobs(session, queue_name=QUEUE, worker_id="dead")
+            session.commit()
+        with session_factory() as session:
+            session.execute(
+                text("UPDATE processing_jobs SET heartbeat_at = now() - interval '30 minutes'")
+            )
+            session.commit()
+
+        recover_stale_leases(_FakeRuntime(uow_factory))
+
+        with session_factory() as session:
+            reclaimed = claim_jobs(session, queue_name=QUEUE, worker_id="live")
+            session.commit()
+
+        assert len(reclaimed) == 1
+        assert reclaimed[0].locked_by == "live"
 
 
 class TestRetryPolicy:
