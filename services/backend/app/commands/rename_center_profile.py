@@ -14,15 +14,13 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from typing import Any, cast
-
-from sqlalchemy import CursorResult, update
+from typing import Any
 
 from app.audit import AuditActor, AuditContext, AuditEntry, AuditWriter, OutboxMessage, OutboxWriter
 from app.audit.redaction import RedactionPolicy
 from app.audit.registry import RENAME_CENTER_PROFILE
-from app.core.errors import BusinessRuleViolationError, NotFoundError, VersionConflictError
-from app.core.time import utc_now
+from app.core.errors import BusinessRuleViolationError, NotFoundError
+from app.db.concurrency import compare_and_swap
 from app.db.models.center_profile import CenterProfile
 from app.db.unit_of_work import SqlAlchemyUnitOfWork
 from app.idempotency import IdempotencyResolver, key_hash
@@ -108,35 +106,18 @@ def execute(
         raise NotFoundError()
     previous_name = previous.name
 
-    # Compare-and-swap in the statement, never read-then-compare in Python. Under
-    # READ COMMITTED the row can change between the read above and a write, so a
-    # Python-side check would pass while writing over somebody else's update. The
-    # predicate and the affected-row count are what actually enforce the version.
-    # Cast because Session.execute is typed as returning Result, while a DML
-    # statement always yields a CursorResult. The row count is the enforcement
-    # here, so it must be read rather than assumed.
-    result = cast(
-        "CursorResult[Any]",
-        uow.session.execute(
-            update(CenterProfile)
-            .where(
-                CenterProfile.id == command.profile_id,
-                CenterProfile.record_version == command.expected_record_version,
-            )
-            .values(
-                name=name,
-                record_version=CenterProfile.record_version + 1,
-                updated_at=utc_now(),
-            )
-        ),
+    # Through the shared helper rather than an inline UPDATE. The comparison
+    # belongs in the statement that writes — a read followed by a check in Python
+    # loses the race under READ COMMITTED, and loses it silently. Keeping one
+    # implementation also means the next command cannot get it subtly different.
+    outcome = compare_and_swap(
+        uow.session,
+        CenterProfile,
+        entity_id=command.profile_id,
+        expected_version=command.expected_record_version,
+        values={"name": name},
     )
-
-    if result.rowcount != 1:
-        # Zero rows means the version did not match. The row exists — it was read
-        # a moment ago — so this is staleness, not absence.
-        raise VersionConflictError()
-
-    new_version = command.expected_record_version + 1
+    new_version = outcome.new_version
 
     AuditWriter(uow.session, policy).record(
         AuditEntry(
