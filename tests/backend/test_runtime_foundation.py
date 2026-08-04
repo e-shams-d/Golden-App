@@ -11,6 +11,7 @@ EXPECTED_TABLES = frozenset(
         "center_profile",
         "idempotency_records",
         "outbox_events",
+        "processing_jobs",
     }
 )
 

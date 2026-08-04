@@ -12,10 +12,12 @@ from app.db.models.audit_log import AuditLog
 from app.db.models.center_profile import CenterProfile
 from app.db.models.idempotency_record import IdempotencyRecord
 from app.db.models.outbox_event import OutboxEvent
+from app.db.models.processing_job import ProcessingJob
 
 __all__ = [
     "AuditLog",
     "CenterProfile",
     "IdempotencyRecord",
     "OutboxEvent",
+    "ProcessingJob",
 ]
