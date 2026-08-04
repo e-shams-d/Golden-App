@@ -30,8 +30,8 @@ import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from alembic_runner import run_alembic
+from bootstrap_replay import RuntimeIdentities
 from sqlalchemy import create_engine
-from test_migrations_apply import SCHEMA_HEAD
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 BACKEND_ROOT = REPOSITORY_ROOT / "services" / "backend"
@@ -78,12 +78,31 @@ def schema_differences(database_url: str) -> list[object]:
         engine.dispose()
 
 
-def test_migrated_database_matches_the_models_exactly(disposable_database: str) -> None:
-    # The schema head, not the full head: 20260801_0005 only grants privileges and
-    # needs provisioned roles, while what this file compares is table structure.
-    assert run_alembic(disposable_database, "upgrade", SCHEMA_HEAD).returncode == 0
+def _migrate_full_head(identities: RuntimeIdentities) -> None:
+    """Migrate to the real head, as a provisioned deployment does.
 
-    differences = schema_differences(disposable_database)
+    Stopping at a schema-only revision used to be enough. It is not any more:
+    20260801_0006 both creates a table and grants on it, so a comparison run
+    against an earlier revision would report the new table as missing from the
+    database and pass or fail for reasons unrelated to model drift.
+    """
+
+    result = run_alembic(
+        identities.migrator_url,
+        "upgrade",
+        "head",
+        app_role=identities.app_role,
+        worker_role=identities.worker_role,
+    )
+    assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+
+
+def test_migrated_database_matches_the_models_exactly(
+    provisioned_database: RuntimeIdentities,
+) -> None:
+    _migrate_full_head(provisioned_database)
+
+    differences = schema_differences(provisioned_database.owner_url)
 
     assert differences == [], (
         "Alembic autogenerate found differences between the migrated database and "
@@ -93,19 +112,19 @@ def test_migrated_database_matches_the_models_exactly(disposable_database: str) 
     )
 
 
-def test_every_expected_table_exists_after_upgrade(disposable_database: str) -> None:
+def test_every_expected_table_exists_after_upgrade(
+    provisioned_database: RuntimeIdentities,
+) -> None:
     """Guard the guard: an empty comparison proves nothing if nothing is mapped.
 
     If `app.db.models` stopped registering its tables, the comparison above would
     compare an empty model set against an empty database and pass.
     """
 
-    # The schema head, not the full head: 20260801_0005 only grants privileges and
-    # needs provisioned roles, while what this file compares is table structure.
-    assert run_alembic(disposable_database, "upgrade", SCHEMA_HEAD).returncode == 0
+    _migrate_full_head(provisioned_database)
 
     with psycopg.connect(
-        disposable_database.replace("postgresql+psycopg://", "postgresql://", 1)
+        provisioned_database.owner_url.replace("postgresql+psycopg://", "postgresql://", 1)
     ) as connection:
         rows = connection.execute(
             "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"

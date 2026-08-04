@@ -20,4 +20,6 @@ from __future__ import annotations
 # audit_logs, outbox_events and idempotency_records. 20260801_0005 grants
 # mutation per table now that the provisioning default is fail-closed, and
 # repairs volumes whose tables were created under the old four-verb default.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260801_0005"})
+# 20260801_0006 adds processing_jobs with the claim and reclaim indexes the
+# worker pattern requires.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260801_0006"})
