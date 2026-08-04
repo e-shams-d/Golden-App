@@ -157,6 +157,12 @@ services:
     environment:
       <<: *backend-environment
       DATABASE_URL: postgresql+psycopg://${MIGRATION_DB_USER:?MIGRATION_DB_USER must be set}:${MIGRATION_DB_PASSWORD:?MIGRATION_DB_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB must be set}
+      # Migration 20260801_0005 grants table privileges to these roles. They are
+      # the same values the backend and worker build their own DATABASE_URL from,
+      # so the grant names the identity that actually connects — passing a
+      # separate variable here would let the two drift apart silently.
+      APP_DB_USER: ${APP_DB_USER:?APP_DB_USER must be set}
+      WORKER_DB_USER: ${WORKER_DB_USER:?WORKER_DB_USER must be set}
     depends_on:
       postgres:
         condition: service_healthy
@@ -317,6 +323,10 @@ services:
       MIGRATION_DB_PASSWORD: ${MIGRATION_DB_PASSWORD:?MIGRATION_DB_PASSWORD must be set in .env}
       WORKER_DB_USER: ${WORKER_DB_USER:?WORKER_DB_USER must be set in .env}
       WORKER_DB_PASSWORD: ${WORKER_DB_PASSWORD:?WORKER_DB_PASSWORD must be set in .env}
+      READONLY_DB_USER: ${READONLY_DB_USER:?READONLY_DB_USER must be set in .env}
+      READONLY_DB_PASSWORD: ${READONLY_DB_PASSWORD:?READONLY_DB_PASSWORD must be set in .env}
+      BACKUP_DB_USER: ${BACKUP_DB_USER:?BACKUP_DB_USER must be set in .env}
+      BACKUP_DB_PASSWORD: ${BACKUP_DB_PASSWORD:?BACKUP_DB_PASSWORD must be set in .env}
     volumes:
       - ../postgres/bootstrap:/bootstrap:ro
     tmpfs:
@@ -350,6 +360,10 @@ services:
           --set=migration_password="$$MIGRATION_DB_PASSWORD" \
           --set=worker_role="$$WORKER_DB_USER" \
           --set=worker_password="$$WORKER_DB_PASSWORD" \
+          --set=readonly_role="$$READONLY_DB_USER" \
+          --set=readonly_password="$$READONLY_DB_PASSWORD" \
+          --set=backup_role="$$BACKUP_DB_USER" \
+          --set=backup_password="$$BACKUP_DB_PASSWORD" \
           --file /bootstrap/020-runtime-roles.sql
 
   redis:
