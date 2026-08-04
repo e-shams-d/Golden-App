@@ -108,6 +108,38 @@ class Settings(BaseSettings):
     dependency_timeout_seconds: float = Field(
         default=1.5, gt=0.05, le=10.0, validation_alias="DEPENDENCY_TIMEOUT_SECONDS"
     )
+
+    # How long a caller waits for a connection from the pool. Deliberately its own
+    # setting rather than reusing `dependency_timeout_seconds`, which is a health
+    # probe's patience. Binding the two meant adding an outbox poller alongside
+    # request traffic produced 500s at low concurrency, and the only remedy —
+    # raising the number — loosened every health probe at the same time.
+    db_pool_timeout_seconds: float = Field(
+        default=10.0, gt=0.1, le=60.0, validation_alias="DB_POOL_TIMEOUT_SECONDS"
+    )
+    db_pool_size: int = Field(default=5, ge=1, le=100, validation_alias="DB_POOL_SIZE")
+    db_max_overflow: int = Field(default=5, ge=0, le=100, validation_alias="DB_MAX_OVERFLOW")
+
+    # Per-connection limits, applied by the server rather than by the caller.
+    #
+    # None exist today, and their absence is not theoretical: `task_acks_late` is
+    # on and the worker prefetch is 1, so a task blocked forever on a contended
+    # `SELECT ... FOR UPDATE` is redelivered on top of locks the first attempt
+    # still holds. Each redelivery adds a waiter, and the queue drains only when
+    # something is killed by hand.
+    #
+    # `lock_timeout` is much shorter than `statement_timeout` on purpose: waiting
+    # on a lock is contention, which retrying resolves, while a long-running
+    # statement is usually a query that needs fixing rather than more patience.
+    statement_timeout_ms: int = Field(
+        default=30_000, ge=0, le=600_000, validation_alias="STATEMENT_TIMEOUT_MS"
+    )
+    lock_timeout_ms: int = Field(
+        default=5_000, ge=0, le=600_000, validation_alias="LOCK_TIMEOUT_MS"
+    )
+    idle_in_transaction_timeout_ms: int = Field(
+        default=60_000, ge=0, le=3_600_000, validation_alias="IDLE_IN_TRANSACTION_TIMEOUT_MS"
+    )
     worker_probe_timeout_seconds: float = Field(
         default=1.5, gt=0.05, le=10.0, validation_alias="WORKER_PROBE_TIMEOUT_SECONDS"
     )
