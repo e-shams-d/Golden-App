@@ -159,9 +159,16 @@ def main() -> int:
             if queue not in worker_body:
                 errors.append(f"worker does not consume configured queue: {queue}")
         postgres_body = service_block(services_text, "postgres")
-        for role_variable in ("APP_DB_USER", "MIGRATION_DB_USER"):
+        # Three identities, not two. The worker runs the same code as the API but
+        # is reached differently and fails differently; one shared login makes a
+        # row written by a scheduled task indistinguishable in pg_stat_activity
+        # from one written by a request.
+        for role_variable in ("APP_DB_USER", "MIGRATION_DB_USER", "WORKER_DB_USER"):
             if role_variable not in postgres_body:
                 errors.append(f"PostgreSQL runtime role separation missing: {role_variable}")
+        worker_body = service_block(services_text, "worker")
+        if "WORKER_DB_USER" not in worker_body:
+            errors.append("worker must connect as the worker role, not the application role")
 
     dockerfiles = [path for path in files if path.name.endswith("Dockerfile")]
     for path in dockerfiles:

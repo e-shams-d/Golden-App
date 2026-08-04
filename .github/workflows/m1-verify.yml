@@ -209,6 +209,7 @@ jobs:
               "POSTGRES_PASSWORD": gen(24),
               "APP_DB_PASSWORD": gen(24),
               "MIGRATION_DB_PASSWORD": gen(24),
+              "WORKER_DB_PASSWORD": gen(24),
               "REDIS_PASSWORD": gen(24),
               "OPERATIONS_HEALTH_TOKEN": gen(48),
           }

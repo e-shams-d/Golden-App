@@ -40,13 +40,21 @@ allowBuilds:
 
 # Security overrides lift transitive packages to their lowest fixed release.
 # Next.js ships postcss 8.4.31 (GHSA-r28c-9q8g-f849 path traversal) and
-# sharp 0.34.5 (GHSA-f88m-g3jw-g9cj libvips issues); minimatch 10 pulls
-# brace-expansion 5.0.7 (CVE-2026-14257 denial of service). sharp is held at
-# 0.35.1 rather than the 0.35.0 the advisory names, because 0.35.0 ships type
+# sharp 0.34.5 (GHSA-f88m-g3jw-g9cj libvips issues). sharp is held at 0.35.1
+# rather than the 0.35.0 the advisory names, because 0.35.0 ships type
 # declarations that TypeScript cannot resolve through its package exports and
 # breaks the Next.js image-optimizer types. Re-check these whenever Next.js is
 # upgraded, and drop an entry once upstream ships the fix.
+#
+# brace-expansion is pinned on both major lines it appears on. CVE-2026-69152
+# explicitly bypasses the CVE-2026-14257 mitigation, so the earlier fix is not
+# sufficient and 5.0.8 is affected again. The 1.x copy reaches the tree through
+# minimatch 3, which only ESLint depends on; it previously had no fixed release
+# at all, which is why it was carried as a documented exception. 1.1.18 now
+# exists, so the exception is removed rather than extended — an exception whose
+# stated reason has expired is worse than none, because it reads as reviewed.
 overrides:
   "postcss@<8.5.18": "8.5.18"
   "sharp@<0.35.1": "0.35.1"
-  "brace-expansion@^5.0.0": "5.0.8"
+  "brace-expansion@^5.0.0": "5.0.9"
+  "brace-expansion@^1.0.0": "1.1.18"
