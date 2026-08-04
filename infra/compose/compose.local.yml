@@ -273,6 +273,10 @@ services:
       MIGRATION_DB_PASSWORD: ${MIGRATION_DB_PASSWORD:?MIGRATION_DB_PASSWORD must be set in .env}
       WORKER_DB_USER: ${WORKER_DB_USER:?WORKER_DB_USER must be set in .env}
       WORKER_DB_PASSWORD: ${WORKER_DB_PASSWORD:?WORKER_DB_PASSWORD must be set in .env}
+      READONLY_DB_USER: ${READONLY_DB_USER:?READONLY_DB_USER must be set in .env}
+      READONLY_DB_PASSWORD: ${READONLY_DB_PASSWORD:?READONLY_DB_PASSWORD must be set in .env}
+      BACKUP_DB_USER: ${BACKUP_DB_USER:?BACKUP_DB_USER must be set in .env}
+      BACKUP_DB_PASSWORD: ${BACKUP_DB_PASSWORD:?BACKUP_DB_PASSWORD must be set in .env}
     volumes:
       - ${LOCAL_DATA_ROOT:-../../.local}/postgres:/var/lib/postgresql/data
       - ../postgres/init:/docker-entrypoint-initdb.d:ro

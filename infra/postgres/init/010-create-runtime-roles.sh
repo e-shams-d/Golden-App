@@ -8,6 +8,10 @@ set -eu
 : "${MIGRATION_DB_PASSWORD:?MIGRATION_DB_PASSWORD is required}"
 : "${WORKER_DB_USER:?WORKER_DB_USER is required}"
 : "${WORKER_DB_PASSWORD:?WORKER_DB_PASSWORD is required}"
+: "${READONLY_DB_USER:?READONLY_DB_USER is required}"
+: "${READONLY_DB_PASSWORD:?READONLY_DB_PASSWORD is required}"
+: "${BACKUP_DB_USER:?BACKUP_DB_USER is required}"
+: "${BACKUP_DB_PASSWORD:?BACKUP_DB_PASSWORD is required}"
 
 # The SQL lives in infra/postgres/bootstrap/ so the identical statements can be
 # replayed by the db-bootstrap one-shot on an already-initialised data directory,
@@ -25,4 +29,8 @@ psql \
   --set=migration_password="$MIGRATION_DB_PASSWORD" \
   --set=worker_role="$WORKER_DB_USER" \
   --set=worker_password="$WORKER_DB_PASSWORD" \
+  --set=readonly_role="$READONLY_DB_USER" \
+  --set=readonly_password="$READONLY_DB_PASSWORD" \
+  --set=backup_role="$BACKUP_DB_USER" \
+  --set=backup_password="$BACKUP_DB_PASSWORD" \
   --file /bootstrap/020-runtime-roles.sql
