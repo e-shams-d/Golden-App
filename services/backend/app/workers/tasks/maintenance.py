@@ -31,6 +31,38 @@ from app.workers.dispatcher import DispatchReport, dispatch_once
 logger = get_logger("workers.maintenance")
 
 
+def poll_outbox_task() -> dict[str, int]:
+    """The beat entry point. Named separately from `poll_outbox` on purpose.
+
+    Celery resolves a scheduled task by its dotted name, so the schedule and the
+    function are coupled by a string. Keeping the task a thin wrapper means the
+    logic can be called directly from a test without a broker, and the wrapper is
+    the only thing that needs the process runtime.
+
+    Delivery is a no-op for now: nothing consumes these events in Phase 1A, and a
+    dispatcher that invented a destination would publish somewhere no consumer
+    agreed to. Marking them published proves the loop and the claim, which is
+    what M2 owns.
+    """
+
+    from app.workers.runtime import worker_runtime
+
+    report = poll_outbox(worker_runtime(), lambda _event: None)
+    return {
+        "published": report.published,
+        "failed": report.failed,
+        "dead_lettered": report.dead_lettered,
+    }
+
+
+def recover_stale_leases_task() -> int:
+    """The beat entry point for the lease sweep."""
+
+    from app.workers.runtime import worker_runtime
+
+    return recover_stale_leases(worker_runtime())
+
+
 def worker_identity() -> str:
     """Who holds a claim, as it appears in the row and in pg_stat_activity."""
 

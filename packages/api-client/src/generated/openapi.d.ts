@@ -22,17 +22,23 @@ export interface paths {
   "/api/v1/meta/release": {
     get: operations["getReleaseMetadata"];
   };
+  "/api/v1/operations/background-processing": {
+    get: operations["getBackgroundProcessingHealth"];
+  };
 }
 
 export interface components {
   schemas: {
+    "BackgroundProcessingResponse": { jobs: components["schemas"]["JobHealth"]; needs_attention: boolean; outbox: components["schemas"]["OutboxHealth"] };
     "CenterProfileResponse": { name: string; profile_id: string; record_version: number; replayed: boolean };
     "DependenciesResponse": { dependencies: { [key: string]: components["schemas"]["DependencyStatus"] }; status: "ok" | "degraded" };
     "DependencyStatus": { error_code?: string | null; last_success_at?: string | null; latency_ms: number; required: boolean; status: "ok" | "unavailable" };
     "ErrorBody": { code: string; details: Array<components["schemas"]["ErrorDetail"]>; message: string; request_id: string };
     "ErrorDetail": { field?: string | null; reason: string };
     "ErrorEnvelope": { error: components["schemas"]["ErrorBody"] };
+    "JobHealth": { dead_lettered: number; fallback_to_manual: number; oldest_queued_age_seconds?: number | null; queued: number; retry_scheduled: number; running: number; stale_leases: number };
     "LivenessResponse": { service: string; status?: "alive"; version: string };
+    "OutboxHealth": { dead_lettered: number; oldest_pending_age_seconds?: number | null; pending: number };
     "ReadinessResponse": { checks: { [key: string]: "ok" | "unavailable" }; status: "ready" | "not_ready" };
     "ReleaseResponse": { built_at: string | null; commit: string; environment: string; service: string; version: string };
     "RenameCenterProfileRequest": { new_name: string; profile_id: string; reason?: string | null };
@@ -45,6 +51,7 @@ export interface components {
 }
 
 export interface operations {
+  "getBackgroundProcessingHealth": { security: Array<{ OperationsToken: Array<never> }>; responses: { "200": { content: { "application/json": components["schemas"]["BackgroundProcessingResponse"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getHealthDependencies": { security: Array<{ OperationsToken: Array<never> }>; responses: { "200": { content: { "application/json": components["schemas"]["DependenciesResponse"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getHealthLiveness": { responses: { "200": { content: { "application/json": components["schemas"]["LivenessResponse"] } } } };
   "getHealthReadiness": { responses: { "200": { content: { "application/json": components["schemas"]["ReadinessResponse"] } }; "503": { content: { "application/json": components["schemas"]["ReadinessResponse"] } } } };
