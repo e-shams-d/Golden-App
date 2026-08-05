@@ -1,6 +1,29 @@
 {
   "components": {
     "schemas": {
+      "BackgroundProcessingResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "jobs": {
+            "$ref": "#/components/schemas/JobHealth"
+          },
+          "needs_attention": {
+            "description": "True when anything here requires an operator: a dead letter, a job awaiting manual handling, or a stale lease.",
+            "title": "Needs Attention",
+            "type": "boolean"
+          },
+          "outbox": {
+            "$ref": "#/components/schemas/OutboxHealth"
+          }
+        },
+        "required": [
+          "outbox",
+          "jobs",
+          "needs_attention"
+        ],
+        "title": "BackgroundProcessingResponse",
+        "type": "object"
+      },
       "CenterProfileResponse": {
         "additionalProperties": false,
         "properties": {
@@ -178,6 +201,58 @@
         "title": "ErrorEnvelope",
         "type": "object"
       },
+      "JobHealth": {
+        "additionalProperties": false,
+        "properties": {
+          "dead_lettered": {
+            "title": "Dead Lettered",
+            "type": "integer"
+          },
+          "fallback_to_manual": {
+            "description": "Jobs whose handler is not retry-safe and which need a human decision.",
+            "title": "Fallback To Manual",
+            "type": "integer"
+          },
+          "oldest_queued_age_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Queued Age Seconds"
+          },
+          "queued": {
+            "title": "Queued",
+            "type": "integer"
+          },
+          "retry_scheduled": {
+            "title": "Retry Scheduled",
+            "type": "integer"
+          },
+          "running": {
+            "title": "Running",
+            "type": "integer"
+          },
+          "stale_leases": {
+            "description": "Running jobs whose claimant stopped heartbeating. A rising number means workers are dying rather than that jobs are slow.",
+            "title": "Stale Leases",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "queued",
+          "running",
+          "retry_scheduled",
+          "dead_lettered",
+          "fallback_to_manual",
+          "stale_leases"
+        ],
+        "title": "JobHealth",
+        "type": "object"
+      },
       "LivenessResponse": {
         "additionalProperties": false,
         "properties": {
@@ -201,6 +276,39 @@
           "version"
         ],
         "title": "LivenessResponse",
+        "type": "object"
+      },
+      "OutboxHealth": {
+        "additionalProperties": false,
+        "properties": {
+          "dead_lettered": {
+            "description": "Events that exhausted delivery attempts.",
+            "title": "Dead Lettered",
+            "type": "integer"
+          },
+          "oldest_pending_age_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Age of the oldest undelivered event. Null when none are pending.",
+            "title": "Oldest Pending Age Seconds"
+          },
+          "pending": {
+            "description": "Events awaiting or retrying delivery.",
+            "title": "Pending",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pending",
+          "dead_lettered"
+        ],
+        "title": "OutboxHealth",
         "type": "object"
       },
       "ReadinessResponse": {
@@ -719,6 +827,52 @@
         "summary": "Release",
         "tags": [
           "metadata"
+        ]
+      }
+    },
+    "/api/v1/operations/background-processing": {
+      "get": {
+        "operationId": "getBackgroundProcessingHealth",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackgroundProcessingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The operations token is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "security": [
+          {
+            "OperationsToken": []
+          }
+        ],
+        "summary": "Outbox lag, dead letters and job queue state",
+        "tags": [
+          "operations"
         ]
       }
     }
