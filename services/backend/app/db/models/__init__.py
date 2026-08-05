@@ -15,16 +15,20 @@ from app.db.models.identity import AdminUser, TraderUser
 from app.db.models.outbox_event import OutboxEvent
 from app.db.models.processing_job import ProcessingJob
 from app.db.models.rbac import AdminUserRole, Permission, Role, RolePermission
+from app.db.models.session_and_security import AuthEvent, AuthSession, RecentAuthContext
 
 __all__ = [
     "AdminUser",
     "AdminUserRole",
     "AuditLog",
+    "AuthEvent",
+    "AuthSession",
     "CenterProfile",
     "IdempotencyRecord",
     "OutboxEvent",
     "Permission",
     "ProcessingJob",
+    "RecentAuthContext",
     "Role",
     "RolePermission",
     "TraderUser",
