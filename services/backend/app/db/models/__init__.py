@@ -11,13 +11,21 @@ from __future__ import annotations
 from app.db.models.audit_log import AuditLog
 from app.db.models.center_profile import CenterProfile
 from app.db.models.idempotency_record import IdempotencyRecord
+from app.db.models.identity import AdminUser, TraderUser
 from app.db.models.outbox_event import OutboxEvent
 from app.db.models.processing_job import ProcessingJob
+from app.db.models.rbac import AdminUserRole, Permission, Role, RolePermission
 
 __all__ = [
+    "AdminUser",
+    "AdminUserRole",
     "AuditLog",
     "CenterProfile",
     "IdempotencyRecord",
     "OutboxEvent",
+    "Permission",
     "ProcessingJob",
+    "Role",
+    "RolePermission",
+    "TraderUser",
 ]
