@@ -26,4 +26,6 @@ from __future__ import annotations
 # roles, permissions and grants. Schema only; authentication behaviour is M3.
 # 20260801_0008 seeds the approved roles, permissions and default grants, with
 # the catalogue data inlined because docs/ is not shipped in the image.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260801_0008"})
+# 20260801_0009 adds auth_sessions, auth_events and recent_auth_contexts, and
+# attaches the audit foreign key slice 1 deferred until the table existed.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260801_0009"})

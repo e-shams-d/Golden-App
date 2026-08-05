@@ -25,7 +25,18 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, DateTime, Identity, Index, Integer, String, Text, func, text
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    ForeignKey,
+    Identity,
+    Index,
+    Integer,
+    String,
+    Text,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import INET, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -85,11 +96,18 @@ class AuditLog(Base):
     )
 
     session_id: Mapped[uuid.UUID | None] = mapped_column(PostgresUUID(as_uuid=True), nullable=True)
-    # The foreign key to recent_auth_contexts arrives with that table in slice 6.
-    # Declaring the column now keeps the audit contract stable; declaring the FK
-    # now would require a table this migration does not create.
+    # The column was declared in slice 1 without its foreign key, because the
+    # referenced table did not exist yet. Attached now by expand/contract, so
+    # rows written in between keep whatever they recorded and new ones are
+    # checked.
+    #
+    # No ON DELETE: a recent-auth context is never deleted while an audit row
+    # references it. Cascading would erase the evidence of which assurance
+    # authorised a change, which is the reason the column exists.
     recent_auth_context_id: Mapped[uuid.UUID | None] = mapped_column(
-        PostgresUUID(as_uuid=True), nullable=True
+        PostgresUUID(as_uuid=True),
+        ForeignKey("recent_auth_contexts.id"),
+        nullable=True,
     )
     # No CHECK: the assurance factor vocabulary is governed by the open ADR-009,
     # and enumerating it would decide it.
