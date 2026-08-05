@@ -70,6 +70,14 @@ ignore = ["B008"]
 
 [tool.ruff.lint.per-file-ignores]
 "alembic/versions/*.py" = ["UP007"]
+# RUF001 flags Unicode characters that look like ASCII. These two files exist to
+# handle exactly that: the hashing module maps Arabic forms to Persian ones so
+# the same name hashes alike whichever keyboard produced it, and its tests assert
+# that mapping. The characters are the subject, not a typo.
+# Globbed rather than path-anchored: ruff resolves these against the config
+# file's directory, and the linter is invoked from the repository root.
+"**/hashing.py" = ["RUF001"]
+"**/test_canonical_hashing.py" = ["RUF001"]
 
 [tool.mypy]
 python_version = "3.12"
