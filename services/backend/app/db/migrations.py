@@ -22,4 +22,8 @@ from __future__ import annotations
 # repairs volumes whose tables were created under the old four-verb default.
 # 20260801_0006 adds processing_jobs with the claim and reclaim indexes the
 # worker pattern requires.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260801_0006"})
+# 20260801_0007 adds the identity and RBAC schema: two separate identity tables,
+# roles, permissions and grants. Schema only; authentication behaviour is M3.
+# 20260801_0008 seeds the approved roles, permissions and default grants, with
+# the catalogue data inlined because docs/ is not shipped in the image.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260801_0008"})

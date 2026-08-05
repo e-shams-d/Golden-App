@@ -7,11 +7,17 @@ from fastapi.testclient import TestClient
 
 EXPECTED_TABLES = frozenset(
     {
+        "admin_user_roles",
+        "admin_users",
         "audit_logs",
         "center_profile",
         "idempotency_records",
         "outbox_events",
+        "permissions",
         "processing_jobs",
+        "role_permissions",
+        "roles",
+        "trader_users",
     }
 )
 

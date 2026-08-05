@@ -50,3 +50,7 @@ test-results/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Claude Code local permission allowlist. Machine-specific absolute paths, so it
+# is local state rather than shared project configuration.
+/.claude/
