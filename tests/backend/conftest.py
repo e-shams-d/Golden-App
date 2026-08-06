@@ -11,6 +11,10 @@ import pytest
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 BACKEND_ROOT = REPOSITORY_ROOT / "services" / "backend"
 sys.path.insert(0, str(BACKEND_ROOT))
+# `tests/fixtures` is shared by both suites. Inserted here rather than relying on a
+# parent conftest: rootdir is `services/backend`, which is not an ancestor of
+# `tests/`, so pytest never collects a conftest above these directories.
+sys.path.insert(0, str(REPOSITORY_ROOT / "tests" / "fixtures"))
 
 from app.core.config import Settings  # noqa: E402
 from app.core.release import ReleaseMetadata  # noqa: E402
