@@ -31,4 +31,7 @@ from __future__ import annotations
 # 20260801_0010 adds system_settings, feature_flags and the inert retention and
 # legal-hold structures, and seeds exactly the five Phase 1A flags. Nothing in it
 # deletes anything: ADR-005 is open, so structure exists and no executor does.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260801_0010"})
+# 20260801_0011 adds file_objects, file_links and file_derivations, with the two
+# conditional constraints that make "available" mean hashed and scanned clean, and
+# the first grants in this schema that withhold DELETE.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260801_0011"})
