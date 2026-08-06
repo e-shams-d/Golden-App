@@ -9,6 +9,10 @@ EXPECTED_TABLES = frozenset(
     {
         "admin_user_roles",
         "admin_users",
+        "system_settings",
+        "feature_flags",
+        "retention_policies",
+        "legal_holds",
         "auth_events",
         "auth_sessions",
         "recent_auth_contexts",
