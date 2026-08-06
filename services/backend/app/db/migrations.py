@@ -28,4 +28,7 @@ from __future__ import annotations
 # the catalogue data inlined because docs/ is not shipped in the image.
 # 20260801_0009 adds auth_sessions, auth_events and recent_auth_contexts, and
 # attaches the audit foreign key slice 1 deferred until the table existed.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260801_0009"})
+# 20260801_0010 adds system_settings, feature_flags and the inert retention and
+# legal-hold structures, and seeds exactly the five Phase 1A flags. Nothing in it
+# deletes anything: ADR-005 is open, so structure exists and no executor does.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260801_0010"})
