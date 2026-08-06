@@ -18,12 +18,20 @@ tests fail instead, and say what to configure.
 from __future__ import annotations
 
 import os
+import sys
 import uuid
 from collections.abc import Iterator
+from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 import psycopg
 import pytest
+
+# `tests/fixtures` is shared with the unit suite. Inserted here rather than relying
+# on a parent conftest: rootdir is `services/backend`, which is not an ancestor of
+# `tests/`, so pytest never collects a conftest above these directories.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "fixtures"))
+
 from alembic_runner import run_alembic
 from bootstrap_replay import RuntimeIdentities, replay_all
 
