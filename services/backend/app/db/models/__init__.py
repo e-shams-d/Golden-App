@@ -16,6 +16,7 @@ from app.db.models.configuration import (
     RetentionPolicy,
     SystemSetting,
 )
+from app.db.models.file_object import FileDerivation, FileLink, FileObject
 from app.db.models.idempotency_record import IdempotencyRecord
 from app.db.models.identity import AdminUser, TraderUser
 from app.db.models.outbox_event import OutboxEvent
@@ -31,6 +32,9 @@ __all__ = [
     "AuthSession",
     "CenterProfile",
     "FeatureFlag",
+    "FileDerivation",
+    "FileLink",
+    "FileObject",
     "IdempotencyRecord",
     "LegalHold",
     "OutboxEvent",
