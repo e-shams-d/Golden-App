@@ -1,0 +1,39 @@
+# Reviewed secret-scanner exceptions. Same rule as `.trivyignore.yaml`: every
+# entry states why it is safe, and it is written narrowly enough that a real
+# credential could not hide behind it.
+#
+# The default rule set is kept in full. This file only adds an allowlist; it
+# removes no rule and lowers no threshold.
+[extend]
+useDefault = true
+
+# `generic-api-key` fires on `key="…"` when the value has enough entropy, and the
+# word it keys on is `key`. In this codebase `key` is a *storage key* — the
+# server-generated path at which a file's bytes live — and the literals that
+# trigger it are synthetic paths in tests such as:
+#
+#     key="crop/2026/08/06/derived"
+#     key="bank_receipt/2026/08/06/orphan"
+#
+# Renaming the concept to dodge the regex is the wrong fix. `storage_key` is what
+# the column is called in `file_objects`, it is the term doc 04 uses, and every
+# test in slices 8 through 10 and in M4 will write more of them — so a rename
+# would have to be repeated forever and would make the tests read less like the
+# schema they exercise.
+#
+# The allowlist is therefore scoped by the **shape of the value**, not by file
+# path and not by rule. A date-partitioned path is what `generate_storage_key`
+# produces and is not a shape any credential takes: the pattern requires a
+# `/YYYY/MM/DD/` segment in the middle of the value. A leaked token, password or
+# private key cannot match it.
+#
+# Two things deliberately still catch a real secret in these same files:
+#   - every other gitleaks rule, none of which is touched here
+#   - `infra/scripts/scan_secrets.py`, which runs in its own gate over all
+#     Git-visible text files and knows nothing about this file
+[allowlist]
+description = "Synthetic date-partitioned storage keys in tests are paths, not credentials"
+regexTarget = "secret"
+regexes = [
+  '''^[A-Za-z0-9_]+/[0-9]{4}/[0-9]{2}/[0-9]{2}/[A-Za-z0-9._-]+$''',
+]
