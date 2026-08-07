@@ -78,8 +78,8 @@ printf '%s\n' "Running backend lint, type, and test gates..."
 uv run --project services/backend --frozen \
     ruff check --config services/backend/pyproject.toml \
     services/backend/app services/backend/alembic services/backend/scripts \
-    tests/backend tests/integration \
-    infra/scripts/validate_repository.py infra/scripts/scan_secrets.py
+    tests/backend tests/integration tests/fixtures \
+    infra/scripts/validate_repository.py infra/scripts/scan_secrets.py infra/scripts/m0_manifest.py
 uv run --project services/backend --frozen \
     mypy --config-file services/backend/pyproject.toml services/backend/app
 # tests/integration is listed explicitly because an explicit path argument
