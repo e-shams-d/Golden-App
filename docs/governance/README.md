@@ -1,7 +1,7 @@
 # M0 Governance Package
 
 Status: WORKING BASELINE — scoped decisions approved; M0 approvals still required
-Last validated: 2026-07-20
+Last validated: 2026-08-06
 
 This directory converts the implementation documents into reviewable and
 machine-readable M0 controls. Approved decision baselines govern their exact conflict
@@ -13,7 +13,7 @@ still blocked by another decision, conflict, catalogue, or milestone gate.
 1. M0_READINESS.md — current gate and remaining approvals.
 2. DOCUMENT_APPROVAL_REGISTER.md — document authority versus recorded owner sign-off.
 3. ../adr/ADR_INDEX.md — 33 canonical decisions: ADR-006, POL-005 and POL-002 Approved, 30 Open, plus alias mapping.
-4. CONFLICT_REGISTER.md — 35 conflicts: 14 Resolved/Approved and 21 Open, none Critical.
+4. CONFLICT_REGISTER.md — 43 conflicts: 20 Resolved/Approved and 23 Open, none Critical.
 5. status_catalog.yaml — 23 aggregates and 156 states from document 06.
 6. permission_catalog.yaml — 118 canonical permissions, roles, constraints, and API aliases.
 7. api_error_catalog.yaml — 25 stable API error codes.
@@ -33,10 +33,20 @@ still blocked by another decision, conflict, catalogue, or milestone gate.
 - command_catalog.yaml: provisional integration of documents 05, 06, 10, and 12.
 - audit_outbox_catalog.yaml: provisional catalogue from documents 10 and 12.
 
-All machine-readable catalogues remain `provisional_pending_m0_approval`; the scoped
-decisions recorded on 2026-07-20 do not approve the catalogues as a whole. Unknown
-permissions, aliases, statuses, or commands fail closed. A compatibility alias may not
-broaden authorization or silently change state.
+Two catalogues are approved and three are not, and the difference is load-bearing —
+a gate may only be written against an approved one:
+
+- `status_catalog.yaml` and `permission_catalog.yaml` carry
+  `catalog_status: approved_phase_1a`, approved 2026-08-01. Code may be gated
+  against them, and M2 does exactly that.
+- `api_error_catalog.yaml`, `command_catalog.yaml` and `audit_outbox_catalog.yaml`
+  remain `provisional_pending_m0_approval`. Their contents may be implemented, but a
+  CI gate asserting conformance to them would enforce an unapproved decision.
+
+Approval of a catalogue approves the identifiers it records, not every claim in the
+documents it was derived from. Unknown permissions, aliases, statuses, or commands
+fail closed regardless of approval state. A compatibility alias may not broaden
+authorization or silently change state.
 
 ## Validation result
 
