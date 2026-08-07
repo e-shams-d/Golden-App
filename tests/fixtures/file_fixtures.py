@@ -200,7 +200,7 @@ FIXTURES: tuple[FileFixture, ...] = (
             "@SUM(1+9),4000\r\n"
             "\t=1+1,5000\r\n"
             "\r=1+1,6000\r\n"
-        ).encode("utf-8"),
+        ).encode(),
         declared_mime="text/csv",
         detected_mime="text/csv",
         upload_filename="لیست-پرداخت.csv",

@@ -201,6 +201,25 @@
         "title": "ErrorEnvelope",
         "type": "object"
       },
+      "FeatureFlagState": {
+        "additionalProperties": false,
+        "properties": {
+          "flag_key": {
+            "title": "Flag Key",
+            "type": "string"
+          },
+          "is_enabled": {
+            "title": "Is Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "flag_key",
+          "is_enabled"
+        ],
+        "title": "FeatureFlagState",
+        "type": "object"
+      },
       "JobHealth": {
         "additionalProperties": false,
         "properties": {
@@ -341,6 +360,49 @@
         "title": "ReadinessResponse",
         "type": "object"
       },
+      "ReleaseEvidenceResponse": {
+        "additionalProperties": false,
+        "description": "The evidence fields only a running instance can answer for.\n\nEverything here is read from the process and its database, never from the\nrepository. The repository says what *should* be deployed; this says what *is*.\nFor release evidence only the second one is worth recording, and the difference\nbetween them is exactly the failure a release gate exists to catch.",
+        "properties": {
+          "commit": {
+            "title": "Commit",
+            "type": "string"
+          },
+          "environment": {
+            "title": "Environment",
+            "type": "string"
+          },
+          "feature_flags": {
+            "description": "Every flag row, so an evidence reader can see AI paths are disabled.",
+            "items": {
+              "$ref": "#/components/schemas/FeatureFlagState"
+            },
+            "title": "Feature Flags",
+            "type": "array"
+          },
+          "schema_state": {
+            "$ref": "#/components/schemas/SchemaState"
+          },
+          "service": {
+            "title": "Service",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service",
+          "version",
+          "commit",
+          "environment",
+          "schema_state",
+          "feature_flags"
+        ],
+        "title": "ReleaseEvidenceResponse",
+        "type": "object"
+      },
       "ReleaseResponse": {
         "additionalProperties": false,
         "properties": {
@@ -415,6 +477,39 @@
           "new_name"
         ],
         "title": "RenameCenterProfileRequest",
+        "type": "object"
+      },
+      "SchemaState": {
+        "additionalProperties": false,
+        "properties": {
+          "applied_revisions": {
+            "description": "Alembic heads this instance's database actually records.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Applied Revisions",
+            "type": "array"
+          },
+          "expected_revisions": {
+            "description": "Heads this build was compiled against, from app.db.migrations.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Expected Revisions",
+            "type": "array"
+          },
+          "matches": {
+            "description": "False means the instance is serving against a schema it was not built for.",
+            "title": "Matches",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "applied_revisions",
+          "expected_revisions",
+          "matches"
+        ],
+        "title": "SchemaState",
         "type": "object"
       },
       "WorkerStatus": {
@@ -871,6 +966,53 @@
           }
         ],
         "summary": "Outbox lag, dead letters and job queue state",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/api/v1/operations/release-evidence": {
+      "get": {
+        "description": "Additive path, for the same reason the background-processing path is one.\n\nFolding these fields into an existing response would change a published schema\nand trip the oasdiff breaking-change gate, whose waiver process is still an\nunresolved `TODO(governance)`.",
+        "operationId": "getReleaseEvidence",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseEvidenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The operations token is invalid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "security": [
+          {
+            "OperationsToken": []
+          }
+        ],
+        "summary": "Release identity, applied schema revision and flag snapshot",
         "tags": [
           "operations"
         ]

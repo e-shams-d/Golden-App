@@ -163,8 +163,10 @@ try {
             "services/backend/scripts",
             "tests/backend",
             "tests/integration",
+            "tests/fixtures",
             "infra/scripts/validate_repository.py",
-            "infra/scripts/scan_secrets.py"
+            "infra/scripts/scan_secrets.py",
+            "infra/scripts/m0_manifest.py"
         ) `
         -FailureMessage "Backend lint failed"
     Invoke-External -Command "uv" `

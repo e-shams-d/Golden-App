@@ -23,7 +23,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from app.api.contract import VALIDATION_ERROR_RESPONSE
 from app.api.dependencies import get_runtime, require_operations_access
@@ -31,6 +31,7 @@ from app.core.errors import ErrorEnvelope
 from app.core.runtime import RuntimeServices
 from app.core.time import utc_now
 from app.db.claiming import DEFAULT_LEASE
+from app.db.migrations import EXPECTED_MIGRATION_HEADS
 from app.db.models.processing_job import ProcessingJob
 from app.workers.dispatcher import outbox_lag
 
@@ -143,7 +144,99 @@ def background_processing_health(
         # Anything here means somebody has to look. Backlog alone does not:
         # a queue draining normally is not a fault.
         needs_attention=bool(
-            outbox.dead_lettered or jobs.dead_lettered or jobs.fallback_to_manual
+            outbox.dead_lettered
+            or jobs.dead_lettered
+            or jobs.fallback_to_manual
             or jobs.stale_leases
         ),
+    )
+
+
+class SchemaState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    applied_revisions: list[str] = Field(
+        description="Alembic heads this instance's database actually records."
+    )
+    expected_revisions: list[str] = Field(
+        description="Heads this build was compiled against, from app.db.migrations."
+    )
+    matches: bool = Field(
+        description="False means the instance is serving against a schema it was not built for."
+    )
+
+
+class FeatureFlagState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    flag_key: str
+    is_enabled: bool
+
+
+class ReleaseEvidenceResponse(BaseModel):
+    """The evidence fields only a running instance can answer for.
+
+    Everything here is read from the process and its database, never from the
+    repository. The repository says what *should* be deployed; this says what *is*.
+    For release evidence only the second one is worth recording, and the difference
+    between them is exactly the failure a release gate exists to catch.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    service: str
+    version: str
+    commit: str
+    environment: str
+    schema_state: SchemaState
+    feature_flags: list[FeatureFlagState] = Field(
+        description="Every flag row, so an evidence reader can see AI paths are disabled."
+    )
+
+
+@router.get(
+    "/release-evidence",
+    response_model=ReleaseEvidenceResponse,
+    operation_id="getReleaseEvidence",
+    summary="Release identity, applied schema revision and flag snapshot",
+    dependencies=[Depends(require_operations_access)],
+    responses={
+        403: {"model": ErrorEnvelope, "description": "The operations token is invalid."},
+        **VALIDATION_ERROR_RESPONSE,
+    },
+)
+def release_evidence(
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+) -> ReleaseEvidenceResponse:
+    """Additive path, for the same reason the background-processing path is one.
+
+    Folding these fields into an existing response would change a published schema
+    and trip the oasdiff breaking-change gate, whose waiver process is still an
+    unresolved `TODO(governance)`.
+    """
+
+    with runtime.engine.connect() as connection:
+        applied = sorted(
+            str(row[0])
+            for row in connection.execute(text("SELECT version_num FROM alembic_version"))
+        )
+        flags = [
+            FeatureFlagState(flag_key=str(row[0]), is_enabled=bool(row[1]))
+            for row in connection.execute(
+                text("SELECT flag_key, is_enabled FROM feature_flags ORDER BY flag_key")
+            )
+        ]
+
+    expected = sorted(EXPECTED_MIGRATION_HEADS)
+    return ReleaseEvidenceResponse(
+        service=runtime.release.service,
+        version=runtime.release.version,
+        commit=runtime.release.commit,
+        environment=runtime.release.environment,
+        schema_state=SchemaState(
+            applied_revisions=applied,
+            expected_revisions=expected,
+            matches=applied == expected,
+        ),
+        feature_flags=flags,
     )
