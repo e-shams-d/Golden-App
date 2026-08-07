@@ -18,6 +18,23 @@ A migration can create a check under a mangled name, or omit one entirely, and
 this comparison still reports no differences. `test_constraint_names.py` and
 `test_integrity_constraints.py` cover that gap — the first on names, the second
 on whether each check actually rejects what it claims to.
+
+Since 20260801_0012 the comparison also emits a warning that reads like a second
+blind spot and is not one:
+
+    Cannot correctly sort tables; there are unresolvable cycles between tables
+    "bank_profile_versions, bank_profiles" ... Foreign key constraints involving
+    these tables will not be considered
+
+`bank_profiles` points at its current version and every version points back at its
+profile, so the two cannot be topologically ordered. The sentence about foreign keys
+concerns that **ordering** — which constraints Alembic can place when it renders DDL
+— not which constraints it compares. `test_the_table_cycle_does_not_hide_a_missing_foreign_key`
+below proves the difference by dropping each foreign key on the cycle and requiring
+the comparison to notice, so the distinction is pinned rather than assumed. It also
+guards the future: the warning says it may become an error in a later SQLAlchemy, and
+if that release changes the comparison too, that test fails rather than the drift
+check going quiet.
 """
 
 from __future__ import annotations
@@ -31,7 +48,7 @@ from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from alembic_runner import run_alembic
 from bootstrap_replay import RuntimeIdentities
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 BACKEND_ROOT = REPOSITORY_ROOT / "services" / "backend"
@@ -109,6 +126,77 @@ def test_migrated_database_matches_the_models_exactly(
         "the models, which means a hand-written revision does not create what the "
         "model declares. Each entry below is a change autogenerate would emit:\n"
         + "\n".join(f"  {difference}" for difference in differences)
+    )
+
+
+# Every foreign key on the two tables that form the cycle, plus one that points into
+# the cycle from outside it, plus a control far away from it. The control is what says
+# the test itself works: if the drop-and-compare mechanism were broken, everything
+# would read as "not detected" and the test would look like it had found a disaster.
+CYCLE_FOREIGN_KEYS: tuple[tuple[str, str], ...] = (
+    ("bank_profiles", "fk_bank_profiles_current_version_within_profile"),
+    ("bank_profile_versions", "fk_bank_profile_versions_bank_profile_id_bank_profiles"),
+    (
+        "bank_profile_versions",
+        "fk_bank_profile_versions_created_by_admin_user_id_admin_users",
+    ),
+    ("bank_mappings", "fk_bank_mappings_bank_profile_version_id_bank_profile_versions"),
+    ("file_links", "fk_file_links_file_id_file_objects"),
+)
+
+
+def test_the_table_cycle_does_not_hide_a_missing_foreign_key(
+    provisioned_database: RuntimeIdentities,
+) -> None:
+    """The cycle warning is about sort order, not about what gets compared.
+
+    Proved rather than reasoned about: each foreign key is dropped inside a
+    transaction, the comparison is run on that same connection so it sees the
+    uncommitted change, and the transaction is rolled back. A drop the comparison
+    does not report would be a change a hand-written revision could make with the
+    drift check above staying green.
+
+    The `file_links` entry is the control. Without it, a broken drop-and-compare
+    would report every constraint as undetected and this test would read as a
+    catastrophic finding rather than as its own failure.
+    """
+
+    _migrate_full_head(provisioned_database)
+
+    engine = create_engine(_sqlalchemy_url(provisioned_database.owner_url))
+    undetected: list[str] = []
+    try:
+        for table, constraint in CYCLE_FOREIGN_KEYS:
+            with engine.connect() as connection:
+                transaction = connection.begin()
+                try:
+                    connection.execute(
+                        text(f'ALTER TABLE public."{table}" DROP CONSTRAINT "{constraint}"')
+                    )
+                    context = MigrationContext.configure(
+                        connection,
+                        opts={
+                            "compare_type": True,
+                            "compare_server_default": True,
+                            "include_object": _include_object,
+                        },
+                    )
+                    reported = [
+                        difference
+                        for difference in compare_metadata(context, Base.metadata)
+                        if "foreign" in str(difference).lower()
+                    ]
+                    if not reported:
+                        undetected.append(f"{table}.{constraint}")
+                finally:
+                    transaction.rollback()
+    finally:
+        engine.dispose()
+
+    assert undetected == [], (
+        "the comparison did not notice these foreign keys going missing, so a "
+        "revision could drop them with the drift check staying green:\n"
+        + "\n".join(f"  {entry}" for entry in undetected)
     )
 
 
