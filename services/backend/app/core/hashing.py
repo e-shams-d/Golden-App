@@ -78,9 +78,7 @@ def normalise_text(value: str) -> str:
     """One spelling per meaning, for text that reaches a hash."""
 
     normalised = unicodedata.normalize("NFC", value)
-    normalised = "".join(
-        character for character in normalised if character not in _ZERO_WIDTH
-    )
+    normalised = "".join(character for character in normalised if character not in _ZERO_WIDTH)
     normalised = normalised.translate(_PERSIAN_DIGITS).translate(_ARABIC_DIGITS)
     for source, target in _ARABIC_TO_PERSIAN.items():
         normalised = normalised.replace(source, target)
@@ -184,6 +182,31 @@ def content_hash(value: Any) -> str:
 
     digest = hashlib.new(_ALGORITHM, canonical_bytes(value)).hexdigest()
     return f"{CANONICAL_HASH_VERSION}:{digest}"
+
+
+def unversioned_digest(value: Any) -> str:
+    """A bare 64-character sha256 hex digest over the same canonical bytes.
+
+    Exists for the two columns doc 04 specifies as `CHAR(64)` —
+    `bank_profile_versions.config_hash` and `bank_mappings.sample_header_hash` —
+    which cannot hold the 67-character versioned form.
+
+    **The cost is real and is recorded here rather than discovered later.** Without
+    the `v1:` prefix, a digest computed under a changed canonical serialiser is
+    indistinguishable from one computed under the current serialiser. These two
+    columns are used for uniqueness — "this exact configuration already exists as a
+    version" — so after any change to `canonical_bytes` the stored values stop
+    comparing against freshly computed ones, and the uniqueness silently stops
+    catching duplicates. Changing the serialiser therefore requires a migration
+    that recomputes both columns for every row.
+
+    `tests/backend/test_canonical_hashing.py` pins this function's output for a
+    fixed input, so such a change breaks a test rather than passing quietly.
+
+    Everything else in the system uses `content_hash`, which carries its version.
+    """
+
+    return hashlib.new(_ALGORITHM, canonical_bytes(value)).hexdigest()
 
 
 def parameters_hash(parameters: Mapping[str, Any]) -> str:

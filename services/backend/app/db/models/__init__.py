@@ -9,6 +9,7 @@ one place is what keeps that from happening.
 from __future__ import annotations
 
 from app.db.models.audit_log import AuditLog
+from app.db.models.bank import BankAccount, BankMapping, BankProfile, BankProfileVersion
 from app.db.models.center_profile import CenterProfile
 from app.db.models.configuration import (
     FeatureFlag,
@@ -30,6 +31,10 @@ __all__ = [
     "AuditLog",
     "AuthEvent",
     "AuthSession",
+    "BankAccount",
+    "BankMapping",
+    "BankProfile",
+    "BankProfileVersion",
     "CenterProfile",
     "FeatureFlag",
     "FileDerivation",

@@ -26,9 +26,57 @@ from app.core.hashing import (
     hashes_match,
     normalise_text,
     parameters_hash,
+    unversioned_digest,
 )
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2] / "services" / "backend"
+
+
+class TestTheUnversionedDigest:
+    """The bare form used by the two `CHAR(64)` bank columns.
+
+    `bank_profile_versions.config_hash` and `bank_mappings.sample_header_hash` cannot
+    hold the 67-character versioned string, so they store a bare digest — and lose
+    the protection the `v1:` prefix provides. These tests are what replaces it: the
+    output is pinned, so a change to `canonical_bytes` fails here instead of silently
+    making every stored config hash stop matching a freshly computed one.
+    """
+
+    def test_the_digest_is_pinned_for_a_fixed_input(self) -> None:
+        """The pin. If this fails, `canonical_bytes` changed and both bank columns
+        need recomputing in a migration — which is the whole point of failing here."""
+
+        assert unversioned_digest({"cutoff": "16:00", "limit": 1000}) == (
+            "822a28ac31b38b11e2468ab897728d2a10465f2651f12f881c86454f0509123d"
+        )
+
+    def test_it_is_the_same_algorithm_as_the_versioned_form(self) -> None:
+        """One serialiser, two renderings. A second implementation would let the two
+        drift, and the drift would only show as a uniqueness that stopped working."""
+
+        value = {"a": 1, "b": [2, 3]}
+
+        assert content_hash(value) == f"{CANONICAL_HASH_VERSION}:{unversioned_digest(value)}"
+
+    def test_it_fits_the_database_constraint(self) -> None:
+        """`CHAR(64)` and `~ '^[0-9a-f]{64}$'`, checked here so a shape mismatch is a
+        unit failure rather than an integrity error at insert time."""
+
+        digest = unversioned_digest({"anything": True})
+
+        assert len(digest) == 64
+        assert digest == digest.lower()
+        assert all(character in "0123456789abcdef" for character in digest)
+
+    def test_key_order_still_does_not_matter(self) -> None:
+        assert unversioned_digest({"a": 1, "b": 2}) == unversioned_digest({"b": 2, "a": 1})
+
+    def test_it_refuses_what_the_versioned_form_refuses(self) -> None:
+        """Same canonicalisation, so same refusals: a float cannot become a config
+        hash any more than it can become a content hash."""
+
+        with pytest.raises(CanonicalisationError):
+            unversioned_digest({"limit": 1.5})
 
 
 class TestDeterminism:

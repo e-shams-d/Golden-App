@@ -34,4 +34,8 @@ from __future__ import annotations
 # 20260801_0011 adds file_objects, file_links and file_derivations, with the two
 # conditional constraints that make "available" mean hashed and scanned clean, and
 # the first grants in this schema that withhold DELETE.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260801_0011"})
+# 20260801_0012 adds the bank profile, version, account and mapping foundation:
+# a composite deferrable pointer, uniques scoped so an import and an export mapping
+# can share a template version, and column-level UPDATE on the immutable snapshots.
+# It seeds nothing — ADR-007 permits synthetic fixtures only.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260801_0012"})
