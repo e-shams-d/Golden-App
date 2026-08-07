@@ -2,7 +2,7 @@
   "schema_version": 1,
   "package": "gold_platform_m0_governance_working_baseline",
   "manifest_status": "working_baseline_scoped_decisions_approved_m0_incomplete",
-  "generated_on": "2026-08-01",
+  "generated_on": "2026-08-06",
   "hash_algorithm": "SHA-256",
   "manifest_self_included": false,
   "provenance": {
@@ -12,8 +12,8 @@
     "note": "This manifest establishes provenance from 2026-08-01 forward, not retroactively. Regeneration corrected 10 of the 17 entries. Two had drifted legitimately, because commit ae93d79 changed status_catalog.yaml and permission_catalog.yaml without regenerating the manifest. The other eight never matched their files at the commit that introduced this manifest, so the recorded chain did not hold from the start and no earlier citation can be treated as hash-backed. Recorded byte counts were also larger than the files they described, which is consistent with the manifest being generated mid-edit and never refreshed before the transfer commit."
   },
   "decision_state": {
-    "approval_date": "2026-07-20, extended 2026-08-01",
-    "approval_evidence": "workspace owner approval via conversation; legal name/organizational role not supplied. The 2026-08-01 additions were approved by the project owner Ehsan Shams and recorded on their instruction under the same convention.",
+    "approval_date": "2026-07-20, extended 2026-08-01 and 2026-08-06",
+    "approval_evidence": "workspace owner approval via conversation; legal name/organizational role not supplied. The 2026-08-01 additions were approved by the project owner Ehsan Shams and recorded on their instruction under the same convention. The 2026-08-06 additions (DOC-CONFLICT-036, 038, 039, 040, 041, 042) record decisions the project owner approved during M2 slices 1, 6, 8 and 9 by instructing that the implementation judgement be applied; each is already enforced by a migration, and recording them as Open would have claimed the questions were undecided while shipped code depended on the answers.",
     "approved_canonical_decisions": [
       "ADR-006",
       "POL-005 (Phase 1A: break-glass disabled)",
@@ -33,18 +33,24 @@
       "DOC-CONFLICT-021",
       "DOC-CONFLICT-022",
       "DOC-CONFLICT-034",
-      "DOC-CONFLICT-035"
+      "DOC-CONFLICT-035",
+      "DOC-CONFLICT-036",
+      "DOC-CONFLICT-038",
+      "DOC-CONFLICT-039",
+      "DOC-CONFLICT-040",
+      "DOC-CONFLICT-041",
+      "DOC-CONFLICT-042"
     ],
-    "total_conflicts": 35,
-    "open_conflicts": 21,
+    "total_conflicts": 43,
+    "open_conflicts": 23,
     "open_critical_conflicts": 0,
     "m0_exit_gate_complete": false,
     "owner_reapproval_of_this_baseline": "pending"
   },
   "summary": {
     "file_count": 17,
-    "total_bytes": 280649,
-    "total_lines": 3552
+    "total_bytes": 291147,
+    "total_lines": 3586
   },
   "validation": {
     "utf8": true,
@@ -106,9 +112,9 @@
     },
     {
       "path": "docs/governance/CONFLICT_REGISTER.md",
-      "bytes": 34731,
-      "lines": 109,
-      "sha256": "079c6fa43a8ae692e059e943d39d4e1aea5b524980493d6a38ef793c6571ff22"
+      "bytes": 44550,
+      "lines": 133,
+      "sha256": "b601d5ae30635c4e47630523f5c99f0d71a8e964281c6eadce9ff63363d7fcab"
     },
     {
       "path": "docs/governance/DOCUMENT_APPROVAL_REGISTER.md",
@@ -142,9 +148,9 @@
     },
     {
       "path": "docs/governance/README.md",
-      "bytes": 3548,
-      "lines": 64,
-      "sha256": "1a818d2deb063cdf34ef7785f3afd15a56cb1e5dc0f6d15d481b184056e0e1fe"
+      "bytes": 4098,
+      "lines": 74,
+      "sha256": "8815c500130c18f493a80bd32cb4526676985ede4b5691130e7286c782311fbf"
     },
     {
       "path": "docs/governance/REPOSITORY_BASELINE.md",
@@ -160,9 +166,9 @@
     },
     {
       "path": "docs/governance/TRACEABILITY_MATRIX.md",
-      "bytes": 37258,
+      "bytes": 37387,
       "lines": 58,
-      "sha256": "6851062f459ce585b572118e232e7e0ca26bba527ac591c2bf5e85f62e1ab2fe"
+      "sha256": "bced0dda99a6ca9048951a597b64de252d32ae1b74da171b8d681c0ae8543721"
     }
   ]
 }
