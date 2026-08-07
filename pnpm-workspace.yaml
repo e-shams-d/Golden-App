@@ -53,8 +53,16 @@ allowBuilds:
 # at all, which is why it was carried as a documented exception. 1.1.18 now
 # exists, so the exception is removed rather than extended — an exception whose
 # stated reason has expired is worse than none, because it reads as reviewed.
+# js-yaml is pinned to 4.3.1 for CVE-2026-59870 (GHSA-5p4m-2wfm-xmqj), quadratic
+# CPU consumption resolving `!!omap`. It reaches the tree only through
+# `@eslint/eslintrc`, so nothing this project ships parses untrusted YAML with it —
+# but a fixed release exists, and this repository pins rather than files an
+# exception whenever one does. The advisory also names 3.15.1 for the 3.x line;
+# that line is not in the tree, and pinning a version nothing installs would read
+# as coverage while providing none.
 overrides:
   "postcss@<8.5.18": "8.5.18"
   "sharp@<0.35.1": "0.35.1"
   "brace-expansion@^5.0.0": "5.0.9"
   "brace-expansion@^1.0.0": "1.1.18"
+  "js-yaml@<4.3.1": "4.3.1"
