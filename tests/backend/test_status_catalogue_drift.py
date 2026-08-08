@@ -56,14 +56,29 @@ STATUS_COLUMN_TO_AGGREGATE: dict[tuple[str, str], str] = {
     ("outbox_events", "status"): "outbox_event",
     ("processing_jobs", "status"): "processing_job",
     ("file_objects", "storage_status"): "file_object",
+    # Both identity tables carry the same aggregate: the login account is one
+    # lifecycle whether the human is staff or a trader contact. Moved here from
+    # DELIBERATELY_UNCONSTRAINED by 20260808_0013 when DOC-CONFLICT-037 was
+    # decided; the three names the catalogue records and the schema refuses are
+    # listed in APPROVED_OMISSIONS below.
+    ("admin_users", "status"): "identity_account",
+    ("trader_users", "status"): "identity_account",
 }
 
 # Columns whose aggregate the catalogue records with `canonical: null`, and which
 # therefore ship with no value CHECK at all. Listed with the reason so the next
 # person to reach for an enum finds the reason before the constraint.
 DELIBERATELY_UNCONSTRAINED: dict[tuple[str, str], str] = {
-    ("admin_users", "status"): "identity_account — DOC-CONFLICT-037 is Open",
-    ("trader_users", "status"): "identity_account — DOC-CONFLICT-037 is Open",
+    # The catalogue holds one `trader` aggregate carrying document 06's single
+    # five-state machine, plus `blocked` and `approved` as unresolved aliases it
+    # says in terms must not be collapsed without policy approval. Document 04
+    # splits the same idea across two columns whose values do not partition that
+    # set. Enumerating either here would answer, from a migration, whether
+    # `blocked` folds into `suspended` and whether `approved` maps to `active` —
+    # which DOC-CONFLICT-024 assigns to M5's trader lifecycle. M3 decides the
+    # structure (three axes, no stored projection), not the values.
+    ("traders", "operational_status"): "trader — DOC-CONFLICT-024 values are M5",
+    ("traders", "approval_status"): "trader — DOC-CONFLICT-024 values are M5",
     ("bank_profile_versions", "status"): "bank_profile_version — catalogue records canonical: null",
     ("bank_mappings", "status"): "bank_mapping — catalogue records canonical: null",
     ("idempotency_records", "status"): "idempotency_record — catalogue records canonical: null",
@@ -78,6 +93,13 @@ DELIBERATELY_UNCONSTRAINED: dict[tuple[str, str], str] = {
 # DOC-CONFLICT-036 from a renumbered DOC-CONFLICT-136.
 APPROVED_OMISSIONS: dict[tuple[str, str], str] = {
     ("file_object", "deleted_by_policy"): "DOC-CONFLICT-036",
+    # The three names DOC-CONFLICT-037 refuses. The catalogue keeps recording all
+    # seven because seven is what the documents say; the schema permits four. Each
+    # rejection is a value the register's row must name, which is what makes the
+    # reason reviewable rather than a comment in a migration nobody re-reads.
+    ("identity_account", "locked"): "DOC-CONFLICT-037",
+    ("identity_account", "pending"): "DOC-CONFLICT-037",
+    ("identity_account", "inactive"): "DOC-CONFLICT-037",
 }
 
 _IN_CLAUSE = re.compile(r"^\s*(\w+)\s+IN\s*\((.*)\)\s*$", re.S)
@@ -221,8 +243,13 @@ def test_a_deliberate_omission_is_recorded_as_a_conflict(catalogue: dict[str, An
                 f"{conflict_id} authorises omitting {value!r} but reads {status!r}, so "
                 "the schema is enforcing an undecided narrowing"
             )
-            assert value in row, (
-                f"{conflict_id} is cited for the {value!r} omission but does not mention it"
+            # As a delimited token, not a substring. A bare `value in row` reads
+            # `locked` out of `locked_until` and `pending` out of `pending_approval`,
+            # so a row could authorise refusing a value while never discussing it —
+            # which a negative control demonstrated on exactly those two names.
+            assert re.search(rf"(?<![a-z_]){re.escape(value)}(?![a-z_])", row), (
+                f"{conflict_id} is cited for the {value!r} omission but does not mention it "
+                "as a word of its own"
             )
 
 

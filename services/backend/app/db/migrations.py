@@ -38,4 +38,10 @@ from __future__ import annotations
 # a composite deferrable pointer, uniques scoped so an import and an export mapping
 # can share a template version, and column-level UPDATE on the immutable snapshots.
 # It seeds nothing — ADR-007 permits synthetic fixtures only.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260801_0012"})
+# 20260808_0013 opens M3: it adds `traders`, hangs `trader_users.trader_id` off it
+# NOT NULL, and corrects two things M2 left. The primary-contact index was keyed on
+# `is_primary` because `trader_id` did not exist, which made it a system-wide
+# singleton rather than one primary per business; it is rebuilt on `trader_id` under
+# the name doc 04 gives it. And the identity `status` columns gain the value CHECK
+# DOC-CONFLICT-037 reserved until the account lifecycle was decided.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260808_0013"})

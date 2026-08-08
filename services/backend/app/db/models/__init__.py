@@ -24,6 +24,7 @@ from app.db.models.outbox_event import OutboxEvent
 from app.db.models.processing_job import ProcessingJob
 from app.db.models.rbac import AdminUserRole, Permission, Role, RolePermission
 from app.db.models.session_and_security import AuthEvent, AuthSession, RecentAuthContext
+from app.db.models.trader import Trader
 
 __all__ = [
     "AdminUser",
@@ -50,5 +51,6 @@ __all__ = [
     "Role",
     "RolePermission",
     "SystemSetting",
+    "Trader",
     "TraderUser",
 ]

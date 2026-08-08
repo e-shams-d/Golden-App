@@ -63,9 +63,22 @@ def actual_constraint_names(connection: psycopg.Connection, table_name: str) -> 
     return {row[0] for row in rows}
 
 
-@pytest.mark.parametrize(
-    "table_name", ["audit_logs", "outbox_events", "idempotency_records", "center_profile"]
-)
+# Extended by 20260808_0013 to cover the identity tables and the trader business.
+# Their absence was a real gap: `ck_admin_users_status`, `ck_trader_users_status` and
+# the corrected primary-contact index are exactly the kind of named object this gate
+# exists to prove present, and nothing was comparing them.
+COVERED_TABLES = [
+    "audit_logs",
+    "outbox_events",
+    "idempotency_records",
+    "center_profile",
+    "admin_users",
+    "trader_users",
+    "traders",
+]
+
+
+@pytest.mark.parametrize("table_name", COVERED_TABLES)
 def test_declared_constraints_all_exist_under_their_declared_names(
     migrated_connection: psycopg.Connection, table_name: str
 ) -> None:
@@ -80,9 +93,7 @@ def test_declared_constraints_all_exist_under_their_declared_names(
     )
 
 
-@pytest.mark.parametrize(
-    "table_name", ["audit_logs", "outbox_events", "idempotency_records", "center_profile"]
-)
+@pytest.mark.parametrize("table_name", COVERED_TABLES)
 def test_no_constraint_name_was_truncated(
     migrated_connection: psycopg.Connection, table_name: str
 ) -> None:
@@ -94,9 +105,7 @@ def test_no_constraint_name_was_truncated(
     """
 
     actual = actual_constraint_names(migrated_connection, table_name)
-    at_the_limit = [
-        name for name in actual if len(name.encode("utf-8")) >= MAX_IDENTIFIER_BYTES
-    ]
+    at_the_limit = [name for name in actual if len(name.encode("utf-8")) >= MAX_IDENTIFIER_BYTES]
 
     assert at_the_limit == [], (
         f"{table_name} has constraint names at or over PostgreSQL's {MAX_IDENTIFIER_BYTES}-byte "
