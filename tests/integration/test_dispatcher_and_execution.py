@@ -1,8 +1,10 @@
-"""AUD-OUTBOX-004..007 and JOB-RETRY-001: what happens after the commit.
+"""AUD-OUTBOX-004..007, JOB-RETRY-001 and JOB-CRASH-001: what happens after the commit.
 
 The properties here are all about failure, so every test drives a real one. A
 dispatcher that only ever succeeds proves nothing about the case that matters —
 a notification failing after money has moved.
+
+Covers: OPS-REDIS-001.
 """
 
 from __future__ import annotations

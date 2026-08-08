@@ -3,6 +3,8 @@
 Every rule here is from the approved MONEY_TIME_CONTRACT, and every test names
 the failure it prevents rather than the rule it restates — the rules are already
 written down, and a test that repeats them adds nothing.
+
+Covers: API-MONEY-001, UT-MONEY-001, UT-MONEY-011, UT-MONEY-012.
 """
 
 from __future__ import annotations

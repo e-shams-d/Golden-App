@@ -12,6 +12,8 @@ task runs in another process minutes later.
 
 So dispatch goes through the after-commit hook registry. These tests drive both
 orders against a real database and assert what each one can see.
+
+Covers: SVC-ATOMIC-001.
 """
 
 from __future__ import annotations

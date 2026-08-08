@@ -75,11 +75,19 @@ else
 fi
 
 printf '%s\n' "Running backend lint, type, and test gates..."
+# The target list lives in one file that this script and verify-native.ps1 both
+# read. It used to be written out in each, and the two drifted without either
+# reporting anything — see the comment at the top of that file.
+lint_targets=$(grep -vE '^\s*(#|$)' infra/verification/lint_targets.txt | tr '\n' ' ')
+if [ -z "$lint_targets" ]; then
+    printf '%s\n' "infra/verification/lint_targets.txt is empty or unreadable." >&2
+    exit 1
+fi
+# Unquoted on purpose: the file is a list of paths and word splitting is how they
+# become separate arguments.
+# shellcheck disable=SC2086
 uv run --project services/backend --frozen \
-    ruff check --config services/backend/pyproject.toml \
-    services/backend/app services/backend/alembic services/backend/scripts \
-    tests/backend tests/integration tests/fixtures \
-    infra/scripts/validate_repository.py infra/scripts/scan_secrets.py infra/scripts/m0_manifest.py
+    ruff check --config services/backend/pyproject.toml $lint_targets
 uv run --project services/backend --frozen \
     mypy --config-file services/backend/pyproject.toml services/backend/app
 # tests/integration is listed explicitly because an explicit path argument

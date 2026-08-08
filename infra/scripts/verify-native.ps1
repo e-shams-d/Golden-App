@@ -148,8 +148,17 @@ try {
     }
 
     Write-Host "Running backend lint, type, and test gates..."
+    # Read from the same file verify-native.sh reads. The list used to be written
+    # out in both scripts and they drifted silently — see the comment at the top of
+    # infra/verification/lint_targets.txt.
+    $lintTargets = Get-Content -Path "infra/verification/lint_targets.txt" |
+        Where-Object { $_.Trim() -ne "" -and -not $_.Trim().StartsWith("#") } |
+        ForEach-Object { $_.Trim() }
+    if ($lintTargets.Count -eq 0) {
+        throw "infra/verification/lint_targets.txt is empty or unreadable."
+    }
     Invoke-External -Command "uv" `
-        -Arguments @(
+        -Arguments (@(
             "run",
             "--project",
             "services/backend",
@@ -157,17 +166,8 @@ try {
             "ruff",
             "check",
             "--config",
-            "services/backend/pyproject.toml",
-            "services/backend/app",
-            "services/backend/alembic",
-            "services/backend/scripts",
-            "tests/backend",
-            "tests/integration",
-            "tests/fixtures",
-            "infra/scripts/validate_repository.py",
-            "infra/scripts/scan_secrets.py",
-            "infra/scripts/m0_manifest.py"
-        ) `
+            "services/backend/pyproject.toml"
+        ) + $lintTargets) `
         -FailureMessage "Backend lint failed"
     Invoke-External -Command "uv" `
         -Arguments @(

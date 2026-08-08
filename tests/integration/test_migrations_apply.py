@@ -16,6 +16,8 @@ So the virgin-database tests stop at the schema head (`20260801_0004`), and the
 grant revision is exercised on a provisioned database. A third test pins what
 happens when someone runs the full head without provisioning — it must fail with
 a message naming the missing configuration, not skip the grant.
+
+Covers: DB-MIG-001, DB-MIG-002, DB-MIG-003.
 """
 
 from __future__ import annotations

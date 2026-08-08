@@ -10,6 +10,8 @@ worker prefetch is 1, so a task blocked forever on a contended
 `SELECT ... FOR UPDATE` is redelivered on top of the locks the first attempt
 still holds. Each redelivery adds a waiter; the queue drains only when someone
 kills a backend by hand.
+
+Covers: DB-TIMEOUT-001, OPS-POOL-001.
 """
 
 from __future__ import annotations

@@ -4,6 +4,8 @@ This is the property the whole slice exists for, and it is not observable
 without a real transaction: a stubbed session would let all three "succeed"
 independently. So each test drives a real commit or a real rollback and then
 reconnects on a different session to see what actually became durable.
+
+Covers: AUD-ROLLBACK-001, SVC-ATOMIC-001.
 """
 
 from __future__ import annotations

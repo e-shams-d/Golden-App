@@ -11,6 +11,8 @@ migration role** — not as the owner — because `ALTER DEFAULT PRIVILEGES FOR 
 <migrator>` only applies to tables that role creates. Migrating as the owner
 would produce tables no default privilege touched, and the grant assertions
 below would be measuring an empty ACL.
+
+Covers: SEC-ROLE-004.
 """
 
 from __future__ import annotations
