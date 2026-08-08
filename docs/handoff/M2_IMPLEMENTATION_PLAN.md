@@ -428,7 +428,7 @@ Docker verifier for a reason that looks unrelated.
 
 `04_Database_Schema.md:90-99` §3.2 lists *recommended* role names. Those names appear nowhere else in
 the repository. The identities the application actually connects as are operator-chosen environment
-values: `infra/postgres/init/010-create-runtime-roles.sh:15-17` binds `app_role`/`migration_role` to
+values: `infra/postgres/init/010-create-runtime-roles.sh:26-29` binds `app_role`/`migration_role` to
 `$APP_DB_USER`/`$MIGRATION_DB_USER`; `.env.example:13` and `:15` set them to `gold_app` and
 `gold_migrator`; `infra/compose/compose.local.yml:117` builds the backend `DATABASE_URL` from
 `${APP_DB_USER}` and `:159` the migrate one-shot from `${MIGRATION_DB_USER}`; the worker and
@@ -437,7 +437,7 @@ exist and the worker connects as the app role**.
 
 A migration that issues `REVOKE UPDATE, DELETE ON audit_logs FROM platform_app`, and a test that
 connects `AS platform_app`, would constrain a role nothing connects as. Meanwhile
-`010-create-runtime-roles.sh:41-42` has already registered
+`infra/postgres/init/010-create-runtime-roles.sh` (as of M1) has already registered
 `ALTER DEFAULT PRIVILEGES FOR ROLE :"migration_role" IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO :"app_role"`,
 so `audit_logs` — which does not exist yet — will receive UPDATE and DELETE for the real app role at
 creation time. The M2 evidence gate would pass while being false.
@@ -467,8 +467,9 @@ read-only, backup. Password/credential provisioning stays outside the migration,
 provisioning step run under the migrator identity that reads passwords from the environment.
 
 **Correction of the inherited default privilege, plus repair of what it already granted.** The
-`ALTER DEFAULT PRIVILEGES` at `010-create-runtime-roles.sh:41-42` is replaced by a narrowed default
-plus an explicit per-table grant convention, so later append-only tables (`auth_events` in slice 6,
+`ALTER DEFAULT PRIVILEGES` in `infra/postgres/init/010-create-runtime-roles.sh` (as of M1) is replaced by a narrowed default
+(now `infra/postgres/bootstrap/020-runtime-roles.sql:95-98`) plus an explicit per-table grant
+convention, so later append-only tables (`auth_events` in slice 6,
 approval tables in M7) cannot silently inherit UPDATE/DELETE. Corrected default privileges do **not**
 undo grants already materialised, so the migration additionally issues explicit `REVOKE` statements
 for the real migrator→app pair on every existing table, covering volumes where init already ran.
@@ -487,7 +488,7 @@ runtime roles**, because the governed procedures ADR-005/OPS-005 would authorise
 
 **Schema ownership separation asserted.** The app role owns nothing, cannot CREATE/ALTER/DROP, holds
 USAGE only on `public` (the bootstrap already does `REVOKE CREATE ON SCHEMA public FROM PUBLIC` at
-`010-create-runtime-roles.sh:19`), and cannot bypass, drop or alter a database-enforceable guard —
+`infra/postgres/bootstrap/020-runtime-roles.sql:24`), and cannot bypass, drop or alter a database-enforceable guard —
 the precondition that makes the M7 finalizer≠approver constraint non-bypassable.
 
 **Per-transaction safety limits.** `statement_timeout`, `lock_timeout`,
@@ -1611,7 +1612,7 @@ records.
 |---|---|---|
 | 1, 2 | The draft renamed the audit table to `audit_events` with no recorded conflict, against `04_Database_Schema.md:1436`, `:278`, `:1847`, `05_API_Specification.md:729` and `10_Backend_Implementation_Guide.md:570`, while recording six lesser divergences — and applied migrations can never be edited. | Table is `audit_logs`; UoW attribute is `uow.audit_logs`; doc-04 index names retained; only the **column** vocabulary diverges, recorded as new conflict (g) in slice 10 with the `idx_audit_action_time` rename stated. Sections 2.2, 2.3 b, 4.1. |
 | 3 | Slice 7 seeded `break_glass_enabled = false`, which Approved POL-005 / `FINANCIAL_INTEGRITY_BASELINE.md:101-102` forbid as a **flag**, contradicting the plan's own cross-cutting rule and failing SEC-BREAKGLASS-001. | The flag is not seeded in any value; OPS-FLAG-001 asserts exactly five rows and no `break_glass*` key; SEC-BREAKGLASS-001 re-scoped to "no route, no grant, no flag, no activation path" so it does not fail on the approved catalogue's zero-grant permission rows; the runbook contradiction is raised as new conflict (h). Sections 4.7, 4.6, 4.10. |
-| 4, 9 | Slice 2 fixed five `platform_*` role literals while the app and migrator connect as `${APP_DB_USER}`/`${MIGRATION_DB_USER}`, so the REVOKE and SEC-ROLE tests would target roles nothing uses while the real app role inherits UPDATE/DELETE on the new audit table via `010-create-runtime-roles.sh:41-42`. | Role names are configuration resolved from `Settings`; doc 04 §3.2 names recorded as labels; SEC-ROLE-000 asserts byte-identity with the runtime `DATABASE_URL` username; the migration also explicitly revokes already-materialised privileges and fails loudly when a configured role is absent. Section 4.2. |
+| 4, 9 | Slice 2 fixed five `platform_*` role literals while the app and migrator connect as `${APP_DB_USER}`/`${MIGRATION_DB_USER}`, so the REVOKE and SEC-ROLE tests would target roles nothing uses while the real app role inherits UPDATE/DELETE on the new audit table via `infra/postgres/init/010-create-runtime-roles.sh` (as of M1). | Role names are configuration resolved from `Settings`; doc 04 §3.2 names recorded as labels; SEC-ROLE-000 asserts byte-identity with the runtime `DATABASE_URL` username; the migration also explicitly revokes already-materialised privileges and fails loudly when a configured role is absent. Section 4.2. |
 | 5 | `ADR-014` cited as a canonical blocking decision, violating Approved DOC-CONFLICT-003's namespace rule. | Every citation is **POL-006** (`ADR_INDEX.md:56`), with the operational-volume remainder noted as an unrepresented composite alias scope per `ADR_INDEX.md:94` — **not** asserted as out of Phase 1A scope, because no owner has decided that. Section 2.2. |
 | 6 | Slice 8 declared "one genuine value conflict" and shipped a five-value `scan_status` including `skipped_by_approved_policy`, silently deciding part of Open DOC-CONFLICT-029 with no approved skip policy and ADR-008 Open. | Two value conflicts declared; both decisions cited; `scan_status` ships with **no** value CHECK; `skipped_by_approved_policy` is reserved and unsettable; availability is gated by a named conditional constraint in the fail-closed direction ADR-008's safe default requires. Sections 2.3 d, 4.8. |
 | 7 | Slice 10 assumed the `M0_MANIFEST.json` checksum chain was intact. Recomputation gives 10 of 17 hashes drifted, five of which were wrong at generation time; `decision_state` still records 2 approvals and 26 open conflicts; commit `ae93d79` modified five manifest-covered files without touching the manifest, against `docs/governance/README.md:64`. | Slice 10 regenerates the manifest in the same commit as the governance corrections, adds a CI hash-drift gate (CI-MANIFEST-001), and states plainly that no M2 citation currently has manifest backing. Section 4.10. |
