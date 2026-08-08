@@ -63,9 +63,7 @@ class Settings(BaseSettings):
     release_commit: str = Field(
         default="unknown", min_length=7, max_length=71, validation_alias="RELEASE_COMMIT"
     )
-    release_built_at: datetime | None = Field(
-        default=None, validation_alias="RELEASE_BUILT_AT"
-    )
+    release_built_at: datetime | None = Field(default=None, validation_alias="RELEASE_BUILT_AT")
 
     business_timezone: str = Field(
         default=BUSINESS_TIMEZONE_NAME, validation_alias="BUSINESS_TIMEZONE"
@@ -98,9 +96,7 @@ class Settings(BaseSettings):
     backup_db_role: str | None = Field(
         default=None, validation_alias=AliasChoices("BACKUP_DB_ROLE", "BACKUP_DB_USER")
     )
-    storage_backend: Literal["local"] = Field(
-        default="local", validation_alias="STORAGE_BACKEND"
-    )
+    storage_backend: Literal["local"] = Field(default="local", validation_alias="STORAGE_BACKEND")
     local_storage_root: Path = Field(
         validation_alias=AliasChoices("LOCAL_STORAGE_ROOT", "STORAGE_ROOT")
     )
@@ -149,6 +145,52 @@ class Settings(BaseSettings):
 
     operations_health_token: SecretStr | None = Field(
         default=None, validation_alias="OPERATIONS_HEALTH_TOKEN"
+    )
+
+    # Argon2id, per `12_Security_RBAC_Audit.md:381`. Every bound below is a floor
+    # with a security argument, not a preference, which is why none of them is
+    # zero-able: `validate_default=True` means a default beneath its own floor
+    # fails at construction rather than at the first login.
+    #
+    # The defaults were measured on the development host (8 cores) rather than
+    # copied: at t=3, m=64 MiB, p=4 a verification takes ~80-110 ms. The number
+    # that matters more is the degraded one — `parallelism` is a property of the
+    # hash, not a runtime knob, so on a single-core container the same hash costs
+    # the full serial ~350 ms. That is still acceptable for a login and is the
+    # figure to plan capacity against, because assuming the parallel number would
+    # under-provision by 4x.
+    #
+    # Memory is the parameter that resists GPU and ASIC cracking, so the floor is
+    # 64 MiB rather than OWASP's 47 MiB minimum: the threat here is an offline
+    # attack on a stolen dump of a settlement platform's credentials. It is also
+    # a denial-of-service lever against us — concurrent logins multiply it — which
+    # is why authentication rate limiting is a required part of this milestone
+    # rather than an optimisation.
+    argon2_time_cost: int = Field(default=3, ge=2, le=10, validation_alias="ARGON2_TIME_COST")
+    argon2_memory_cost_kib: int = Field(
+        default=65_536, ge=65_536, le=1_048_576, validation_alias="ARGON2_MEMORY_COST_KIB"
+    )
+    argon2_parallelism: int = Field(default=4, ge=1, le=16, validation_alias="ARGON2_PARALLELISM")
+
+    # A ceiling, not a policy. `12_Security_RBAC_Audit.md:394` requires a maximum
+    # so a very long input cannot be a denial-of-service vector, and Argon2 hashes
+    # its input in one pass, so the cost is real but bounded. The *minimum* length
+    # and the compromised-password rule are production policy (`:390-397`) and are
+    # not decided here.
+    password_max_length: int = Field(
+        default=128, ge=64, le=1024, validation_alias="PASSWORD_MAX_LENGTH"
+    )
+
+    # Bytes of CSPRNG entropy behind each session secret. The floor is the
+    # security property rather than a preference: the stored digest is a fast,
+    # unsalted SHA-256, which is only sound because the input is uniform and
+    # large. Below 32 bytes that argument stops holding and the column stops
+    # being a credential. The ceiling only keeps the cookie small.
+    #
+    # No session *lifetime* setting is added here. Idle and absolute timeouts are
+    # ADR-SEC-002, which is Open, and a default would decide it silently.
+    session_secret_bytes: int = Field(
+        default=32, ge=32, le=64, validation_alias="SESSION_SECRET_BYTES"
     )
 
     celery_queues: str = Field(
