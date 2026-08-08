@@ -69,12 +69,23 @@ def _running_in_ci() -> bool:
     return os.environ.get("CI", "").strip().lower() in {"1", "true", "yes"}
 
 
+# DOC-CONFLICT-022, Approved: PostgreSQL 16 is required in local, CI, staging and
+# production. Compose and the CI service container both pin 16.14; nothing checked
+# the server a developer actually pointed these tests at, so "local" was the one
+# environment where the approved decision was unenforced. That is not hypothetical
+# on the M3 development host, which has an unrelated PostgreSQL 17.9 listening on
+# the default port — one wrong URL and the whole suite runs green on a major
+# version the platform has not approved.
+REQUIRED_POSTGRES_MAJOR = 16
+
+
 @pytest.fixture(scope="session")
 def admin_url() -> str:
     """The privileged connection string, or a skip/failure explaining its absence."""
 
     value = _admin_url()
     if value:
+        _require_supported_server(value)
         return value
     message = (
         f"{ADMIN_URL_VARIABLE} is not set, so no real PostgreSQL is available. "
@@ -101,6 +112,33 @@ def _psycopg_url(url: str) -> str:
     """psycopg does not accept SQLAlchemy's ``postgresql+psycopg://`` prefix."""
 
     return url.replace("postgresql+psycopg://", "postgresql://", 1)
+
+
+def _require_supported_server(url: str) -> None:
+    """Fail loudly on a major version the platform has not approved.
+
+    Failing rather than skipping, and in every environment rather than only in CI:
+    a skip here would read as "no database available" when the truth is "the wrong
+    database", and the two call for opposite responses. The message names the
+    server it found, because the usual cause is a URL pointing at a PostgreSQL that
+    happens to be listening rather than the one the project provisions.
+    """
+
+    with psycopg.connect(_psycopg_url(url)) as connection:
+        version = connection.execute("SHOW server_version_num").fetchone()
+    assert version is not None
+    major = int(version[0]) // 10000
+
+    if major != REQUIRED_POSTGRES_MAJOR:
+        pytest.fail(
+            f"{ADMIN_URL_VARIABLE} points at PostgreSQL {major}, and DOC-CONFLICT-022 "
+            f"(Approved) requires {REQUIRED_POSTGRES_MAJOR} in local, CI, staging and "
+            "production. Compose and CI both use postgres:16.14-alpine3.24. Running "
+            "the suite against another major version produces a green result that "
+            "does not mean what it appears to: partial-index predicates, collation "
+            "behaviour and planner-dependent constraints are exactly the things these "
+            "tests assert, and exactly the things that differ across majors."
+        )
 
 
 @pytest.fixture
