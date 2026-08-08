@@ -27,8 +27,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Index, Integer, String, text
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, String, text
 from sqlalchemy.dialects.postgresql import CITEXT
+from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import (
@@ -45,6 +46,39 @@ from app.db.base import (
 # settings, because a truncated hash fails to verify and looks like a wrong
 # password.
 PASSWORD_HASH_LENGTH = 255
+
+# The login-account lifecycle, decided by DOC-CONFLICT-037 (Resolved 2026-08-08)
+# and recorded in `status_catalog.yaml`. This is one of the catalogue's three
+# axes, and the narrowest: it answers only "may this human sign in, and with what
+# restriction". Whether the *business* is an accepted counterparty is
+# `traders.approval_status`; whether it may transact is
+# `traders.operational_status`.
+#
+# Three of the seven names documents 04 and 12 between them propose are refused,
+# each because it would be a second source of truth rather than a state:
+#
+#   `locked` — `locked_until` below already carries it, as a fact that expires on
+#   its own. A status value needs a scheduled job to leave, and holding both
+#   permits `status = 'active'` with `locked_until` in the future, with no
+#   constraint able to say which is authoritative. Lock is derived, not stored.
+#
+#   `pending` / `pending_approval` — the account is not pending approval, the
+#   business is (`traders.approval_status`). Putting it here is the axis-mixing
+#   DOC-CONFLICT-024 exists to stop.
+#
+#   `inactive` — same meaning as `deactivated`, but `inactive` is already a value
+#   of `traders.operational_status`, so reusing it makes a log line ambiguous
+#   about which axis it refers to.
+ACCOUNT_STATUSES: tuple[str, ...] = (
+    "active",
+    "suspended",
+    "recovery_required",
+    "deactivated",
+)
+
+
+def _quoted(values: tuple[str, ...]) -> str:
+    return ", ".join(f"'{value}'" for value in values)
 
 
 def security_stamp_column() -> Mapped[int]:
@@ -81,9 +115,10 @@ class AdminUser(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    # No value CHECK. `identity_account` is recorded in status_catalog.yaml with
-    # `canonical: null`, so enumerating the states here would decide an open
-    # question. Application-enforced fail-closed until M3 settles it.
+    # The value set is `ACCOUNT_STATUSES` above; the CHECK arrived with
+    # `20260808_0013` once DOC-CONFLICT-037 was decided. Until then this column
+    # was deliberately unconstrained, because enumerating it from a migration
+    # would have answered an open question in a file that can never be edited.
     status: Mapped[str] = mapped_column(String(32), nullable=False)
 
     security_stamp_version: Mapped[int] = security_stamp_column()
@@ -94,12 +129,10 @@ class AdminUser(Base):
     failed_login_count: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")
     )
-    locked_until: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    last_login_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    # The reason `locked` is not one of `ACCOUNT_STATUSES`: a lock is this
+    # timestamp, and it expires without anything running.
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     record_version: Mapped[int] = record_version_column()
     created_at: Mapped[datetime] = created_at_column()
@@ -109,6 +142,7 @@ class AdminUser(Base):
         named_check("length(btrim(username::text)) > 0", name="username_not_blank"),
         named_check("failed_login_count >= 0", name="failed_login_count_not_negative"),
         named_check("security_stamp_version > 0", name="security_stamp_version_positive"),
+        named_check(f"status IN ({_quoted(ACCOUNT_STATUSES)})", name="status"),
         Index(
             "uq_admin_users_email",
             "email",
@@ -131,6 +165,15 @@ class TraderUser(Base):
 
     id: Mapped[uuid.UUID] = uuid_primary_key()
 
+    # The business this login acts for. Required by `04_Database_Schema.md:345`
+    # and by every ownership guard in M3: "trader A may not read trader B's
+    # records" is a statement about businesses, and `ActorContext.trader_id` has
+    # no other source. Added by `20260808_0013`; it could not exist in M2 because
+    # `traders` did not.
+    trader_id: Mapped[uuid.UUID] = mapped_column(
+        PostgresUUID(as_uuid=True), ForeignKey("traders.id"), nullable=False
+    )
+
     # The login identity, so uniqueness is unconditional rather than partial.
     phone_number: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
     full_name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -143,23 +186,18 @@ class TraderUser(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False)
 
     # Which contact speaks for the trader business. The partial unique index
-    # below has two conditions, and both are load-bearing: one primary contact,
-    # but an inactive former primary must not block appointing a new one.
-    is_primary: Mapped[bool] = mapped_column(
-        nullable=False, server_default=text("false")
-    )
+    # below has two conditions, and both are load-bearing: one primary contact
+    # **per business**, but a deactivated former primary must not block
+    # appointing a new one.
+    is_primary: Mapped[bool] = mapped_column(nullable=False, server_default=text("false"))
 
     security_stamp_version: Mapped[int] = security_stamp_column()
 
     failed_login_count: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")
     )
-    locked_until: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    last_login_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     record_version: Mapped[int] = record_version_column()
     created_at: Mapped[datetime] = created_at_column()
@@ -169,10 +207,19 @@ class TraderUser(Base):
         named_check("length(btrim(phone_number)) > 0", name="phone_number_not_blank"),
         named_check("failed_login_count >= 0", name="failed_login_count_not_negative"),
         named_check("security_stamp_version > 0", name="security_stamp_version_positive"),
+        named_check(f"status IN ({_quoted(ACCOUNT_STATUSES)})", name="status"),
+        # Keyed on `trader_id`, which is what `04_Database_Schema.md:360-362`
+        # specifies and what the comment on `is_primary` above has always claimed.
+        # M2 built it on `is_primary` — the key column did not exist, so the key
+        # became the flag — and the constraint it enforced was "one primary
+        # contact in the entire system" rather than one per business. Both halves
+        # of the predicate matter: `deactivated` (not `inactive`, which is a
+        # `traders.operational_status` value and is not an account state) lets a
+        # retired primary be replaced.
         Index(
-            "uq_trader_users_primary_contact",
-            "is_primary",
+            "uq_trader_users_one_primary",
+            "trader_id",
             unique=True,
-            postgresql_where=text("is_primary = TRUE AND status <> 'inactive'"),
+            postgresql_where=text("is_primary = TRUE AND status <> 'deactivated'"),
         ),
     )

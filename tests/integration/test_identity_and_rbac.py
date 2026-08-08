@@ -6,7 +6,8 @@ decisions rather than defaults: two tables instead of one, a surrogate key on
 grants instead of a composite, partial uniqueness with two conditions instead of
 one.
 
-Covers: DB-IDENTITY-001, SEC-RBAC-001, SEC-RBAC-002.
+Covers: DB-IDENTITY-001, SEC-RBAC-001, SEC-RBAC-002, DB-TRADER-001, DB-OWN-001,
+DB-PRIMARY-001, DB-PRIMARY-002, DB-PRIMARY-003, DB-ACCT-001.
 """
 
 from __future__ import annotations
@@ -26,8 +27,9 @@ BACKEND_ROOT = REPOSITORY_ROOT / "services" / "backend"
 sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.core.time import utc_now  # noqa: E402
-from app.db.models.identity import AdminUser, TraderUser  # noqa: E402
+from app.db.models.identity import ACCOUNT_STATUSES, AdminUser, TraderUser  # noqa: E402
 from app.db.models.rbac import AdminUserRole, Permission, Role, RolePermission  # noqa: E402
+from app.db.models.trader import Trader  # noqa: E402
 
 pytestmark = pytest.mark.integration
 
@@ -57,6 +59,7 @@ def clean_tables(session_factory: sessionmaker[Session]) -> Iterator[None]:
             "roles",
             "permissions",
             "trader_users",
+            "traders",
             "admin_users",
         ):
             session.execute(text(f"DELETE FROM {table}"))
@@ -74,15 +77,42 @@ def admin(username: str = "operator", **overrides: object) -> AdminUser:
     return AdminUser(**values)  # type: ignore[arg-type]
 
 
-def trader(phone: str = "+989120000000", **overrides: object) -> TraderUser:
+def business(phone: str = "+982100000000", **overrides: object) -> Trader:
+    """A trader business. Ownership scopes to one of these, never to a login."""
+
+    values: dict[str, object] = {
+        "display_name": "Gold Trading Co",
+        "primary_phone": phone,
+        "operational_status": "active",
+        "approval_status": "approved",
+        **overrides,
+    }
+    return Trader(**values)  # type: ignore[arg-type]
+
+
+def trader(
+    phone: str = "+989120000000", *, trader_id: uuid.UUID | None = None, **overrides: object
+) -> TraderUser:
     values: dict[str, object] = {
         "phone_number": phone,
         "full_name": "Trader",
         "password_hash": "$argon2id$v=19$m=65536,t=3,p=4$abc$def",
         "status": "active",
+        "trader_id": trader_id,
         **overrides,
     }
     return TraderUser(**values)  # type: ignore[arg-type]
+
+
+@pytest.fixture
+def one_business(session_factory: sessionmaker[Session]) -> uuid.UUID:
+    """A committed trader business, for the tests that need only one."""
+
+    with session_factory() as session:
+        row = business()
+        session.add(row)
+        session.commit()
+        return row.id
 
 
 class TestIdentitySeparation:
@@ -106,7 +136,7 @@ class TestIdentitySeparation:
         assert {"admin_users", "trader_users"} <= tables
 
     def test_an_admin_and_a_trader_may_share_a_phone_number(
-        self, session_factory: sessionmaker[Session]
+        self, session_factory: sessionmaker[Session], one_business: uuid.UUID
     ) -> None:
         """They are different people in different domains.
 
@@ -115,7 +145,7 @@ class TestIdentitySeparation:
 
         with session_factory() as session:
             session.add(admin(phone_number="+989120000000"))
-            session.add(trader(phone="+989120000000"))
+            session.add(trader(phone="+989120000000", trader_id=one_business))
             session.commit()
 
 
@@ -133,18 +163,14 @@ class TestAdminUniqueness:
             session.add(admin("operator"))
             session.commit()
 
-    def test_many_admins_may_have_no_email(
-        self, session_factory: sessionmaker[Session]
-    ) -> None:
+    def test_many_admins_may_have_no_email(self, session_factory: sessionmaker[Session]) -> None:
         """Partial uniqueness: absent is not a value that collides."""
 
         with session_factory() as session:
             session.add_all([admin("one"), admin("two"), admin("three")])
             session.commit()
 
-    def test_two_admins_cannot_share_an_email(
-        self, session_factory: sessionmaker[Session]
-    ) -> None:
+    def test_two_admins_cannot_share_an_email(self, session_factory: sessionmaker[Session]) -> None:
         with session_factory() as session:
             session.add(admin("one", email="a@example.com"))
             session.commit()
@@ -155,48 +181,314 @@ class TestAdminUniqueness:
 
 
 class TestTraderPrimaryContact:
-    def test_only_one_active_primary_contact(
+    """One primary contact **per business**, which is not what M2 enforced.
+
+    `04_Database_Schema.md:360-362` keys the index on `trader_users(trader_id)`.
+    `20260801_0007` keyed it on `is_primary`, because `trader_id` did not exist and
+    the flag was the only column left — so the constraint that shipped was "one
+    primary contact in the entire database".
+
+    The test that used to stand here asserted exactly that: it added two primary
+    contacts with different phone numbers and required the **second to be
+    rejected**. Written from the built index rather than from the specification, it
+    passed, and it made the defect look deliberate. That is the failure mode worth
+    naming — a test can pin a bug as though it were a decision, and then the bug has
+    a defender.
+
+    Covers: DB-PRIMARY-001, DB-PRIMARY-002, DB-PRIMARY-003.
+    """
+
+    def test_two_businesses_may_each_have_their_own_primary_contact(
         self, session_factory: sessionmaker[Session]
     ) -> None:
-        with session_factory() as session:
-            session.add(trader("+989120000001", is_primary=True))
-            session.commit()
+        """The regression test. This is what registering a second trader does.
 
-        with session_factory() as session, pytest.raises(IntegrityError):
-            session.add(trader("+989120000002", is_primary=True))
-            session.commit()
-
-    def test_an_inactive_former_primary_does_not_block_a_new_one(
-        self, session_factory: sessionmaker[Session]
-    ) -> None:
-        """The second condition on the partial index, and the reason it is there.
-
-        With `WHERE is_primary = TRUE` alone, deactivating a primary contact
-        would permanently prevent appointing a replacement — the old row still
-        matches.
+        Under the index M2 shipped, the second business's primary contact is
+        rejected by `uq_trader_users_primary_contact` — a unique violation on a
+        column the caller never set.
         """
 
         with session_factory() as session:
-            session.add(trader("+989120000001", is_primary=True, status="inactive"))
+            first, second = business("+982100000001"), business("+982100000002")
+            session.add_all([first, second])
+            session.commit()
+            first_id, second_id = first.id, second.id
+
+        with session_factory() as session:
+            session.add(trader("+989120000001", trader_id=first_id, is_primary=True))
+            session.add(trader("+989120000002", trader_id=second_id, is_primary=True))
+            session.commit()
+
+            count = session.execute(
+                text("SELECT count(*) FROM trader_users WHERE is_primary")
+            ).scalar_one()
+
+        assert count == 2
+
+    def test_one_business_may_not_have_two_primary_contacts(
+        self, session_factory: sessionmaker[Session], one_business: uuid.UUID
+    ) -> None:
+        """The constraint that is actually wanted, scoped to a business."""
+
+        with session_factory() as session:
+            session.add(trader("+989120000001", trader_id=one_business, is_primary=True))
+            session.commit()
+
+        with session_factory() as session, pytest.raises(IntegrityError) as raised:
+            session.add(trader("+989120000002", trader_id=one_business, is_primary=True))
+            session.commit()
+
+        assert "uq_trader_users_one_primary" in str(raised.value), (
+            "the row was rejected, but not by the per-business index — something "
+            f"else refused it first, so that constraint is still unproven:\n{raised.value}"
+        )
+
+    def test_a_deactivated_former_primary_does_not_block_a_replacement(
+        self, session_factory: sessionmaker[Session], one_business: uuid.UUID
+    ) -> None:
+        """The second condition on the partial index, and the reason it is there.
+
+        With `WHERE is_primary = TRUE` alone, retiring a primary contact would
+        permanently prevent appointing a replacement — the old row still matches.
+
+        The predicate names `deactivated`, not `inactive`. That is not cosmetic:
+        `inactive` is a `traders.operational_status` value and DOC-CONFLICT-037
+        refuses it as an account state, so `ck_trader_users_status` now rejects it.
+        Had the predicate kept the old spelling it would name a value the CHECK
+        forbids, no row could ever match `status <> 'inactive'` falsely, and the
+        partial index would quietly degenerate into `WHERE is_primary = TRUE`.
+        """
+
+        with session_factory() as session:
+            session.add(
+                trader(
+                    "+989120000001",
+                    trader_id=one_business,
+                    is_primary=True,
+                    status="deactivated",
+                )
+            )
             session.commit()
 
         with session_factory() as session:
-            session.add(trader("+989120000002", is_primary=True, status="active"))
+            session.add(
+                trader("+989120000002", trader_id=one_business, is_primary=True, status="active")
+            )
             session.commit()
 
-    def test_many_traders_may_be_non_primary(
+    def test_the_index_predicate_names_a_status_the_check_admits(
         self, session_factory: sessionmaker[Session]
+    ) -> None:
+        """Guard the guard: the test above is vacuous if the two disagree.
+
+        A predicate referencing a value no row may hold is not a narrower index —
+        it is an index whose second condition can never be false, which is the same
+        as not having it. Read from the catalogue side rather than asserting the
+        literal, so renaming the value in one place fails here.
+        """
+
+        with session_factory() as session:
+            predicate = session.execute(
+                text(
+                    "SELECT pg_get_expr(indpred, indrelid) FROM pg_index "
+                    "WHERE indexrelid = 'uq_trader_users_one_primary'::regclass"
+                )
+            ).scalar_one()
+
+        excluded = {value for value in ACCOUNT_STATUSES if f"'{value}'" in predicate}
+
+        assert excluded, (
+            "the primary-contact predicate references no account status at all, so "
+            f"its second condition constrains nothing: {predicate}"
+        )
+        assert excluded == {"deactivated"}, (
+            f"the predicate excludes {sorted(excluded)}; only 'deactivated' is the "
+            "retired-account state, and any other value here means the index and "
+            "ck_trader_users_status disagree about what an account status is"
+        )
+
+    def test_many_contacts_of_one_business_may_be_non_primary(
+        self, session_factory: sessionmaker[Session], one_business: uuid.UUID
     ) -> None:
         with session_factory() as session:
             session.add_all(
-                [trader(f"+98912000{index:04d}", is_primary=False) for index in range(3)]
+                [
+                    trader(f"+98912000{index:04d}", trader_id=one_business, is_primary=False)
+                    for index in range(3)
+                ]
             )
             session.commit()
 
 
+class TestTraderBusiness:
+    """The ownership root, and the two columns that are deliberately absent.
+
+    Covers: DB-TRADER-001, DB-OWN-001.
+    """
+
+    def test_the_columns_match_document_04(self, session_factory: sessionmaker[Session]) -> None:
+        with session_factory() as session:
+            columns = {
+                row[0]
+                for row in session.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_schema = 'public' AND table_name = 'traders'"
+                    )
+                )
+            }
+
+        assert columns == {
+            "id",
+            "display_name",
+            "legal_name",
+            "primary_phone",
+            "operational_status",
+            "approval_status",
+            "approved_at",
+            "approved_by_admin_user_id",
+            "risk_level",
+            "credit_limit_irr",
+            "notes_internal",
+            "record_version",
+            "created_at",
+            "updated_at",
+        }
+
+    def test_there_is_no_stored_balance(self, session_factory: sessionmaker[Session]) -> None:
+        """`04_Database_Schema.md:469` prohibits it without a ledger.
+
+        A cached balance with no ledger behind it is a number that looks
+        authoritative and reconciles against nothing.
+        """
+
+        with session_factory() as session:
+            balance_like = [
+                row[0]
+                for row in session.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_schema = 'public' AND table_name = 'traders' "
+                        "AND column_name LIKE '%balance%'"
+                    )
+                )
+            ]
+
+        assert balance_like == []
+
+    def test_there_is_no_combined_status_column(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        """DOC-CONFLICT-024's structural half, enforced by absence.
+
+        Document 05 exposes one `status`; documents 04 and 12 carry three separate
+        facts. The projection is computed at read time, and the way to guarantee it
+        never drifts from its three sources is for there to be nothing to drift.
+        """
+
+        with session_factory() as session:
+            exists = session.execute(
+                text(
+                    "SELECT count(*) FROM information_schema.columns "
+                    "WHERE table_schema = 'public' AND table_name = 'traders' "
+                    "AND column_name = 'status'"
+                )
+            ).scalar_one()
+
+        assert exists == 0
+
+    def test_a_negative_credit_limit_is_refused(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        with session_factory() as session, pytest.raises(IntegrityError):
+            session.add(business(credit_limit_irr=-1))
+            session.commit()
+
+    def test_no_credit_limit_is_not_a_zero_credit_limit(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        """The CHECK admits NULL on purpose: unrecorded is not the same as none."""
+
+        with session_factory() as session:
+            session.add(business(credit_limit_irr=None))
+            session.commit()
+
+    def test_a_trader_login_must_name_an_existing_business(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        """`trader_id` is the only source of `ActorContext.trader_id`.
+
+        A login whose business does not exist would be an actor with an ownership
+        scope nothing can resolve — so the foreign key refuses it rather than
+        leaving M3's guards to discover it at request time.
+        """
+
+        with session_factory() as session, pytest.raises(IntegrityError):
+            session.add(trader(trader_id=uuid.uuid4()))
+            session.commit()
+
+    def test_a_trader_login_cannot_exist_without_a_business(
+        self, session_factory: sessionmaker[Session]
+    ) -> None:
+        with session_factory() as session, pytest.raises(IntegrityError):
+            session.add(trader(trader_id=None))
+            session.commit()
+
+
+class TestAccountStatusValues:
+    """The four values DOC-CONFLICT-037 decided, and the three it refused.
+
+    Covers: DB-ACCT-001.
+    """
+
+    @pytest.mark.parametrize(
+        ("index", "status"), list(enumerate(ACCOUNT_STATUSES)), ids=ACCOUNT_STATUSES
+    )
+    def test_each_decided_status_is_accepted(
+        self,
+        session_factory: sessionmaker[Session],
+        one_business: uuid.UUID,
+        index: int,
+        status: str,
+    ) -> None:
+        """Anchor the rejections below: without this they could all be vacuous.
+
+        The phone number is derived from the parameter index rather than from
+        `hash(status)`, which varies between processes and would make a collision
+        appear on some runs and not others.
+        """
+
+        with session_factory() as session:
+            session.add(admin(f"admin_{status}", status=status))
+            session.add(trader(f"+98912000{index:04d}", trader_id=one_business, status=status))
+            session.commit()
+
+    @pytest.mark.parametrize("status", ["locked", "pending", "inactive", "pending_approval", ""])
+    def test_a_refused_status_is_rejected_on_both_tables(
+        self, session_factory: sessionmaker[Session], one_business: uuid.UUID, status: str
+    ) -> None:
+        """Each refusal is a decision recorded in DOC-CONFLICT-037, not an omission.
+
+        `locked` is `locked_until`; `pending` belongs to the business's approval
+        axis; `inactive` is a `traders.operational_status` value. The empty string
+        is here because a CHECK that lists values still admits one nobody listed if
+        the column is merely `VARCHAR`.
+        """
+
+        with session_factory() as session, pytest.raises(IntegrityError) as raised:
+            session.add(admin("someone", status=status))
+            session.commit()
+        assert "ck_admin_users_status" in str(raised.value)
+
+        with session_factory() as session, pytest.raises(IntegrityError) as raised:
+            session.add(trader(trader_id=one_business, status=status))
+            session.commit()
+        assert "ck_trader_users_status" in str(raised.value)
+
+
 class TestSecurityStamp:
     def test_both_identity_tables_carry_a_stamp(
-        self, session_factory: sessionmaker[Session]
+        self, session_factory: sessionmaker[Session], one_business: uuid.UUID
     ) -> None:
         """Doc 04 omits it; doc 12 requires it.
 
@@ -207,7 +499,7 @@ class TestSecurityStamp:
 
         with session_factory() as session:
             session.add(admin())
-            session.add(trader())
+            session.add(trader(trader_id=one_business))
             session.commit()
 
             admin_stamp = session.execute(
@@ -331,9 +623,7 @@ class TestRolePermissions:
         with session_factory() as session:
             session.execute(text("DELETE FROM roles WHERE id = :id"), {"id": role_id})
             session.commit()
-            remaining = session.execute(
-                text("SELECT count(*) FROM role_permissions")
-            ).scalar()
+            remaining = session.execute(text("SELECT count(*) FROM role_permissions")).scalar()
 
         assert remaining == 0
 
@@ -384,9 +674,7 @@ class TestFailedLoginCountersAreDurable:
         assert count == 5
         assert locked is not None
 
-    def test_a_negative_counter_is_refused(
-        self, session_factory: sessionmaker[Session]
-    ) -> None:
+    def test_a_negative_counter_is_refused(self, session_factory: sessionmaker[Session]) -> None:
         with session_factory() as session, pytest.raises(IntegrityError):
             session.add(admin(failed_login_count=-1))
             session.commit()

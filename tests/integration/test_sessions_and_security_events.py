@@ -42,6 +42,7 @@ def connection(migrated_database: str) -> Iterator[psycopg.Connection]:
                 "auth_events",
                 "admin_users",
                 "trader_users",
+                "traders",
             ):
                 conn.execute(f"DELETE FROM {table}")
 
@@ -56,11 +57,30 @@ def make_admin(connection: psycopg.Connection, username: str = "admin-one") -> u
     return row[0]
 
 
+def make_business(connection: psycopg.Connection, phone: str = "02100000001") -> uuid.UUID:
+    """The trader business a login belongs to.
+
+    Required since `20260808_0013`: `trader_users.trader_id` is NOT NULL, because
+    ownership scopes to the business and a login with no business is an actor whose
+    scope nothing can resolve.
+    """
+
+    row = connection.execute(
+        "INSERT INTO traders "
+        "(display_name, primary_phone, operational_status, approval_status) "
+        "VALUES ('Gold Trading Co', %s, 'active', 'approved') RETURNING id",
+        (phone,),
+    ).fetchone()
+    assert row is not None
+    return row[0]
+
+
 def make_trader(connection: psycopg.Connection, phone: str = "09120000001") -> uuid.UUID:
     row = connection.execute(
-        "INSERT INTO trader_users (phone_number, full_name, password_hash, status) "
-        "VALUES (%s, 'Trader One', 'argon2id$dummy', 'active') RETURNING id",
-        (phone,),
+        "INSERT INTO trader_users "
+        "(trader_id, phone_number, full_name, password_hash, status) "
+        "VALUES (%s, %s, 'Trader One', 'argon2id$dummy', 'active') RETURNING id",
+        (make_business(connection, phone.replace("0912", "0210", 1)), phone),
     ).fetchone()
     assert row is not None
     return row[0]
@@ -95,9 +115,7 @@ class TestExactlyOneActor:
 
         assert row is not None
 
-    def test_a_session_with_both_actors_is_refused(
-        self, connection: psycopg.Connection
-    ) -> None:
+    def test_a_session_with_both_actors_is_refused(self, connection: psycopg.Connection) -> None:
         """The row that would satisfy an admin authorisation query and a trader one.
 
         Without this constraint, M3's proof that admin sessions are rejected on
@@ -108,21 +126,15 @@ class TestExactlyOneActor:
         trader = make_trader(connection)
 
         with pytest.raises(psycopg.errors.CheckViolation) as raised:
-            connection.execute(
-                SESSION_INSERT, {"admin": admin, "trader": trader, "hash": "h3"}
-            )
+            connection.execute(SESSION_INSERT, {"admin": admin, "trader": trader, "hash": "h3"})
 
         assert "exactly_one_actor" in str(raised.value)
 
-    def test_a_session_with_no_actor_is_refused(
-        self, connection: psycopg.Connection
-    ) -> None:
+    def test_a_session_with_no_actor_is_refused(self, connection: psycopg.Connection) -> None:
         """An unattributed session is authority belonging to nobody."""
 
         with pytest.raises(psycopg.errors.CheckViolation):
-            connection.execute(
-                SESSION_INSERT, {"admin": None, "trader": None, "hash": "h4"}
-            )
+            connection.execute(SESSION_INSERT, {"admin": None, "trader": None, "hash": "h4"})
 
 
 class TestSessionIntegrity:
@@ -133,13 +145,9 @@ class TestSessionIntegrity:
         connection.execute(SESSION_INSERT, {"admin": admin, "trader": None, "hash": "same"})
 
         with pytest.raises(psycopg.errors.UniqueViolation):
-            connection.execute(
-                SESSION_INSERT, {"admin": admin, "trader": None, "hash": "same"}
-            )
+            connection.execute(SESSION_INSERT, {"admin": admin, "trader": None, "hash": "same"})
 
-    def test_a_revoked_session_must_say_why(
-        self, connection: psycopg.Connection
-    ) -> None:
+    def test_a_revoked_session_must_say_why(self, connection: psycopg.Connection) -> None:
         """Revoked with no reason is the state that stalls an incident review."""
 
         admin = make_admin(connection)
@@ -150,9 +158,7 @@ class TestSessionIntegrity:
 
         assert "revocation_fields_move_together" in str(raised.value)
 
-    def test_revoking_with_a_reason_is_accepted(
-        self, connection: psycopg.Connection
-    ) -> None:
+    def test_revoking_with_a_reason_is_accepted(self, connection: psycopg.Connection) -> None:
         admin = make_admin(connection)
         connection.execute(SESSION_INSERT, {"admin": admin, "trader": None, "hash": "h6"})
 
@@ -160,9 +166,7 @@ class TestSessionIntegrity:
             "UPDATE auth_sessions SET revoked_at = now(), revocation_reason = 'password_changed'"
         )
 
-    def test_a_session_cannot_expire_before_it_begins(
-        self, connection: psycopg.Connection
-    ) -> None:
+    def test_a_session_cannot_expire_before_it_begins(self, connection: psycopg.Connection) -> None:
         admin = make_admin(connection)
 
         with pytest.raises(psycopg.errors.CheckViolation):
@@ -173,9 +177,7 @@ class TestSessionIntegrity:
                 (admin,),
             )
 
-    def test_a_session_cannot_replace_itself(
-        self, connection: psycopg.Connection
-    ) -> None:
+    def test_a_session_cannot_replace_itself(self, connection: psycopg.Connection) -> None:
         """A self-referencing rotation chain has no end, so revoking one never
         reaches the rest."""
 
@@ -213,9 +215,7 @@ class TestSecurityEvents:
         count = connection.execute("SELECT count(*) FROM auth_events").fetchone()
         assert count is not None and count[0] == 1
 
-    def test_an_unknown_event_class_is_refused(
-        self, connection: psycopg.Connection
-    ) -> None:
+    def test_an_unknown_event_class_is_refused(self, connection: psycopg.Connection) -> None:
         """The class drives alerting and retention, so an unrecognised one would
         route a security event nowhere."""
 
@@ -327,9 +327,7 @@ class TestRecentAuthContexts:
         assert row is not None
         return row[0], admin
 
-    def test_a_context_is_bound_to_one_resource(
-        self, connection: psycopg.Connection
-    ) -> None:
+    def test_a_context_is_bound_to_one_resource(self, connection: psycopg.Connection) -> None:
         """An assurance for approving version 7 must not authorise version 8.
 
         Both resource columns are NOT NULL, so a general-purpose assurance —
@@ -354,7 +352,7 @@ class TestRecentAuthContexts:
     def test_consumption_records_which_command_used_it(
         self, connection: psycopg.Connection
     ) -> None:
-        """"Consumed" without naming the consumer cannot answer an incident review."""
+        """ "Consumed" without naming the consumer cannot answer an incident review."""
 
         context_id, _admin = self.make_context(connection)
 
@@ -366,9 +364,7 @@ class TestRecentAuthContexts:
 
         assert "consumption_fields_move_together" in str(raised.value)
 
-    def test_a_fully_recorded_consumption_is_accepted(
-        self, connection: psycopg.Connection
-    ) -> None:
+    def test_a_fully_recorded_consumption_is_accepted(self, connection: psycopg.Connection) -> None:
         context_id, _admin = self.make_context(connection)
 
         connection.execute(
@@ -385,9 +381,7 @@ class TestRecentAuthContexts:
         with pytest.raises(psycopg.errors.UniqueViolation):
             self.make_context(connection, challenge="shared")
 
-    def test_a_context_cannot_expire_before_issue(
-        self, connection: psycopg.Connection
-    ) -> None:
+    def test_a_context_cannot_expire_before_issue(self, connection: psycopg.Connection) -> None:
         admin = make_admin(connection, username="admin-expiry")
         session_row = connection.execute(
             SESSION_INSERT, {"admin": admin, "trader": None, "hash": "he"}
@@ -426,9 +420,7 @@ class TestTheDeferredAuditForeignKey:
         count = connection.execute("SELECT count(*) FROM audit_logs").fetchone()
         assert count is not None and count[0] == 1
 
-    def test_an_audit_row_cannot_invent_a_context(
-        self, connection: psycopg.Connection
-    ) -> None:
+    def test_an_audit_row_cannot_invent_a_context(self, connection: psycopg.Connection) -> None:
         """Before this revision the column accepted any UUID, so an audit row
         could claim an assurance that never existed."""
 
@@ -441,9 +433,7 @@ class TestTheDeferredAuditForeignKey:
                 "'audit.v1', 1)"
             )
 
-    def test_a_referenced_context_cannot_be_deleted(
-        self, connection: psycopg.Connection
-    ) -> None:
+    def test_a_referenced_context_cannot_be_deleted(self, connection: psycopg.Connection) -> None:
         """No ON DELETE CASCADE: removing the context would erase the evidence of
         which assurance authorised the change."""
 
@@ -458,9 +448,7 @@ class TestTheDeferredAuditForeignKey:
         )
 
         with pytest.raises(psycopg.errors.ForeignKeyViolation):
-            connection.execute(
-                "DELETE FROM recent_auth_contexts WHERE id = %s", (context_id,)
-            )
+            connection.execute("DELETE FROM recent_auth_contexts WHERE id = %s", (context_id,))
 
     def test_an_audit_row_without_a_context_is_still_valid(
         self, connection: psycopg.Connection

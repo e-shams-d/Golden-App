@@ -31,6 +31,9 @@ EXPECTED_TABLES = frozenset(
         "processing_jobs",
         "role_permissions",
         "roles",
+        # The trader business, added by 20260808_0013. `trader_users` rows hang off
+        # it: ownership scopes to the business, never to a login.
+        "traders",
         "trader_users",
     }
 )

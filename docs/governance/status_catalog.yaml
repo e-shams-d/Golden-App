@@ -38,6 +38,7 @@ catalog_notes:
   - "Aliases are compatibility observations, not approved API values."
   - "An unresolved alias has canonical: null and must not be implemented as an automatic mapping before M0 approval."
   - "Approved 2026-08-01 for Phase 1A. payment_request.sent_to_bank and payment_attempt.bank_result_pending are two different facts and stay separate: sent_to_bank is the request-level state while unresolved attempts exist, bank_result_pending is one attempt awaiting its bank result. Neither is an alias of the other."
+  - "Approved 2026-08-08 for Phase 1A, resolving DOC-CONFLICT-037. The identity_account set below keeps its seven recorded aliases because seven is what documents 04 and 12 between them say; the schema permits four — active, suspended, recovery_required, deactivated — enforced by ck_admin_users_status and ck_trader_users_status. locked is refused because locked_until already carries it as a fact that expires on its own, so storing it twice permits an active row with a future lock and no constraint able to say which wins. pending is refused because the account is not pending approval, the business is, and that is traders.approval_status. inactive is refused in favour of deactivated because inactive is already a traders.operational_status value and reusing it across axes is the ambiguity DOC-CONFLICT-024 is about. Each refusal is recorded per value in tests/backend/test_status_catalogue_drift.py APPROVED_OMISSIONS, which requires the register row to be Resolved and to name the value."
   - "Terminal flags describe the normal document-06 workflow, not physical deletion or loss of audit history."
   - "Backend values remain English snake_case; localized labels are outside this catalog."
 
@@ -654,7 +655,7 @@ status_sets_without_document_06_canonical:
     source:
       - "Implementation Docs/02_Architecture_and_Contracts/04_Database_Schema.md:310-365"
       - "Implementation Docs/05_Backend_and_Security/10_Backend_Implementation_Guide.md:1031-1042"
-    notes: "Document 06 canonicalizes Trader business onboarding, not the full authentication-account lifecycle. Keep identity state separate from trader business state."
+    notes: "Document 06 canonicalizes Trader business onboarding, not the full authentication-account lifecycle, so canonical stays null: document 06 supplies no set for this aggregate and never will. That is not the same as undecided. DOC-CONFLICT-037 is Resolved (2026-08-08) and the schema permits four of the seven aliases below - active, suspended, recovery_required, deactivated. pending, inactive and locked are refused; see the 2026-08-08 catalog note for each reason. The alias list stays at seven because it records what the documents say, not what the schema permits. Keep identity state separate from trader business state."
 
 m0_decisions_required:
   - canonical: bank_statement_import_run

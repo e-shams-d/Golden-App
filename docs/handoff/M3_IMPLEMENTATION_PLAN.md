@@ -332,6 +332,35 @@ can be written without slice *n-1*, except where noted.
 
 ## Slice 1 — Trader ownership root, the two schema defects, and the account-status decision
 
+> **Revision, 2026-08-08, after reading the code this slice touches.** Three things
+> changed once the conventions were checked against the repository rather than assumed,
+> and all three are recorded here rather than absorbed silently.
+>
+> **`DB-SPEC-001` moves to its own slice (1B).** Comparing every constraint doc 04 states
+> in SQL against the database is the right gate, and building it surfaced roughly forty
+> pre-existing divergences across tables M2 shipped — four indexes renamed against
+> DOC-CONFLICT-042's rule, two narrowed silently, one absent, about fifteen tables whose
+> indexes belong to later milestones, and a handful of objects the codebase added that
+> doc 04 never states. Each needs a disposition, and none of it is M3. Bundling it here
+> would triple the slice and bury the defect fix inside an audit. Slice 1 instead proves
+> the same defect **behaviourally**, from the outside, with a test that cannot be made
+> green by any exemption list: two trader businesses may each have their own primary
+> contact.
+>
+> **DOC-CONFLICT-024 gets its structural half only.** The approved `status_catalog.yaml`
+> records one `trader` aggregate carrying document 06's single five-state machine, plus
+> `blocked` and `approved` as unresolved aliases it says in terms must not be collapsed
+> without policy approval. Document 04's two columns do not partition that set, so
+> enumerating either would decide — from a migration — whether `blocked` folds into
+> `suspended`. That is M5's trader lifecycle, and it is what 024's own Blocks column says.
+> M3 therefore ships the structure (three axes, no stored projection, no `status` column
+> on `traders`) and pins the absence of both value CHECKs.
+>
+> **DOC-CONFLICT-023 stays Open until slice 4.** The decision is recorded and merged, but
+> nothing enforces it until the two login routes and `SEC-AUD-002` exist. Marking it
+> Resolved in a slice that touches no route would make the register's status mean
+> "somebody wrote it down" rather than "the codebase holds to it".
+
 ### Goal
 
 Give ownership something to hang on, fix what M2 left wrong before any code depends on it, and
@@ -377,19 +406,21 @@ close the three conflicts from section 2.3 so the rest of M3 is not building on 
   predicate names a value the CHECK admits.
 - `DB-ACCT-001` — each of the four account values is accepted; each of the three rejected aliases is
   refused by the CHECK.
-- `DB-SPEC-001` — the structural gate: every index and CHECK stated as SQL in
-  `04_Database_Schema.md` exists with the same name and the same key columns. This is the gate for
-  the defect *class*.
-- `TRACE-PLAN-001` — the traceability gate reads every milestone plan present, proven by a control
-  that adds an uncited obligation to the M3 plan.
+- `DB-PRIMARY-003` — the predicate of `uq_trader_users_one_primary` names a value
+  `ck_trader_users_status` admits. Guard-the-guard: a predicate referencing a value no row may hold
+  is not a narrower index, it is a second condition that can never be false.
 - `SEED-ACCT-001` — no migration inserts a credential (`12_Security_RBAC_Audit.md:386`).
+
+`DB-SPEC-001` and `TRACE-PLAN-001` move to slice 1B, for the reason recorded in the revision note
+above. Named here so the deferral is visible rather than a quiet omission.
 
 ### Negative controls
 
-Re-key `uq_trader_users_one_primary` back to `is_primary` and confirm `DB-PRIMARY-001` fails —
-the control that proves the fix is what the test detects, not a coincidence. Delete a doc-specified
-index and confirm `DB-SPEC-001` names it. Point the traceability gate back at the single M2 path and
-confirm `TRACE-PLAN-001` fails.
+Re-key `uq_trader_users_one_primary` back to `is_primary` and confirm `DB-PRIMARY-001` fails — the
+control that proves the fix is what the test detects, not a coincidence. Restore the predicate to
+`status <> 'inactive'` and confirm `DB-PRIMARY-003` fails, because that is the coupling between the
+two halves of the decision. Remove a value from `ACCOUNT_STATUSES` without touching the catalogue and
+confirm `DB-ACCT-001` and the status-catalogue drift gate both react.
 
 ## Slice 2 — Password hashing, the ActorContext, and the session store
 

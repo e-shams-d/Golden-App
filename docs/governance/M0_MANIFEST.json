@@ -36,6 +36,7 @@
       "DOC-CONFLICT-034",
       "DOC-CONFLICT-035",
       "DOC-CONFLICT-036",
+      "DOC-CONFLICT-037",
       "DOC-CONFLICT-038",
       "DOC-CONFLICT-039",
       "DOC-CONFLICT-040",
@@ -43,15 +44,15 @@
       "DOC-CONFLICT-042"
     ],
     "total_conflicts": 43,
-    "open_conflicts": 23,
+    "open_conflicts": 22,
     "open_critical_conflicts": 0,
     "m0_exit_gate_complete": false,
     "owner_reapproval_of_this_baseline": "pending"
   },
   "summary": {
     "file_count": 17,
-    "total_bytes": 292790,
-    "total_lines": 3586
+    "total_bytes": 296258,
+    "total_lines": 3587
   },
   "validation": {
     "utf8": true,
@@ -113,9 +114,9 @@
     },
     {
       "path": "docs/governance/CONFLICT_REGISTER.md",
-      "bytes": 44550,
+      "bytes": 46550,
       "lines": 133,
-      "sha256": "b601d5ae30635c4e47630523f5c99f0d71a8e964281c6eadce9ff63363d7fcab"
+      "sha256": "27a74b9ea798580b928697c53d8b0eb87a1d3c44feddcdb97b92a4a26f8b4982"
     },
     {
       "path": "docs/governance/DOCUMENT_APPROVAL_REGISTER.md",
@@ -151,7 +152,7 @@
       "path": "docs/governance/README.md",
       "bytes": 4107,
       "lines": 74,
-      "sha256": "4f34fb93e8539d14b3c3f3fb35bd71c7fad5fd5dbb226b1bddd969fccc72a931"
+      "sha256": "a96d83fae8db6e9fb45e8a7e877725c3a261fec8a0c458b10c5a66de6f101631"
     },
     {
       "path": "docs/governance/REPOSITORY_BASELINE.md",
@@ -161,15 +162,15 @@
     },
     {
       "path": "docs/governance/status_catalog.yaml",
-      "bytes": 64285,
-      "lines": 703,
-      "sha256": "165b8c68e9681ea652d4c7647ddb399fc07d5d86db282a385a0c6fb70dd011ab"
+      "bytes": 65753,
+      "lines": 704,
+      "sha256": "33367a577a0ef4a99bf9c9aad824f919cf92ff63ad63d9a12c2238c47a19db97"
     },
     {
       "path": "docs/governance/TRACEABILITY_MATRIX.md",
       "bytes": 37573,
       "lines": 58,
-      "sha256": "d345c7352042e964d180e050d6a5099ffd7ff49ce1bfe4b4ba5c86e93918aaff"
+      "sha256": "ea0b58287e7bbdbe893582201937e3da89d3d7aab1f35a11a9ecad4e3ab8aa91"
     }
   ]
 }
