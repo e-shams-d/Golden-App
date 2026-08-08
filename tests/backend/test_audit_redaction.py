@@ -3,6 +3,8 @@
 `audit_logs` grants the runtime role no UPDATE. A secret that reaches the column
 stays there for the life of the row and of every backup taken since. So these
 tests are about what never gets written, not about what a reader is shown.
+
+Covers: AUD-REDACT-001, SEC-SECRET-001.
 """
 
 from __future__ import annotations

@@ -16,6 +16,8 @@ present" would pass on a database that also had `ocr.enabled = true`.
 The non-delivery is checked here too, and against the live catalogue rather than
 the source: no trigger and no rule on any table. A trigger is the one deletion
 path a reader of the application code could never find.
+
+Covers: OPS-FLAG-002, OPS-FLAG-003.
 """
 
 from __future__ import annotations

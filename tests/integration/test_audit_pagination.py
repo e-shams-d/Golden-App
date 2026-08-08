@@ -3,6 +3,8 @@
 The stability tests need real concurrent writes. A page that repeats or drops a
 row does so because rows arrived between requests, and a fixture that inserts
 everything up front cannot produce that.
+
+Covers: DB-PLAN-001.
 """
 
 from __future__ import annotations

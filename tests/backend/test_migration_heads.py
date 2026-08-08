@@ -6,6 +6,8 @@ against a correctly migrated database, and the symptom is an unhealthy container
 whose own logs show nothing wrong — the readiness endpoint simply answers 503
 with `database: unavailable`. This test turns that into a failing unit test at
 the moment the revision is written.
+
+Covers: DB-MIG-004.
 """
 
 from __future__ import annotations

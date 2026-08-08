@@ -14,6 +14,8 @@ psycopg 3.2.12: `InsufficientPrivilege` is a `ProgrammingError` (42501), but
 `NotSupportedError` (0A000). Catching `ProgrammingError` alone would let both
 managed-PostgreSQL conditions escape as a bare traceback, which is precisely the
 case the tolerant shape exists to handle.
+
+Covers: CI-MIGRATE-001.
 """
 
 from __future__ import annotations

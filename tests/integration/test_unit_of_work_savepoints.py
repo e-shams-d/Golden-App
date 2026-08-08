@@ -10,6 +10,8 @@ So the first test here establishes the hazard, and the rest show the savepoint
 removing it. If PostgreSQL ever stopped behaving that way, the first test fails
 and says the machinery may no longer be needed — rather than the machinery
 quietly becoming decoration.
+
+Covers: SVC-PARTIAL-001.
 """
 
 from __future__ import annotations

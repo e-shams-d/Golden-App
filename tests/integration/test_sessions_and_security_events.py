@@ -3,6 +3,8 @@
 Three properties carry the weight here, and each is a constraint rather than a
 convention — a convention is what the code does today, and M3 has to be able to
 rely on what the database refuses.
+
+Covers: DB-IDENTITY-002, SEC-RECENTAUTH-001, SEC-SOD-001, SEC-STAMP-001.
 """
 
 from __future__ import annotations

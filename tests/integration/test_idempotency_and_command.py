@@ -5,6 +5,8 @@ can show that a second call returns the stored response, but it cannot show what
 happens when two requests race — and racing is the only case the idempotency key
 exists for. Those tests open a second session deliberately and interleave the
 statements by hand.
+
+Covers: CON-IDEM-001, CON-VERSION-001.
 """
 
 from __future__ import annotations

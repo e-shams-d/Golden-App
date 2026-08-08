@@ -1,3 +1,8 @@
+"""The Unit of Work owns commit and rollback, and nothing else may.
+
+Covers: UT-UOW-001.
+"""
+
 from __future__ import annotations
 
 import pytest

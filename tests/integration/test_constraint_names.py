@@ -15,6 +15,8 @@ than a wrong one: it is stable enough to look deliberate.
 
 The expected names come from compiling each model's CREATE TABLE, so this is a
 comparison between two independent renderings and not against a hand-kept list.
+
+Covers: DB-CONSTRAINT-001.
 """
 
 from __future__ import annotations

@@ -5,6 +5,8 @@ What is tested is the shape M3 will depend on, and the specific shapes are
 decisions rather than defaults: two tables instead of one, a surrogate key on
 grants instead of a composite, partial uniqueness with two conditions instead of
 one.
+
+Covers: DB-IDENTITY-001, SEC-RBAC-001, SEC-RBAC-002.
 """
 
 from __future__ import annotations

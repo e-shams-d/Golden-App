@@ -8,6 +8,8 @@ request returns the first response rather than executing twice.
 Run against real PostgreSQL rather than a stubbed session, because the
 interesting answers — 409 on a reused key, 412 on a stale version — are produced
 by the database, not by the route.
+
+Covers: API-CONTRACT-001, CON-PRECOND-001.
 """
 
 from __future__ import annotations

@@ -8,6 +8,8 @@ The float rule is the sharper one. A `Float` column accepts every test value
 anyone writes — 100, 250, 1000 all round-trip perfectly — and starts losing whole
 rials at amounts this system reaches routinely. There is no test of *behaviour*
 that catches it early; only a check of the declaration does.
+
+Covers: UT-TIME-001.
 """
 
 from __future__ import annotations

@@ -7,6 +7,8 @@ Python hash randomisation, Unicode spellings and interpreter restarts.
 So the subprocess test is the important one here. Everything else can pass while
 `PYTHONHASHSEED` quietly participates in the result, and that failure appears
 months later as an approved batch that will not export.
+
+Covers: CON-HASHTARGET-001, UT-HASH-001.
 """
 
 from __future__ import annotations

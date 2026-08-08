@@ -10,6 +10,8 @@ while the constraint under test did nothing.
 Insertions use raw SQL rather than the ORM on purpose. The database is the last
 line, and it has to hold against a statement the application layer never
 composed.
+
+Covers: AUD-META-001, AUD-OUTBOX-001, DB-CONSTRAINT-001.
 """
 
 from __future__ import annotations

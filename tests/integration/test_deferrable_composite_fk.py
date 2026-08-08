@@ -24,6 +24,8 @@ the test at the end of this file exists to say so to whoever tries.
 
 Tables are created here rather than in a migration. This is a capability proof,
 not production schema, and M5's real tables are blocked by DOC-CONFLICT-005.
+
+Covers: DB-CASCADE-001.
 """
 
 from __future__ import annotations

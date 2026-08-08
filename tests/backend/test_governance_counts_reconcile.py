@@ -15,6 +15,8 @@ So this file recomputes every derived number from the rows and requires them to
 agree. It also checks the two documents that quote those numbers, because a count
 that is right in one file and stale in the next is the same failure one step further
 away.
+
+Covers: CI-MANIFEST-001.
 """
 
 from __future__ import annotations

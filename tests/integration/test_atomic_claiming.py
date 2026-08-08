@@ -7,6 +7,8 @@ window it loses is between two statements in two different transactions.
 So the claim tests hold a real transaction open in one session while a second
 session runs the identical statement, which is exactly the interleaving that
 breaks the naive version.
+
+Covers: SEC-DURABLE-001.
 """
 
 from __future__ import annotations

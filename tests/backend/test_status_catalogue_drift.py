@@ -29,6 +29,8 @@ identical in the schema.
 enumerating them from a migration would resolve a question the catalogue reserves.
 That absence is pinned, because the tempting fix for any future status bug is to add
 the enum.
+
+Covers: CI-DRIFT-001, CI-DRIFT-002.
 """
 
 from __future__ import annotations

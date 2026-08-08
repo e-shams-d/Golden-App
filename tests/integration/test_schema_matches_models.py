@@ -35,6 +35,8 @@ the comparison to notice, so the distinction is pinned rather than assumed. It a
 guards the future: the warning says it may become an error in a later SQLAlchemy, and
 if that release changes the comparison too, that test fails rather than the drift
 check going quiet.
+
+Covers: DB-TYPE-001.
 """
 
 from __future__ import annotations

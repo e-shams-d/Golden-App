@@ -1,0 +1,25 @@
+# Every path the Python linter checks, listed once.
+#
+# This file exists because the list was previously written out in both
+# `verify-native.sh` and `verify-native.ps1`, and the two drifted. The drift was
+# invisible: `tests/fixtures/` was created in M2 slice 8, added to neither, and went
+# unlinted for two slices until an unrelated change happened to surface a finding in
+# it. Both scripts reported green the whole time.
+#
+# A comparison test between two copies would have caught that, and would have been a
+# third place to write the same list. So there is one list, and both scripts read it.
+#
+# One path per line. Blank lines and `#` comments are ignored. Paths are relative to
+# the repository root.
+
+services/backend/app
+services/backend/alembic
+services/backend/scripts
+
+tests/backend
+tests/integration
+tests/fixtures
+
+infra/scripts/validate_repository.py
+infra/scripts/scan_secrets.py
+infra/scripts/m0_manifest.py
