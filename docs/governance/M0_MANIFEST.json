@@ -2,7 +2,7 @@
   "schema_version": 1,
   "package": "gold_platform_m0_governance_working_baseline",
   "manifest_status": "working_baseline_scoped_decisions_approved_m0_incomplete",
-  "generated_on": "2026-08-06",
+  "generated_on": "2026-08-08",
   "hash_algorithm": "SHA-256",
   "manifest_self_included": false,
   "provenance": {
@@ -12,12 +12,13 @@
     "note": "This manifest establishes provenance from 2026-08-01 forward, not retroactively. Regeneration corrected 10 of the 17 entries. Two had drifted legitimately, because commit ae93d79 changed status_catalog.yaml and permission_catalog.yaml without regenerating the manifest. The other eight never matched their files at the commit that introduced this manifest, so the recorded chain did not hold from the start and no earlier citation can be treated as hash-backed. Recorded byte counts were also larger than the files they described, which is consistent with the manifest being generated mid-edit and never refreshed before the transfer commit."
   },
   "decision_state": {
-    "approval_date": "2026-07-20, extended 2026-08-01 and 2026-08-06",
+    "approval_date": "2026-07-20, extended 2026-08-01, 2026-08-06 and 2026-08-08",
     "approval_evidence": "workspace owner approval via conversation; legal name/organizational role not supplied. The 2026-08-01 additions were approved by the project owner Ehsan Shams and recorded on their instruction under the same convention. The 2026-08-06 additions (DOC-CONFLICT-036, 038, 039, 040, 041, 042) record decisions the project owner approved during M2 slices 1, 6, 8 and 9 by instructing that the implementation judgement be applied; each is already enforced by a migration, and recording them as Open would have claimed the questions were undecided while shipped code depended on the answers.",
     "approved_canonical_decisions": [
       "ADR-006",
       "POL-005 (Phase 1A: break-glass disabled)",
-      "POL-002 (Phase 1A: published-paid-result correction requires manager authority or dual control)"
+      "POL-002 (Phase 1A: manager authority or dual control)",
+      "ADR-001 (Phase 1A: server-side sessions on a secure HTTP-only cookie)"
     ],
     "resolved_conflicts": [
       "DOC-CONFLICT-001",
@@ -49,7 +50,7 @@
   },
   "summary": {
     "file_count": 17,
-    "total_bytes": 291147,
+    "total_bytes": 292790,
     "total_lines": 3586
   },
   "validation": {
@@ -76,9 +77,9 @@
     },
     {
       "path": "docs/adr/ADR_INDEX.md",
-      "bytes": 18900,
+      "bytes": 20348,
       "lines": 103,
-      "sha256": "87d2c103df300e072435a930e083a34318b030121524aff747d7b6da13444119"
+      "sha256": "73e23ef232cf6b9d5267a3690240728e4e1b66fe3cb1a8b2ada162ab65b6d027"
     },
     {
       "path": "docs/adr/ADR_TEMPLATE.md",
@@ -148,9 +149,9 @@
     },
     {
       "path": "docs/governance/README.md",
-      "bytes": 4098,
+      "bytes": 4107,
       "lines": 74,
-      "sha256": "8815c500130c18f493a80bd32cb4526676985ede4b5691130e7286c782311fbf"
+      "sha256": "4f34fb93e8539d14b3c3f3fb35bd71c7fad5fd5dbb226b1bddd969fccc72a931"
     },
     {
       "path": "docs/governance/REPOSITORY_BASELINE.md",
@@ -166,9 +167,9 @@
     },
     {
       "path": "docs/governance/TRACEABILITY_MATRIX.md",
-      "bytes": 37387,
+      "bytes": 37573,
       "lines": 58,
-      "sha256": "bced0dda99a6ca9048951a597b64de252d32ae1b74da171b8d681c0ae8543721"
+      "sha256": "d345c7352042e964d180e050d6a5099ffd7ff49ce1bfe4b4ba5c86e93918aaff"
     }
   ]
 }

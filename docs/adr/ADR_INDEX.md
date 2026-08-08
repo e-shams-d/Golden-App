@@ -1,7 +1,7 @@
 # M0 Architecture and Policy Decision Index
 
 Status: Working M0 governance register with recorded approvals
-Decision state: ADR-006, POL-005 and POL-002 Approved; 30 entries remain Open
+Decision state: ADR-001, ADR-006, POL-002 and POL-005 Approved; 29 entries remain Open
 Alias mapping: namespace resolved 2026-08-01 (DOC-CONFLICT-003). Every alias now
 carries a recorded mapping; no `needs_mapping` entry blocks Phase 1A.
 Canonical source: Implementation Docs/00_Start_Here/Open_ADR_Register.md
@@ -39,7 +39,7 @@ Owner role/name and due date: TBD for every remaining Open entry
 
 | Canonical ID | Decision | Category | Related aliases | Alias state | Safe default while open | Owner role | Owner name | Due date | Blocking milestone or gate | Source |
 |---|---|---|---|---|---|---|---|---|---|---|
-| ADR-001 | Browser authentication and session transport | Core / Identity | ADR-SEC-001; ADR-SEC-002; ADR-OPS-005 | **Resolved 2026-08-01.** ADR-SEC-001 → ADR-001 for the authentication/session transport half, and → OPS-003 for cookie scope, origins and TLS/HSTS. ADR-SEC-002 is a subset: it decides session timeout only and does not satisfy ADR-001, which still owns the transport choice. ADR-OPS-005 splits the same way as ADR-SEC-001. | Keep transport behind an interface; do not finalize or claim production-ready authentication until approved. | TBD | TBD | TBD | M3 final auth; M12 security review; M13 production | Open_ADR_Register.md:10; 12_Security_RBAC_Audit.md:2553-2554; 13_DevOps_Deployment_Operations.md:2473 |
+| ADR-001 | Browser authentication and session transport | Core / Identity | ADR-SEC-001; ADR-SEC-002; ADR-OPS-005 | **Resolved 2026-08-01.** ADR-SEC-001 → ADR-001 for the authentication/session transport half, and → OPS-003 for cookie scope, origins and TLS/HSTS. ADR-SEC-002 is a subset: it decides session timeout only and does not satisfy ADR-001, which still owns the transport choice. ADR-OPS-005 splits the same way as ADR-SEC-001. | **Approved for Phase 1A (2026-08-08): server-side session records carried by a secure, HTTP-only, `SameSite` cookie, with CSRF protection on every unsafe method.** This confirms the preferred browser baseline document 12 section 6.1 already states, rather than taking the bearer-token exception that section permits only with explicit ADR approval. Three reasons decided it. The schema M2 shipped is already a server-side session store: `auth_sessions` holds a secret **hash**, `revoked_at`, `revocation_reason` and `security_stamp_version`, and a stateless token would make immediate revocation require a server-side denylist — a session table under another name, with none of the constraints. Both browser apps sit behind one nginx, so a same-site cookie needs no cross-origin token plumbing. And `no long-lived credential in localStorage` is not a preference here: a stolen browser profile must not yield a reusable financial credential. Domain services stay transport-neutral and consume an `ActorContext`, never JWT claims, so the choice is reversible behind the interface if a later milestone needs it. Cookie **scope, origins and TLS/HSTS** are not decided here — they remain OPS-003. Idle and absolute **timeouts** are not decided here — ADR-SEC-002 owns them and is a subset that does not satisfy this decision. | Approval identity recorded without inferred organizational role | Ehsan Shams, project owner; approval recorded on their instruction after a written recommendation; legal name/organizational role not supplied | N/A - approved 2026-08-08 | M3 final auth; M12 security review; M13 production | Open_ADR_Register.md:10; 12_Security_RBAC_Audit.md:2553-2554; 13_DevOps_Deployment_Operations.md:2473 |
 | ADR-002 | Production hosting provider, region, and topology | Core / Operations | ADR-OPS-001; ADR-SEC-012 | **Resolved 2026-08-01.** ADR-OPS-001 → ADR-002. ADR-SEC-012 spans two canonicals and is split: hosting region and topology → ADR-002, administrative network restriction → OPS-004, which already lists it. Neither canonical is satisfied by the alias alone. | Local/staging only; no production environment commitment or procurement. | TBD | TBD | TBD | M12 production-like hardening; M13 production | Open_ADR_Register.md:11; 13_DevOps_Deployment_Operations.md:2469; 12_Security_RBAC_Audit.md:2564 |
 | ADR-003 | Production private-file storage adapter and location | Core / File storage | ADR-OPS-002 | proposed_mapping | Use the storage abstraction; local pilot storage is non-production unless backup and restore evidence passes. | TBD | TBD | TBD | M4 production adapter; M12 restore; M13 production | Open_ADR_Register.md:12; 13_DevOps_Deployment_Operations.md:2470 |
 | ADR-004 | RPO, RTO, backup schedule, restore authority, and ownership | Core / Recovery | ADR-OPS-003; ADR-OPS-004; ADR-SEC-013 | **Resolved 2026-08-01.** ADR-OPS-003 → ADR-004; ADR-SEC-013 → ADR-004. ADR-OPS-004 is a subset covering backup design only; deciding it leaves RPO/RTO targets, restore authority and ownership open, so ADR-004 is not satisfied until those are decided and a restore drill passes. | Production release is blocked; backup claims are invalid until a clean full restore drill succeeds. | TBD | TBD | TBD | M12 restore drill; M13 production | Open_ADR_Register.md:13; 13_DevOps_Deployment_Operations.md:2471-2472; 12_Security_RBAC_Audit.md:2565 |
@@ -83,8 +83,8 @@ Owner role/name and due date: TBD for every remaining Open entry
 | Packaging | 3 |
 | AI ADR | 8 |
 | Total | 33 |
-| Approved | 3 |
-| Open | 30 |
+| Approved | 4 |
+| Open | 29 |
 
 ## Unrepresented or composite alias scopes
 

@@ -206,6 +206,153 @@ def test_the_manifest_decision_state_agrees_with_the_register(
     )
 
 
+# A canonical decision row. `ADR-AI-###` is the shape that broke the first attempt at
+# counting these: a pattern of `(ADR|POL|OPS|PKG)-\d+` misses all eight AI rows and
+# derives 25 instead of 33. The prefix may contain hyphens, so the row id is matched
+# as a whole rather than as a known prefix plus a number.
+_DECISION_ROW = re.compile(r"^\|\s*([A-Z][A-Z0-9-]+-\d+)\s*\|")
+
+
+def decision_rows() -> tuple[dict[str, str], set[str]]:
+    """Every canonical decision id, and which of them are Approved.
+
+    First occurrence wins: three ids also appear in the approved-evidence table below
+    the main one, and counting those twice is the same arithmetic error the conflict
+    register's blocking-order table invites.
+    """
+
+    text = (Path(__file__).resolve().parents[2] / "docs" / "adr" / "ADR_INDEX.md").read_text(
+        encoding="utf-8"
+    )
+    rows: dict[str, str] = {}
+    approved: set[str] = set()
+    for line in text.splitlines():
+        match = _DECISION_ROW.match(line)
+        if not match:
+            continue
+        rows.setdefault(match.group(1), line)
+        if "**Approved" in line:
+            approved.add(match.group(1))
+    return rows, approved
+
+
+def test_the_adr_count_table_matches_its_rows() -> None:
+    """The same rule the conflict register states, applied to the decision index.
+
+    This was written after deriving 25 from a parser that missed the `ADR-AI-###`
+    rows and writing that number into three files. The count table said 33 the whole
+    time; nothing compared them.
+    """
+
+    rows, approved = decision_rows()
+    text = (Path(__file__).resolve().parents[2] / "docs" / "adr" / "ADR_INDEX.md").read_text(
+        encoding="utf-8"
+    )
+
+    for label, expected in (
+        ("Total", len(rows)),
+        ("Approved", len(approved)),
+        ("Open", len(rows) - len(approved)),
+    ):
+        match = re.search(rf"\|\s*{label}\s*\|\s*(\d+)\s*\|", text)
+        assert match, f"the ADR count table has no {label} row"
+        assert int(match.group(1)) == expected, (
+            f"the count table says {label} {match.group(1)}; the rows say {expected}"
+        )
+
+
+def test_the_adr_header_matches_its_rows() -> None:
+    rows, approved = decision_rows()
+    text = (Path(__file__).resolve().parents[2] / "docs" / "adr" / "ADR_INDEX.md").read_text(
+        encoding="utf-8"
+    )
+
+    match = re.search(r"Decision state: (.*?) Approved; (\d+) entries remain Open", text)
+
+    assert match, "the ADR index header no longer states its counts in the expected form"
+    assert int(match.group(2)) == len(rows) - len(approved)
+    for identifier in approved:
+        assert identifier in match.group(1), f"{identifier} is Approved but absent from the header"
+
+
+def test_the_readme_matches_the_adr_index() -> None:
+    rows, approved = decision_rows()
+
+    match = re.search(
+        r"ADR_INDEX\.md — (\d+) canonical decisions: (.*?) Approved, (\d+) Open",
+        README.read_text(encoding="utf-8"),
+    )
+
+    assert match, "the governance README no longer restates the decision counts"
+    assert (int(match.group(1)), int(match.group(3))) == (len(rows), len(rows) - len(approved))
+
+
+def test_the_traceability_matrix_matches_both_registers() -> None:
+    """The matrix's M0 row restates both count sets, so it is a fifth copy.
+
+    It held `33 conflicts: 7 Resolved/Approved and 26 Open, including 5 Critical` while
+    the register said 43/20/23 and no open Critical — stale by ten conflicts and by the
+    one number a reader would act on. Restating a count is fine; restating it ungated is
+    what produces a document that argues with itself.
+    """
+
+    rows, approved = decision_rows()
+    matrix = (GOVERNANCE / "TRACEABILITY_MATRIX.md").read_text(encoding="utf-8")
+    register = (GOVERNANCE / "CONFLICT_REGISTER.md").read_text(encoding="utf-8")
+
+    decisions = re.search(
+        r"ADR_INDEX\.md contains (\d+) decisions: (.*?) Approved; (\d+) Open", matrix
+    )
+    assert decisions, "the matrix no longer restates the decision counts"
+    assert (int(decisions.group(1)), int(decisions.group(3))) == (
+        len(rows),
+        len(rows) - len(approved),
+    )
+    for identifier in approved:
+        assert identifier in decisions.group(2), f"{identifier} is Approved and unlisted"
+
+    totals = re.search(r"\|\s*Total\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|", register)
+    critical = re.search(r"\|\s*Critical\s*\|\s*(\d+)\s*\|", register)
+    assert totals and critical, "the conflict register no longer states its totals"
+    open_count, resolved, total = (int(value) for value in totals.groups())
+
+    conflicts = re.search(
+        r"CONFLICT_REGISTER\.md contains (\d+) conflicts: (\d+) Resolved/Approved and "
+        r"(\d+) Open, (none|including \d+) Critical",
+        matrix,
+    )
+    assert conflicts, "the matrix no longer restates the conflict counts"
+    assert (int(conflicts.group(1)), int(conflicts.group(2)), int(conflicts.group(3))) == (
+        total,
+        resolved,
+        open_count,
+    ), "the matrix and the conflict register disagree on the conflict counts"
+
+    stated_critical = 0 if conflicts.group(4) == "none" else int(conflicts.group(4).split()[-1])
+    assert stated_critical == int(critical.group(1)), (
+        "the matrix and the register disagree on how many Critical conflicts are open"
+    )
+
+
+def test_the_manifest_lists_every_approved_decision() -> None:
+    """The manifest names them in prose, so it is a fourth place to go stale."""
+
+    import json
+
+    _rows, approved = decision_rows()
+    listed = json.loads((GOVERNANCE / "M0_MANIFEST.json").read_text(encoding="utf-8"))[
+        "decision_state"
+    ]["approved_canonical_decisions"]
+
+    for identifier in sorted(approved):
+        assert any(entry.startswith(identifier) for entry in listed), (
+            f"{identifier} is Approved in the index and absent from the manifest"
+        )
+    assert len(listed) == len(approved), (
+        f"the manifest lists {len(listed)} approved decisions; the index has {len(approved)}"
+    )
+
+
 def test_ids_are_unique_and_unbroken(rows: dict[str, tuple[str, str]]) -> None:
     """A gap or a reused id makes every citation ambiguous.
 
