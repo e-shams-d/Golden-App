@@ -135,13 +135,41 @@ branch where no test can observe it from the outside.
 branches internally cannot have two rate-limit policies, two cookie scopes and two DTO shapes
 without reimplementing routing inside the handler.
 
-**The cookie must be audience-scoped, and that is only possible per route.** Two routes issue two
-distinctly named cookies on two paths — `gp_admin_session` on `/api/v1/admin` and internal surfaces,
-`gp_trader_session` on the trader surfaces — so a trader credential is **not sent** to an admin
-endpoint by the browser. With one route and one cookie name, doc 12's requirement that "a trader
-session must not be accepted as an internal session" (`:316`) degrades to a server-side check
-somebody can forget. Not sending the credential is a stronger control than checking it, and it is
-also the only version that satisfies the DoD's second half without relying on frontend discipline.
+**The cookie must be audience-scoped, and the browser must do the scoping.** Two routes issue two
+distinctly named cookies, so a trader credential is **not sent** to an admin endpoint by the browser.
+With one route and one cookie name, doc 12's requirement that "a trader session must not be accepted
+as an internal session" (`:316`) degrades to a server-side check somebody can forget. Not sending the
+credential is a stronger control than checking it.
+
+> **Corrected 2026-08-09, before slice 4 was written.** This paragraph originally said the two
+> cookies would be scoped by **path** — `gp_admin_session` on `/api/v1/admin`. That path does not
+> exist. `05_API_Specification.md` is resource-first (`/payment-requests`, `/traders`, `/files`,
+> `/auth`) and has no audience segment, and `app/api/router.py` mounts everything under one
+> `/api/v1`. Worse, a path-scoped cookie would not be sent to the shared `/auth/me`, `/auth/logout`
+> and `/auth/sessions` routes this same plan defines, so `me` would read as unauthenticated and
+> logout could not revoke.
+>
+> The isolation axis this deployment actually has is the **host**. `infra/nginx/conf.d/local.conf`
+> serves the trader app on `trader.localhost` and the admin app on `admin.localhost`, each with its
+> own `/api/` proxy to the same backend, so each app is same-origin with the API and the two apps are
+> different origins from each other. A **host-only** cookie — no `Domain` attribute — is therefore
+> never sent to the sibling app, whatever its path.
+>
+> Slice 4 uses the `__Host-` cookie prefix, which is not decoration: the browser refuses to store a
+> `__Host-` cookie unless it is `Secure`, carries **no** `Domain`, and has `Path=/`. That makes
+> host-only scoping structurally enforced by the client rather than a server-side attribute a later
+> edit could add. The footgun it closes is concrete — `server_name trader.localhost localhost` binds
+> the trader app to bare `localhost` too, so a cookie set with `Domain=localhost` would be delivered
+> to `admin.localhost`, and in production `Domain=example.ir` would leak the trader cookie to the
+> admin app.
+>
+> Two consequences recorded rather than quietly dropped. **`SameSite` provides no separation between
+> the two apps** — they are the same site — so it defends against third-party sites only and must not
+> be cited as audience isolation. And **the CORS allowlist this plan promised at slice 4 is dead
+> configuration**: no browser request is cross-origin under this topology, `connect-src 'self'` is
+> already set, and middleware that never fires is worse than none because a test asserting it would
+> be testing an unreachable path. It is not added; it becomes real only if the API is ever given its
+> own hostname.
 
 **The session row already records the audience structurally.** `auth_sessions` has the XOR check
 that exactly one of `admin_user_id`/`trader_user_id` is set. An audience guard can therefore compare
@@ -544,8 +572,10 @@ ADR-001 made concrete, and DOC-CONFLICT-023 implemented: the first slice where a
 - CSRF bound to the session and validated server-side (`12_Security_RBAC_Audit.md:495`) — not a
   stateless double-submit, which validates that two attacker-writable values match. The token is
   derived per session and required in `X-CSRF-Token` on every unsafe method.
-- CORS restricted to the configured Trader PWA and Admin Web origins (`:496`), with no permissive
-  default.
+- CORS is **not** configured, and the omission is the decision: every browser request is same-origin
+  under the real nginx topology, so an allowlist would never fire. `:496` is satisfied today by
+  `connect-src 'self'` plus the absence of any cross-origin surface, and re-examined the moment the
+  API gets a hostname of its own.
 - The audience guard compares the route's expected actor column against the session row's populated
   column, so a cross-audience session is a `NULL`, not an unequal string.
 - `openapi.json` and the generated TypeScript client regenerate in this slice, and
@@ -796,7 +826,7 @@ the slice where the interface becomes visible.**
 - `UI-ISO-001` — the trader bundle contains no admin endpoint path and no admin client, asserted
   against the built output rather than the source.
 - `UI-ISO-002` — a trader session cannot reach an admin surface end-to-end in a real browser: the
-  DoD's second half, and the reason slice 4's cookie is path-scoped.
+  DoD's second half, and the reason slice 4's cookie is host-only under the `__Host-` prefix.
 - `UI-STORE-001` — after login, no storage key holds a session secret or a token.
 - `UI-STATE-001` — each mandatory application state renders from a real server response, not from a
   hand-set prop.
@@ -805,9 +835,16 @@ the slice where the interface becomes visible.**
 
 ### Negative controls
 
-Import the admin client into the trader bundle and confirm `UI-ISO-001` fails. Widen the cookie path
-to `/` and confirm `UI-ISO-002` fails. Write the session id to `localStorage` and confirm
-`UI-STORE-001` fails.
+Import the admin client into the trader bundle and confirm `UI-ISO-001` fails. Write the session id
+to `localStorage` and confirm `UI-STORE-001` fails.
+
+The control this slice originally listed — "widen the cookie path to `/` and confirm `UI-ISO-002`
+fails" — **cannot fail** and is replaced. Browsers key cookies by host before path, so a host-only
+cookie on `admin.localhost` is never sent to `trader.localhost` no matter what `Path` says; the
+control would have reported success while testing nothing. The control that does bite is to set
+`Domain` on the cookie, which makes it sibling-visible, and `UI-ISO-002` must fail on it. Note also
+that native dev serves both apps on `localhost` at different ports and cookies ignore ports, so any
+browser-level isolation test has to run against the compose stack's distinct hostnames.
 
 ## Slice 10 — The Definition-of-Done gate and M3 evidence
 

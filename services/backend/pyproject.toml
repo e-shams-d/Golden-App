@@ -79,6 +79,11 @@ ignore = ["B008"]
 # file's directory, and the linter is invoked from the repository root.
 "**/hashing.py" = ["RUF001"]
 "**/test_canonical_hashing.py" = ["RUF001"]
+# Same reason, for the login-identifier normaliser: an Iranian keyboard
+# produces Persian digits by default, so folding them is the module's
+# purpose rather than a stray paste.
+"**/identifiers.py" = ["RUF001"]
+"**/test_identifiers.py" = ["RUF001"]
 
 [tool.mypy]
 python_version = "3.12"
