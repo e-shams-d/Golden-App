@@ -83,6 +83,30 @@ def test_production_requires_operator_token_and_immutable_release(settings_facto
         )
 
 
+def test_production_requires_a_rate_limit_key_secret(settings_factory) -> None:
+    """The limiter's Redis keys must be keyed, not merely hashed.
+
+    Worth its own test because `settings_factory` supplies the secret by default
+    so every other test can build production settings — and a requirement that
+    every fixture satisfies is one nothing proves is enforced.
+
+    A plain SHA-256 of an Iranian mobile number is reversible by enumerating
+    about 10^9 candidates, so an unkeyed digest would put a directory of who uses
+    the platform into a datastore with no persistence and no encryption.
+    """
+
+    with pytest.raises(ValidationError, match="AUTH_RATE_LIMIT_KEY_SECRET"):
+        settings_factory(app_env="production", auth_rate_limit_key_secret=None)
+
+    with pytest.raises(ValidationError, match="at least 32 characters"):
+        settings_factory(app_env="production", auth_rate_limit_key_secret="too-short")
+
+    # Outside production it is optional: local and test runs have no directory
+    # worth protecting, and requiring it there would make the template a place
+    # people paste a real secret.
+    assert settings_factory(app_env="local", auth_rate_limit_key_secret=None) is not None
+
+
 def test_settings_repr_masks_dependency_credentials(settings_factory) -> None:
     rendered = repr(settings_factory())
 

@@ -197,15 +197,22 @@ def test_a_stamp_behind_the_identity_is_rejected_and_ahead_is_distinguished() ->
 
 
 def test_identity_state_is_evaluated_against_the_clock_not_a_status_value() -> None:
-    """A lock is `locked_until`, per DOC-CONFLICT-037's decision."""
+    """A lock is `locked_until`, per DOC-CONFLICT-037's decision.
+
+    **A lock does not reject a session, and an earlier version of this test
+    asserted that it did.** Rejecting sessions on `locked_until` meant an
+    attacker could end any user's session by failing a handful of logins at
+    their username — no credential needed. Slice 3 moved the decision into
+    `app.security.account_state` and this expectation moved with it; immediate
+    cut-off is `suspended`, which is recorded and travels via the security stamp.
+    """
 
     now = datetime(2026, 8, 9, 12, 0, tzinfo=UTC)
 
     assert classify_identity("active", None, now) is None
     assert classify_identity("active", now - timedelta(seconds=1), now) is None
-    assert classify_identity("active", now + timedelta(minutes=5), now) is (
-        SessionRejection.IDENTITY_LOCKED
-    )
+    assert classify_identity("active", now + timedelta(minutes=5), now) is None
+
     for status in ("suspended", "recovery_required", "deactivated"):
         assert classify_identity(status, None, now) is SessionRejection.IDENTITY_NOT_ACTIVE
 
