@@ -4,6 +4,24 @@
  */
 
 export interface paths {
+  "/api/v1/auth/admin/login": {
+    post: operations["loginAdmin"];
+  };
+  "/api/v1/auth/logout": {
+    post: operations["logout"];
+  };
+  "/api/v1/auth/me": {
+    get: operations["getCurrentSession"];
+  };
+  "/api/v1/auth/sessions": {
+    get: operations["listOwnSessions"];
+  };
+  "/api/v1/auth/sessions/{session_id}/revoke": {
+    post: operations["revokeOwnSession"];
+  };
+  "/api/v1/auth/trader/login": {
+    post: operations["loginTrader"];
+  };
   "/api/v1/center-profile/rename": {
     post: operations["renameCenterProfile"];
   };
@@ -32,6 +50,7 @@ export interface paths {
 
 export interface components {
   schemas: {
+    "ActorSummary": { audience: string; id: string; permissions: Array<string>; roles: Array<string>; status: string; trader_id: string | null };
     "BackgroundProcessingResponse": { jobs: components["schemas"]["JobHealth"]; needs_attention: boolean; outbox: components["schemas"]["OutboxHealth"] };
     "CenterProfileResponse": { name: string; profile_id: string; record_version: number; replayed: boolean };
     "DependenciesResponse": { dependencies: { [key: string]: components["schemas"]["DependencyStatus"] }; status: "ok" | "degraded" };
@@ -42,12 +61,17 @@ export interface components {
     "FeatureFlagState": { flag_key: string; is_enabled: boolean };
     "JobHealth": { dead_lettered: number; fallback_to_manual: number; oldest_queued_age_seconds?: number | null; queued: number; retry_scheduled: number; running: number; stale_leases: number };
     "LivenessResponse": { service: string; status?: "alive"; version: string };
+    "LoginRequest": { identifier: string; password: string };
+    "LoginResponse": { session: components["schemas"]["SessionSummary"]; user: components["schemas"]["ActorSummary"] };
     "OutboxHealth": { dead_lettered: number; oldest_pending_age_seconds?: number | null; pending: number };
     "ReadinessResponse": { checks: { [key: string]: "ok" | "unavailable" }; status: "ready" | "not_ready" };
     "ReleaseEvidenceResponse": { commit: string; environment: string; feature_flags: Array<components["schemas"]["FeatureFlagState"]>; schema_state: components["schemas"]["SchemaState"]; service: string; version: string };
     "ReleaseResponse": { built_at: string | null; commit: string; environment: string; service: string; version: string };
     "RenameCenterProfileRequest": { new_name: string; profile_id: string; reason?: string | null };
+    "RevocationResponse": { revoked: boolean };
     "SchemaState": { applied_revisions: Array<string>; expected_revisions: Array<string>; matches: boolean };
+    "SessionListResponse": { sessions: Array<components["schemas"]["SessionSummary"]> };
+    "SessionSummary": { authentication_level: string; expires_at: string; id: string };
     "WorkerStatus": { active_job_count: number; last_heartbeat_at: string; name: string; queues: Array<string>; release_version: string; status: "running" | "stale" };
     "WorkersResponse": { workers: Array<components["schemas"]["WorkerStatus"]> };
   };
@@ -58,11 +82,17 @@ export interface components {
 
 export interface operations {
   "getBackgroundProcessingHealth": { security: Array<{ OperationsToken: Array<never> }>; responses: { "200": { content: { "application/json": components["schemas"]["BackgroundProcessingResponse"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
+  "getCurrentSession": { responses: { "200": { content: { "application/json": components["schemas"]["LoginResponse"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getHealthDependencies": { security: Array<{ OperationsToken: Array<never> }>; responses: { "200": { content: { "application/json": components["schemas"]["DependenciesResponse"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getHealthLiveness": { responses: { "200": { content: { "application/json": components["schemas"]["LivenessResponse"] } } } };
   "getHealthReadiness": { responses: { "200": { content: { "application/json": components["schemas"]["ReadinessResponse"] } }; "503": { content: { "application/json": components["schemas"]["ReadinessResponse"] } } } };
   "getHealthWorkers": { security: Array<{ OperationsToken: Array<never> }>; responses: { "200": { content: { "application/json": components["schemas"]["WorkersResponse"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "503": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getReleaseEvidence": { security: Array<{ OperationsToken: Array<never> }>; responses: { "200": { content: { "application/json": components["schemas"]["ReleaseEvidenceResponse"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getReleaseMetadata": { responses: { "200": { content: { "application/json": components["schemas"]["ReleaseResponse"] } } } };
+  "listOwnSessions": { responses: { "200": { content: { "application/json": components["schemas"]["SessionListResponse"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
+  "loginAdmin": { requestBody: { content: { "application/json": components["schemas"]["LoginRequest"] } }; responses: { "200": { content: { "application/json": components["schemas"]["LoginResponse"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
+  "loginTrader": { requestBody: { content: { "application/json": components["schemas"]["LoginRequest"] } }; responses: { "200": { content: { "application/json": components["schemas"]["LoginResponse"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
+  "logout": { responses: { "200": { content: { "application/json": components["schemas"]["RevocationResponse"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "renameCenterProfile": { parameters?: { header?: { "Idempotency-Key"?: string | null; "If-Match"?: string | null; "X-Correlation-Id"?: string | null } }; requestBody: { content: { "application/json": components["schemas"]["RenameCenterProfileRequest"] } }; security: Array<{ OperationsToken: Array<never> }>; responses: { "200": { content: { "application/json": components["schemas"]["CenterProfileResponse"] } }; "400": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "409": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "412": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "428": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
+  "revokeOwnSession": { parameters: { path: { session_id: string } }; responses: { "200": { content: { "application/json": components["schemas"]["RevocationResponse"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
 }

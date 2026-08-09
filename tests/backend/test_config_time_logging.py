@@ -107,6 +107,21 @@ def test_production_requires_a_rate_limit_key_secret(settings_factory) -> None:
     assert settings_factory(app_env="local", auth_rate_limit_key_secret=None) is not None
 
 
+def test_production_requires_a_csrf_key_secret(settings_factory) -> None:
+    """The CSRF token is an HMAC under this key, so an absent key makes it forgeable.
+
+    Its own test for the same reason as the rate-limit key: `settings_factory`
+    supplies it by default so every other test can build production settings, and
+    a requirement every fixture satisfies is one nothing proves is enforced.
+    """
+
+    with pytest.raises(ValidationError, match="AUTH_CSRF_KEY_SECRET"):
+        settings_factory(app_env="production", auth_csrf_key_secret=None)
+
+    with pytest.raises(ValidationError, match="at least 32 characters"):
+        settings_factory(app_env="production", auth_csrf_key_secret="too-short")
+
+
 def test_settings_repr_masks_dependency_credentials(settings_factory) -> None:
     rendered = repr(settings_factory())
 
