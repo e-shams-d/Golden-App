@@ -25,7 +25,7 @@ from __future__ import annotations
 import ipaddress
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -40,7 +40,7 @@ from app.commands.authenticate import (
     authenticate,
 )
 from app.core.config import Settings
-from app.core.errors import AppError, ErrorEnvelope
+from app.core.errors import AppError, ErrorEnvelope, ForbiddenError
 from app.core.runtime import RuntimeServices
 from app.core.time import utc_now
 from app.db.models.identity import AdminUser, TraderUser
@@ -49,6 +49,7 @@ from app.security import cookies, sessions
 from app.security.actor import ActorContext, Audience
 from app.security.lockout import LockoutPolicy
 from app.security.passwords import Argon2Parameters
+from app.security.permissions import declare, resolve
 from app.security.rate_limit import AuthenticationRateLimiter, RateLimitPolicy
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -377,6 +378,11 @@ def _authenticate_request(
             uow.rollback()
             raise UnauthenticatedError()
 
+        # Resolved on every protected request rather than carried in the
+        # session: a role revoked a minute ago must stop granting now, and a
+        # cached set would keep granting until the session expired.
+        roles, permissions = resolve(session, row_audience, identity.id)
+
         actor = ActorContext(
             actor_type=sessions.actor_type_for(row_audience),
             actor_id=identity.id,
@@ -384,6 +390,8 @@ def _authenticate_request(
             session_id=record.id,
             security_stamp_version=record.security_stamp_version,
             trader_id=getattr(identity, "trader_id", None),
+            roles=roles,
+            permissions=permissions,
         )
         uow.rollback()
 
@@ -400,6 +408,42 @@ def _require_csrf(request: Request, digest: str, settings: Settings) -> None:
         presented, digest, (key.get_secret_value() if key else "").encode("utf-8")
     ):
         raise CsrfRequiredError()
+
+
+def authenticated_actor(
+    request: Request,
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ActorContext:
+    """The dependency every protected route outside this module uses.
+
+    Exported here rather than in `app/api/dependencies.py` because it needs the
+    session machinery this module already owns, and a second copy of the
+    validation order is the thing most likely to drift into accepting something
+    the first copy refuses.
+    """
+
+    actor, _ = _authenticate_request(request, runtime, settings)
+    return actor
+
+
+def requires(permission: str) -> Any:
+    """Route-level guard for one approved permission.
+
+    The permission is checked against the approved catalogue **now**, at import,
+    so a typo is a failed start rather than a route that silently denies everyone
+    (`12_Security_RBAC_Audit.md:629`).
+    """
+
+    declared = declare(permission)
+
+    def guard(
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    ) -> None:
+        if declared not in actor.permissions:
+            raise ForbiddenError()
+
+    return Depends(guard)
 
 
 @router.post(
