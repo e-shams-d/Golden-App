@@ -108,6 +108,7 @@ def settings_factory(tmp_path: Path) -> Callable[..., Settings]:
             # real gate: a test that needs to prove the requirement fires can
             # override this to None, and every other test is unaffected.
             "auth_rate_limit_key_secret": "r" * 40,
+            "auth_csrf_key_secret": "c" * 40,
             "dependency_timeout_seconds": 0.2,
             "worker_probe_timeout_seconds": 0.2,
             "log_level": "CRITICAL",

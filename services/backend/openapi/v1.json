@@ -1,6 +1,60 @@
 {
   "components": {
     "schemas": {
+      "ActorSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "audience": {
+            "title": "Audience",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "trader_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trader Id"
+          }
+        },
+        "required": [
+          "id",
+          "audience",
+          "status",
+          "trader_id",
+          "roles",
+          "permissions"
+        ],
+        "title": "ActorSummary",
+        "type": "object"
+      },
       "BackgroundProcessingResponse": {
         "additionalProperties": false,
         "properties": {
@@ -297,6 +351,47 @@
         "title": "LivenessResponse",
         "type": "object"
       },
+      "LoginRequest": {
+        "additionalProperties": false,
+        "description": "Note what is absent: there is no `user_type`.\n\n`SEC-AUD-002` asserts that against the generated OpenAPI document, so adding\none here fails the contract test rather than only a source review.",
+        "properties": {
+          "identifier": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Identifier",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "identifier",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "type": "object"
+      },
+      "LoginResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/SessionSummary"
+          },
+          "user": {
+            "$ref": "#/components/schemas/ActorSummary"
+          }
+        },
+        "required": [
+          "session",
+          "user"
+        ],
+        "title": "LoginResponse",
+        "type": "object"
+      },
       "OutboxHealth": {
         "additionalProperties": false,
         "properties": {
@@ -479,6 +574,20 @@
         "title": "RenameCenterProfileRequest",
         "type": "object"
       },
+      "RevocationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "revoked": {
+            "title": "Revoked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "revoked"
+        ],
+        "title": "RevocationResponse",
+        "type": "object"
+      },
       "SchemaState": {
         "additionalProperties": false,
         "properties": {
@@ -510,6 +619,49 @@
           "matches"
         ],
         "title": "SchemaState",
+        "type": "object"
+      },
+      "SessionListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/SessionSummary"
+            },
+            "title": "Sessions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sessions"
+        ],
+        "title": "SessionListResponse",
+        "type": "object"
+      },
+      "SessionSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "authentication_level": {
+            "title": "Authentication Level",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "expires_at",
+          "authentication_level"
+        ],
+        "title": "SessionSummary",
         "type": "object"
       },
       "WorkerStatus": {
@@ -594,6 +746,326 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/auth/admin/login": {
+      "post": {
+        "operationId": "loginAdmin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The login information is not valid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Authenticate an internal user and open a session.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "description": "Idempotent by definition (`05_API_Specification.md:802`).\n\nRevoking an already-revoked session succeeds and revokes nothing further, so\na client that retries after a timeout is not told it has failed.",
+        "operationId": "logout",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevocationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Permission denied."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Revoke the current session.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "operationId": "getCurrentSession",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Permission denied."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "The current session and the actor it authenticates.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/sessions": {
+      "get": {
+        "operationId": "listOwnSessions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Permission denied."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "List the caller's own live sessions.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/sessions/{session_id}/revoke": {
+      "post": {
+        "description": "Scoped to the caller's own sessions.\n\nA session belonging to someone else answers exactly as one that does not\nexist: `14_Testing_QA_Acceptance.md:1284` requires refusal without disclosing\nwhether the target exists, and a 404-versus-403 difference here would be an\nexistence oracle over session identifiers.",
+        "operationId": "revokeOwnSession",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevocationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Permission denied."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Revoke one of the caller's own sessions.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/trader/login": {
+      "post": {
+        "operationId": "loginTrader",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The login information is not valid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Authenticate a trader contact and open a session.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/v1/center-profile/rename": {
       "post": {
         "operationId": "renameCenterProfile",

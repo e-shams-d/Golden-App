@@ -50,10 +50,53 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # published schema and trip the oasdiff breaking-change gate, whose waiver
         # process is still an unresolved TODO(governance).
         "getReleaseEvidence",
+        # M3 slice 4. Two login operations rather than one taking a `user_type`,
+        # which is DOC-CONFLICT-023's approved direction made visible in the
+        # published contract: the audience is a property of the URL, so a client
+        # generated from this document cannot ask to be evaluated as the other one.
+        "loginAdmin",
+        "loginTrader",
+        "getCurrentSession",
+        "logout",
+        "listOwnSessions",
+        "revokeOwnSession",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas
     assert "ValidationError" not in schemas
+
+
+def test_no_login_operation_accepts_an_audience_selector() -> None:
+    """SEC-AUD-002, asserted against the contract rather than against source.
+
+    DOC-CONFLICT-023's resolution is that the audience is derived and enforced
+    server-side, never taken from a client-supplied field. A `user_type` in a
+    login body would not grant authority by itself — the credential still has to
+    be valid — but it would decide *which* authority is evaluated, and that puts
+    the separation inside a handler branch nothing outside can observe.
+
+    Checked here because the OpenAPI document is what other people generate
+    clients from: a field that never appears in it cannot be sent by a generated
+    client, and a source-level review is not something CI repeats.
+    """
+
+    schema = build_schema()
+    login_paths = [path for path in schema["paths"] if path.endswith("/login")]
+
+    assert len(login_paths) == 2, (
+        f"expected exactly two login operations, one per audience; found {login_paths}"
+    )
+
+    for path in login_paths:
+        body = schema["paths"][path]["post"]["requestBody"]
+        reference = body["content"]["application/json"]["schema"]["$ref"]
+        model = schema["components"]["schemas"][reference.rsplit("/", 1)[-1]]
+        fields = set(model["properties"])
+
+        assert fields == {"identifier", "password"}, (
+            f"{path} accepts {sorted(fields)}. An audience selector in the body is "
+            "exactly what DOC-CONFLICT-023 refuses; the route is the selector."
+        )
 
 
 def test_restricted_operations_use_explicit_api_key_security_scheme() -> None:

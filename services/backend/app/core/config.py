@@ -235,6 +235,35 @@ class Settings(BaseSettings):
         default=None, validation_alias="AUTH_RATE_LIMIT_KEY_SECRET"
     )
 
+    # Separate from the rate-limit key rather than derived from it. One secret
+    # doing two jobs means rotating it for one reason has a consequence for the
+    # other, and the two have different blast radii: a leaked rate-limit key
+    # de-anonymises Redis keys, a leaked CSRF key lets an attacker forge tokens
+    # for sessions they can name. Keeping them apart makes each rotation a local
+    # decision.
+    auth_csrf_key_secret: SecretStr | None = Field(
+        default=None, validation_alias="AUTH_CSRF_KEY_SECRET"
+    )
+
+    # ADR-SEC-002 owns the real numbers and is Open, so these are **provisional**
+    # and no test asserts either value. What the tests assert is what
+    # `12_Security_RBAC_Audit.md` does state without an ADR: a session cannot
+    # outlive deactivation or a security-stamp change (`:461`), expiry is
+    # enforced server-side (`:462`), and an expired session gets a clear 401
+    # (`:464`).
+    #
+    # The admin default is shorter than the trader default because `:460`
+    # requires the stricter policy for internal sessions where operationally
+    # reasonable — staff sit at shared desks inside an office; a trader is on
+    # their own phone. Bounds rather than a free integer so a deployment cannot
+    # set an effectively infinite session by typing an extra zero.
+    admin_session_lifetime_seconds: int = Field(
+        default=28_800, ge=300, le=86_400, validation_alias="ADMIN_SESSION_LIFETIME_SECONDS"
+    )
+    trader_session_lifetime_seconds: int = Field(
+        default=86_400, ge=300, le=604_800, validation_alias="TRADER_SESSION_LIFETIME_SECONDS"
+    )
+
     celery_queues: str = Field(
         default="files,exports,notifications,reports,maintenance,ai",
         validation_alias="CELERY_QUEUES",
@@ -336,6 +365,17 @@ class Settings(BaseSettings):
                     "AUTH_RATE_LIMIT_KEY_SECRET must contain at least 32 characters in "
                     "production; without it the limiter's Redis keys are a plain hash of a "
                     "phone number, which is reversible by enumeration"
+                )
+            csrf_secret = (
+                self.auth_csrf_key_secret.get_secret_value()
+                if self.auth_csrf_key_secret is not None
+                else ""
+            )
+            if len(csrf_secret) < 32:
+                raise ValueError(
+                    "AUTH_CSRF_KEY_SECRET must contain at least 32 characters in "
+                    "production; the CSRF token is an HMAC under this key, so without it "
+                    "the token is forgeable by anyone who learns a session's stored digest"
                 )
         return self
 
