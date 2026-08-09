@@ -44,6 +44,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 
+from app.security import account_state
 from app.security.actor import ActorContext, ActorType, Audience
 
 # A version prefix on the stored digest, following the convention
@@ -207,15 +208,24 @@ def classify_stamp(session_version: int, identity_version: int) -> SessionReject
 def classify_identity(
     status: str, locked_until: datetime | None, now: datetime
 ) -> SessionRejection | None:
-    """Whether the identity may act right now.
+    """Whether the identity may use an existing session right now.
 
-    `locked_until` is compared rather than a status value being read, because
-    DOC-CONFLICT-037 decided that a lock is a timestamp that expires by itself
-    and `locked` is not one of the four account statuses.
+    Delegates to `app.security.account_state` rather than re-deciding: two
+    opinions about what `suspended` means is how one path ends up enforcing a
+    suspension and another does not.
+
+    **A lock does not reject a session here, and the earlier version of this
+    function was wrong to.** Lockout stops online guessing; a session is not
+    guessing. Rejecting sessions on `locked_until` meant that failing a handful
+    of logins against a manager's username would end that manager's live session
+    — a credential-free, on-demand logout of any user, available to anyone who
+    knows a username. Immediate administrative cut-off is `suspended`, which is
+    recorded and takes effect through the security stamp.
     """
 
-    if status != "active":
-        return SessionRejection.IDENTITY_NOT_ACTIVE
-    if locked_until is not None and locked_until > now:
+    refusal = account_state.refusal_for(status, locked_until, now, account_state.AccountAction.ACT)
+    if refusal is None:
+        return None
+    if refusal is account_state.AccountRefusal.LOCKED:  # pragma: no cover - unreachable for ACT
         return SessionRejection.IDENTITY_LOCKED
-    return None
+    return SessionRejection.IDENTITY_NOT_ACTIVE

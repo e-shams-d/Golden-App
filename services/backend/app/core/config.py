@@ -193,6 +193,48 @@ class Settings(BaseSettings):
         default=32, ge=32, le=64, validation_alias="SESSION_SECRET_BYTES"
     )
 
+    # Durable failed-login lockout, held in PostgreSQL because
+    # `infra/redis/redis.conf` sets `appendonly no` and `save ""` and a counter
+    # that resets on restart is one an attacker can reset (`:488`).
+    #
+    # The threshold is never told to the client (`:486`): "3 attempts remaining"
+    # tells an attacker their exact budget and when to pause.
+    auth_lockout_threshold: int = Field(
+        default=5, ge=3, le=50, validation_alias="AUTH_LOCKOUT_THRESHOLD"
+    )
+    auth_lockout_seconds: int = Field(
+        default=900, ge=60, le=86_400, validation_alias="AUTH_LOCKOUT_SECONDS"
+    )
+
+    # Authentication rate limiting. The two ceilings are deliberately far apart.
+    #
+    # This platform is deployed only in Iran, where carrier-grade NAT is normal on
+    # mobile networks: hundreds of unrelated subscribers share one public address.
+    # A network ceiling tight enough to stop one attacker would lock out an entire
+    # carrier's customers, while the attacker rotates address or waits. So the
+    # identifier ceiling is the control and the network ceiling is a coarse
+    # backstop for the one case the identifier axis cannot see — a single source
+    # spraying many different usernames.
+    auth_rate_limit_window_seconds: int = Field(
+        default=300, ge=30, le=3_600, validation_alias="AUTH_RATE_LIMIT_WINDOW_SECONDS"
+    )
+    auth_rate_limit_identifier_max: int = Field(
+        default=10, ge=3, le=1_000, validation_alias="AUTH_RATE_LIMIT_IDENTIFIER_MAX"
+    )
+    auth_rate_limit_network_max: int = Field(
+        default=300, ge=10, le=100_000, validation_alias="AUTH_RATE_LIMIT_NETWORK_MAX"
+    )
+
+    # Keys the limiter writes to Redis are HMACs, not raw identifiers: a plain
+    # hash of an Iranian mobile number is reversible by enumerating ~10^9
+    # candidates, so unkeyed hashing would put a directory of who uses the
+    # platform, and from where, into a datastore with no persistence and no
+    # encryption. Required in production; absent elsewhere the limiter refuses to
+    # build rather than silently hashing without a key.
+    auth_rate_limit_key_secret: SecretStr | None = Field(
+        default=None, validation_alias="AUTH_RATE_LIMIT_KEY_SECRET"
+    )
+
     celery_queues: str = Field(
         default="files,exports,notifications,reports,maintenance,ai",
         validation_alias="CELERY_QUEUES",
@@ -284,6 +326,17 @@ class Settings(BaseSettings):
                 raise ValueError("production requires immutable release commit and build time")
             if not self.redis_required_for_readiness:
                 raise ValueError("Redis readiness cannot be disabled in production")
+            rate_limit_secret = (
+                self.auth_rate_limit_key_secret.get_secret_value()
+                if self.auth_rate_limit_key_secret is not None
+                else ""
+            )
+            if len(rate_limit_secret) < 32:
+                raise ValueError(
+                    "AUTH_RATE_LIMIT_KEY_SECRET must contain at least 32 characters in "
+                    "production; without it the limiter's Redis keys are a plain hash of a "
+                    "phone number, which is reversible by enumeration"
+                )
         return self
 
     @property

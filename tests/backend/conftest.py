@@ -103,6 +103,11 @@ def settings_factory(tmp_path: Path) -> Callable[..., Settings]:
             "redis_url": "redis://:redis-secret@127.0.0.1:6379/0",
             "local_storage_root": tmp_path / "private-storage",
             "operations_health_token": "o" * 40,
+            # Required whenever a test builds production settings. Supplied by
+            # default rather than per-test so the production validator stays a
+            # real gate: a test that needs to prove the requirement fires can
+            # override this to None, and every other test is unaffected.
+            "auth_rate_limit_key_secret": "r" * 40,
             "dependency_timeout_seconds": 0.2,
             "worker_probe_timeout_seconds": 0.2,
             "log_level": "CRITICAL",
