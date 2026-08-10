@@ -75,6 +75,10 @@ UNGUARDED_ROUTES: dict[tuple[str, str], str] = {
     ("POST", "/api/v1/auth/reauthenticate"): "raises assurance; grants nothing",
     ("GET", "/api/v1/me/trader/profile"): "ownership-scoped to the caller's own trader",
     ("PATCH", "/api/v1/me/trader/profile"): "ownership-scoped; allowlist excludes identity",
+    # Public by design (`05_API_Specification.md:890`): there is no actor yet, and
+    # establishing one is what the endpoint is for. Guarded by a network rate
+    # limit and by revealing nothing, not by a permission.
+    ("POST", "/api/v1/traders/register"): "public application; rate-limited",
     ("POST", "/api/v1/center-profile/rename"): (
         "M2's exemplar command, written before guards existed; slice 8 gives it settings.manage"
     ),

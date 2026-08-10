@@ -67,6 +67,14 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "reauthenticate",
         "getOwnTraderProfile",
         "updateOwnTraderProfile",
+        # M3 slice 8. `registerTrader` is the only unauthenticated write
+        # surface on the platform; the four decisions are the center's and each
+        # carries its own canonical permission.
+        "registerTrader",
+        "approveTrader",
+        "rejectTrader",
+        "suspendTrader",
+        "reactivateTrader",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

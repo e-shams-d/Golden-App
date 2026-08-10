@@ -74,4 +74,101 @@ RENAME_CENTER_PROFILE = CommandNames(
     ),
 )
 
-ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (RENAME_CENTER_PROFILE,)
+# --- M3 slice 8: the trader lifecycle -------------------------------------
+#
+# The four audit actions below ARE in the approved catalogue (`:15-18`). Their
+# outbox event types are not: `audit_outbox_catalog.yaml:68-80` lists eleven
+# events and none of them concerns a trader's approval state.
+#
+# That is a real gap rather than an oversight on our side.
+# `05_API_Specification.md:878` states that role changes, suspension and
+# reactivation create audit **and outbox** events, so an event is required by the
+# API contract and unnamed by the catalogue. The catalogue is
+# `provisional_pending_m0_approval`, so implementing a name is permitted; what is
+# not permitted is doing it silently, which is what `provisional_reason` is for.
+
+_OUTBOX_GAP = (
+    "05_API_Specification.md:878 requires an outbox event for these commands and "
+    "audit_outbox_catalog.yaml:68-80 names none for the trader lifecycle. The "
+    "catalogue is provisional_pending_m0_approval so the name may be implemented, "
+    "but it must be renamed to whatever M0 approves. Raised for the register."
+)
+
+REGISTER_TRADER = CommandNames(
+    audit_action="trader.registered",
+    outbox_event_type="TraderRegistered",
+    catalogued=False,
+    provisional_reason=(
+        "Self-registration is not in the catalogue's audit action list either: it "
+        "records the actions the center takes on a trader, and a trader creating "
+        "itself is a fifth event nobody enumerated. " + _OUTBOX_GAP
+    ),
+)
+
+APPROVE_TRADER = CommandNames(
+    audit_action="trader.approved",
+    outbox_event_type="TraderApproved",
+    catalogued=False,
+    provisional_reason=_OUTBOX_GAP,
+)
+
+REJECT_TRADER = CommandNames(
+    audit_action="trader.rejected",
+    outbox_event_type="TraderRejected",
+    catalogued=False,
+    provisional_reason=_OUTBOX_GAP,
+)
+
+SUSPEND_TRADER = CommandNames(
+    audit_action="trader.suspended",
+    outbox_event_type="TraderSuspended",
+    catalogued=False,
+    provisional_reason=_OUTBOX_GAP,
+)
+
+REACTIVATE_TRADER = CommandNames(
+    audit_action="trader.reactivated",
+    outbox_event_type="TraderReactivated",
+    catalogued=False,
+    provisional_reason=_OUTBOX_GAP,
+)
+
+# Credential changes. Deliberately audited as well as recorded in `auth_events`:
+# a security event explains a refusal, while an administrator resetting somebody
+# else's password is an authorised change to another person's account, which is
+# what `audit_logs` is for. Neither name is catalogued.
+CHANGE_OWN_PASSWORD = CommandNames(
+    audit_action="credential.changed_own",
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=(
+        "audit_outbox_catalog.yaml enumerates financial-flow actions and no "
+        "credential lifecycle. No outbox event: nothing outside the platform acts "
+        "on somebody changing their own password, and publishing it would put a "
+        "credential event on a queue for no consumer."
+    ),
+)
+
+RESET_ADMIN_PASSWORD = CommandNames(
+    audit_action="credential.reset_by_administrator",
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=(
+        "Same catalogue gap. Audited rather than only recorded as a security event "
+        "because an administrator setting another person's credential is an "
+        "authorised change to an account they do not own — doc 12:642 requires "
+        "alerting on comparable grants, and an audit row is what an alert reads."
+    ),
+)
+
+
+ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
+    RENAME_CENTER_PROFILE,
+    REGISTER_TRADER,
+    APPROVE_TRADER,
+    REJECT_TRADER,
+    SUSPEND_TRADER,
+    REACTIVATE_TRADER,
+    CHANGE_OWN_PASSWORD,
+    RESET_ADMIN_PASSWORD,
+)

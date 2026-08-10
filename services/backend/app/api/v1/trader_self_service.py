@@ -32,6 +32,7 @@ from app.api.contract import VALIDATION_ERROR_RESPONSE
 from app.api.dependencies import get_runtime
 from app.api.v1.auth import authenticated_actor
 from app.core.errors import (
+    AppError,
     ErrorEnvelope,
     NotFoundError,
     PreconditionRequiredError,
@@ -44,6 +45,12 @@ from app.security.actor import ActorContext
 
 router = APIRouter(prefix="/me/trader", tags=["trader-self-service"])
 
+# `traders.approval_status` values that permit more than the pending surface.
+# `12_Security_RBAC_Audit.md:431` says a pending trader may access only the
+# approved pending-account experience, and the *business* axis is what decides
+# that — not the account axis, which is DOC-CONFLICT-024's separation.
+OPERABLE_APPROVAL_STATES: frozenset[str] = frozenset({"approved"})
+
 OWNED_RESPONSES: dict[int | str, dict[str, object]] = {
     401: {"model": ErrorEnvelope, "description": "No valid session."},
     404: {"model": ErrorEnvelope, "description": "Missing, or not the caller's."},
@@ -52,6 +59,7 @@ OWNED_RESPONSES: dict[int | str, dict[str, object]] = {
 
 PATCH_RESPONSES: dict[int | str, dict[str, object]] = {
     **OWNED_RESPONSES,
+    403: {"model": ErrorEnvelope, "description": "The business is awaiting approval."},
     412: {"model": ErrorEnvelope, "description": "The If-Match value is stale."},
     428: {"model": ErrorEnvelope, "description": "If-Match is required."},
 }
@@ -77,6 +85,35 @@ class TraderProfileResponse(BaseModel):
     approved_at: datetime | None
     credit_limit_irr: int | None
     record_version: int
+
+
+def require_operable(trader: Trader) -> None:
+    """Refuse anything but the pending surface while the business is not approved.
+
+    Raised as `FORBIDDEN` rather than `NOT_FOUND`: the trader knows their own
+    business exists — they are signed in as its contact — so hiding it would be
+    theatre, and telling them plainly that approval is pending is the whole point
+    of the pending-account experience.
+    """
+
+    if trader.approval_status not in OPERABLE_APPROVAL_STATES:
+        raise PendingApprovalError()
+
+
+class PendingApprovalError(AppError):
+    """The business has not been approved yet.
+
+    A distinct message from a permission denial, because the remedy is different:
+    nothing the trader does changes it, and telling them "permission denied" would
+    send them looking for a setting that does not exist.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            "FORBIDDEN",
+            "This account is awaiting approval by the center.",
+            403,
+        )
 
 
 class TraderProfilePatch(BaseModel):
@@ -149,6 +186,8 @@ def update_own_profile(
         if trader is None:
             uow.rollback()
             raise NotFoundError()
+
+        require_operable(trader)
 
         if trader.record_version != expected:
             uow.rollback()
