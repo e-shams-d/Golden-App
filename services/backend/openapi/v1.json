@@ -664,6 +664,117 @@
         "title": "SessionSummary",
         "type": "object"
       },
+      "TraderProfilePatch": {
+        "additionalProperties": false,
+        "description": "Only what a trader may change about itself.\n\nAbsent on purpose: `primary_phone` (an identity change, `:925`), both status\ncolumns and `approved_at` (the center's decisions, not the trader's),\n`credit_limit_irr` (a limit the trader would otherwise raise), `risk_level`\nand `notes_internal` (internal).",
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "legal_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legal Name"
+          }
+        },
+        "title": "TraderProfilePatch",
+        "type": "object"
+      },
+      "TraderProfileResponse": {
+        "additionalProperties": false,
+        "description": "Deliberately not the whole row.\n\n`notes_internal` is marked \"Never trader-visible\" in `04_Database_Schema.md:464`\nand `risk_level` is an internal advisory label; neither appears here. Listing\nfields explicitly rather than serialising the model is what keeps a column\nadded later from becoming trader-visible by default.",
+        "properties": {
+          "approval_status": {
+            "title": "Approval Status",
+            "type": "string"
+          },
+          "approved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "credit_limit_irr": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credit Limit Irr"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "legal_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legal Name"
+          },
+          "operational_status": {
+            "title": "Operational Status",
+            "type": "string"
+          },
+          "primary_phone": {
+            "title": "Primary Phone",
+            "type": "string"
+          },
+          "record_version": {
+            "title": "Record Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "legal_name",
+          "primary_phone",
+          "operational_status",
+          "approval_status",
+          "approved_at",
+          "credit_limit_irr",
+          "record_version"
+        ],
+        "title": "TraderProfileResponse",
+        "type": "object"
+      },
       "WorkerStatus": {
         "additionalProperties": false,
         "properties": {
@@ -1373,6 +1484,155 @@
         "summary": "Workers",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/v1/me/trader/profile": {
+      "get": {
+        "operationId": "getOwnTraderProfile",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraderProfileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, or not the caller's."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "The caller's own trader business.",
+        "tags": [
+          "trader-self-service"
+        ]
+      },
+      "patch": {
+        "description": "`If-Match` is required, not optional.\n\n`05_API_Specification.md:919` requires it, and the reason is the stale-tab\ncase: two people editing the same business from two screens, where a blind\nwrite silently discards whichever change arrived first.",
+        "operationId": "updateOwnTraderProfile",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TraderProfilePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraderProfileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, or not the caller's."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The If-Match value is stale."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is required."
+          }
+        },
+        "summary": "Change the non-sensitive fields of the caller's own business.",
+        "tags": [
+          "trader-self-service"
         ]
       }
     },

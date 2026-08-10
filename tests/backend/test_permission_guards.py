@@ -64,6 +64,12 @@ UNGUARDED_ROUTES: dict[tuple[str, str], str] = {
     ("POST", "/api/v1/auth/logout"): "revokes only the caller's own session",
     ("GET", "/api/v1/auth/sessions"): "auth.session.read_own is implied by ownership",
     ("POST", "/api/v1/auth/sessions/{session_id}/revoke"): "own session; scoped by ownership",
+    # Ownership-scoped, not permission-scoped. A trader resolves no permissions
+    # at all (doc 04:405), so `requires(...)` has nothing to check; the guard is
+    # ActorContext.trader_id, and tests/integration/test_trader_isolation.py is
+    # what proves it bites.
+    ("GET", "/api/v1/me/trader/profile"): "ownership-scoped to the caller's own trader",
+    ("PATCH", "/api/v1/me/trader/profile"): "ownership-scoped; allowlist excludes identity",
     ("POST", "/api/v1/center-profile/rename"): (
         "M2's exemplar command, written before guards existed; slice 8 gives it settings.manage"
     ),

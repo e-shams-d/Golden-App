@@ -60,6 +60,10 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "logout",
         "listOwnSessions",
         "revokeOwnSession",
+        # M3 slice 6. Ownership-scoped rather than permission-scoped: a trader
+        # holds no grants, so the guard is the session's own trader_id.
+        "getOwnTraderProfile",
+        "updateOwnTraderProfile",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas
