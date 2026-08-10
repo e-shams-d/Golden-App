@@ -455,6 +455,68 @@
         "title": "ReadinessResponse",
         "type": "object"
       },
+      "ReauthenticateRequest": {
+        "additionalProperties": false,
+        "description": "Carries the resource, which document 05's example omits.\n\n`05_API_Specification.md:825-828` shows `password` and `purpose` only.\n`FINANCIAL_INTEGRITY_BASELINE.md` §3 binds the context to a resource as well,\nand `recent_auth_contexts.resource_id` is NOT NULL. The approved baseline wins\nunder the precedence order — a context naming only a purpose would authorise\nthe same action against any resource, which is the batch-version-7-approves-8\ncase the approval model exists to prevent.",
+        "properties": {
+          "password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "purpose": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Purpose",
+            "type": "string"
+          },
+          "resource_id": {
+            "format": "uuid",
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "resource_type": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Resource Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "password",
+          "purpose",
+          "resource_type",
+          "resource_id"
+        ],
+        "title": "ReauthenticateRequest",
+        "type": "object"
+      },
+      "ReauthenticateResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "authentication_level": {
+            "title": "Authentication Level",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "recent_auth_reference": {
+            "title": "Recent Auth Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recent_auth_reference",
+          "expires_at",
+          "authentication_level"
+        ],
+        "title": "ReauthenticateResponse",
+        "type": "object"
+      },
       "ReleaseEvidenceResponse": {
         "additionalProperties": false,
         "description": "The evidence fields only a running instance can answer for.\n\nEverything here is read from the process and its database, never from the\nrepository. The repository says what *should* be deployed; this says what *is*.\nFor release evidence only the second one is worth recording, and the difference\nbetween them is exactly the failure a release gate exists to catch.",
@@ -1006,6 +1068,58 @@
           }
         },
         "summary": "The current session and the actor it authenticates.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/reauthenticate": {
+      "post": {
+        "description": "Reauthentication raises assurance. It approves nothing (`doc 12:550`).\n\nA wrong password here is `RECENT_AUTH_REQUIRED` rather than\n`UNAUTHENTICATED`: the session is still valid and the caller is still signed\nin, so answering 401-unauthenticated would tell a client to sign in again for\na problem that has nothing to do with its session.",
+        "operationId": "reauthenticate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReauthenticateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The login information is not valid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Prove recent presence for one exact critical action.",
         "tags": [
           "auth"
         ]

@@ -68,6 +68,11 @@ UNGUARDED_ROUTES: dict[tuple[str, str], str] = {
     # at all (doc 04:405), so `requires(...)` has nothing to check; the guard is
     # ActorContext.trader_id, and tests/integration/test_trader_isolation.py is
     # what proves it bites.
+    # Re-proving presence is not an entitlement, so there is no permission to
+    # declare. What it needs is a session, which the actor dependency supplies;
+    # the purpose and resource bindings are what stop it authorising anything
+    # other than the one action it was obtained for.
+    ("POST", "/api/v1/auth/reauthenticate"): "raises assurance; grants nothing",
     ("GET", "/api/v1/me/trader/profile"): "ownership-scoped to the caller's own trader",
     ("PATCH", "/api/v1/me/trader/profile"): "ownership-scoped; allowlist excludes identity",
     ("POST", "/api/v1/center-profile/rename"): (

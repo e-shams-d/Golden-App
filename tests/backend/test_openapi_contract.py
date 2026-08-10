@@ -62,6 +62,9 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "revokeOwnSession",
         # M3 slice 6. Ownership-scoped rather than permission-scoped: a trader
         # holds no grants, so the guard is the session's own trader_id.
+        # M3 slice 7. Raises assurance for one exact action; it approves
+        # nothing (doc 12:550).
+        "reauthenticate",
         "getOwnTraderProfile",
         "updateOwnTraderProfile",
     }

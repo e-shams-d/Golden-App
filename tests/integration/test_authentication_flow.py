@@ -320,6 +320,155 @@ def test_no_response_or_event_ever_carries_the_session_secret(
         assert ADMIN_PASSWORD not in rendered
 
 
+def test_reauthenticate_issues_a_context_bound_to_the_session(
+    client: Any, migrated: RuntimeIdentities
+) -> None:
+    """SEC-STEP-001 and AUD-STEP-001, end to end against the real table."""
+
+    import uuid as _uuid
+
+    client.post(
+        "/api/v1/auth/admin/login",
+        json={"identifier": ADMIN_USERNAME, "password": ADMIN_PASSWORD},
+    )
+    token = client.cookies.get(ADMIN_CSRF_COOKIE)
+    resource_id = str(_uuid.uuid4())
+
+    response = client.post(
+        "/api/v1/auth/reauthenticate",
+        json={
+            "password": ADMIN_PASSWORD,
+            "purpose": "payment_batch_approval",
+            "resource_type": "payment_batch_version",
+            "resource_id": resource_id,
+        },
+        headers={CSRF_HEADER: token},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    reference = body["recent_auth_reference"]
+    assert reference and len(reference) > 30
+
+    with psycopg.connect(_psycopg(migrated.owner_url)) as connection:
+        rows = connection.execute(
+            "SELECT challenge_hash, purpose, resource_id, assurance_factor, consumed_at "
+            "FROM recent_auth_contexts"
+        ).fetchall()
+
+    assert len(rows) == 1
+    stored_hash, purpose, stored_resource, factor, consumed = rows[0]
+
+    assert reference not in stored_hash, "the reference itself must not be stored"
+    assert purpose == "payment_batch_approval"
+    assert str(stored_resource) == resource_id
+    assert factor == "password"
+    assert consumed is None, "issuing a context must not consume it"
+
+    # `12_Security_RBAC_Audit.md:536` — audit-linked without the secret in plaintext.
+    for _event_type, _outcome, metadata in _events(migrated):
+        assert reference not in str(metadata)
+
+
+def test_a_wrong_password_at_step_up_does_not_lock_the_account(
+    client: Any, migrated: RuntimeIdentities
+) -> None:
+    """A failed step-up is not a login attempt.
+
+    Letting it drive the lockout counter would let anyone holding a session lock
+    their own account out of a command they are entitled to perform — and, worse,
+    would make a mistyped password during an approval an operational incident.
+    """
+
+    import uuid as _uuid
+
+    client.post(
+        "/api/v1/auth/admin/login",
+        json={"identifier": ADMIN_USERNAME, "password": ADMIN_PASSWORD},
+    )
+    token = client.cookies.get(ADMIN_CSRF_COOKIE)
+
+    for _ in range(8):
+        refused = client.post(
+            "/api/v1/auth/reauthenticate",
+            json={
+                "password": "not-the-password",
+                "purpose": "payment_batch_approval",
+                "resource_type": "payment_batch_version",
+                "resource_id": str(_uuid.uuid4()),
+            },
+            headers={CSRF_HEADER: token},
+        )
+        assert refused.status_code == 401
+        assert refused.json()["error"]["code"] == "RECENT_AUTH_REQUIRED", (
+            "a failed step-up must not read as an invalid session; the caller is still signed in"
+        )
+
+    with psycopg.connect(_psycopg(migrated.owner_url)) as connection:
+        count, locked_until = connection.execute(
+            "SELECT failed_login_count, locked_until FROM admin_users WHERE username = %s",
+            (ADMIN_USERNAME,),
+        ).fetchone()
+
+    assert count == 0 and locked_until is None
+    # And the session still works.
+    assert client.get("/api/v1/auth/me").status_code == 200
+
+
+def test_step_up_requires_csrf_like_any_unsafe_method(client: Any) -> None:
+    """It is a POST that writes a row, so `12_Security_RBAC_Audit.md:494` applies."""
+
+    import uuid as _uuid
+
+    client.post(
+        "/api/v1/auth/admin/login",
+        json={"identifier": ADMIN_USERNAME, "password": ADMIN_PASSWORD},
+    )
+
+    response = client.post(
+        "/api/v1/auth/reauthenticate",
+        json={
+            "password": ADMIN_PASSWORD,
+            "purpose": "payment_batch_approval",
+            "resource_type": "payment_batch_version",
+            "resource_id": str(_uuid.uuid4()),
+        },
+    )
+
+    assert response.status_code == 403
+
+
+def test_security_events_now_record_where_the_attempt_came_from(
+    client: Any, migrated: RuntimeIdentities
+) -> None:
+    """The gap slice 7 closed.
+
+    `auth_events.ip_address` and `.user_agent` exist because
+    `04_Database_Schema.md:442` requires them, and the writer had no field for
+    either until now — so every event written before this slice carried NULL for
+    the first thing an investigator asks.
+    """
+
+    client.post(
+        "/api/v1/auth/admin/login",
+        json={"identifier": ADMIN_USERNAME, "password": "wrong"},
+        headers={"X-Forwarded-For": "203.0.113.7", "User-Agent": "probe/1.0"},
+    )
+
+    with psycopg.connect(_psycopg(migrated.owner_url)) as connection:
+        rows = connection.execute(
+            "SELECT ip_address, user_agent FROM auth_events ORDER BY created_at DESC LIMIT 1"
+        ).fetchall()
+
+    assert rows, "the failed login wrote no event"
+    ip_address, user_agent = rows[0]
+    assert str(ip_address) == "203.0.113.7", (
+        "the forwarded client address was not recorded; behind nginx request.client "
+        "is the proxy, so this is the only source of the real one"
+    )
+    assert user_agent == "probe/1.0"
+
+
 def test_me_requires_a_session_and_returns_the_actor(client: Any) -> None:
     """API-AUTH-004."""
 
