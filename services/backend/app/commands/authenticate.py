@@ -126,14 +126,32 @@ def authenticate(
     except InvalidIdentifier:
         # Never told to the client: "that is not a valid number" answers a
         # question the generic-error rule exists to refuse.
-        session.add(_event(attempt.audience, "login.rejected", "malformed_identifier", None))
+        session.add(
+            _event(
+                attempt.audience,
+                "login.rejected",
+                "malformed_identifier",
+                None,
+                ip_address=attempt.ip_address,
+                user_agent=attempt.user_agent,
+            )
+        )
         return FailedAuthentication(reason="malformed_identifier")
 
     if limiter is not None:
         decision = limiter.check(identifier, attempt.ip_address)
         if not decision.allowed:
             scope = decision.scope.value if decision.scope else "unknown"
-            session.add(_event(attempt.audience, "login.rate_limited", f"rate_{scope}", None))
+            session.add(
+                _event(
+                    attempt.audience,
+                    "login.rate_limited",
+                    f"rate_{scope}",
+                    None,
+                    ip_address=attempt.ip_address,
+                    user_agent=attempt.user_agent,
+                )
+            )
             return FailedAuthentication(reason=f"rate_limited_{scope}")
 
     identity = _load_identity(session, identifier, attempt.audience)
@@ -148,7 +166,16 @@ def authenticate(
             policy.argon2,
             max_length=policy.password_max_length,
         )
-        session.add(_event(attempt.audience, "login.failed", "unknown_identifier", None))
+        session.add(
+            _event(
+                attempt.audience,
+                "login.failed",
+                "unknown_identifier",
+                None,
+                ip_address=attempt.ip_address,
+                user_agent=attempt.user_agent,
+            )
+        )
         return FailedAuthentication(reason="unknown_identifier")
 
     refusal = account_state.refusal_for(
@@ -158,7 +185,16 @@ def authenticate(
         # Still counted: an attacker must not learn that an account is suspended
         # by observing that their guesses stopped accumulating against it.
         _record_failure(session, identity, now, policy)
-        session.add(_event(attempt.audience, "login.refused", refusal.value, identity.id))
+        session.add(
+            _event(
+                attempt.audience,
+                "login.refused",
+                refusal.value,
+                identity.id,
+                ip_address=attempt.ip_address,
+                user_agent=attempt.user_agent,
+            )
+        )
         return FailedAuthentication(reason=refusal.value)
 
     verification = passwords.verify_password(
@@ -169,7 +205,16 @@ def authenticate(
     )
     if not verification.is_valid:
         _record_failure(session, identity, now, policy)
-        session.add(_event(attempt.audience, "login.failed", "wrong_password", identity.id))
+        session.add(
+            _event(
+                attempt.audience,
+                "login.failed",
+                "wrong_password",
+                identity.id,
+                ip_address=attempt.ip_address,
+                user_agent=attempt.user_agent,
+            )
+        )
         return FailedAuthentication(reason="wrong_password")
 
     if verification.needs_rehash:
@@ -202,7 +247,16 @@ def authenticate(
     session.flush()
 
     session.add(
-        _event(attempt.audience, "login.succeeded", None, identity.id, record.id, OUTCOME_SUCCESS)
+        _event(
+            attempt.audience,
+            "login.succeeded",
+            None,
+            identity.id,
+            record.id,
+            OUTCOME_SUCCESS,
+            ip_address=attempt.ip_address,
+            user_agent=attempt.user_agent,
+        )
     )
 
     actor = ActorContext(
@@ -250,6 +304,8 @@ def _event(
     actor_id: uuid.UUID | None,
     session_id: uuid.UUID | None = None,
     outcome: str = OUTCOME_FAILURE,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> AuthEvent:
     """Build the row through `SecurityEvent`, so the metadata allowlist applies.
 
@@ -269,6 +325,11 @@ def _event(
         event_class="authentication",
         outcome=outcome,
         session_id=session_id,
+        # Recorded from M3 slice 7 onward. Before that this writer had no field
+        # for it, so every login event carried NULL for the one thing an
+        # investigator asks first.
+        ip_address=ip_address,
+        user_agent=user_agent,
         metadata_payload=payload,
     )
     return AuthEvent(**validated.as_row())

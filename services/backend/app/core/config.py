@@ -264,6 +264,16 @@ class Settings(BaseSettings):
         default=86_400, ge=300, le=604_800, validation_alias="TRADER_SESSION_LIFETIME_SECONDS"
     )
 
+    # How long a recent-auth context stays presentable. ADR-009 owns the real
+    # number and is Open, so this is **provisional** and no test asserts it;
+    # `12_Security_RBAC_Audit.md:554` gives only the shape of the requirement —
+    # "short enough for high-risk financial use". The ceiling is deliberately low:
+    # a step-up that lasts an hour is a step-up that outlives the reason someone
+    # was standing at the keyboard.
+    step_up_lifetime_seconds: int = Field(
+        default=300, ge=30, le=900, validation_alias="STEP_UP_LIFETIME_SECONDS"
+    )
+
     celery_queues: str = Field(
         default="files,exports,notifications,reports,maintenance,ai",
         validation_alias="CELERY_QUEUES",

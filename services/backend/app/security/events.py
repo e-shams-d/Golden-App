@@ -69,6 +69,11 @@ OUTCOMES: tuple[str, ...] = (OUTCOME_SUCCESS, OUTCOME_FAILURE, OUTCOME_DENIED, O
 METADATA_SCHEMA = "auth_event.session.v1"
 METADATA_VERSION = 1
 
+# `auth_events.user_agent` is VARCHAR(512). Truncating here rather than
+# letting the insert fail: an over-long header is itself a signal worth
+# recording, and losing the event to record it is the wrong trade.
+USER_AGENT_LENGTH = 512
+
 
 class DisallowedEventMetadata(ValueError):
     """Raised before an insert, naming the key and not its value.
@@ -92,6 +97,18 @@ class SecurityEvent:
     outcome: str
     actor_id: uuid.UUID | None = None
     session_id: uuid.UUID | None = None
+    # `auth_events` carries both columns (`04_Database_Schema.md:442`) and this
+    # writer could not populate either until M3 slice 7. Every security event
+    # written before then has NULL for where the attempt came from, which is the
+    # first thing an investigator looks for. Added as first-class fields rather
+    # than as metadata keys because a typed column survives a metadata schema
+    # change and a JSON key does not.
+    #
+    # Both are attacker-controlled and neither is used for authorization — they
+    # are recorded so a pattern can be seen, and nothing reads them to decide
+    # anything.
+    ip_address: str | None = None
+    user_agent: str | None = None
     metadata_payload: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
@@ -133,6 +150,12 @@ class SecurityEvent:
             "event_class": self.event_class,
             "outcome": self.outcome,
             "session_id": self.session_id,
+            "ip_address": self.ip_address,
+            # Truncated to the column width rather than left to PostgreSQL to
+            # reject: a 4KB user-agent header is a request that fails at the
+            # insert, and the insert in question is often the one recording the
+            # attack that sent it.
+            "user_agent": (self.user_agent or None) and self.user_agent[:USER_AGENT_LENGTH],
             "metadata_payload": dict(self.metadata_payload or {}),
             "metadata_schema": METADATA_SCHEMA,
             "metadata_version": METADATA_VERSION,

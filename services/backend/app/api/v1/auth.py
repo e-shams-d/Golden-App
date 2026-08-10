@@ -44,9 +44,10 @@ from app.core.errors import AppError, ErrorEnvelope, ForbiddenError
 from app.core.runtime import RuntimeServices
 from app.core.time import utc_now
 from app.db.models.identity import AdminUser, TraderUser
-from app.db.models.session_and_security import AuthSession
-from app.security import cookies, sessions
+from app.db.models.session_and_security import AuthEvent, AuthSession, RecentAuthContext
+from app.security import cookies, passwords, sessions, step_up
 from app.security.actor import ActorContext, Audience
+from app.security.events import OUTCOME_FAILURE, OUTCOME_SUCCESS, SecurityEvent
 from app.security.lockout import LockoutPolicy
 from app.security.passwords import Argon2Parameters
 from app.security.permissions import declare, resolve
@@ -79,6 +80,23 @@ class CsrfRequiredError(AppError):
 
     def __init__(self) -> None:
         super().__init__("FORBIDDEN", "Permission denied.", 403)
+
+
+class RecentAuthRequiredError(AppError):
+    """The catalogue's own 401 for a critical action lacking assurance.
+
+    One code for every rejection reason, exactly as login has one: telling a
+    caller whether their reference was expired, spent, or issued for a different
+    batch version would let them probe the context store. The nine reasons
+    `step_up.StepUpRejection` distinguishes go to `auth_events`.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            "RECENT_AUTH_REQUIRED",
+            "This action requires recent authentication.",
+            401,
+        )
 
 
 AUTH_RESPONSES: dict[int | str, dict[str, object]] = {
@@ -540,6 +558,147 @@ def logout(
 
     _clear_session_cookies(response, actor.audience)
     return RevocationResponse(revoked=True)
+
+
+class ReauthenticateRequest(BaseModel):
+    """Carries the resource, which document 05's example omits.
+
+    `05_API_Specification.md:825-828` shows `password` and `purpose` only.
+    `FINANCIAL_INTEGRITY_BASELINE.md` §3 binds the context to a resource as well,
+    and `recent_auth_contexts.resource_id` is NOT NULL. The approved baseline wins
+    under the precedence order — a context naming only a purpose would authorise
+    the same action against any resource, which is the batch-version-7-approves-8
+    case the approval model exists to prevent.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    password: str = Field(min_length=1, max_length=1024)
+    purpose: str = Field(min_length=1, max_length=120)
+    resource_type: str = Field(min_length=1, max_length=80)
+    resource_id: uuid.UUID
+
+
+class ReauthenticateResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    recent_auth_reference: str
+    expires_at: datetime
+    authentication_level: str
+
+
+@router.post(
+    "/reauthenticate",
+    response_model=ReauthenticateResponse,
+    operation_id="reauthenticate",
+    summary="Prove recent presence for one exact critical action.",
+    responses=AUTH_RESPONSES,
+)
+def reauthenticate(
+    request: Request,
+    payload: ReauthenticateRequest,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ReauthenticateResponse:
+    """Reauthentication raises assurance. It approves nothing (`doc 12:550`).
+
+    A wrong password here is `RECENT_AUTH_REQUIRED` rather than
+    `UNAUTHENTICATED`: the session is still valid and the caller is still signed
+    in, so answering 401-unauthenticated would tell a client to sign in again for
+    a problem that has nothing to do with its session.
+    """
+
+    now = utc_now()
+    client_host = _client_address(request)
+    parameters = Argon2Parameters.from_settings(settings)
+
+    with runtime.uow_factory() as uow:
+        session = uow.session
+        identity: AdminUser | TraderUser | None = (
+            session.get(AdminUser, actor.actor_id)
+            if actor.audience is Audience.ADMIN
+            else session.get(TraderUser, actor.actor_id)
+        )
+        if identity is None:  # pragma: no cover - the session just resolved it
+            uow.rollback()
+            raise RecentAuthRequiredError()
+
+        verification = passwords.verify_password(
+            identity.password_hash,
+            payload.password,
+            parameters,
+            max_length=settings.password_max_length,
+        )
+
+        reference = step_up.generate_reference()
+        expires_at = step_up.expiry_for(
+            now, step_up.StepUpPolicy(lifetime_seconds=settings.step_up_lifetime_seconds)
+        )
+
+        if not verification.is_valid:
+            # Recorded, and counted by nothing: a failed step-up is not a login
+            # attempt, and letting it drive the lockout would let anyone with a
+            # session lock their own account out of a command they are entitled to.
+            session.add(
+                _security_event(
+                    actor,
+                    "step_up.failed",
+                    "wrong_password",
+                    client_host,
+                )
+            )
+            uow.commit()
+            raise RecentAuthRequiredError()
+
+        context = RecentAuthContext(
+            session_id=actor.session_id,
+            actor_type=actor.actor_type.value,
+            actor_id=actor.actor_id,
+            purpose=payload.purpose,
+            resource_type=payload.resource_type,
+            resource_id=payload.resource_id,
+            assurance_factor=step_up.require_registered_factor(step_up.PASSWORD_FACTOR),
+            challenge_hash=step_up.digest_reference(reference),
+            issued_at=now,
+            expires_at=expires_at,
+        )
+        session.add(context)
+        session.flush()
+
+        session.add(_security_event(actor, "step_up.succeeded", None, client_host, OUTCOME_SUCCESS))
+        uow.commit()
+
+    return ReauthenticateResponse(
+        recent_auth_reference=reference,
+        expires_at=expires_at,
+        authentication_level=sessions.AUTH_LEVELS[-1],
+    )
+
+
+def _security_event(
+    actor: ActorContext,
+    event_type: str,
+    reason: str | None,
+    ip_address: str | None,
+    outcome: str = OUTCOME_FAILURE,
+) -> AuthEvent:
+    """A step-up event, with the address the attempt came from."""
+
+    payload: dict[str, object] = {"audience": actor.audience.value}
+    if reason is not None:
+        payload["rejection_reason"] = reason
+    validated = SecurityEvent(
+        actor_type=actor.actor_type.value,
+        actor_id=actor.actor_id,
+        event_type=event_type,
+        event_class="authentication",
+        outcome=outcome,
+        session_id=actor.session_id,
+        ip_address=ip_address,
+        metadata_payload=payload,
+    )
+    return AuthEvent(**validated.as_row())
 
 
 @router.get(
