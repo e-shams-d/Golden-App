@@ -1,9 +1,14 @@
 """The mandatory IDOR cases, against two real traders and a real database.
 
-`14_Testing_QA_Acceptance.md:1274-1282` names seven. Three are exercisable today
-and are here; four name resources that arrive in M4 and M5, and are recorded as
+`14_Testing_QA_Acceptance.md:1276-1282` names seven. **Two** are exercisable today
+and are here; five name resources that arrive in M4, M5 and M7 and are recorded as
 deferred **with the milestone that owns them** rather than quietly absent — a
 deferral nobody can see is indistinguishable from a case nobody thought of.
+
+That sentence used to say three-and-four, and it was wrong in both halves: two are
+covered, and one of the seven was in neither list. `MANDATORY_IDOR_CASES` below now
+holds all seven keyed by the document's own wording, and the count is asserted
+rather than described.
 
 Two traders exist in this fixture and that is the point. Slice 1's defect — a
 primary-contact index that permitted one primary contact in the entire database —
@@ -18,6 +23,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import psycopg
@@ -33,14 +39,39 @@ PASSWORD = "correct-horse-battery-staple"
 CSRF_HEADER = "X-CSRF-Token"
 TRADER_CSRF_COOKIE = "__Host-gp_trader_csrf"
 
-# The four cases whose resources do not exist until a later milestone. Named with
-# their owner so `TRACE-DOD-002` can require a deferral to say who is responsible;
-# an unowned deferral is a case that never gets written.
-DEFERRED_IDOR_CASES: dict[str, str] = {
-    "trader A reads trader B's payment request": "M5",
-    "trader A downloads trader B's publication file": "M7",
-    "trader A guesses a mixed bank-bundle file id": "M4",
-    "an admin response includes unrelated trader data": "M5",
+# All seven mandatory cases from `14_Testing_QA_Acceptance.md:1276-1282`, keyed by
+# the document's own wording so the ledger cannot drift from the source it claims
+# to satisfy. Each maps either to the test that covers it or to the milestone that
+# owns it — never to nothing.
+#
+# **This replaces a ledger that did not balance.** The first version listed four
+# deferrals and a docstring claiming "three are exercisable today and are here",
+# which came to seven and was wrong twice: only two of the seven were covered, and
+# "trader A reads trader B beneficiary" appeared in neither list. A case in neither
+# list is indistinguishable from a case nobody thought of, which is the exact
+# failure the deferral mechanism exists to prevent — and it survived because the
+# count was in prose rather than in an assertion.
+MANDATORY_IDOR_CASES: dict[str, str] = {
+    "Trader A reads Trader B request": "M5",
+    # `beneficiaries` is `04_Database_Schema.md:491-521`, an M5 table. Missing from
+    # both lists until slice 10 counted them.
+    "Trader A reads Trader B beneficiary": "M5",
+    "Trader A downloads Trader B publication file": "M7",
+    "Trader A guesses mixed bank-bundle file ID": "M4",
+    "Trader A submits trader_id belonging to B": (
+        "test_there_is_no_field_in_which_to_submit_another_traders_id"
+    ),
+    "Trader A accesses Admin endpoint": "test_a_trader_session_is_refused_on_an_internal_endpoint",
+    "Admin response accidentally includes unrelated trader data": "M5",
+}
+
+# Kept as a separate view rather than derived by eye, so the two counts below are
+# arithmetic rather than assertion-by-comment.
+DEFERRED_IDOR_CASES = {
+    case: owner for case, owner in MANDATORY_IDOR_CASES.items() if owner.startswith("M")
+}
+COVERED_IDOR_CASES = {
+    case: test for case, test in MANDATORY_IDOR_CASES.items() if test.startswith("test_")
 }
 
 
@@ -110,6 +141,21 @@ def world(migrated: RuntimeIdentities, tmp_path: Any) -> Iterator[dict[str, Any]
     with TestClient(app, base_url="https://trader.localhost") as client:
         yield {"client": client, "trader_a": trader_a, "trader_b": trader_b}
     app.state.runtime.close()
+
+
+def _qa_document() -> str:
+    """Doc 14, read at test time rather than transcribed.
+
+    The whole point of this ledger is that it cannot drift from the document, so
+    the document is the input.
+    """
+
+    return (
+        Path(__file__).resolve().parents[2]
+        / "Implementation Docs"
+        / "06_DevOps_QA_and_Operations"
+        / "14_Testing_QA_Acceptance.md"
+    ).read_text(encoding="utf-8")
 
 
 def _psycopg(url: str) -> str:
@@ -274,15 +320,50 @@ def test_the_profile_never_carries_internal_fields(world: dict[str, Any]) -> Non
     assert "risk_level" not in body
 
 
-def test_every_deferred_idor_case_names_its_milestone() -> None:
-    """TRACE-DOD-002's shape, applied to the four cases M3 cannot exercise.
+def test_the_ledger_accounts_for_all_seven_mandatory_cases() -> None:
+    """The count, asserted against the document rather than described in prose.
 
-    A deferral without an owner is a case nobody will write. Requiring a milestone
-    turns "not yet" into a commitment that a later gate can check.
+    Read from `14_Testing_QA_Acceptance.md` at test time. A hand-written seven
+    would be a second copy of the number, and the previous version of this file
+    shows what that costs: it claimed three-plus-four, was wrong in both halves,
+    and left one of the seven in neither list across two merged pull requests.
     """
 
-    assert len(DEFERRED_IDOR_CASES) == 4
-    for case, milestone in DEFERRED_IDOR_CASES.items():
-        assert milestone.startswith("M"), (
-            f"{case} defers to {milestone!r}, which names no milestone"
+    section = _qa_document().split("## 16.2 Trader isolation", 1)[1].split("## 16.3", 1)[0]
+    stated = [
+        # Backticks stripped: doc 14 writes "submits `trader_id` belonging to B",
+        # and the ledger keys read better without them. Normalising *presentation*
+        # is safe; normalising wording would let a changed case slip through as a
+        # match, which is why nothing else about the line is touched.
+        line.strip().lstrip("-").strip().rstrip(".").rstrip(";").strip().replace("`", "")
+        for line in section.splitlines()
+        if line.strip().startswith(("- Trader", "- Admin"))
+    ]
+
+    assert len(stated) == 7, f"doc 14 §16.2 now names {len(stated)} cases, not seven: {stated}"
+    assert set(stated) == set(MANDATORY_IDOR_CASES), (
+        "the ledger and the document disagree. Only in the ledger: "
+        f"{sorted(set(MANDATORY_IDOR_CASES) - set(stated))}; only in doc 14: "
+        f"{sorted(set(stated) - set(MANDATORY_IDOR_CASES))}"
+    )
+    assert len(DEFERRED_IDOR_CASES) + len(COVERED_IDOR_CASES) == 7, (
+        "an entry is neither a milestone nor a test name, so it is accounted for "
+        "nowhere — which is how a mandatory case disappears"
+    )
+
+
+def test_every_deferral_names_a_milestone_and_every_coverage_names_a_real_test() -> None:
+    """TRACE-DOD-002's shape. A deferral without an owner is a case nobody writes."""
+
+    own_source = Path(__file__).read_text(encoding="utf-8")
+
+    for case, owner in DEFERRED_IDOR_CASES.items():
+        assert owner in {"M4", "M5", "M6", "M7"}, (
+            f"{case!r} defers to {owner!r}, which names no milestone this project has"
+        )
+
+    for case, test_name in COVERED_IDOR_CASES.items():
+        assert f"def {test_name}(" in own_source, (
+            f"{case!r} claims coverage by {test_name}(), which does not exist in this "
+            "file — a citation pointing at nothing is worse than an honest deferral"
         )

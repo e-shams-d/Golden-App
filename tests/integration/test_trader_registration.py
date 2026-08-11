@@ -25,6 +25,11 @@ CSRF_HEADER = "X-CSRF-Token"
 ADMIN_CSRF_COOKIE = "__Host-gp_admin_csrf"
 TRADER_CSRF_COOKIE = "__Host-gp_trader_csrf"
 STAFF_USERNAME = "business_admin1"
+# Holds `audit.read` and several others but NOT `trader.approve` — migration
+# `_0008:285` grants that to business_admin and manager only. Exists so the denial
+# branch of `requires()` has a caller who is genuinely authenticated and genuinely
+# unauthorised, which is the only combination a permission guard is for.
+UNPRIVILEGED_USERNAME = "accountant1"
 
 
 @pytest.fixture
@@ -84,6 +89,21 @@ def client(migrated: RuntimeIdentities, tmp_path: Any) -> Iterator[Any]:
             "INSERT INTO admin_user_roles (admin_user_id, role_id) VALUES (%s, %s)",
             (admin_id, role[0]),
         )
+
+        other = connection.execute(
+            "INSERT INTO admin_users (username, full_name, password_hash, status) "
+            "VALUES (%s, 'Accountant', %s, 'active') RETURNING id",
+            (UNPRIVILEGED_USERNAME, encoded),
+        ).fetchone()
+        assert other
+        accountant_role = connection.execute(
+            "SELECT id FROM roles WHERE code = 'accountant'"
+        ).fetchone()
+        assert accountant_role, "migration 0008 should have seeded accountant"
+        connection.execute(
+            "INSERT INTO admin_user_roles (admin_user_id, role_id) VALUES (%s, %s)",
+            (other[0], accountant_role[0]),
+        )
         connection.commit()
 
     app = create_app(settings=settings)
@@ -125,16 +145,28 @@ def register(client: Any, phone: str, name: str = "Goldsmith") -> Any:
     )
 
 
-def sign_in_staff(client: Any) -> str:
+def sign_in_admin(client: Any, username: str) -> str:
     client.cookies.clear()
     response = client.post(
         "/api/v1/auth/admin/login",
-        json={"identifier": STAFF_USERNAME, "password": PASSWORD},
+        json={"identifier": username, "password": PASSWORD},
     )
     assert response.status_code == 200, response.text
     token = client.cookies.get(ADMIN_CSRF_COOKIE)
     assert token
     return token
+
+
+def sign_in_staff(client: Any) -> str:
+    return sign_in_admin(client, STAFF_USERNAME)
+
+
+def decision_headers(token: str, version: int) -> dict[str, str]:
+    return {
+        CSRF_HEADER: token,
+        "If-Match": f'"rv-{version}"',
+        "Idempotency-Key": str(uuid.uuid4()),
+    }
 
 
 def test_registration_creates_the_business_and_its_primary_contact(
@@ -439,6 +471,105 @@ def test_each_decision_writes_audit_and_outbox_in_the_same_transaction(
     assert outbox[0][1] == {"trader_id": trader_id}, (
         "the event must carry no phone number or name; a consumer that needs them "
         "reads the aggregate"
+    )
+
+
+def test_an_authenticated_admin_without_the_permission_is_refused(
+    client: Any, migrated: RuntimeIdentities
+) -> None:
+    """The first test in this repository to reach the denial branch of `requires()`.
+
+    `14_Testing_QA_Acceptance.md:1270` requires positive **and** negative tests for
+    every permission, and adds that role-name checks alone are insufficient. Until
+    slice 10 counted them, every authorization refusal in the suite was at the
+    audience, ownership, state or policy layer — the `ForbiddenError` inside the
+    guard was never reached by any test, so the one line that turns a missing grant
+    into a 403 was unexercised across five merged slices.
+
+    The caller is genuinely authenticated and genuinely unauthorised, which is the
+    only combination that exercises it.
+    """
+
+    register(client, "09121110013")
+    trader_id = str(_traders(migrated)[0][0])
+    version = _traders(migrated)[0][5]
+
+    token = sign_in_admin(client, UNPRIVILEGED_USERNAME)
+    refused = client.post(
+        f"/api/v1/traders/{trader_id}/approve",
+        json={},
+        headers=decision_headers(token, version),
+    )
+
+    assert refused.status_code == 403, (
+        "an authenticated admin lacking trader.approve was not refused, so the "
+        "permission guard is not the thing deciding this route"
+    )
+    assert refused.json()["error"]["code"] == "FORBIDDEN"
+
+    # Nothing changed. A 403 that still applied the decision would be worse than no
+    # guard, because the response would misreport what happened.
+    assert _traders(migrated)[0][3] == "pending_approval"
+
+
+def test_the_same_call_succeeds_for_a_role_that_holds_the_permission(
+    client: Any, migrated: RuntimeIdentities
+) -> None:
+    """The positive half, and the reason the negative one above means anything.
+
+    Without it, "approve returns 403" would also be satisfied by a route that
+    refuses everybody — a broken guard, a wrong path, a typo in the declared
+    permission. The pair is what separates "the grant decides" from "nothing works".
+    """
+
+    register(client, "09121110014")
+    trader_id = str(_traders(migrated)[0][0])
+    version = _traders(migrated)[0][5]
+
+    token = sign_in_admin(client, STAFF_USERNAME)
+    allowed = client.post(
+        f"/api/v1/traders/{trader_id}/approve",
+        json={},
+        headers=decision_headers(token, version),
+    )
+
+    assert allowed.status_code == 200, allowed.text
+    assert _traders(migrated)[0][3] == "approved"
+
+
+def test_a_revoked_grant_stops_granting_immediately(
+    client: Any, migrated: RuntimeIdentities
+) -> None:
+    """SEC-PERM-002 through HTTP, rather than against the resolver in isolation.
+
+    Permissions resolve per request, so revoking a role must take effect on the
+    next call rather than when the session expires. Revoking *after* the session
+    exists is the case that tells the two apart — and a resolver test cannot,
+    because it has no session.
+    """
+
+    register(client, "09121110015")
+    trader_id = str(_traders(migrated)[0][0])
+    version = _traders(migrated)[0][5]
+    token = sign_in_admin(client, STAFF_USERNAME)
+
+    with psycopg.connect(_psycopg(migrated.owner_url)) as connection:
+        connection.execute(
+            "UPDATE admin_user_roles SET revoked_at = now() WHERE admin_user_id = "
+            "(SELECT id FROM admin_users WHERE username = %s)",
+            (STAFF_USERNAME,),
+        )
+        connection.commit()
+
+    refused = client.post(
+        f"/api/v1/traders/{trader_id}/approve",
+        json={},
+        headers=decision_headers(token, version),
+    )
+
+    assert refused.status_code == 403, (
+        "the grant was revoked and the session still carried it, so permissions are "
+        "cached at login rather than resolved per request"
     )
 
 

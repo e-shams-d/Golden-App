@@ -1,3 +1,8 @@
+"""The published contract, and what may never change in it silently.
+
+Covers: CI-OPENAPI-001, SEC-AUD-002.
+"""
+
 from __future__ import annotations
 
 from app.api.contract import API_CONTRACT_VERSION

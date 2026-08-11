@@ -504,8 +504,16 @@ def test_an_unsafe_request_without_the_csrf_header_is_refused(client: Any) -> No
     assert client.post("/api/v1/auth/logout", headers={CSRF_HEADER: token}).status_code == 200
 
 
-def test_logout_revokes_and_is_idempotent(client: Any) -> None:
-    """API-AUTH-003. `05_API_Specification.md:802` calls it idempotent by definition."""
+def test_logout_revokes_and_is_idempotent(client: Any, migrated: RuntimeIdentities) -> None:
+    """API-AUTH-003 and SEC-SESS-003.
+
+    `05_API_Specification.md:802` calls logout idempotent by definition. SEC-SESS-003
+    asks for two things — a revoked session fails validation, **and** the reason is
+    recorded — and the second half was unasserted until slice 10 counted it. A
+    `revoked_at` with no `revocation_reason` makes an incident unreconstructable:
+    "this session ended" is a different fact from "the user signed out", and
+    `12_Security_RBAC_Audit.md:466-477` lists eight distinct triggers.
+    """
 
     client.post(
         "/api/v1/auth/admin/login",
@@ -518,6 +526,19 @@ def test_logout_revokes_and_is_idempotent(client: Any) -> None:
 
     # The session is gone, so `me` no longer authenticates.
     assert client.get("/api/v1/auth/me").status_code == 401
+
+    with psycopg.connect(_psycopg(migrated.owner_url)) as connection:
+        rows = connection.execute(
+            "SELECT revoked_at, revocation_reason FROM auth_sessions"
+        ).fetchall()
+
+    assert rows, "the login wrote no session row"
+    revoked_at, reason = rows[-1]
+    assert revoked_at is not None
+    assert reason == "logout", (
+        f"the session was revoked with reason {reason!r}. A revocation with no recorded "
+        "reason cannot be told apart from the seven other triggers doc 12:468-477 lists."
+    )
 
 
 def test_repeated_failures_lock_the_account_durably(
