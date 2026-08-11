@@ -18,11 +18,38 @@ is never sent to the sibling app. Path cannot express this: the API is
 resource-first with no audience segment, and a path-scoped cookie would miss the
 shared `/auth/*` routes and the separate `/files/` prefix entirely.
 
-The footgun `__Host-` closes is concrete. `server_name trader.localhost localhost`
-binds the trader app to bare `localhost` as well, so a cookie set with
-`Domain=localhost` would be delivered to `admin.localhost` too — and in production
-`Domain=example.ir` would leak the trader cookie to the admin app. With the prefix
-the browser rejects the cookie outright rather than storing it too widely.
+The footgun `__Host-` closes is concrete, and the way it closes it is worth stating
+precisely, because an earlier version of this comment got it wrong.
+
+`server_name trader.localhost localhost` binds the trader app to bare `localhost` as
+well, so *an ordinary cookie* set with `Domain=localhost` would be delivered to
+`admin.localhost` too — and in production `Domain=example.ir` would leak the trader
+cookie to the admin app. What the prefix does is make that unreachable: the browser
+**refuses to store the cookie at all** rather than storing it too widely. The
+distinction matters because it decides what a test can assert. This comment used to
+say the wide delivery "would" happen, which reads as though the leak is the failure
+mode to guard against; the actual failure mode is a session that silently never
+exists, and a control written against the first one passes while testing nothing.
+
+Measured in Chromium rather than assumed —
+`apps/trader-pwa/tests/platform/cookie-prefix.spec.ts`, `UI-ISO-003`:
+
+    STORED    __Host-correct=1; Secure; Path=/
+    REJECTED  __Host-with-domain=1; Secure; Path=/; Domain=localhost
+    REJECTED  __Host-no-secure=1; Path=/
+    REJECTED  __Host-narrow-path=1; Secure; Path=/somewhere
+    STORED    ordinary-with-domain=1; Path=/; Domain=localhost
+
+The last line is what makes the second one meaningful: an ordinary cookie carrying the
+same `Domain` *is* stored, so the refusal is caused by the prefix and not by the
+attribute being invalid.
+
+That test also settles a deployment question this module's `secure=True` raises.
+`isSecureContext` is true on plain-HTTP `localhost`, so the unconditional `Secure`
+flag does not force TLS into the local stack — and no environment switch is needed to
+avoid it, which is the outcome to prefer: a flag that relaxed the prefix in
+development would mean local runs exercised a different cookie contract than
+production.
 
 **`SameSite` is not audience isolation.** `trader.example.ir` and
 `admin.example.ir` are the same *site*, so `SameSite` says nothing about them. It

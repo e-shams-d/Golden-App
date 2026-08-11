@@ -87,8 +87,13 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     ("GET", "/api/v1/auth/me"): SESSION,
     ("POST", "/api/v1/auth/logout"): SESSION,
     ("POST", "/api/v1/auth/reauthenticate"): SESSION,
-    ("GET", "/api/v1/auth/sessions"): SESSION,
-    ("POST", "/api/v1/auth/sessions/{session_id}/revoke"): SESSION,
+    # Ownership-scoped, not session-only. Slice 10 classified both `SESSION`, which is
+    # the one class carrying no obligation, so the DoD's first clause was discharged
+    # for them by a label. Both filter on the caller: `listOwnSessions` selects
+    # `column == actor.actor_id` (`app/api/v1/auth.py:726`) and `revokeOwnSession`
+    # refuses when `owner != actor.actor_id` (`:777`). Their own operation ids say so.
+    ("GET", "/api/v1/auth/sessions"): OWNERSHIP,
+    ("POST", "/api/v1/auth/sessions/{session_id}/revoke"): OWNERSHIP,
     ("GET", "/api/v1/me/trader/profile"): OWNERSHIP,
     ("PATCH", "/api/v1/me/trader/profile"): OWNERSHIP,
     ("POST", "/api/v1/traders/{trader_id}/approve"): PERMISSION,
@@ -105,6 +110,30 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
 # Classes that require a negative test, and what kind. The DoD names two kinds, so
 # these are the two that carry an obligation; PUBLIC and OPERATIONS carry their own
 # checks elsewhere and are not what the sentence is about.
+#
+# WHICH READING THIS ENFORCES, recorded because two documents disagree and this gate
+# silently chose one.
+#
+# `15_Agent_Implementation_Plan.md:666` says "ownership **and** permission negative
+# tests exist for every implemented protected resource", and this plan's slice 10 reads
+# that as "for each require **both**" (`M3_IMPLEMENTATION_PLAN.md:852-854`). Taken
+# literally, the four decision routes would also owe ownership negatives and the two
+# profile routes would also owe permission negatives: twelve obligations, not six.
+#
+# This mapping enforces the narrower reading — **one obligation per route, from the
+# class that actually guards it** — and the reason is that the wider one asks for tests
+# that cannot be written as stated. `POST /traders/{id}/approve` has no ownership
+# dimension: an admin does not own a trader, so an "ownership negative" for it would
+# have to invent a relationship the schema does not have, and a test asserting a
+# refusal that no code path produces proves nothing about ownership. Likewise the
+# profile routes declare no permission, because trader access is ownership-scoped
+# rather than granted through `admin_user_roles`.
+#
+# So the sentence's "and" is read as spanning the *set of resources* rather than
+# applying both kinds to each one. That is a defensible reading and it is not the only
+# one, which is exactly why it is written here instead of being left implicit: until
+# the owner records a choice, "the DoD gate is green" and "the DoD is met" are
+# different statements, and this comment is what keeps the difference visible.
 NEGATIVE_TEST_REQUIRED = {OWNERSHIP: "ownership", PERMISSION: "permission"}
 
 # The negative test that discharges each obligation, by (method, path, kind). Every
@@ -118,16 +147,32 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ("POST", "/api/v1/traders/{trader_id}/approve", "permission"): (
         "test_an_authenticated_admin_without_the_permission_is_refused"
     ),
+    ("POST", "/api/v1/traders/{trader_id}/reject", "permission"): (
+        "test_rejecting_without_the_permission_is_refused"
+    ),
+    ("POST", "/api/v1/traders/{trader_id}/suspend", "permission"): (
+        "test_suspending_without_the_permission_is_refused"
+    ),
+    ("POST", "/api/v1/traders/{trader_id}/reactivate", "permission"): (
+        "test_reactivating_without_the_permission_is_refused"
+    ),
+    ("GET", "/api/v1/auth/sessions", "ownership"): (
+        "test_the_session_routes_are_scoped_to_the_caller"
+    ),
+    ("POST", "/api/v1/auth/sessions/{session_id}/revoke", "ownership"): (
+        "test_the_session_routes_are_scoped_to_the_caller"
+    ),
 }
 
-# Permission-guarded routes whose negative test is not written yet, each owned. The
-# three share one guard and one code path, and the approve route exercises it — but
-# "the same guard" is an argument, not a test, and this records the difference.
-PENDING_NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
-    ("POST", "/api/v1/traders/{trader_id}/reject", "permission"): "M3 slice 10B",
-    ("POST", "/api/v1/traders/{trader_id}/suspend", "permission"): "M3 slice 10B",
-    ("POST", "/api/v1/traders/{trader_id}/reactivate", "permission"): "M3 slice 10B",
-}
+# Nothing is pending. Kept as an empty dict rather than deleted, because the checks
+# below compare against it and a deleted name would make them pass by absence —
+# and because the next protected route to ship needs somewhere to be owed from.
+#
+# `test_every_guarded_route_has_its_negative_tests_or_an_owner` is what makes an empty
+# dict safe: it walks the *live routes* and requires each guarded one to appear in one
+# collection or the other, so emptying this one cannot quietly widen the gap it used
+# to record — the obligation comes from the router, not from this dict's length.
+PENDING_NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {}
 
 
 def routes_of(app: object) -> list[tuple[str, str]]:

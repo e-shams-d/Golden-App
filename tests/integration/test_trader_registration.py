@@ -4,7 +4,7 @@ The registration path is the only unauthenticated write surface on the platform,
 so the tests that matter most here are the ones about what it *does not* say.
 
 Covers: API-REG-001, API-REG-002, API-REG-003, API-PENDING-001, API-APPROVE-001,
-API-APPROVE-002.
+API-APPROVE-002, SEC-PERM-003.
 """
 
 from __future__ import annotations
@@ -167,6 +167,37 @@ def decision_headers(token: str, version: int) -> dict[str, str]:
         "If-Match": f'"rv-{version}"',
         "Idempotency-Key": str(uuid.uuid4()),
     }
+
+
+def assert_the_permission_is_what_refused_it(client: Any, refused: Any, token: str) -> None:
+    """A 403 alone does not say *which* control produced it.
+
+    `CsrfRequiredError` and `ForbiddenError` are byte-identical — both are
+    `("FORBIDDEN", "Permission denied.", 403)` (`app/api/v1/auth.py:81`,
+    `app/core/errors.py:49`) — and deliberately so: a distinct code would tell an
+    attacker which control stopped them. That is the right decision for the API and
+    it means the response body cannot be the discriminator here.
+
+    So this asks the session a second question. `POST /auth/logout` is an unsafe
+    method carrying the *same* token, and it answers 403 when the token is missing
+    or forged (`tests/integration/test_authentication_flow.py:496-504`). A 200
+    therefore proves the token was accepted for this session, which leaves the
+    missing grant as the only thing that could have refused the first request.
+
+    Without this, every permission test in this file would pass unchanged against a
+    wrong CSRF token — including the one slice 10 added, which is why it is applied
+    to that test too rather than only to the new ones.
+    """
+
+    assert refused.status_code == 403, refused.text
+    assert refused.json()["error"]["code"] == "FORBIDDEN"
+
+    probe = client.post("/api/v1/auth/logout", headers={CSRF_HEADER: token})
+    assert probe.status_code == 200, (
+        "the CSRF token this request carried was not accepted by the session, so the "
+        "403 above proves nothing about the permission guard — it is the CSRF check "
+        "answering, and the two are indistinguishable in the response"
+    )
 
 
 def test_registration_creates_the_business_and_its_primary_contact(
@@ -505,7 +536,7 @@ def test_an_authenticated_admin_without_the_permission_is_refused(
         "an authenticated admin lacking trader.approve was not refused, so the "
         "permission guard is not the thing deciding this route"
     )
-    assert refused.json()["error"]["code"] == "FORBIDDEN"
+    assert_the_permission_is_what_refused_it(client, refused, token)
 
     # Nothing changed. A 403 that still applied the decision would be worse than no
     # guard, because the response would misreport what happened.
@@ -571,6 +602,191 @@ def test_a_revoked_grant_stops_granting_immediately(
         "the grant was revoked and the session still carried it, so permissions are "
         "cached at login rather than resolved per request"
     )
+
+
+def _approve(client: Any, migrated: RuntimeIdentities, trader_id: str) -> None:
+    """Move a trader to approved as the role that may, re-reading the version.
+
+    Each decision increments `record_version`, so a second decision built on the
+    version read before the first gets 412 rather than reaching the guard. Re-reading
+    is what makes the *next* request one that would have succeeded — which is the
+    whole point of the tests below.
+    """
+
+    token = sign_in_staff(client)
+    version = _traders(migrated)[0][5]
+    response = client.post(
+        f"/api/v1/traders/{trader_id}/approve",
+        json={},
+        headers=decision_headers(token, version),
+    )
+    assert response.status_code == 200, response.text
+
+
+def test_rejecting_without_the_permission_is_refused(
+    client: Any, migrated: RuntimeIdentities
+) -> None:
+    """`trader.reject`, from a caller holding only `trader.read`.
+
+    The request is a *valid* one — a pending business, a reason, a fresh `If-Match`
+    and an `Idempotency-Key` — so the only thing wrong with it is the caller. That
+    matters more than it looks: the negative control for this test deletes the
+    guard and requires the call to succeed, and it can only do that if every other
+    reason to refuse has been removed first. Omit the reason and the mutant answers
+    400; omit `If-Match` and it answers 428; and in both cases the control reports
+    that the guard is still there when it is gone.
+    """
+
+    register(client, "09121110016")
+    trader_id = str(_traders(migrated)[0][0])
+    version = _traders(migrated)[0][5]
+
+    token = sign_in_admin(client, UNPRIVILEGED_USERNAME)
+    refused = client.post(
+        f"/api/v1/traders/{trader_id}/reject",
+        json={"reason": "the documents did not match the register"},
+        headers=decision_headers(token, version),
+    )
+
+    assert_the_permission_is_what_refused_it(client, refused, token)
+    assert _traders(migrated)[0][3] == "pending_approval", (
+        "the decision was applied despite the refusal, so the response misreports "
+        "what happened to the business"
+    )
+
+
+def test_suspending_without_the_permission_is_refused(
+    client: Any, migrated: RuntimeIdentities
+) -> None:
+    """`trader.suspend`, against an approved business a suspension would really hit.
+
+    Suspension is the one decision with no state precondition
+    (`app/commands/trader_lifecycle.py:285` returns the new value unconditionally),
+    so a pending business would do for the 403. Approving first is deliberate
+    anyway: it makes the refused request identical to the one the positive test
+    below succeeds with, and a pair that differs only in the caller is the only
+    pair that isolates the caller.
+    """
+
+    register(client, "09121110017")
+    trader_id = str(_traders(migrated)[0][0])
+    _approve(client, migrated, trader_id)
+
+    version = _traders(migrated)[0][5]
+    token = sign_in_admin(client, UNPRIVILEGED_USERNAME)
+    refused = client.post(
+        f"/api/v1/traders/{trader_id}/suspend",
+        json={"reason": "an unreconciled settlement"},
+        headers=decision_headers(token, version),
+    )
+
+    assert_the_permission_is_what_refused_it(client, refused, token)
+    assert _traders(migrated)[0][4] == "active", (
+        "the business was suspended by a caller without trader.suspend, which is a "
+        "trading halt applied by somebody with no authority to apply it"
+    )
+
+
+def test_suspending_succeeds_for_a_role_that_holds_the_permission(
+    client: Any, migrated: RuntimeIdentities
+) -> None:
+    """The positive half — and nothing in this repository had ever called suspend.
+
+    Five merged slices shipped the route, the permission, the seed grant and the
+    audit wiring, and no test had ever driven it to 200. That is what made the
+    refusal above worth writing carefully: "suspend returns 403" is equally
+    satisfied by a route that refuses everybody, and until this test existed there
+    was no evidence it does not.
+    """
+
+    register(client, "09121110018")
+    trader_id = str(_traders(migrated)[0][0])
+    _approve(client, migrated, trader_id)
+
+    token = sign_in_staff(client)
+    version = _traders(migrated)[0][5]
+    allowed = client.post(
+        f"/api/v1/traders/{trader_id}/suspend",
+        json={"reason": "an unreconciled settlement"},
+        headers=decision_headers(token, version),
+    )
+
+    assert allowed.status_code == 200, allowed.text
+    assert _traders(migrated)[0][4] == "suspended"
+    assert _traders(migrated)[0][3] == "approved", (
+        "suspension moved the approval axis too; the two are separate by "
+        "DOC-CONFLICT-024 and a suspended business is still an approved one"
+    )
+
+
+def test_reactivating_without_the_permission_is_refused(
+    client: Any, migrated: RuntimeIdentities
+) -> None:
+    """`trader.reactivate`, against a suspended business that could be reactivated.
+
+    Reactivation *does* have a precondition — `:288` refuses unless the business is
+    approved — so the business is walked all the way to suspended before the
+    refused call. A pending business here would return 400 whether the guard exists
+    or not, and the test would report a working guard on a route that had none.
+    """
+
+    register(client, "09121110019")
+    trader_id = str(_traders(migrated)[0][0])
+    _approve(client, migrated, trader_id)
+
+    staff = sign_in_staff(client)
+    client.post(
+        f"/api/v1/traders/{trader_id}/suspend",
+        json={"reason": "an unreconciled settlement"},
+        headers=decision_headers(staff, _traders(migrated)[0][5]),
+    )
+    assert _traders(migrated)[0][4] == "suspended", "the setup did not suspend"
+
+    version = _traders(migrated)[0][5]
+    token = sign_in_admin(client, UNPRIVILEGED_USERNAME)
+    refused = client.post(
+        f"/api/v1/traders/{trader_id}/reactivate",
+        json={},
+        headers=decision_headers(token, version),
+    )
+
+    assert_the_permission_is_what_refused_it(client, refused, token)
+    assert _traders(migrated)[0][4] == "suspended", (
+        "trading was restored by a caller without trader.reactivate, which is the "
+        "more dangerous direction of the two"
+    )
+
+
+def test_reactivating_succeeds_for_a_role_that_holds_the_permission(
+    client: Any, migrated: RuntimeIdentities
+) -> None:
+    """The positive half, and the second route no test had ever called.
+
+    Also the only one of the four decisions that asserts a *return* to a previous
+    value, which is why it is worth having: a reactivate that wrote `inactive`
+    instead of `active` would satisfy "the call returns 200" and leave the business
+    unable to trade.
+    """
+
+    register(client, "09121110020")
+    trader_id = str(_traders(migrated)[0][0])
+    _approve(client, migrated, trader_id)
+
+    token = sign_in_staff(client)
+    client.post(
+        f"/api/v1/traders/{trader_id}/suspend",
+        json={"reason": "an unreconciled settlement"},
+        headers=decision_headers(token, _traders(migrated)[0][5]),
+    )
+
+    allowed = client.post(
+        f"/api/v1/traders/{trader_id}/reactivate",
+        json={},
+        headers=decision_headers(token, _traders(migrated)[0][5]),
+    )
+
+    assert allowed.status_code == 200, allowed.text
+    assert _traders(migrated)[0][4] == "active"
 
 
 def test_a_trader_cannot_approve_itself(client: Any, migrated: RuntimeIdentities) -> None:

@@ -110,6 +110,10 @@ pnpm check:public-env
 pnpm lint
 pnpm typecheck
 pnpm test
+# Before `build` on purpose: these specs serve their own HTTP responses and need no
+# application, so running them earlier means a broken browser contract is reported
+# before eight minutes of bundling rather than after it.
+pnpm test:platform
 pnpm build
 pnpm test:a11y
 

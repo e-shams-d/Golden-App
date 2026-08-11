@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "typecheck": "next typegen && tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:platform": "playwright test --config=playwright.platform.config.ts",
     "test:a11y": "node ../../packages/config/scripts/run-next-a11y.mjs trader-pwa 3100 playwright.config.ts"
   },
   "dependencies": {
