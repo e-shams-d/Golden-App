@@ -550,6 +550,96 @@ if metadata.get("commit") != sys.argv[2]:
     fi
 }
 
+assert_authentication_completes() {
+    # The check every earlier smoke check was missing, and the reason a broken login
+    # survived five merged slices: they all probed with a *wrong* credential.
+    #
+    # A wrong password returns 401 whether the stack is healthy or not, because it
+    # never reaches the code that mints a CSRF token. With AUTH_CSRF_KEY_SECRET
+    # absent from the container, the success path raised on an empty HMAC key and
+    # every correct password returned 500 — while every wrong one kept returning the
+    # same 401 it always had. So the stack answered a bad credential correctly and a
+    # good one not at all, and nothing here could tell.
+    #
+    # The integration suite could not see it either: each of its settings factories
+    # passes the secret in directly, so it tests a configuration the deployment does
+    # not have. That is the gap this stage exists to cover — not a stronger assertion
+    # about authentication, but the first one made against the shipped image.
+    port=$1
+    # A fresh identity per run. The verifier keeps its data volumes across runs, so a
+    # fixed number would find a trader already registered under an earlier run's
+    # password and fail for a reason that has nothing to do with the stack.
+    phone="09$(od -An -N4 -tu4 /dev/urandom | tr -d ' \n' | cut -c1-9)"
+    phone=$(printf '%s' "$phone" | cut -c1-11)
+    password="Verify-$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
+
+    # Piped rather than passed as an argument: a --data value is visible in the
+    # process table to every user on the machine.
+    if ! printf '%s' "{\"display_name\":\"Docker Verification\",\"primary_phone\":\"$phone\",\"contact_full_name\":\"Verification Contact\",\"password\":\"$password\"}" \
+        | curl --fail --silent --show-error --max-time 15 \
+            --header "Host: trader.localhost" \
+            --header 'Content-Type: application/json' \
+            --data @- \
+            --output /dev/null \
+            "http://127.0.0.1:$port/api/v1/traders/register"; then
+        printf '%s\n' "Public trader registration failed against the running stack." >&2
+        return 1
+    fi
+
+    refused=$(
+        printf '%s' "{\"identifier\":\"$phone\",\"password\":\"wrong-$password\"}" \
+            | curl --silent --show-error --max-time 15 \
+                --header "Host: trader.localhost" \
+                --header 'Content-Type: application/json' \
+                --data @- \
+                --output /dev/null \
+                --write-out '%{http_code}' \
+                "http://127.0.0.1:$port/api/v1/auth/trader/login"
+    )
+    if [ "$refused" != "401" ]; then
+        printf '%s\n' \
+            "A wrong password returned $refused rather than 401." >&2
+        return 1
+    fi
+
+    accepted=$(
+        printf '%s' "{\"identifier\":\"$phone\",\"password\":\"$password\"}" \
+            | curl --silent --show-error --max-time 15 \
+                --header "Host: trader.localhost" \
+                --header 'Content-Type: application/json' \
+                --data @- \
+                --output /dev/null \
+                --dump-header - \
+                --write-out 'STATUS=%{http_code}' \
+                "http://127.0.0.1:$port/api/v1/auth/trader/login"
+    )
+    if ! printf '%s' "$accepted" | grep -q 'STATUS=200'; then
+        printf '%s\n' \
+            "A correct password did not complete authentication against the stack." \
+            "This is the shape of the defect this stage was written for: check that" \
+            "the backend container receives AUTH_CSRF_KEY_SECRET." >&2
+        return 1
+    fi
+
+    # The cookie, not just the status. A 200 with no session cookie is a login that
+    # tells the browser nothing, and the prefix carries the audience isolation the
+    # deployment depends on: `__Host-` is refused by the browser unless the cookie is
+    # Secure, has no Domain, and is Path=/, which is what keeps a trader credential
+    # off the admin host.
+    if ! printf '%s' "$accepted" | grep -qi 'set-cookie: __Host-gp_trader_session='; then
+        printf '%s\n' \
+            "Authentication returned 200 without setting __Host-gp_trader_session." >&2
+        return 1
+    fi
+    if ! printf '%s' "$accepted" | grep -i 'set-cookie: __Host-gp_trader_session=' \
+        | grep -qi 'secure'; then
+        printf '%s\n' \
+            "The session cookie is not marked Secure, so a browser will refuse to" \
+            "store it under the __Host- prefix and every request will be anonymous." >&2
+        return 1
+    fi
+}
+
 invoke_postgres_sql() {
     sql=$1
     compose exec -T postgres sh -eu -c \
@@ -761,6 +851,13 @@ wait_for_http_targets "$ingress_port"
 wait_for_restricted_health_targets
 wait_for_container_health_checks
 assert_release_metadata "$ingress_port" "$expected_commit"
+
+# After the recreate rather than before it, so the identity this registers is written
+# to a volume that has already survived one `compose down` -- authentication proved
+# against persisted data is worth more than against a first boot.
+printf '%s\n' "Completing an end-to-end authentication against the running stack..."
+assert_authentication_completes "$ingress_port"
+
 assert_persistence_sentinels "$persistence_sentinel"
 remove_persistence_sentinels
 write_image_evidence

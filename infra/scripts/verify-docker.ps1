@@ -431,6 +431,106 @@ function Assert-ReleaseMetadata {
     }
 }
 
+function Assert-AuthenticationCompletes {
+    <#
+        The check every earlier smoke check was missing, and the reason a broken login
+        survived five merged slices: they all probed with a *wrong* credential.
+
+        A wrong password returns 401 whether the stack is healthy or not, because it
+        never reaches the code that mints a CSRF token. With AUTH_CSRF_KEY_SECRET
+        absent from the container, the success path raised on an empty HMAC key and
+        every correct password returned 500 - while every wrong one kept returning the
+        same 401 it always had.
+
+        The integration suite could not see it either: each of its settings factories
+        passes the secret in directly, so it tests a configuration the deployment does
+        not have.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [int] $Port
+    )
+
+    # A fresh identity per run. The verifier keeps its data volumes across runs, so a
+    # fixed number would find a trader already registered under an earlier run's
+    # password and fail for a reason that has nothing to do with the stack.
+    $phone = "09" + -join (1..9 | ForEach-Object { Get-Random -Minimum 0 -Maximum 10 })
+    $password = "Verify-" + [System.Guid]::NewGuid().ToString("N")
+    $headers = @{ Host = "trader.localhost" }
+
+    try {
+        Invoke-WebRequest `
+            -Uri "http://127.0.0.1:$Port/api/v1/traders/register" `
+            -Method Post `
+            -Headers $headers `
+            -ContentType "application/json" `
+            -Body (@{
+                display_name      = "Docker Verification"
+                primary_phone     = $phone
+                contact_full_name = "Verification Contact"
+                password          = $password
+            } | ConvertTo-Json -Compress) `
+            -TimeoutSec 15 `
+            -UseBasicParsing `
+            -ErrorAction Stop | Out-Null
+    }
+    catch {
+        throw "Public trader registration failed against the running stack."
+    }
+
+    $loginUri = "http://127.0.0.1:$Port/api/v1/auth/trader/login"
+
+    # -SkipHttpErrorCheck so a 401 is data rather than an exception: this stage has to
+    # distinguish three outcomes, and two of them are not successes.
+    $refused = Invoke-WebRequest `
+        -Uri $loginUri `
+        -Method Post `
+        -Headers $headers `
+        -ContentType "application/json" `
+        -Body (@{ identifier = $phone; password = "wrong-$password" } | ConvertTo-Json -Compress) `
+        -TimeoutSec 15 `
+        -UseBasicParsing `
+        -SkipHttpErrorCheck
+    if ($refused.StatusCode -ne 401) {
+        throw "A wrong password returned $($refused.StatusCode) rather than 401."
+    }
+
+    $accepted = Invoke-WebRequest `
+        -Uri $loginUri `
+        -Method Post `
+        -Headers $headers `
+        -ContentType "application/json" `
+        -Body (@{ identifier = $phone; password = $password } | ConvertTo-Json -Compress) `
+        -TimeoutSec 15 `
+        -UseBasicParsing `
+        -SkipHttpErrorCheck
+    if ($accepted.StatusCode -ne 200) {
+        throw (
+            "A correct password did not complete authentication against the stack " +
+            "(HTTP $($accepted.StatusCode)). This is the shape of the defect this " +
+            "stage was written for: check that the backend container receives " +
+            "AUTH_CSRF_KEY_SECRET."
+        )
+    }
+
+    # The cookie, not just the status. A 200 with no session cookie is a login that
+    # tells the browser nothing, and the prefix carries the audience isolation the
+    # deployment depends on: `__Host-` is refused by the browser unless the cookie is
+    # Secure, has no Domain, and is Path=/, which is what keeps a trader credential
+    # off the admin host.
+    $cookies = @($accepted.Headers["Set-Cookie"])
+    $session = $cookies | Where-Object { $_ -like "*__Host-gp_trader_session=*" }
+    if (-not $session) {
+        throw "Authentication returned 200 without setting __Host-gp_trader_session."
+    }
+    if ($session -notmatch "(?i)secure") {
+        throw (
+            "The session cookie is not marked Secure, so a browser will refuse to " +
+            "store it under the __Host- prefix and every request will be anonymous."
+        )
+    }
+}
+
 function Invoke-PostgresSql {
     param(
         [Parameter(Mandatory = $true)]
@@ -766,6 +866,14 @@ try {
     Wait-ForRestrictedHealthTargets -TimeoutSeconds 180
     Wait-ForContainerHealthChecks -TimeoutSeconds 180
     Assert-ReleaseMetadata -Port $ingressPort -ExpectedCommit $expectedCommit
+
+    # After the recreate rather than before it, so the identity this registers is
+    # written to a volume that has already survived one `compose down` -
+    # authentication proved against persisted data is worth more than against a first
+    # boot.
+    Write-Host "Completing an end-to-end authentication against the running stack..."
+    Assert-AuthenticationCompletes -Port $ingressPort
+
     Assert-PersistenceSentinels -Sentinel $persistenceSentinel
     Remove-PersistenceSentinels
     Write-ImageEvidence

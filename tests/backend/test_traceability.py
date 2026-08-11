@@ -114,20 +114,45 @@ PENDING: dict[str, str] = {
     "AUD-ROLE-001": "M3 slice 8B",
     "API-PWD-001": "M3 slice 8B",
     "API-PWD-002": "M3 slice 8B",
-    # Deferred in slice 9 deliberately: both need the compose stack's two hostnames,
-    # because native dev serves both apps on localhost at different ports and cookies
-    # ignore ports, so a test there would prove nothing.
-    "UI-ISO-002": "M3 slice 10B (compose-stack browser run)",
-    "UI-NAV-001": "M3 slice 10B (compose-stack browser run)",
-    "UI-LOGIN-001": "M3 slice 10B (compose-stack browser run)",
-    # The shared state components exist and nothing drives them from a real server
-    # response yet; slice 9 built login only.
-    "UI-STATE-001": "M3 slice 10B",
+    # Still owed, and re-owned in slice 10B with the reason narrowed by what that slice
+    # measured. The *mechanism* this depends on is now proved in a real browser
+    # (UI-ISO-003: Chromium refuses a `__Host-` cookie carrying Domain, and plain-HTTP
+    # localhost is a secure context). What remains is the end-to-end claim — a trader
+    # session cannot reach an admin surface — which needs the compose stack's two
+    # hostnames, and needs the frontend images rebuilt because the ones on disk predate
+    # the login screens.
+    "UI-ISO-002": "M3 slice 10D (compose-stack browser run, needs rebuilt frontend images)",
+    # Re-deferred in slice 10B rather than attempted, because both are build-then-prove
+    # and the plan listed them as prove-only.
+    #
+    # There is no dashboard to land on: both login handlers do `router.refresh()` then
+    # `router.replace("/")`, and `/` is a static shell with a hard-coded navigation and
+    # a literal "role unknown" header — so an authenticated admin and an anonymous
+    # visitor render identical bytes, and "lands on its own dashboard" has nothing to
+    # assert against.
+    "UI-LOGIN-001": "M3 slice 10D (needs a session-derived landing surface to assert)",
+    # And no navigation reads permissions: `NavigationItem` is `{href, label}`, both
+    # renderers map unconditionally, and neither app fetches `/auth/me` at runtime —
+    # both auth adapters are exported and imported nowhere. Worse, the mapping itself is
+    # an owner decision rather than an implementation one: doc 21 §6.3's per-role lists
+    # disagree with migration `_0008`'s seeded grants, and the naive choice is actively
+    # wrong — `accountant` holds `trader.read`, so gating the traders item on it would
+    # hide nothing from the only unprivileged role that exists.
+    "UI-NAV-001": "M3 slice 10D (the href-to-permission mapping is an owner decision)",
+    # The mapping this needs does not exist anywhere: no code in either frontend turns a
+    # status or an error code into a state, so there is nothing for a real response to
+    # drive. Recorded against 10C with the twelve doc-21 states nothing has ever named.
+    "UI-STATE-001": "M3 slice 10C",
     # An admin response carrying another trader's data needs a list endpoint to carry
     # it, and M3 has none. Recorded against M5 in the IDOR ledger too.
     "SEC-IDOR-004": "M5 (needs an internal list endpoint)",
-    # The evidence emitter's M3 items.
-    "OPS-EVID-001": "M3 slice 10B",
+    # The evidence emitter's M3 items — and first a decision about the identifier. The
+    # plan says `OPS-EVID-001`; the two tests that exist say `OPS-EVIDENCE-001`, which is
+    # M2's id (M2 plan:1358). Coverage is keyed by exact string, so this obligation has
+    # zero citations today and the cheapest possible false discharge would be to add the
+    # M3 spelling to a docstring that already describes M2's behaviour. Whether they are
+    # one obligation or two is the first thing 10C decides.
+    "OPS-EVID-001": "M3 slice 10C",
 }
 
 

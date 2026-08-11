@@ -197,30 +197,46 @@ jobs:
       - name: Generate ephemeral CI-only .env (never committed, masked charset)
         run: |
           python3 - <<'EOF'
-          import secrets, string, pathlib
+          import os, re, secrets, string, pathlib
           alphabet = string.ascii_letters + string.digits + "._~-"
           first = string.ascii_letters + string.digits
           def gen(n):
               return secrets.choice(first) + "".join(secrets.choice(alphabet) for _ in range(n - 1))
           template = pathlib.Path(".env.example").read_text(encoding="utf-8")
-          import os, re
-          values = {
-              "RELEASE_COMMIT": os.environ["GITHUB_SHA"],
-              "POSTGRES_PASSWORD": gen(24),
-              "APP_DB_PASSWORD": gen(24),
-              "MIGRATION_DB_PASSWORD": gen(24),
-              "WORKER_DB_PASSWORD": gen(24),
-              "REDIS_PASSWORD": gen(24),
-              "OPERATIONS_HEALTH_TOKEN": gen(48),
-          }
-          out = []
+
+          # Every placeholder is randomised, and the list is *derived* from the
+          # example rather than restated here. A hand-written list left four secrets
+          # -- both AUTH_* keys and two database roles -- at the example's literal
+          # text for as long as they had existed: present, so `${VAR:?}` was
+          # satisfied and the stack started, and published, so the run used a
+          # credential readable in the repository. 48 characters for all of them
+          # because the longest requirement (OPERATIONS_HEALTH_TOKEN, 32) is cheap
+          # to apply to everything and one length cannot drift from another.
+          placeholder = re.compile(r"^([A-Z_0-9]+)=(?:replace-with|change-me)\S*$")
+          out, replaced = [], set()
           for line in template.splitlines():
-              key = line.split("=", 1)[0].strip() if "=" in line else None
-              if key in values:
-                  out.append(f"{key}={values[key]}")
+              match = placeholder.match(line)
+              if match:
+                  out.append(f"{match.group(1)}={gen(48)}")
+                  replaced.add(match.group(1))
+              elif line.startswith("RELEASE_COMMIT="):
+                  out.append(f"RELEASE_COMMIT={os.environ['GITHUB_SHA']}")
               else:
                   out.append(line)
-          pathlib.Path(".env").write_text("\n".join(out) + "\n", encoding="utf-8")
+          rendered = "\n".join(out) + "\n"
+
+          # The guard that makes the derivation trustworthy rather than merely tidy.
+          # If any spoiled value survives -- a new placeholder spelling, a reformat --
+          # the job stops here instead of handing a published credential to the stack.
+          leaked = [
+              line.split("=", 1)[0]
+              for line in rendered.splitlines()
+              if re.search(r"=(?:replace-with|change-me)", line)
+          ]
+          if leaked:
+              raise SystemExit(f"placeholder values survived .env generation: {leaked}")
+          print(f"randomised {len(replaced)} placeholder secrets")
+          pathlib.Path(".env").write_text(rendered, encoding="utf-8")
           EOF
       - name: Docker acceptance verifier
         run: sh infra/scripts/verify-docker.sh

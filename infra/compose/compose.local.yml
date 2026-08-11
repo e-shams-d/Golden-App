@@ -118,6 +118,24 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0
       LOCAL_STORAGE_ROOT: ${LOCAL_STORAGE_ROOT:-/app/storage}
       OPERATIONS_HEALTH_TOKEN: ${OPERATIONS_HEALTH_TOKEN:?OPERATIONS_HEALTH_TOKEN must be set}
+      # Both are `SecretStr | None` with no default in `app/core/config.py`, which
+      # makes them feature switches rather than tunables: absent, the code takes a
+      # different path instead of a default value. Absent, this stack answered 500 to
+      # every *correct* password (`csrf_token` refuses an empty key,
+      # `app/security/cookies.py:99`) while still answering 401 to every wrong one —
+      # so nothing that probed it with a bad credential could see that login was
+      # broken, and the integration suite could not either, because each of its
+      # settings factories passes the value in directly.
+      #
+      # `:?` rather than a default on purpose. A default would make this stack start
+      # with a known key, which is worse than not starting.
+      #
+      # The worker and scheduler inherit this anchor and use neither. Splitting it
+      # would give them a tighter environment at the cost of a second copy of
+      # eleven variables, and a list written twice is the thing that produced this
+      # defect in the first place.
+      AUTH_CSRF_KEY_SECRET: ${AUTH_CSRF_KEY_SECRET:?AUTH_CSRF_KEY_SECRET must be set}
+      AUTH_RATE_LIMIT_KEY_SECRET: ${AUTH_RATE_LIMIT_KEY_SECRET:?AUTH_RATE_LIMIT_KEY_SECRET must be set}
     expose:
       - "8000"
     volumes:

@@ -29,6 +29,11 @@ CSRF_HEADER = "X-CSRF-Token"
 
 ADMIN_PASSWORD = "correct-horse-battery-staple"
 ADMIN_USERNAME = "accountant1"
+# A second staff member, added in slice 10B for one reason: the session routes are
+# scoped to the caller, and a single account cannot tell "scoped to me" from "not
+# scoped at all". Every earlier test here has one admin, which is why the scoping was
+# asserted by a classification rather than by a request.
+SECOND_ADMIN_USERNAME = "manager1"
 TRADER_PASSWORD = "another-correct-horse"
 TRADER_PHONE_TYPED = "۰۹۱۲۳۴۵۶۷۸۹"
 TRADER_PHONE_STORED = "+989123456789"
@@ -89,6 +94,11 @@ def client(migrated: RuntimeIdentities, tmp_path: Any) -> Iterator[Any]:
             "INSERT INTO admin_users (username, full_name, password_hash, status) "
             "VALUES (%s, %s, %s, 'active')",
             (ADMIN_USERNAME, "Accountant User", encoded),
+        )
+        connection.execute(
+            "INSERT INTO admin_users (username, full_name, password_hash, status) "
+            "VALUES (%s, %s, %s, 'active')",
+            (SECOND_ADMIN_USERNAME, "Manager User", encoded),
         )
         connection.execute(
             "INSERT INTO traders (id, display_name, primary_phone, operational_status, "
@@ -567,3 +577,126 @@ def test_repeated_failures_lock_the_account_durably(
         json={"identifier": ADMIN_USERNAME, "password": ADMIN_PASSWORD},
     )
     assert refused.status_code == 401
+
+
+def _sign_in(client: Any, username: str) -> str:
+    """Sign in as one admin and return that session's CSRF token.
+
+    Clears the jar first, because the tests below hold two sessions alive at once and
+    a leftover cookie would make the second login look like it worked when the first
+    session was still the one answering.
+    """
+
+    client.cookies.clear()
+    response = client.post(
+        "/api/v1/auth/admin/login",
+        json={"identifier": username, "password": ADMIN_PASSWORD},
+    )
+    assert response.status_code == 200, response.text
+    token = client.cookies.get(ADMIN_CSRF_COOKIE)
+    assert token
+    return token
+
+
+def _own_session_id(client: Any) -> str:
+    sessions = client.get("/api/v1/auth/sessions").json()["sessions"]
+    assert len(sessions) == 1, sessions
+    return str(sessions[0]["id"])
+
+
+def test_the_session_routes_are_scoped_to_the_caller(
+    client: Any, migrated: RuntimeIdentities
+) -> None:
+    """SEC-IDOR-005 and SEC-IDOR-006. The DoD's first clause, for the two routes that
+    were discharging it by classification.
+
+    `listOwnSessions` and `revokeOwnSession` are ownership-scoped — one filters on
+    `column == actor.actor_id` and the other refuses when `owner != actor.actor_id`
+    (`app/api/v1/auth.py:726` and `:777`) — and slice 10's gate classified them
+    `session-only`, a class that carries no negative obligation. So the only thing
+    asserting that a caller cannot reach another caller's sessions was the label.
+
+    `14_Testing_QA_Acceptance.md:1284` requires the refusal not to disclose whether
+    the target exists, so the revoke answers a stranger's session id exactly as it
+    answers a fabricated one. That is correct and it is also why this test cannot stop
+    at the status code: a route that revokes *nothing* would produce the same 200.
+    The two assertions that give it meaning are that the unknown id answers
+    identically, and that the victim's session still works afterwards.
+    """
+
+    # The victim's CSRF token is deliberately discarded: they never make an unsafe
+    # request in this test, and holding it would invite a later edit to act as them.
+    _sign_in(client, SECOND_ADMIN_USERNAME)
+    victim_session = _own_session_id(client)
+    victim_cookie = client.cookies.get(ADMIN_COOKIE)
+    assert victim_cookie
+
+    caller_token = _sign_in(client, ADMIN_USERNAME)
+    listed = {str(row["id"]) for row in client.get("/api/v1/auth/sessions").json()["sessions"]}
+
+    assert victim_session not in listed, (
+        "the session list returned another admin's session, which is an enumerable "
+        "identifier for a live credential"
+    )
+
+    revoked = client.post(
+        f"/api/v1/auth/sessions/{victim_session}/revoke",
+        headers={CSRF_HEADER: caller_token},
+    )
+    fabricated = client.post(
+        f"/api/v1/auth/sessions/{uuid.uuid4()}/revoke",
+        headers={CSRF_HEADER: caller_token},
+    )
+
+    assert (revoked.status_code, revoked.json()) == (
+        fabricated.status_code,
+        fabricated.json(),
+    ), (
+        "revoking somebody else's session answers differently from revoking one that "
+        "does not exist, so the pair of responses tells a caller which session ids are "
+        "real — an existence oracle over live credentials"
+    )
+
+    # The assertion the fabricated success makes necessary. Sent as an explicit header
+    # against an emptied jar so nothing but the victim's cookie can be what answers.
+    client.cookies.clear()
+    still_valid = client.get(
+        "/api/v1/auth/me", headers={"Cookie": f"{ADMIN_COOKIE}={victim_cookie}"}
+    )
+
+    assert still_valid.status_code == 200, (
+        "one admin revoked another admin's session, so the scoping is not enforced and "
+        "any staff member can sign every other staff member out"
+    )
+
+    with psycopg.connect(_psycopg(migrated.owner_url)) as connection:
+        revocations = connection.execute(
+            "SELECT count(*) FROM auth_sessions WHERE revoked_at IS NOT NULL"
+        ).fetchone()
+    assert revocations
+    assert revocations[0] == 0, (
+        "something was revoked in the database even though both calls were refused"
+    )
+
+
+def test_revoking_your_own_session_really_revokes_it(client: Any) -> None:
+    """The positive half, and the reason the test above is not vacuous.
+
+    Because a refused revocation returns the same 200 as a successful one, "the
+    victim's session still works" is also satisfied by a route that revokes nothing at
+    all — a missing `commit`, an inverted condition, a handler that returns early.
+    This is the assertion that separates the two, and it belongs next to the negative
+    rather than in a different file: read together they say the caller's own id is the
+    one thing that changes the outcome.
+    """
+
+    token = _sign_in(client, ADMIN_USERNAME)
+    own = _own_session_id(client)
+
+    revoked = client.post(f"/api/v1/auth/sessions/{own}/revoke", headers={CSRF_HEADER: token})
+
+    assert revoked.status_code == 200, revoked.text
+    assert client.get("/api/v1/auth/me").status_code == 401, (
+        "the caller revoked their own session and it still authenticates, so the "
+        "route reports a revocation it did not perform"
+    )

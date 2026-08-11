@@ -224,6 +224,12 @@ try {
     Invoke-External -Command "pnpm" `
         -Arguments @("test") `
         -FailureMessage "Frontend tests failed"
+    # Before `build` on purpose: these specs serve their own HTTP responses and need no
+    # application, so running them earlier means a broken browser contract is reported
+    # before eight minutes of bundling rather than after it.
+    Invoke-External -Command "pnpm" `
+        -Arguments @("test:platform") `
+        -FailureMessage "Browser platform-contract tests failed"
     Invoke-External -Command "pnpm" `
         -Arguments @("build") `
         -FailureMessage "Frontend build failed"

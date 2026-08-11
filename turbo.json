@@ -19,6 +19,10 @@
       "dependsOn": ["^typecheck"],
       "outputs": []
     },
+    "test:platform": {
+      "cache": false,
+      "outputs": ["playwright-report/**", "test-results/**"]
+    },
     "test:a11y": {
       "dependsOn": ["build"],
       "cache": false,

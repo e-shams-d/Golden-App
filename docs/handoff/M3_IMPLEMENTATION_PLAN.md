@@ -809,9 +809,21 @@ the slice where the interface becomes visible.**
 ### What it changes
 
 - Admin Web login and Trader PWA login: Persian, right-to-left, against the two routes from slice 4.
-- The mandatory application states `21_UI_Design_System_and_Screen_Specification.md:684-767` requires
-  — loading, forbidden, stale, missing-precondition, idempotency and timeout — as shared components,
-  because every later screen needs them and inventing them per screen guarantees six variants.
+- Six of the mandatory application states, as shared components, because every later screen needs
+  them and inventing them per screen guarantees six variants: loading, forbidden, stale,
+  missing-precondition, idempotency and timeout.
+
+  **Corrected in slice 10B: this list is a subset, and the sentence it replaced said otherwise.**
+  `21_UI_Design_System_and_Screen_Specification.md:688-705` requires **eighteen** states of every
+  screen, not six, and the six above are the ones with a normative subsection minus two. The plan
+  originally read "the mandatory application states `…:684-767` requires — loading, forbidden, …",
+  which asserted that the document required those six. It does not. The citation gate could not
+  catch it: `tests/backend/test_plan_citations.py:13-19` states its own limit, that it proves a cited
+  line exists and not that the line says what the sentence claims — and this is the first case of
+  that limit biting in practice rather than in principle.
+
+  The twelve the document requires and no slice builds are recorded in slice 10C below, because a
+  subset presented as a whole is how a UI ships without its refusal states.
 - Role-aware navigation from `GET /auth/me`'s permission list, used **for UX only**: the backend is
   authoritative (`12_Security_RBAC_Audit.md:625-626`), so a hidden item is not a control and a shown
   one is not a grant.
@@ -839,12 +851,42 @@ Import the admin client into the trader bundle and confirm `UI-ISO-001` fails. W
 to `localStorage` and confirm `UI-STORE-001` fails.
 
 The control this slice originally listed — "widen the cookie path to `/` and confirm `UI-ISO-002`
-fails" — **cannot fail** and is replaced. Browsers key cookies by host before path, so a host-only
+fails" — **cannot fail** and was replaced. Browsers key cookies by host before path, so a host-only
 cookie on `admin.localhost` is never sent to `trader.localhost` no matter what `Path` says; the
-control would have reported success while testing nothing. The control that does bite is to set
-`Domain` on the cookie, which makes it sibling-visible, and `UI-ISO-002` must fail on it. Note also
-that native dev serves both apps on `localhost` at different ports and cookies ignore ports, so any
-browser-level isolation test has to run against the compose stack's distinct hostnames.
+control would have reported success while testing nothing.
+
+**The replacement cannot fail either, and slice 10B has now measured it rather than argued it.** The
+replacement was to set `Domain` on the cookie "which makes it sibling-visible", and require
+`UI-ISO-002` to fail. Run in Chromium against a server on `http://localhost` — where
+`Domain=localhost` *matches* the host, so a mismatch cannot be the cause — the result is:
+
+```text
+STORED    __Host-correct=1; Secure; Path=/
+REJECTED  __Host-with-domain=1; Secure; Path=/; Domain=localhost
+REJECTED  __Host-no-secure=1; Path=/
+REJECTED  __Host-narrow-path=1; Secure; Path=/somewhere
+STORED    ordinary-with-domain=1; Path=/; Domain=localhost
+```
+
+A `__Host-` cookie carrying `Domain` is **refused outright**, so the trader would hold no session at
+all: `admin.localhost` then refuses them for being anonymous rather than for being a trader, and the
+control reports that isolation works while proving nothing about it. The last line is the control
+inside the control — an ordinary cookie with the same `Domain` *is* stored, so the refusal is caused
+by the prefix and not by an invalid attribute or an unreachable server.
+
+That is the **second** proposed control for this one cookie to turn out inert, which is the finding
+worth carrying forward: a negative control aimed at a mechanism the browser enforces will usually be
+refused by the browser instead of weakening the mechanism. The control that does bite asserts the
+refusal itself — that Chromium rejected the `Domain`-bearing cookie and the jar is unchanged — and it
+is now a kept test rather than a manual step (`UI-ISO-003`).
+
+Note also that native dev serves both apps on `localhost` at different ports and cookies ignore
+ports, so any *end-to-end* isolation test still has to run against the compose stack's distinct
+hostnames. One fact makes that affordable and was also measured: `isSecureContext` is **true** on
+plain-HTTP `localhost`, so the unconditional `secure=True` at `app/api/v1/auth.py:252` does not
+require TLS in the local stack. Reaching for a Chromium flag such as
+`--unsafely-treat-insecure-origin-as-secure` would have tested a different system from the one that
+ships.
 
 ## Slice 10 — The Definition-of-Done gate and M3 evidence
 
@@ -885,6 +927,173 @@ Make the DoD a gate rather than a claim, and record what M3 cannot prove.
 Add a protected route with no negative tests and confirm `TRACE-DOD-001` names it. Remove a
 deferral's milestone and confirm `TRACE-DOD-002` fails. Renumber a QA case and confirm
 `TRACE-QA-001` fails.
+
+## Slice 10B — The stack can authenticate, and the DoD's first clause becomes tests
+
+### Goal
+
+Close the two things slice 10 recorded as owed and one it did not know about. Slice 10 left six
+obligations pending against a slice this plan did not describe, which is its own small version of
+the failure it was written to prevent: an owner with no section is an owner nobody can review.
+
+**The one it did not know about is a live defect, not a gap.** The compose stack answered **500 to
+every correct password** and 401 to every wrong one. `AUTH_CSRF_KEY_SECRET` reached `.env.example` in
+slice 4 and reached the backend container never, so `cookies.csrf_token` raised on an empty HMAC key
+on the *success* path — the path no smoke check visits, because they all probe with a bad credential.
+It was invisible from two directions at once: the wrong-password probe returns the same 401 either
+way, and every integration settings factory passes the secret in directly
+(`tests/integration/test_authentication_flow.py:74`), so 514 green integration tests and a stack
+nobody could log into were entirely consistent with each other.
+
+Production was never exposed — `app_env=production` refuses to start without the secret — which
+means the broken window was exactly `local` and `ci`. That is to say: every demo.
+
+### What it changes
+
+- `infra/compose/compose.local.yml` forwards the two optional auth secrets, in the `${VAR:?}` form so
+  an absent value stops the stack rather than starting it with a known key.
+- The CI `.env` generator **derives** its list of placeholders from `.env.example` instead of
+  restating it, and refuses to write a file in which any placeholder survived. The hand-written list
+  had left four secrets — both `AUTH_*` keys and two database roles — at the example's published
+  text: present, so `${VAR:?}` was satisfied, and readable by anyone with the repository.
+- A login smoke stage in **both** verifier languages, asserting that a *correct* credential completes
+  and sets `__Host-gp_trader_session`.
+- The three permission-denial tests slice 10 owed, the two positives that had never existed — nothing
+  in the repository had ever driven suspend or reactivate to 200 — and a discriminator that separates
+  a permission refusal from a CSRF refusal, since `CsrfRequiredError` and `ForbiddenError` are
+  byte-identical by design.
+- `GET /auth/sessions` and `POST /auth/sessions/{id}/revoke` reclassified from `session-only` to
+  ownership-scoped. Slice 10 put them in the one class carrying no obligation, so the DoD's first
+  clause was discharged for them by a label.
+- The browser contract the whole cookie design delegates to the client, as a kept test.
+
+### What proves it
+
+- `OPS-ENV-001` — every optional secret `config.py` declares is forwarded to the backend container,
+  derived from the source rather than listed beside it, and forwarded as required rather than
+  defaulted.
+- `OPS-ENV-002` — every placeholder `.env.example` ships is replaced by CI, and anything *named* like
+  a credential ships spoiled, which closes the case a new placeholder spelling would open.
+- `SEC-PERM-003` — reject, suspend and reactivate each refuse an authenticated caller without the
+  grant, on a request that would otherwise have succeeded, and the refusal is attributable to the
+  permission rather than to CSRF.
+- `SEC-IDOR-005` — one admin's session list does not contain another admin's session.
+- `SEC-IDOR-006` — one admin cannot revoke another admin's session, the refusal is indistinguishable
+  from a fabricated id, and the victim's session still authenticates afterwards.
+- `UI-ISO-003` — Chromium enforces every part of the `__Host-` contract the deployment relies on:
+  a `Domain`-bearing prefixed cookie is refused, an insecure one is refused, a path-narrowed one is
+  refused, and plain-HTTP `localhost` is a secure context so the shipped `secure=True` needs no TLS
+  locally.
+
+### Negative controls
+
+Remove each of the three `requires(declare(...))` guards in turn and confirm the matching denial test
+flips from 403 to 200 — which only works because each request is otherwise valid; omit the `If-Match`
+and the mutant answers 428, and the control cannot tell a missing guard from a present one.
+
+Make `csrf_token_matches` always return `False` and confirm **every** permission test fails. Without
+the logout probe they all pass: the status is 403 and the code is `FORBIDDEN` either way, so the
+suite would have been asserting a CSRF refusal and calling it a permission check.
+
+Stop forwarding the CSRF secret and confirm `OPS-ENV-001` names it; forward it with a default instead
+of `:?` and confirm the same gate refuses that too. Blind the config parser and confirm the canary
+fires rather than the file passing over an empty set.
+
+Make the cookie server send no `Set-Cookie` at all and confirm `UI-ISO-003` fails: every "must be
+refused" expectation is satisfied by a browser that received nothing, and the two positive
+assertions are what give the refusals meaning.
+
+## Slice 10C — The application states, the evidence artifact, and the twelve missing states
+
+### Goal
+
+What slice 10B deliberately did not claim, recorded here so the deferral has a section rather than a
+dictionary entry.
+
+### What it changes
+
+- An `ApiError` → state mapping, which exists nowhere today: no code in either frontend turns a
+  status or an error code into a state, so there is nothing for a real response to drive. It cannot
+  live in `packages/ui`, which has no dependency on the API client.
+- The three of the plan's six states that have no component, no kind and no Persian message:
+  missing-precondition, idempotency conflict, and timeout.
+- The **twelve** states `21_UI_Design_System_and_Screen_Specification.md:688-705` requires that no
+  slice has ever named: partial loading, empty state, not found, validation error, workflow
+  rejection, background processing, processing failure, file quarantined, export integrity mismatch,
+  maintenance/read-only mode, session expired, recent-auth required. Each either mapped or recorded
+  as owed, with the milestone that owns it — several describe files, exports and background jobs that
+  do not exist before M6.
+- The evidence emitter's M3 items, and a decision about the identifier: the plan says `OPS-EVID-001`
+  and the tests say `OPS-EVIDENCE-001`, which is M2's. Coverage is keyed by exact id, so the M3
+  obligation has **zero** citations today and adding it to an existing docstring would be the
+  cheapest possible false discharge.
+
+### What proves it
+
+- `UI-STATE-001` — each state renders from a recorded real server envelope, and the fixture is
+  asserted byte-equal to what the running server returns, so the recording cannot drift into a
+  hand-typed stub. The floor is parsed from the document's eighteen bullets rather than iterated from
+  the component's `StateKind`, which would derive the floor from the thing under test and report
+  green over five of eighteen.
+
+### Negative controls
+
+Delete the fixture and confirm the frontend test **fails rather than skips**. Rename an error code
+inside the fixture and confirm the Python test fails — that is the assertion binding the two layers,
+and without it the fixture is a hand-written stub with extra steps.
+
+## Slice 10D — A landing surface, role-aware navigation, and the end-to-end browser run
+
+### Goal
+
+The three frontend obligations that are **build-then-prove**, which slice 9 listed as prove-only.
+Recorded as a section for the same reason 10B and 10C are: slice 10 owned six obligations to a slice
+this plan did not describe, and an owner with no section is an owner nobody can review.
+
+### What it changes
+
+- A landing surface that differs by session. Today both login handlers do `router.refresh()` then
+  `router.replace("/")`, and `/` is a static shell with a hard-coded navigation and a literal
+  "role unknown" header — an authenticated admin and an anonymous visitor render identical bytes.
+- Navigation that reads permissions. `NavigationItem` is `{href, label}`, both renderers map
+  unconditionally, and neither app fetches `GET /auth/me` at runtime: both auth adapters are exported
+  and imported nowhere.
+- The compose-stack browser run for end-to-end audience isolation, which needs the frontend images
+  rebuilt — the ones on disk predate the login screens.
+
+### The owner decision this slice needs first
+
+**Which permission gates each navigation item.** `21_UI_Design_System_and_Screen_Specification.md`
+§6.3 gives per-role navigation lists that disagree with migration `_0008`'s seeded grants, and the
+obvious mapping is actively wrong: `accountant` — the only unprivileged role that exists — holds
+`trader.read`, `audit.read`, `payment_request.read`, `bank_result_bundle.read` and
+`bank_profile.read`, which is a read permission behind every admin navigation item. Gating the
+traders item on `trader.read` would therefore hide nothing from anybody, and the test asserting it
+hides something would have to be written against a permission nobody is granted.
+
+The only permissions that both discriminate the two seeded roles and guard a route are
+`trader.approve/reject/suspend/reactivate`. Whether navigation is gated on the *action* permission
+rather than the read one is a product decision, not an implementation detail, and `UI-NAV-001`'s two
+halves cannot be made to touch the same grant until it is recorded.
+
+### What proves it
+
+- `UI-LOGIN-001` — each app signs in against its own route and lands on a surface that differs by
+  session, asserted against something an anonymous visitor does not render.
+- `UI-NAV-001` — navigation reflects permissions, **and** a hidden action still fails server-side when
+  called directly. The second half is what proves the frontend is not the control, and it is the half
+  that must not be dropped if the first becomes expensive.
+- `UI-ISO-002` — a trader session cannot reach an admin surface end-to-end in a real browser, with a
+  positive control on the trader's own host so the refusal is proved host-caused rather than
+  universal, and with the session cookie's presence in the jar asserted first so the test cannot pass
+  because nobody was logged in.
+
+### Negative controls
+
+Point `UI-ISO-002`'s refusal assertion at the trader's own host and require it to fail — a 401 that
+also appears on the caller's own origin proves nothing about isolation. Hide a navigation item and
+confirm the server still refuses the call it hid: that is `UI-NAV-001`'s second half, and it fails on
+a frontend that was made the control.
 
 ---
 
