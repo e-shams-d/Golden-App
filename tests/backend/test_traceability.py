@@ -29,7 +29,23 @@ from pathlib import Path
 import pytest
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-PLAN = REPOSITORY_ROOT / "docs" / "handoff" / "M2_IMPLEMENTATION_PLAN.md"
+HANDOFF = REPOSITORY_ROOT / "docs" / "handoff"
+
+
+# Every milestone plan, not one hard-wired path. The M3 plan existed for nine
+# merged slices while this gate read only M2 — so roughly eighty obligations were
+# stated in a document nothing checked, which is the failure this gate exists to
+# prevent, committed against the gate itself.
+#
+# Slice 1's revision note deferred the fix and said why a naive glob would not do:
+# obligations are discharged slice by slice, so pointing the gate at a plan in
+# progress fails on the day it lands. `PENDING` below is the answer — an
+# obligation is either cited by a test or owned by a named slice, and never
+# neither.
+def plans() -> list[Path]:
+    return sorted(HANDOFF.glob("M*_IMPLEMENTATION_PLAN.md"))
+
+
 TESTS = REPOSITORY_ROOT / "tests"
 
 # The catalogue prefixes. An ID outside these is a typo or an invented category, and
@@ -57,6 +73,11 @@ PREFIXES = (
     "SEED",
     "BANK",
     "JOB",
+    # M3's frontend obligations. Added when this gate was pointed at the M3 plan and
+    # the invented-prefix test below refused every `UI-` id — the second time that
+    # test has caught a prefix omission that would otherwise have left a whole
+    # category outside the coverage check.
+    "UI",
 )
 
 _ID = re.compile(rf"\b(?:{'|'.join(PREFIXES)})-[A-Z0-9]+(?:-\d+)?\b")
@@ -76,25 +97,93 @@ RECORDED_GAPS: dict[str, str] = {
 }
 
 
+# Obligations a plan states that no test cites yet, each owned by the slice that
+# owes it. Distinct from `RECORDED_GAPS`, which is for obligations that will never
+# be discharged and say why — these are simply not written yet.
+#
+# An entry here is a commitment, not an exemption: two tests below fail on an entry
+# whose obligation no plan states, and on an entry for something already covered.
+PENDING: dict[str, str] = {
+    # M3 slice 1B — the doc-04 index parity gate, split out because its day-one
+    # disposition ledger is roughly forty pre-existing divergences across tables M2
+    # shipped, and none of it is M3.
+    "DB-SPEC-001": "M3 slice 1B",
+    "TRACE-PLAN-001": "M3 slice 1B",
+    # M3 slice 8B — the second endpoint family: /admin-users, role management, and
+    # the credential-change routes.
+    "AUD-ROLE-001": "M3 slice 8B",
+    "API-PWD-001": "M3 slice 8B",
+    "API-PWD-002": "M3 slice 8B",
+    # Deferred in slice 9 deliberately: both need the compose stack's two hostnames,
+    # because native dev serves both apps on localhost at different ports and cookies
+    # ignore ports, so a test there would prove nothing.
+    "UI-ISO-002": "M3 slice 10B (compose-stack browser run)",
+    "UI-NAV-001": "M3 slice 10B (compose-stack browser run)",
+    "UI-LOGIN-001": "M3 slice 10B (compose-stack browser run)",
+    # The shared state components exist and nothing drives them from a real server
+    # response yet; slice 9 built login only.
+    "UI-STATE-001": "M3 slice 10B",
+    # An admin response carrying another trader's data needs a list endpoint to carry
+    # it, and M3 has none. Recorded against M5 in the IDOR ledger too.
+    "SEC-IDOR-004": "M5 (needs an internal list endpoint)",
+    # The evidence emitter's M3 items.
+    "OPS-EVID-001": "M3 slice 10B",
+}
+
+
 def plan_obligations() -> set[str]:
-    text = PLAN.read_text(encoding="utf-8")
-    return {
-        identifier
-        for section in _PROVES_SECTION.findall(text)
-        for identifier in _ID.findall(section)
-    }
+    found: set[str] = set()
+    for plan in plans():
+        text = plan.read_text(encoding="utf-8")
+        for section in _PROVES_SECTION.findall(text):
+            found.update(_ID.findall(section))
+    return found
+
+
+def _citation_files() -> list[Path]:
+    """Every file that may cite an obligation.
+
+    Python under `tests/`, and **TypeScript under `apps/` and `packages/`**. The
+    second half was missing until slice 10: M3's `UI-*` obligations are proved by
+    vitest files, so a Python-only scanner reported them uncovered no matter how
+    thoroughly they were tested. A gate that cannot see half the suite reports the
+    wrong half as the gap, which is worse than reporting nothing.
+    """
+
+    files = [path for path in TESTS.rglob("*.py") if path.name != "test_traceability.py"]
+
+    for root in (REPOSITORY_ROOT / "apps", REPOSITORY_ROOT / "packages"):
+        for pattern in ("*.ts", "*.tsx"):
+            files.extend(
+                path
+                for path in root.rglob(pattern)
+                if "node_modules" not in path.parts
+                and ".next" not in path.parts
+                # Only test files count as coverage. A `UI-NAV-001` in a comment in
+                # `src/auth.ts` explaining *why* the code is shaped a certain way is
+                # documentation, not a test — and counting it satisfied the gate for
+                # an obligation nothing exercised. Found by the guard-the-guard
+                # below, which reported the entry as "already covered".
+                and (
+                    path.name.endswith((".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx"))
+                    or "test" in path.parts
+                    or "tests" in path.parts
+                )
+            )
+    return sorted(files)
 
 
 def cited_ids() -> dict[str, set[str]]:
-    """Every obligation id cited in the suite, mapped to the files citing it."""
+    """Every obligation id cited in the suite, mapped to the files citing it.
+
+    This file is excluded by `_citation_files`: it names ids in `RECORDED_GAPS` and
+    `PENDING`, and counting those as coverage would let a gap register itself as
+    discharged.
+    """
 
     found: dict[str, set[str]] = {}
-    for path in sorted(TESTS.rglob("*.py")):
-        # This file names ids in `RECORDED_GAPS` and in its own prose. Counting those
-        # as coverage would let a gap register itself as discharged.
-        if path.name == "test_traceability.py":
-            continue
-        for identifier in _ID.findall(path.read_text(encoding="utf-8")):
+    for path in _citation_files():
+        for identifier in _ID.findall(path.read_text(encoding="utf-8", errors="replace")):
             found.setdefault(identifier, set()).add(str(path.relative_to(REPOSITORY_ROOT)))
     return found
 
@@ -118,14 +207,44 @@ def test_the_plan_states_a_substantial_number_of_obligations(obligations: set[st
 
 def test_every_obligation_is_cited_or_recorded_as_a_gap(obligations: set[str]) -> None:
     cited = cited_ids()
-    uncovered = sorted(obligations - set(cited) - set(RECORDED_GAPS))
+    uncovered = sorted(obligations - set(cited) - set(RECORDED_GAPS) - set(PENDING))
 
     assert uncovered == [], (
-        "the plan claims these are proved and no test names them:\n"
+        "these plans claim the following are proved and no test names them:\n"
         + "\n".join(f"  {identifier}" for identifier in uncovered)
-        + "\nAdd the id to the docstring of the test that proves it, or record it in "
-        "RECORDED_GAPS with the reason it is not discharged."
+        + "\nAdd the id to the docstring of the test that proves it, record it in "
+        "RECORDED_GAPS with the reason it will never be discharged, or list it in "
+        "PENDING with the slice that owes it."
     )
+
+
+def test_every_pending_obligation_names_a_slice_that_owes_it(obligations: set[str]) -> None:
+    """A pending obligation with no owner is one nobody will write.
+
+    The same rule the IDOR ledger and the ownership-scope exemptions follow: "not
+    yet" has to name who, or it is indistinguishable from "not at all".
+    """
+
+    for identifier, owner in sorted(PENDING.items()):
+        assert identifier in obligations, (
+            f"{identifier} is listed as pending and no plan states it — a stale entry "
+            "that exempts nothing while reading like a decision"
+        )
+        assert owner.strip(), f"{identifier} is pending with no owner"
+
+
+def test_no_pending_obligation_is_already_covered(obligations: set[str]) -> None:
+    """Guard the guard, in the other direction.
+
+    An entry in PENDING for an obligation a test already cites is a licence nobody
+    is using, and it would silently absorb the next real gap under the same id.
+    """
+
+    del obligations
+    cited = cited_ids()
+    stale = sorted(identifier for identifier in PENDING if identifier in cited)
+
+    assert stale == [], f"pending obligations that are in fact cited: {stale}"
 
 
 def test_no_recorded_gap_is_actually_covered(obligations: set[str]) -> None:
