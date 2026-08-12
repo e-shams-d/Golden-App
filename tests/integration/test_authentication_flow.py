@@ -700,3 +700,225 @@ def test_revoking_your_own_session_really_revokes_it(client: Any) -> None:
         "the caller revoked their own session and it still authenticates, so the "
         "route reports a revocation it did not perform"
     )
+
+
+NEW_PASSWORD = "a-different-correct-horse-entirely"
+
+
+def test_a_password_change_ends_the_other_sessions_and_keeps_this_one(
+    client: Any, migrated: RuntimeIdentities
+) -> None:
+    """API-PWD-001 and SEC-STAMP-002. The first security-stamp increment in the codebase.
+
+    Until this route existed nothing incremented `security_stamp_version`: the value was
+    copied into every session at login and compared on every request, and the two could
+    never differ. So `12_Security_RBAC_Audit.md:468-477`'s requirement that a credential
+    change invalidate live sessions had a comparison and no producer.
+
+    The floor is the interesting part. "The other sessions were revoked" is a statement
+    about the empty set unless the caller *had* another session, so this signs in twice
+    and asserts the first cookie worked **before** the change. Without that, a route that
+    revokes nothing passes, and so does one that revokes everything.
+
+    And the surviving-session assertion is an **unsafe** request on purpose. The CSRF
+    token is an HMAC over the session's stored digest, which the change does not touch —
+    a safe request would prove the session authenticates while saying nothing about
+    whether it can still act.
+    """
+
+    # Session one. Its cookie is captured before signing in again, because `_sign_in`
+    # clears the jar and the TestClient holds only one.
+    _sign_in(client, ADMIN_USERNAME)
+    first_cookie = client.cookies.get(ADMIN_COOKIE)
+    assert first_cookie
+
+    # Session two, the one that will do the changing.
+    second_token = _sign_in(client, ADMIN_USERNAME)
+
+    with psycopg.connect(_psycopg(migrated.owner_url)) as connection:
+        live = connection.execute(
+            "SELECT count(*) FROM auth_sessions WHERE revoked_at IS NULL"
+        ).fetchone()
+        stamp_before = connection.execute(
+            "SELECT security_stamp_version FROM admin_users WHERE username = %s",
+            (ADMIN_USERNAME,),
+        ).fetchone()
+    assert live and stamp_before
+    assert live[0] >= 2, (
+        "the caller has fewer than two live sessions, so 'the others were revoked' is a "
+        "claim about nothing and this test cannot fail"
+    )
+
+    # The first session works right now. Asserted, not assumed: if it were already dead
+    # the 401 below would prove nothing about the change.
+    alive_before = client.get(
+        "/api/v1/auth/me", headers={"Cookie": f"{ADMIN_COOKIE}={first_cookie}"}
+    )
+    assert alive_before.status_code == 200
+
+    changed = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": ADMIN_PASSWORD, "new_password": NEW_PASSWORD},
+        headers={CSRF_HEADER: second_token},
+    )
+
+    assert changed.status_code == 200, changed.text
+    assert changed.json() == {"changed": True}
+    assert NEW_PASSWORD not in changed.text, "the response echoed the new credential"
+
+    # The other session is gone, and the row says why. Both halves: a status-based
+    # refusal alone would leave `revoked_at` NULL and prove only that something else
+    # rejected the request.
+    after = client.get("/api/v1/auth/me", headers={"Cookie": f"{ADMIN_COOKIE}={first_cookie}"})
+    assert after.status_code == 401, (
+        "a session that existed before the password change still authenticates after it"
+    )
+
+    # The caller's own session still acts. An unsafe method, so the CSRF path is
+    # exercised too.
+    still_acting = client.post("/api/v1/auth/logout", headers={CSRF_HEADER: second_token})
+    assert still_acting.status_code == 200, (
+        "the caller was signed out by their own password change — the stamp was bumped "
+        "on the identity and not carried forward onto the session that did it, and "
+        "`classify_stamp` demands equality"
+    )
+
+    with psycopg.connect(_psycopg(migrated.owner_url)) as connection:
+        stamp_after = connection.execute(
+            "SELECT security_stamp_version FROM admin_users WHERE username = %s",
+            (ADMIN_USERNAME,),
+        ).fetchone()
+        reasons = connection.execute(
+            "SELECT DISTINCT revocation_reason FROM auth_sessions WHERE revoked_at IS NOT NULL"
+        ).fetchall()
+        audited = connection.execute(
+            "SELECT actor_type, outcome, new_values FROM audit_logs "
+            "WHERE action = 'credential.changed_own'"
+        ).fetchall()
+    assert stamp_after
+    assert stamp_after[0] == stamp_before[0] + 1, (
+        "the identity's security stamp did not move, so nothing invalidates the sessions "
+        "that copied the old value"
+    )
+    assert "password_changed" in {reason for (reason,) in reasons}
+    assert len(audited) == 1
+    assert audited[0][1] == "success"
+    assert audited[0][2]["security_stamp_version"] == stamp_after[0]
+
+    # And the credential really rotated: the old one is refused, the new one works.
+    client.cookies.clear()
+    old = client.post(
+        "/api/v1/auth/admin/login",
+        json={"identifier": ADMIN_USERNAME, "password": ADMIN_PASSWORD},
+    )
+    assert old.status_code == 401, "the old password still signs in, so the hash was not replaced"
+    fresh = client.post(
+        "/api/v1/auth/admin/login",
+        json={"identifier": ADMIN_USERNAME, "password": NEW_PASSWORD},
+    )
+    assert fresh.status_code == 200, (
+        "the new password does not sign in, so the change ended every session for nothing"
+    )
+
+
+def test_a_password_change_touches_only_the_callers_own_sessions(
+    client: Any, migrated: RuntimeIdentities
+) -> None:
+    """The ownership half, and why this route is not classified `session-only`.
+
+    A credential change ends sessions in bulk, which is the one operation in this module
+    where a wrong `WHERE` clause signs out the whole organisation. There is no id in the
+    request to get wrong — which is itself worth asserting, since the guarantee rests on
+    the caller's identity coming from the session rather than from the body.
+    """
+
+    _sign_in(client, SECOND_ADMIN_USERNAME)
+    other_cookie = client.cookies.get(ADMIN_COOKIE)
+    assert other_cookie
+
+    token = _sign_in(client, ADMIN_USERNAME)
+    changed = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": ADMIN_PASSWORD, "new_password": NEW_PASSWORD},
+        headers={CSRF_HEADER: token},
+    )
+    assert changed.status_code == 200, changed.text
+
+    survived = client.get("/api/v1/auth/me", headers={"Cookie": f"{ADMIN_COOKIE}={other_cookie}"})
+    assert survived.status_code == 200, (
+        "another administrator's session was revoked by somebody else's password change, "
+        "so the bulk revoke is not scoped to the caller"
+    )
+
+    with psycopg.connect(_psycopg(migrated.owner_url)) as connection:
+        stamps = connection.execute(
+            "SELECT username, security_stamp_version FROM admin_users ORDER BY username"
+        ).fetchall()
+    moved = {username: version for username, version in stamps}
+    assert moved[SECOND_ADMIN_USERNAME] == 1, (
+        "the other administrator's security stamp moved, which would invalidate every "
+        "session they hold on their next request"
+    )
+
+    # There is no field in which to name another account, and the model forbids extras —
+    # so an attempt to add one is a 422 rather than a silently ignored key.
+    refused = client.post(
+        "/api/v1/auth/change-password",
+        json={
+            "current_password": NEW_PASSWORD,
+            "new_password": "another-one-entirely",
+            "admin_user_id": str(uuid.uuid4()),
+        },
+        headers={CSRF_HEADER: token},
+    )
+    assert refused.status_code == 422, (
+        "the route accepted a field naming another account; even ignored, its presence in "
+        "the contract invites a client to believe it works"
+    )
+
+
+def test_a_wrong_current_password_changes_nothing(client: Any, migrated: RuntimeIdentities) -> None:
+    """The presence check, and the reason it is not a login.
+
+    A signed-in caller guessing their own current password must not drive the lockout:
+    anyone holding a session could otherwise lock out the account they are entitled to
+    use. So this asserts the refusal, that nothing changed, and that the account is still
+    usable afterwards.
+    """
+
+    token = _sign_in(client, ADMIN_USERNAME)
+
+    refused = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": "not-the-current-password", "new_password": NEW_PASSWORD},
+        headers={CSRF_HEADER: token},
+    )
+
+    assert refused.status_code == 401
+    assert refused.json()["error"]["code"] == "RECENT_AUTH_REQUIRED", (
+        "answering UNAUTHENTICATED would send a signed-in client to fix a session that is "
+        "not broken"
+    )
+
+    with psycopg.connect(_psycopg(migrated.owner_url)) as connection:
+        row = connection.execute(
+            "SELECT security_stamp_version, locked_until FROM admin_users WHERE username = %s",
+            (ADMIN_USERNAME,),
+        ).fetchone()
+        revoked = connection.execute(
+            "SELECT count(*) FROM auth_sessions WHERE revoked_at IS NOT NULL"
+        ).fetchone()
+        events = connection.execute(
+            "SELECT event_type FROM auth_events WHERE event_type = 'password.change_refused'"
+        ).fetchall()
+    assert row and revoked
+    assert row[0] == 1, "the stamp moved on a refused change"
+    assert row[1] is None, (
+        "the refusal counted towards the lockout, so anyone holding a session can lock the "
+        "account out of a command it is entitled to run"
+    )
+    assert revoked[0] == 0, "a refused change still revoked sessions"
+    assert len(events) == 1, "the refusal was not recorded, so a guessing attempt is invisible"
+
+    # Still usable, with the original credential.
+    assert client.get("/api/v1/auth/me").status_code == 200

@@ -904,41 +904,52 @@ Grant a role holding no `user.create` and confirm the positive test's negative h
 `payment_batch_version.approve`. Print the password and confirm the output test fails — which needs
 its positive half, or "the password is absent" is satisfied by a command that printed nothing.
 
-## Slice 8C — Credential change and reset, and the first security-stamp increment
+## Slice 8C — Changing your own password, and the first security-stamp increment
 
 ### Goal
 
-The two credential routes, and with them the first code in the repository that makes a security stamp
-move.
+Close the gap slice 8B admitted: the bootstrapped account's install-time password could not be
+rotated through any interface. And with it, write the first code in this repository that makes a
+security stamp move.
+
+**Narrowed from the original 8C, which also owned the administrative reset and a recovery path.**
+Both moved to 8D, and the reason is better factoring rather than schedule: the reset lives at
+`POST /admin-users/{id}/password-reset`, so it belongs with the `/admin-users` family that 8D builds,
+and the recovery path exists only because the reset creates a `recovery_required` account. Splitting
+them here would have put one route of a family in one slice and five in another.
 
 ### What it changes
 
-- `POST /auth/change-password` and `POST /admin-users/{id}/password-reset`, using the
-  already-registered `CHANGE_OWN_PASSWORD` and `RESET_ADMIN_PASSWORD` command names.
-- The first `security_stamp_version` increment. Note what the plan's own phrasing for API-PWD-001
-  cannot mean literally: `classify_stamp` compares for **equality**, so a bump alone revokes the
-  caller too. Keeping the current session requires writing the caller's session forward in the same
-  transaction as the identity.
-- A recovery path, so that `recovery_required` stops being terminal and 8B's deferred doc-18:1103
-  requirement can be met.
+- `POST /auth/change-password`, for both audiences, using the already-registered
+  `CHANGE_OWN_PASSWORD` command name.
+- The first `security_stamp_version` increment. What the plan's own phrasing for API-PWD-001 cannot
+  mean literally: `classify_stamp` compares for **equality** and treats a session ahead of its
+  identity as a distinct rejection, deliberately, so one increment invalidates *every* session
+  including the caller's. Keeping the current one is a second write — the caller's own session row
+  carried forward — not a subtlety of the first.
+- Classified **ownership-scoped** in the DoD gate, not `session-only`. That class carries no
+  obligation, and naming it that would have been the third time the DoD's first clause was
+  discharged for a route by a label.
 
 ### What proves it
 
 - `API-PWD-001` — a password change revokes the caller's **other** sessions and keeps the current
-  one. The floor: assert the caller had **at least two** live sessions before, that the other one
-  answered 200 before and 401 after, and that a different administrator's session is untouched. The
-  keep-assertion must be an *unsafe* request, because the CSRF token is an HMAC over the session
-  digest and a safe request would not exercise it.
-- `API-PWD-002` — an administrative reset returns no credential and the target's sessions carry
-  `revoked_at` **and** a reason. Both, because a status-based refusal alone leaves `revoked_at` NULL
-  and merely re-proves the account-state check.
-- `SEC-STAMP-002` — the renumbered obligation, which can first fail here.
+  one. The floor: the caller has **at least two** live sessions before, the other answered 200
+  before and 401 after, the identity's stamp moved by exactly one, the revoked row carries
+  `password_changed` as its reason, the old credential no longer signs in and the new one does. The
+  keep-assertion is an *unsafe* request, because the CSRF token is an HMAC over the session's stored
+  digest — which the change does not touch — so a safe request would prove the session
+  authenticates while saying nothing about whether it can still act.
+- `SEC-STAMP-002` — the renamed obligation, which can first fail here because this is the first
+  producer.
 
 ### Negative controls
 
-Delete the increment and confirm `SEC-STAMP-002` fails — today it fails nothing. Invert the
-"not my session" condition and confirm the caller's own session dies. Assert the target's live
-session count **before** the reset, or "all sessions revoked" is a statement about the empty set.
+Delete the increment and confirm the stamp assertion fails — before this slice it failed nothing.
+Delete the bulk revoke and confirm the other session still authenticates. Invert the "not my
+session" condition and confirm the caller is signed out by their own change. Remove the line that
+carries the caller's session forward and confirm the unsafe request afterwards returns 401 — that
+one is the whole reason this is a command rather than an `UPDATE`.
 
 ## Slice 8D — Administration endpoints, role management, and the high-risk-grant alert
 
@@ -958,10 +969,27 @@ The `/admin-users` family and `PUT /roles/{id}/permissions`, plus the alert doc 
   prove-only: `step_up.rejection_for` has **zero** production call sites today. The header must be
   `X-Recent-Auth`, the name the shipped client already sends.
 - The phrase-to-permission mapping behind AUD-ROLE-001, as one derived artifact.
+- `POST /admin-users/{id}/password-reset`, moved here from 8C because it is one route of this family
+  and belongs with the other five, using the already-registered `RESET_ADMIN_PASSWORD` name. Two
+  refusals it must carry, neither of them obvious: **self-reset**, because self plus
+  `recovery_required` plus no recovery route is a permanent self-lockout; and resetting or suspending
+  the **last** account holding `user.*`, because `business_admin` is the only role holding those and
+  nothing today stops one administrator stranding the deployment.
+- A recovery path, so `recovery_required` stops being terminal. It arrives with the reset that
+  creates it, which is why it moved here too — and it is what finally lets slice 8B's deferred
+  `18_Production_Setup_and_Runbook.md:1103` requirement be met.
 
 ### What proves it
 
-- `SEC-ROLECHANGE-001` — the renumbered obligation, which can first fail here.
+- `SEC-ROLECHANGE-001` — the renamed obligation, which can first fail here.
+- `API-PWD-002` — an administrative reset returns no credential and the target's sessions carry
+  `revoked_at` **and** a reason. Both, because a status-based refusal alone leaves `revoked_at` NULL
+  and merely re-proves the account-state check that already exists. The floor: assert the target's
+  live session count **before** the reset, or "all sessions revoked" is a statement about the empty
+  set. And check for absence of a credential in the headers as well as the body — `"password" not in
+  body` is also true of a 500.
+- `SEC-ACCT-003` — re-cited here from a test that issues a request, replacing the pure-function call
+  that discharges it today in a file whose own docstring says "No database and no Redis server".
 - `AUD-ROLE-001` — a grant of manager approval, role management, audit export or retention approval
   writes the alert row. Three of those four permissions are granted to **no** seeded role, so the
   only surface on which all four can be granted is this route's permission-set diff — a design that

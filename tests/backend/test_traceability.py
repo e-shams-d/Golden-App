@@ -109,17 +109,11 @@ PENDING: dict[str, str] = {
     # shipped, and none of it is M3.
     "DB-SPEC-001": "M3 slice 1B",
     "TRACE-PLAN-001": "M3 slice 1B",
-    # M3 slice 8C — the credential routes, split out from 8B once 8B took the
-    # bootstrap. Both need a change-password path that does not exist yet.
-    "API-PWD-001": "M3 slice 8C",
-    "API-PWD-002": "M3 slice 8C",
-    # Renumbered in slice 8B from SEC-STAMP-001, which M2:932 also claimed. Two plans
-    # using one identifier meant M2's citations discharged M3's obligation, and the
-    # thing this sentence describes has no producer at all: `security_stamp_version` is
-    # read, copied and CHECKed in thirteen places across `app/` and incremented in
-    # none. 8C writes the first increment, so 8C is where it can first fail.
-    "SEC-STAMP-002": "M3 slice 8C",
-    # M3 slice 8D — /admin-users, role management, and the high-risk-grant alert.
+    # M3 slice 8D — /admin-users, role management, the high-risk-grant alert, and the
+    # administrative reset. The reset moved here from 8C: it is one route of the
+    # /admin-users family and belongs with the other five, and the recovery path it needs
+    # exists only because the reset is what creates a `recovery_required` account.
+    "API-PWD-002": "M3 slice 8D",
     "AUD-ROLE-001": "M3 slice 8D",
     # Renamed in slice 8B from SEC-ROLE-001, which M2:516 uses for an unrelated Postgres
     # privilege test that a merged test already cites — so M2's test was discharging

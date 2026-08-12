@@ -80,6 +80,11 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "rejectTrader",
         "suspendTrader",
         "reactivateTrader",
+        # M3 slice 8C. Both audiences change their own the same way, so there is one
+        # operation and no `user_type` — the same reasoning as the two login routes,
+        # from the other direction: the caller is already established, so the audience
+        # is a property of the session rather than of the URL.
+        "changeOwnPassword",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas
