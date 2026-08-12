@@ -492,9 +492,20 @@ service boundary before a cookie exists to confuse them.
 - `SEC-SESS-002` — an expired session fails validation; expiry is evaluated server-side from
   `expires_at`, not from anything the caller sends.
 - `SEC-SESS-003` — a revoked session fails validation and the reason is recorded.
-- `SEC-STAMP-001` — bumping the identity's `security_stamp_version` invalidates every live session
+- `SEC-STAMP-002` — bumping the identity's `security_stamp_version` invalidates every live session
   for that identity on the next request. The mechanism behind every revocation trigger in
   `12_Security_RBAC_Audit.md:468-477`.
+
+  **Renumbered in slice 8B, and moved to pending, because the previous identifier was doing two jobs
+  and the obligation was reporting itself proved.** `M2_IMPLEMENTATION_PLAN.md:932` claims the same
+  string for its own slice, and coverage is keyed by exact identifier, so M2's citations discharged
+  this obligation as a side-effect. (The superseded id is not written here: a mention inside a "What
+  proves it" section is itself a claim, which is how the first attempt at this correction recreated
+  the collision it was fixing.) Worse, the thing the sentence describes has no producer:
+  `security_stamp_version` is
+  read, copied into sessions and CHECKed positive in thirteen places across `app/`, and
+  **incremented in none of them**. The comparison exists; nothing makes the two values differ. Slice
+  8C writes the first increment, so that is where this can first fail.
 - `SEC-EVENT-001` — a failed login writes an `auth_events` row; the row contains no credential
   material, proven by asserting the password string is absent from the serialized row.
 - `SVC-ACTOR-001` — `app/security/actor.py` imports nothing from `fastapi`, `starlette` or
@@ -502,9 +513,15 @@ service boundary before a cookie exists to confuse them.
 
 ### Negative controls
 
-Store the session secret in place of its hash and confirm `SEC-SESS-001` fails. Skip the
-security-stamp comparison and confirm `SEC-STAMP-001` fails. Add the password to the event metadata
-and confirm `SEC-EVENT-001` names the field.
+Store the session secret in place of its hash and confirm `SEC-SESS-001` fails. Add the password to
+the event metadata and confirm `SEC-EVENT-001` names the field.
+
+The control this slice listed for the security stamp — "skip the security-stamp comparison and
+confirm it fails" — **cannot fail today**, and slice 8B recorded why rather than leaving it as a
+claim. Deleting the comparison changes nothing observable, because no code path ever makes the two
+values differ: the comparison is between a number copied into the session at login and the same
+number on the identity, and nothing increments either. The control becomes real in slice 8C, at the
+same moment the first increment is written.
 
 ## Slice 3 — Account states, lockout, and authentication rate limiting
 
@@ -784,20 +801,179 @@ reset/recovery process — plus the admin and RBAC management endpoints
 - `API-PENDING-001` — a pending trader can reach the pending surface and nothing else.
 - `API-APPROVE-001` — approval is idempotent under a repeated `Idempotency-Key` and requires
   `If-Match`.
+
+  **Slice 8B found the first half of this sentence to be false, and it is recorded here rather than
+  quietly narrowed.** The four decision routes require the header
+  (`app/api/v1/traders.py:255-256`) and then **discard it**: `trader_lifecycle.decide` takes no such
+  parameter, and no route in that family reads or writes the `idempotency_records` table migration
+  `_0004` created for exactly this. The citing test issues **one** request, so its name —
+  `test_approval_activates_the_business_and_is_idempotent` — is a claim its body does not make.
+
+  What limits the harm is not idempotency but optimistic concurrency: a naive retry resends the same
+  stale `If-Match` and gets 412, so a doubled decision needs a client that refetches
+  `record_version` first. The mechanism to fix it already exists and is already used —
+  `IdempotencyResolver`, driven by `app/commands/rename_center_profile.py`, with a same-key replay
+  test at `tests/integration/test_rename_endpoint.py:205-237`. Retrofitting the four routes onto it
+  is **the owner's call to schedule**, recorded as an accepted risk if left: what must not happen is
+  the sentence above staying in this plan while the code contradicts it.
 - `API-APPROVE-002` — approve/reject/suspend/reactivate each write audit and outbox rows in the
   command transaction (`05_API_Specification.md:878`).
 - `API-PWD-001` — a password change revokes the caller's other sessions and keeps the current one.
 - `API-PWD-002` — an administrative reset sets `recovery_required` and returns no credential.
-- `SEC-ROLE-001` — a role change without recent auth is refused; with it, the audit records before
+- `SEC-ROLECHANGE-001` — a role change without recent auth is refused; with it, the audit records before
   and after.
+
+  **Renamed in slice 8B.** The identifier this obligation used to carry is claimed by
+  `M2_IMPLEMENTATION_PLAN.md:516` for something entirely different — a session connected as the app
+  runtime role attempting `UPDATE` then `DELETE` on `audit_logs` and receiving a privilege error —
+  and that one is cited by a merged test. Because coverage is keyed by exact identifier, M2's
+  PostgreSQL privilege test was discharging this recent-auth obligation, and the negative control
+  below could not fire no matter what the role-change code did.
+
+  Two plans, one string, and no gate could see it. `test_no_obligation_id_means_two_different_things`
+  now can, and it reported two more the moment it existed. It also caught **two failed attempts at
+  this very rename**: both replacements were plausible names that turned out to be occupied
+  elsewhere in M2, which is precisely the mistake it exists to stop.
 - `AUD-ROLE-001` — a grant of manager approval, role management, audit export or retention approval
   emits the alert event `12_Security_RBAC_Audit.md:642` requires.
 
 ### Negative controls
 
 Make the registration transaction two commits and confirm `API-REG-001` fails. Remove the recent-auth
-requirement from the role change and confirm `SEC-ROLE-001` fails. Reuse defect 2's index and confirm
+requirement from the role change and confirm `SEC-ROLECHANGE-001` fails. Reuse defect 2's index and confirm
 `API-REG-002` fails — the control that ties the end-to-end test to the schema fix.
+
+## Slice 8B — The platform can create its first administrator
+
+### Goal
+
+Slice 8 shipped trader registration and the four decisions and left the admin-user half undone. That
+was recorded as a label — `PENDING` in the traceability gate named "M3 slice 8B", a slice this plan
+never described — and the gap it hid is the one that stops a demo dead.
+
+**A fresh deployment cannot onboard its own first user.** `POST /traders/register` is the platform's
+only unauthenticated write, so a trader can self-register; approval needs `trader.approve`;
+permissions resolve only through `admin_user_roles`; and **no code anywhere constructed an
+`AdminUser` or an `AdminUserRole`.** The only creation path in the repository was raw SQL inside test
+fixtures. Registration succeeds, and then nothing can ever happen.
+
+The mechanism is specified and was simply not built: `18_Production_Setup_and_Runbook.md:1094-1105`
+§11.8 "Create initial administrators" says "Use a secure management command" and states six
+requirements for it. Doc 18 is an authoritative baseline, not advisory prose
+(`16_Implementation_Documentation_Index.md:154`).
+
+### What it changes
+
+- `app/cli/create_first_admin.py` — one account, one role grant, one audit row, one transaction.
+  **Under `app/`, not `services/backend/scripts/`**, because the backend image copies only `.venv`,
+  `app/`, `alembic/`, `alembic.ini` and `pyproject.toml` (`infra/docker/backend.Dockerfile:29-32`): a
+  command written in `scripts/` would pass its tests, merge, and then not exist in any deployment.
+- The password is read from a terminal or stdin, never from `argv` — an argument is visible in the
+  process table, in shell history, and in `docker inspect` for the container's lifetime.
+- The role is a **required** argument rather than a defaulted one, and is refused unless the seeded
+  grant actually includes `user.create`. Which authority the installer carries is a decision about
+  who installs the system versus who runs the business, and a default would make it silently.
+- Two identifier collisions broken, and the traceability gate's own understated check repaired.
+
+### What proves it
+
+- `SEED-ACCT-002` — the command creates the account, its grant and its audit row together against a
+  real database; the audit row is attributed to `system_maintenance` with no actor id because there
+  is no human to name; the resulting account can approve a trader and add a colleague and **cannot**
+  approve a payment batch version (`18_Production_Setup_and_Runbook.md:1105`); it refuses once any
+  staff account exists; it refuses a role that could not add a second administrator; and nothing it
+  prints contains the password (`:1099`).
+
+### What it deliberately does not do
+
+`18_Production_Setup_and_Runbook.md:1103` requires the account to "require credential change or
+secure activation". **This slice does not meet that, and says so on stderr when it runs.** Setting
+`status='recovery_required'` to satisfy the letter of it would be worse than admitting the gap:
+`recovery_required` refuses authentication (`app/security/account_state.py`),
+`AccountAction.RECOVER` is passed by no application code, and there is no change-password route — so
+the flag would produce a correctly-provisioned account that can never sign in and cannot be
+recovered. Slice 8C owes the route; until then the install-time password stays in force.
+
+### Negative controls
+
+Delete the "no staff exists" guard and confirm the refusal test fails. The second invocation uses a
+**different** username on purpose: with the same one the refusal could come from
+`admin_users.username`'s unique index, and the control would pass with the guard gone.
+
+Grant a role holding no `user.create` and confirm the positive test's negative half fails on
+`payment_batch_version.approve`. Print the password and confirm the output test fails — which needs
+its positive half, or "the password is absent" is satisfied by a command that printed nothing.
+
+## Slice 8C — Credential change and reset, and the first security-stamp increment
+
+### Goal
+
+The two credential routes, and with them the first code in the repository that makes a security stamp
+move.
+
+### What it changes
+
+- `POST /auth/change-password` and `POST /admin-users/{id}/password-reset`, using the
+  already-registered `CHANGE_OWN_PASSWORD` and `RESET_ADMIN_PASSWORD` command names.
+- The first `security_stamp_version` increment. Note what the plan's own phrasing for API-PWD-001
+  cannot mean literally: `classify_stamp` compares for **equality**, so a bump alone revokes the
+  caller too. Keeping the current session requires writing the caller's session forward in the same
+  transaction as the identity.
+- A recovery path, so that `recovery_required` stops being terminal and 8B's deferred doc-18:1103
+  requirement can be met.
+
+### What proves it
+
+- `API-PWD-001` — a password change revokes the caller's **other** sessions and keeps the current
+  one. The floor: assert the caller had **at least two** live sessions before, that the other one
+  answered 200 before and 401 after, and that a different administrator's session is untouched. The
+  keep-assertion must be an *unsafe* request, because the CSRF token is an HMAC over the session
+  digest and a safe request would not exercise it.
+- `API-PWD-002` — an administrative reset returns no credential and the target's sessions carry
+  `revoked_at` **and** a reason. Both, because a status-based refusal alone leaves `revoked_at` NULL
+  and merely re-proves the account-state check.
+- `SEC-STAMP-002` — the renumbered obligation, which can first fail here.
+
+### Negative controls
+
+Delete the increment and confirm `SEC-STAMP-002` fails — today it fails nothing. Invert the
+"not my session" condition and confirm the caller's own session dies. Assert the target's live
+session count **before** the reset, or "all sessions revoked" is a statement about the empty set.
+
+## Slice 8D — Administration endpoints, role management, and the high-risk-grant alert
+
+### Goal
+
+The `/admin-users` family and `PUT /roles/{id}/permissions`, plus the alert doc 12:642 requires.
+
+### What it changes
+
+- `/admin-users` list, create, get, patch, suspend, reactivate. **Not on doc 05's declared
+  permissions:** `admin_user.read` and `admin_user.manage` are recorded in the approved catalogue as
+  deprecated aliases, the second `deprecated_ambiguous` with `resolution: select the action-specific
+  canonical permission per endpoint`. The canonical four — `user.read`, `user.create`, `user.update`,
+  `user.deactivate` — are seeded and held by `business_admin` alone, so both halves of every
+  permission test are writable. Using one broad permission would also violate doc 12:700 directly.
+- `PUT /roles/{id}/permissions` with the recent-auth consumer, which is build-then-prove rather than
+  prove-only: `step_up.rejection_for` has **zero** production call sites today. The header must be
+  `X-Recent-Auth`, the name the shipped client already sends.
+- The phrase-to-permission mapping behind AUD-ROLE-001, as one derived artifact.
+
+### What proves it
+
+- `SEC-ROLECHANGE-001` — the renumbered obligation, which can first fail here.
+- `AUD-ROLE-001` — a grant of manager approval, role management, audit export or retention approval
+  writes the alert row. Three of those four permissions are granted to **no** seeded role, so the
+  only surface on which all four can be granted is this route's permission-set diff — a design that
+  hung the obligation on role *assignment* could never exercise more than two of them. The test must
+  say in its name that it proves a row exists and not that anything was delivered.
+
+### Negative controls
+
+Assert the parametrisation has exactly the four keys the plan states — a loop that silently shrinks
+is this test's failure mode. Assert every code in the mapping exists in `permission_catalog.yaml`, an
+artifact the test did not write. And assert that granting an **ordinary** permission emits nothing:
+without that half the test passes on the generic audit row every command already writes.
 
 ## Slice 9 — The two frontends: login, role-aware navigation, and audience isolation
 
@@ -1094,6 +1270,49 @@ Point `UI-ISO-002`'s refusal assertion at the trader's own host and require it t
 also appears on the caller's own origin proves nothing about isolation. Hide a navigation item and
 confirm the server still refuses the call it hid: that is `UI-NAV-001`'s second half, and it fails on
 a frontend that was made the control.
+
+---
+
+# 3.5 Defects slice 8B found in merged work, and their disposition
+
+Recorded here rather than fixed silently or fixed out of charter. Each was found while planning the
+administration endpoints; none is in 8B's scope; all are in shipped slices.
+
+**Suspending a trader does nothing.** `require_operable` (`app/api/v1/trader_self_service.py:90-100`)
+tests only `trader.approval_status not in OPERABLE_APPROVAL_STATES`, and that set is
+`frozenset({"approved"})`. It never reads `operational_status`. `SUSPEND_TRADER` returns
+`{"operational_status": SUSPENDED}` and nothing else, and every other reference to that column in
+`app/` is a write, a DTO field, an index or a comment — **none is an authorization read.** So a
+suspended business remains `approved`, passes the guard, and can do everything it could before.
+
+The blast radius today is small because the only trader surface is their own profile, and that is
+also why it survived: slice 10B wrote the first-ever positive test for suspension and it asserted the
+column changed, which is the whole of what suspension does. It will stop being small the moment M4
+adds a payment surface on the assumption that suspension means something.
+
+*Disposition: the owner's call, because it is a product question rather than a bug with one right
+answer — may a suspended business still read and edit its own profile, or is suspension a full stop?
+The code answers "yes it may" by omission, which is the one answer nobody chose.*
+
+**`SEC-ACCT-003` is discharged by a test that cannot fail.** The obligation is stated as endpoint
+behaviour — "a `recovery_required` account may call only the recovery endpoint; an otherwise valid
+protected request fails" — and its only citation calls `refusal_for(...)` three times with literal
+arguments, in a file whose own docstring says "No database and no Redis server". There is no recovery
+endpoint, and `AccountAction.RECOVER` is passed by no application code at all. *Disposition: slice 8C
+builds the recovery path; the citation must move to a test that issues a request.*
+
+**SEED-ACCT-001 is stricter than the specification, and the divergence was never registered.**
+`12_Security_RBAC_Audit.md:386` forbids seeded **development** credentials "in production images or
+migrations". `13_DevOps_Deployment_Operations.md:907` explicitly permits initial administrator
+creation by "a controlled command **or migration task**". This repository's gate forbids any identity
+`INSERT` in any migration — the stricter reading, chosen silently. 8B's command makes the question
+moot in practice, so nothing is blocked.
+
+*Disposition: a `CONFLICT_REGISTER.md` row is owed, because a silently chosen reading of a document
+conflict is exactly what that register is for. Not added here, because a new conflict changes the
+register's severity totals and five sites restate them — a gated governance amendment, not a line to
+append at the end of an unrelated slice. Owed to slice 1B, which is already the governance-hygiene
+slice.*
 
 ---
 

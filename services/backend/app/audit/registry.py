@@ -162,6 +162,27 @@ RESET_ADMIN_PASSWORD = CommandNames(
 )
 
 
+# The one action no session can ever perform, because it is what makes sessions
+# possible. Every other name here is reached through a request; this one is reached
+# through a shell on the host, once, before any staff identity exists.
+CREATE_FIRST_ADMIN = CommandNames(
+    audit_action="admin_user.bootstrapped",
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=(
+        "The catalogue's audit actions enumerate what the center does to a trader "
+        "and to a role; it has no user-creation action at all, so there is nothing "
+        "to align this with rather than a name it contradicts. No outbox event "
+        "either: an install-time act has no consumer, and publishing the creation of "
+        "the account that will approve every business would put an identity event on "
+        "a queue nothing reads. The action is deliberately distinct from any future "
+        "`admin_user.created` for the /admin-users route, because the two differ in "
+        "the one respect an auditor cares about — that one has an actor and this one "
+        "cannot."
+    ),
+)
+
+
 ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     RENAME_CENTER_PROFILE,
     REGISTER_TRADER,
@@ -171,4 +192,5 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     REACTIVATE_TRADER,
     CHANGE_OWN_PASSWORD,
     RESET_ADMIN_PASSWORD,
+    CREATE_FIRST_ADMIN,
 )
