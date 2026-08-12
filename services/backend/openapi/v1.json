@@ -108,6 +108,45 @@
         "title": "CenterProfileResponse",
         "type": "object"
       },
+      "ChangePasswordRequest": {
+        "additionalProperties": false,
+        "description": "The current password is required, and that is the presence check.\n\n`12_Security_RBAC_Audit.md` treats a credential change as critical, and the formal\nrecent-auth binding — a `recent_auth_contexts` row consumed by `step_up.rejection_for`\n— has no production caller anywhere yet. Rather than half-build that here, this\nproves presence the way the neighbouring reauthenticate route does: by asking for the\npassword again. Wiring the context store is M3 slice 8D's, together with the role\nchange that needs it.\n\nBounds match `LoginRequest` deliberately. A stronger minimum would be this file\ninventing a password policy while ADR-SEC-002's numbers are open, and a test asserting\nit would be enforcing an unapproved decision.",
+        "properties": {
+          "current_password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Current Password",
+            "type": "string"
+          },
+          "new_password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "New Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "title": "ChangePasswordRequest",
+        "type": "object"
+      },
+      "ChangePasswordResponse": {
+        "additionalProperties": false,
+        "description": "Deliberately says nothing but that it happened.\n\nNot the new stamp, not how many sessions ended: the first is an internal counter and\nthe second is a number an attacker who guessed a password would like to know.",
+        "properties": {
+          "changed": {
+            "title": "Changed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "changed"
+        ],
+        "title": "ChangePasswordResponse",
+        "type": "object"
+      },
       "DecisionRequest": {
         "additionalProperties": false,
         "description": "`reason` is required for reject and suspend, per `05_API_Specification.md:894-895`.\n\nOptional in the model and enforced per route, because the same shape serves\nfour commands and two of them do not require it — a required field on all four\nwould make approval carry a reason nobody has.",
@@ -1119,6 +1158,68 @@
           }
         },
         "summary": "Authenticate an internal user and open a session.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/change-password": {
+      "post": {
+        "description": "API-PWD-001. Both audiences: an admin and a trader change their own the same way.\n\nA wrong current password answers `RECENT_AUTH_REQUIRED` rather than\n`UNAUTHENTICATED`. The session is valid and the caller is still signed in, so telling\na client to sign in again would send it to fix something that is not broken — the\nsame reasoning the reauthenticate route above records.",
+        "operationId": "changeOwnPassword",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangePasswordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Permission denied."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Change your own password and end your other sessions.",
         "tags": [
           "auth"
         ]

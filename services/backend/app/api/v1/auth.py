@@ -33,14 +33,18 @@ from sqlalchemy import select
 
 from app.api.contract import VALIDATION_ERROR_RESPONSE
 from app.api.dependencies import get_runtime, get_settings
+from app.audit.redaction import RedactionPolicy
+from app.audit.writer import AuditActor, AuditContext
 from app.commands.authenticate import (
     AuthenticationPolicy,
     LoginAttempt,
     SuccessfulAuthentication,
     authenticate,
 )
+from app.commands.change_own_password import change_own_password
 from app.core.config import Settings
 from app.core.errors import AppError, ErrorEnvelope, ForbiddenError
+from app.core.request_context import get_request_id
 from app.core.runtime import RuntimeServices
 from app.core.time import utc_now
 from app.db.models.identity import AdminUser, TraderUser
@@ -674,6 +678,130 @@ def reauthenticate(
         expires_at=expires_at,
         authentication_level=sessions.AUTH_LEVELS[-1],
     )
+
+
+# Masking on, like every other command's policy. Nothing in a credential change carries
+# an IBAN, but `RedactionPolicy` has no default so that the open decision stays visible
+# at each call site rather than being inherited silently.
+CREDENTIAL_REDACTION = RedactionPolicy(mask_iban=True)
+
+
+class ChangePasswordRequest(BaseModel):
+    """The current password is required, and that is the presence check.
+
+    `12_Security_RBAC_Audit.md` treats a credential change as critical, and the formal
+    recent-auth binding — a `recent_auth_contexts` row consumed by `step_up.rejection_for`
+    — has no production caller anywhere yet. Rather than half-build that here, this
+    proves presence the way the neighbouring reauthenticate route does: by asking for the
+    password again. Wiring the context store is M3 slice 8D's, together with the role
+    change that needs it.
+
+    Bounds match `LoginRequest` deliberately. A stronger minimum would be this file
+    inventing a password policy while ADR-SEC-002's numbers are open, and a test asserting
+    it would be enforcing an unapproved decision.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: str = Field(min_length=1, max_length=1024)
+    new_password: str = Field(min_length=1, max_length=1024)
+
+
+class ChangePasswordResponse(BaseModel):
+    """Deliberately says nothing but that it happened.
+
+    Not the new stamp, not how many sessions ended: the first is an internal counter and
+    the second is a number an attacker who guessed a password would like to know.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    changed: bool
+
+
+@router.post(
+    "/change-password",
+    response_model=ChangePasswordResponse,
+    operation_id="changeOwnPassword",
+    summary="Change your own password and end your other sessions.",
+    responses=SESSION_RESPONSES,
+)
+def change_password(
+    request: Request,
+    payload: ChangePasswordRequest,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ChangePasswordResponse:
+    """API-PWD-001. Both audiences: an admin and a trader change their own the same way.
+
+    A wrong current password answers `RECENT_AUTH_REQUIRED` rather than
+    `UNAUTHENTICATED`. The session is valid and the caller is still signed in, so telling
+    a client to sign in again would send it to fix something that is not broken — the
+    same reasoning the reauthenticate route above records.
+    """
+
+    now = utc_now()
+    client_host = _client_address(request)
+    parameters = Argon2Parameters.from_settings(settings)
+
+    with runtime.uow_factory() as uow:
+        session = uow.session
+        identity: AdminUser | TraderUser | None = (
+            session.get(AdminUser, actor.actor_id)
+            if actor.audience is Audience.ADMIN
+            else session.get(TraderUser, actor.actor_id)
+        )
+        if identity is None:  # pragma: no cover - the session just resolved it
+            uow.rollback()
+            raise RecentAuthRequiredError()
+
+        verification = passwords.verify_password(
+            identity.password_hash,
+            payload.current_password,
+            parameters,
+            max_length=settings.password_max_length,
+        )
+        if not verification.is_valid:
+            # Recorded and deliberately not counted towards the lockout: a signed-in
+            # caller guessing their own current password is not a login attempt, and
+            # letting it drive the lockout would let anyone holding a session lock the
+            # account they are entitled to use.
+            session.add(
+                _security_event(actor, "password.change_refused", "wrong_password", client_host)
+            )
+            uow.commit()
+            raise RecentAuthRequiredError()
+
+        change_own_password(
+            identity,
+            session=session,
+            audience=actor.audience,
+            current_session_id=actor.session_id,
+            new_password=payload.new_password,
+            policy=CREDENTIAL_REDACTION,
+            parameters=parameters,
+            password_max_length=settings.password_max_length,
+            actor=AuditActor(
+                actor_type=actor.actor_type.value,
+                actor_id=actor.actor_id,
+                role_snapshot=tuple(sorted(actor.roles)),
+            ),
+            context=AuditContext(request_id=get_request_id()),
+            now=now,
+        )
+        session.add(
+            _security_event(
+                actor,
+                "password.changed",
+                None,
+                client_host,
+                outcome=OUTCOME_SUCCESS,
+            )
+        )
+        uow.commit()
+
+    return ChangePasswordResponse(changed=True)
 
 
 def _security_event(
