@@ -94,6 +94,11 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # refuses when `owner != actor.actor_id` (`:777`). Their own operation ids say so.
     ("GET", "/api/v1/auth/sessions"): OWNERSHIP,
     ("POST", "/api/v1/auth/sessions/{session_id}/revoke"): OWNERSHIP,
+    # Ownership-scoped for the same reason as those two, and classified so deliberately:
+    # the route acts on the caller's own credential and ends the caller's own sessions,
+    # and `session-only` is the class that carries no obligation at all. Naming it that
+    # would have been the third time the DoD's first clause was discharged by a label.
+    ("POST", "/api/v1/auth/change-password"): OWNERSHIP,
     ("GET", "/api/v1/me/trader/profile"): OWNERSHIP,
     ("PATCH", "/api/v1/me/trader/profile"): OWNERSHIP,
     ("POST", "/api/v1/traders/{trader_id}/approve"): PERMISSION,
@@ -161,6 +166,9 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ),
     ("POST", "/api/v1/auth/sessions/{session_id}/revoke", "ownership"): (
         "test_the_session_routes_are_scoped_to_the_caller"
+    ),
+    ("POST", "/api/v1/auth/change-password", "ownership"): (
+        "test_a_password_change_touches_only_the_callers_own_sessions"
     ),
 }
 

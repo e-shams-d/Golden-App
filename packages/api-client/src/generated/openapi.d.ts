@@ -7,6 +7,9 @@ export interface paths {
   "/api/v1/auth/admin/login": {
     post: operations["loginAdmin"];
   };
+  "/api/v1/auth/change-password": {
+    post: operations["changeOwnPassword"];
+  };
   "/api/v1/auth/logout": {
     post: operations["logout"];
   };
@@ -75,6 +78,8 @@ export interface components {
     "ActorSummary": { audience: string; id: string; permissions: Array<string>; roles: Array<string>; status: string; trader_id: string | null };
     "BackgroundProcessingResponse": { jobs: components["schemas"]["JobHealth"]; needs_attention: boolean; outbox: components["schemas"]["OutboxHealth"] };
     "CenterProfileResponse": { name: string; profile_id: string; record_version: number; replayed: boolean };
+    "ChangePasswordRequest": { current_password: string; new_password: string };
+    "ChangePasswordResponse": { changed: boolean };
     "DecisionRequest": { reason?: string | null };
     "DependenciesResponse": { dependencies: { [key: string]: components["schemas"]["DependencyStatus"] }; status: "ok" | "degraded" };
     "DependencyStatus": { error_code?: string | null; last_success_at?: string | null; latency_ms: number; required: boolean; status: "ok" | "unavailable" };
@@ -112,6 +117,7 @@ export interface components {
 
 export interface operations {
   "approveTrader": { parameters: { header?: { "Idempotency-Key"?: string | null; "If-Match"?: string | null }; path: { trader_id: string } }; requestBody: { content: { "application/json": components["schemas"]["DecisionRequest"] } }; responses: { "200": { content: { "application/json": components["schemas"]["TraderResponse"] } }; "400": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "412": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "428": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
+  "changeOwnPassword": { requestBody: { content: { "application/json": components["schemas"]["ChangePasswordRequest"] } }; responses: { "200": { content: { "application/json": components["schemas"]["ChangePasswordResponse"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getBackgroundProcessingHealth": { security: Array<{ OperationsToken: Array<never> }>; responses: { "200": { content: { "application/json": components["schemas"]["BackgroundProcessingResponse"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getCurrentSession": { responses: { "200": { content: { "application/json": components["schemas"]["LoginResponse"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getHealthDependencies": { security: Array<{ OperationsToken: Array<never> }>; responses: { "200": { content: { "application/json": components["schemas"]["DependenciesResponse"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };

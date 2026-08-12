@@ -62,6 +62,11 @@ UNGUARDED_ROUTES: dict[tuple[str, str], str] = {
     ("POST", "/api/v1/auth/trader/login"): "authentication is what establishes an actor",
     ("GET", "/api/v1/auth/me"): "reads only the caller's own session",
     ("POST", "/api/v1/auth/logout"): "revokes only the caller's own session",
+    ("POST", "/api/v1/auth/change-password"): (
+        "changes only the caller's own credential, and the caller comes from the session "
+        "rather than the body — there is no id to authorise against. The presence check is "
+        "the current password, not a grant"
+    ),
     ("GET", "/api/v1/auth/sessions"): "auth.session.read_own is implied by ownership",
     ("POST", "/api/v1/auth/sessions/{session_id}/revoke"): "own session; scoped by ownership",
     # Ownership-scoped, not permission-scoped. A trader resolves no permissions
