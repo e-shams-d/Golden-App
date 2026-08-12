@@ -109,11 +109,29 @@ PENDING: dict[str, str] = {
     # shipped, and none of it is M3.
     "DB-SPEC-001": "M3 slice 1B",
     "TRACE-PLAN-001": "M3 slice 1B",
-    # M3 slice 8B — the second endpoint family: /admin-users, role management, and
-    # the credential-change routes.
-    "AUD-ROLE-001": "M3 slice 8B",
-    "API-PWD-001": "M3 slice 8B",
-    "API-PWD-002": "M3 slice 8B",
+    # M3 slice 8C — the credential routes, split out from 8B once 8B took the
+    # bootstrap. Both need a change-password path that does not exist yet.
+    "API-PWD-001": "M3 slice 8C",
+    "API-PWD-002": "M3 slice 8C",
+    # Renumbered in slice 8B from SEC-STAMP-001, which M2:932 also claimed. Two plans
+    # using one identifier meant M2's citations discharged M3's obligation, and the
+    # thing this sentence describes has no producer at all: `security_stamp_version` is
+    # read, copied and CHECKed in thirteen places across `app/` and incremented in
+    # none. 8C writes the first increment, so 8C is where it can first fail.
+    "SEC-STAMP-002": "M3 slice 8C",
+    # M3 slice 8D — /admin-users, role management, and the high-risk-grant alert.
+    "AUD-ROLE-001": "M3 slice 8D",
+    # Renamed in slice 8B from SEC-ROLE-001, which M2:516 uses for an unrelated Postgres
+    # privilege test that a merged test already cites — so M2's test was discharging
+    # M3's obligation and the plan's own negative control could not fire.
+    #
+    # Two earlier attempts at this rename both collided again, which is the whole reason
+    # `test_no_obligation_id_means_two_different_things` now exists. SEC-ROLE-003 is
+    # M2's 'the worker role CAN insert into audit_logs' (that family is entirely about
+    # PostgreSQL runtime roles, not application grants), and SEC-RBAC-001 is M2:923's
+    # permission matrix. Picking a plausible name and hitting an occupied one twice in
+    # a row is exactly the failure the new gate reports.
+    "SEC-ROLECHANGE-001": "M3 slice 8D",
     # Still owed, and re-owned in slice 10B with the reason narrowed by what that slice
     # measured. The *mechanism* this depends on is now proved in a real browser
     # (UI-ISO-003: Chromium refuses a `__Host-` cookie carrying Domain, and plain-HTTP
@@ -338,21 +356,177 @@ def test_every_cited_id_uses_a_catalogue_prefix() -> None:
     assert offenders == {}, f"ids using a prefix outside the catalogue: {offenders}"
 
 
-def test_the_heaviest_obligations_are_cited_by_more_than_one_test(
-    obligations: set[str],
-) -> None:
-    """The integrity primitives the plan calls critical must be proved at more than
-    one layer.
+CRITICAL_OBLIGATIONS = ("SVC-ATOMIC-001", "CON-IDEM-001", "AUD-ROLLBACK-001", "DB-MIG-001")
 
-    A single test can be wrong in the same way the code is wrong. These four are the
-    ones whose failure would be silent and financial.
+# Which of the four are actually proved at two layers today. Written down because the
+# test below used to be named for "more than one test" while checking `< 1` — a
+# threshold that asks whether the obligation is cited at all, which is what the
+# previous test in this file already asks. Renaming it to what it checked would have
+# hidden the gap; recording which ones fall short keeps it visible and makes adding the
+# second layer a deletion from this set.
+SINGLY_CITED: dict[str, str] = {
+    "CON-IDEM-001": (
+        "One layer: the HTTP replay test. The resolver has no unit-level test of its "
+        "own, so a canonical-hash mistake would have to be caught through a route."
+    ),
+    "AUD-ROLLBACK-001": (
+        "One layer: the integration test that rolls a transaction back. Nothing asserts "
+        "at the writer level that an audit row cannot outlive its command."
+    ),
+    "DB-MIG-001": (
+        "One layer: the migration-head reconciliation. The second layer would be an "
+        "upgrade/downgrade round trip, which the forward-fix policy makes moot for "
+        "downgrades and which nothing exercises for upgrades beyond head equality."
+    ),
+}
+
+
+def obligations_by_plan() -> dict[str, set[str]]:
+    """Which plan states each obligation. Deliberately not merged into one set.
+
+    `plan_obligations()` unions everything, which is what the coverage checks want and
+    is exactly why the collisions below were invisible for two milestones.
     """
 
+    found: dict[str, set[str]] = {}
+    for plan in plans():
+        name = plan.name.split("_")[0]
+        text = plan.read_text(encoding="utf-8")
+        for section in _PROVES_SECTION.findall(text):
+            for identifier in _ID.findall(section):
+                found.setdefault(identifier, set()).add(name)
+    return found
+
+
+# Identifiers two plans state deliberately, because they name the *same* obligation.
+# Distinct from a collision, and the difference is not decidable by a machine: the check
+# below reports every shared id, and each must be either renamed or recorded here with
+# the reason it is one obligation rather than two.
+#
+# All of these have the same cause. M2's slice-10 section lists obligations for work M3
+# actually executed, so the earlier plan promised what the later plan built. That is
+# untidy rather than wrong — the citation discharges a claim both documents make — and
+# rewriting a merged plan to remove a promise it kept would be worse.
+SHARED_OBLIGATIONS: dict[str, str] = {
+    "SEC-SOD-001": (
+        "M2:926 lists `SEC-SOD-001..004` among its identity-and-RBAC obligations; M3:751 "
+        "states the same thing concretely as the separation-of-duties refusal, which is "
+        "where the code was written. One obligation, promised in the earlier plan and "
+        "discharged in the later one."
+    ),
+}
+
+
+def test_no_obligation_id_means_two_different_things() -> None:
+    """One identifier, one obligation — the check that was missing.
+
+    Coverage is keyed by exact string, so when two plans use one id the citations of
+    either discharge both. Slice 8B found two live instances, and neither was catchable
+    by any existing gate:
+
+    `SEC-ROLE-001` was M2's "the app runtime role cannot UPDATE `audit_logs`" *and*
+    M3's "a role change without recent auth is refused". M2's Postgres privilege test is
+    cited by a merged test, so M3's obligation reported itself proved and the plan's own
+    negative control could not fire no matter what the role-change code did.
+
+    `SEC-STAMP-001` was stated by both plans the same way, and the mechanism it names —
+    incrementing `security_stamp_version` — has no producer in the codebase at all.
+
+    Both were renamed rather than merged, because they are different obligations that
+    happened to collide. The failure mode this prevents is not a typo; it is a second
+    plan reusing a plausible id and inheriting somebody else's evidence.
+    """
+
+    by_plan = obligations_by_plan()
+    shared = {
+        identifier: sorted(names)
+        for identifier, names in sorted(by_plan.items())
+        if len(names) > 1 and identifier not in SHARED_OBLIGATIONS
+    }
+
+    assert shared == {}, (
+        "these obligation ids are stated by more than one plan, so a citation of either "
+        f"discharges both:\n{shared}\n"
+        "Rename one — and check the new name against every plan first, because two "
+        "attempts at exactly this rename hit occupied names. If the two plans genuinely "
+        "state the same obligation, record it in SHARED_OBLIGATIONS with the reason."
+    )
+
+    # Guard the guard: an entry recording a shared id that is no longer shared is a
+    # stale exemption, and it would absorb a real collision later under the same string.
+    stale = sorted(
+        identifier for identifier in SHARED_OBLIGATIONS if len(by_plan.get(identifier, set())) <= 1
+    )
+    assert stale == [], (
+        f"these are recorded as deliberately shared and only one plan states them: {stale}"
+    )
+
+    for identifier, reason in SHARED_OBLIGATIONS.items():
+        assert len(reason) > 80, f"{identifier} needs a reason, not a placeholder"
+
+
+def test_the_per_plan_parser_sees_every_plan() -> None:
+    """Guard the guard. The check above is a comparison over a dict it builds itself."""
+
+    by_plan = obligations_by_plan()
+    assert by_plan, "no obligations parsed per plan; the section heading changed"
+
+    seen = {name for names in by_plan.values() for name in names}
+    expected = {plan.name.split("_")[0] for plan in plans()}
+    assert seen == expected, (
+        f"the per-plan parser found obligations in {sorted(seen)} but there are plans "
+        f"for {sorted(expected)} — a plan contributing nothing is one this check cannot "
+        "see collisions in"
+    )
+
+
+def test_every_critical_obligation_is_cited_at_all(obligations: set[str]) -> None:
+    """The floor, separated from the ceiling it was pretending to be."""
+
+    del obligations
+    cited = cited_ids()
+    uncited = sorted(name for name in CRITICAL_OBLIGATIONS if not cited.get(name))
+
+    assert uncited == [], f"critical obligations with no citation: {uncited}"
+
+
+def test_the_heaviest_obligations_are_cited_at_two_layers_or_recorded(
+    obligations: set[str],
+) -> None:
+    """The integrity primitives the plan calls critical, proved at more than one layer.
+
+    A single test can be wrong in the same way the code is wrong, which is why these
+    four are singled out: their failures would be silent and financial.
+
+    This test asserted `< 1` until slice 8B, so it was the previous test with a stronger
+    name — three of the four have exactly one citing file, and nothing said so. The
+    honest version keeps the two-layer requirement and records the three shortfalls with
+    the reason, so each is a line somebody can delete rather than a claim nobody checked.
+    """
+
+    del obligations
     cited = cited_ids()
     thin = {
         identifier: sorted(cited.get(identifier, set()))
-        for identifier in ("SVC-ATOMIC-001", "CON-IDEM-001", "AUD-ROLLBACK-001", "DB-MIG-001")
-        if len(cited.get(identifier, set())) < 1
+        for identifier in CRITICAL_OBLIGATIONS
+        if len(cited.get(identifier, set())) < 2 and identifier not in SINGLY_CITED
     }
 
-    assert thin == {}, f"critical obligations with no citation: {thin}"
+    assert thin == {}, (
+        f"critical obligations proved at only one layer: {thin}. Add the second layer, "
+        "or record it in SINGLY_CITED with the reason the single layer is what exists."
+    )
+
+    # Guard the guard, in the other direction: an entry here for an obligation that now
+    # has two citations is a stale excuse, and it would absorb a real regression later.
+    resolved = sorted(
+        identifier for identifier in SINGLY_CITED if len(cited.get(identifier, set())) >= 2
+    )
+    assert resolved == [], (
+        f"these are recorded as singly-cited and now have two or more: {resolved}. "
+        "Remove the entry."
+    )
+
+    for identifier, reason in SINGLY_CITED.items():
+        assert identifier in CRITICAL_OBLIGATIONS, f"{identifier} is not a critical obligation"
+        assert len(reason) > 60, f"{identifier} needs a reason, not a placeholder"
