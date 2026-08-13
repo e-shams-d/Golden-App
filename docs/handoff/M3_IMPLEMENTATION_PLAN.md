@@ -1128,6 +1128,62 @@ Return the whole table from the single-business route and confirm `SEC-IDOR-004`
 empty body and confirm it fails too: without the positive half, "the other business is absent" is
 satisfied by a response containing nothing.
 
+## Slice D3 — The rehearsal: one command that answers "does the demonstration still work"
+
+### Goal
+
+Turn "can we show this to somebody" from an afternoon into a command.
+
+Slices D1 and D2 made the onboarding path reachable by a person. Nothing proved it stayed
+reachable: the suite drives a `TestClient` against a live database, which is not nginx, two
+Next.js servers, a container network and a browser holding a `__Host-` cookie. The first time that
+whole arrangement was exercised it took three diagnoses, and **none of the three was a defect in
+the platform** — which is exactly why they must not have to be rediscovered.
+
+### What it changes
+
+- `infra/scripts/rehearse-demo.sh`: tears the stack down, clears the data directory, brings up a
+  fresh deployment, registers a business, runs the bootstrap command, and drives both interfaces
+  in Chromium.
+- `apps/admin-web/tests/demo/approval-path.spec.ts` with its own Playwright config. Not in the
+  default check chain, deliberately: it needs a compose stack the gates do not assume, and a check
+  that cannot run is worse than one that is absent, because it teaches people to ignore a red
+  result.
+- From an **empty database** every time. The bootstrap command refuses once any staff account
+  exists — correctly, that is the guard slice 8B was built around — so a rehearsal reusing a
+  database could never exercise the step an operator performs on installation day.
+
+### The three host facts it encodes
+
+Each cost a diagnosis, and each is written into the script so it costs nobody a second one.
+
+1. Every `docker compose` invocation must see the same `LOCAL_DATA_ROOT`. Without it compose
+   resolves a different bind mount, decides the service configuration changed, and **recreates the
+   backend mid-run** — surfacing as a 502 from nginx while the backend's own log shows it shutting
+   down with a request in flight.
+2. `curl` must bypass the host proxy for loopback. A VPN client exporting
+   `http_proxy=127.0.0.1:10808` answers 503 itself and the request never reaches nginx, whose
+   access log then stays silent — which reads exactly like a broken stack.
+3. The signed-in steps are driven by a **browser, not curl**. The session cookie carries the
+   `__Host-` prefix and curl refuses to store a prefixed cookie received over plain HTTP; Chromium
+   stores and sends it because it treats `localhost` as a trustworthy origin. That difference is
+   measured elsewhere in this milestone rather than assumed here.
+
+### What proves it
+
+- `OPS-DEMO-001` — from an empty database: a business applies, the centre's first administrator is
+  created by the bootstrap command, signs in through the real form, sees the application and
+  approves it; the business then signs in on its own host and sees the decision; and a browser
+  holding only a trader session is refused the centre's list.
+
+### What it deliberately does not prove
+
+It signs in through both real forms and lands on each app's root, which is a static shell today. It
+says nothing about role-aware navigation or a session-derived dashboard, and those obligations stay
+owned by the slice that will build them. The spec does not name their ids at all — the traceability
+scanner counts any obligation id in a test file as coverage, so a sentence explaining that
+something is deferred would register as proof that it is done.
+
 ## Slice 9 — The two frontends: login, role-aware navigation, and audience isolation
 
 ### Goal

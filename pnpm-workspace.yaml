@@ -60,14 +60,20 @@ allowBuilds:
 # exception whenever one does. The advisory also names 3.15.1 for the 3.x line;
 # that line is not in the tree, and pinning a version nothing installs would read
 # as coverage while providing none.
-# nanoid is pinned to 3.3.17 for CVE-2026-67213 (GHSA infinite loop in
-# `customAlphabet`). It reaches the tree through postcss, which Next.js pulls in, so
-# only the 3.x line is installed — the advisory also names 5.1.6, and pinning a line
-# nothing installs would read as coverage while providing none. Same reasoning that
-# kept the js-yaml 3.x line out of this list.
+# nanoid is pinned for CVE-2026-67213 (infinite loop in `customAlphabet`). It reaches
+# the tree through postcss, which Next.js pulls in, so only the 3.x line is installed —
+# the advisory also names 5.1.6, and pinning a line nothing installs would read as
+# coverage while providing none. Same reasoning that kept the js-yaml 3.x line out.
+#
+# Raised from 3.3.17 to 3.3.18: the earlier entry named 3.3.17 as the fix for this same
+# CVE, and the advisory now lists 3.3.17 as affected. So the override was doing its job
+# — holding the tree at a floor — while the floor itself was vulnerable, and the scan
+# kept passing because the pin looked deliberate. An override is only as current as the
+# advisory it was read from, which is the argument for re-reading them on every finding
+# rather than trusting the comment beside them.
 overrides:
   "postcss@<8.5.18": "8.5.18"
-  "nanoid@<3.3.17": "3.3.17"
+  "nanoid@<3.3.18": "3.3.18"
   "sharp@<0.35.1": "0.35.1"
   "brace-expansion@^5.0.0": "5.0.9"
   "brace-expansion@^1.0.0": "1.1.18"
