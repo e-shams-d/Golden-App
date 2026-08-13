@@ -39,7 +39,27 @@ HANDOFF = REPOSITORY_ROOT / "docs" / "handoff"
 SEARCH_ROOTS = ("", "Implementation Docs", "docs", "services/backend")
 
 # Directories a citation never points into, pruned from the filename index.
-PRUNED = frozenset({"node_modules", ".git", "__pycache__", ".venv", "dist", "build"})
+PRUNED = frozenset(
+    {
+        "node_modules",
+        ".git",
+        "__pycache__",
+        ".venv",
+        "dist",
+        "build",
+        # Runtime data the compose stack writes. Gitignored, and owned by container users
+        # rather than by the developer — `.gitignore` says exactly that in its own comment.
+        # No citation can name a file in here, and walking it does not merely waste time:
+        # the storage directory is created 0700 by uid 10001, so `iterdir` raises
+        # PermissionError and this module errors during collection, taking the whole
+        # backend suite with it.
+        #
+        # It never surfaced while the working copy lived on a Windows drive, where
+        # permissions are permissive enough for the walk to succeed. It appeared the first
+        # time the repository sat on ext4 with the stack running.
+        ".local",
+    }
+)
 
 # A citation that names its own file: `path/to/file.md:123` or `...:123-456`, with or
 # without surrounding backticks. Bare `:123` citations — which mean "the file named in
