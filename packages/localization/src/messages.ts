@@ -66,6 +66,60 @@ export const faMessages = {
   "pwa.applyUpdate": "اعمال نسخه جدید",
   "offline.title": "اتصال شبکه در دسترس نیست",
   "offline.description": "فقط پوسته عمومی در حالت آفلاین قابل مشاهده است. هیچ فرمان مالی در صف قرار نگرفته است.",
+  // The trader approval screen. Persian throughout, and the status labels are the
+  // operator's vocabulary rather than the column's: pending_approval is a database
+  // value, "در انتظار تأیید" is what a person reading a queue understands. Keyed by the
+  // stored value so an unmapped status is a compile error rather than a raw column name
+  // appearing on screen.
+  "admin.traders.title": "طلافروشان",
+  "admin.traders.description": "کسب‌وکارهایی که درخواست عضویت داده‌اند. تصمیم شما بلافاصله ثبت و ممیزی می‌شود.",
+  "admin.traders.loading": "در حال دریافت فهرست…",
+  "admin.traders.empty": "هنوز هیچ کسب‌وکاری درخواست نداده است.",
+  "admin.traders.emptyTitle": "فهرست خالی است",
+  "admin.traders.failed": "دریافت فهرست ممکن نشد.",
+  "admin.traders.failedTitle": "خطا در دریافت",
+  "admin.traders.forbiddenTitle": "دسترسی ندارید",
+  "admin.traders.forbidden": "حساب شما مجوز مشاهده طلافروشان را ندارد.",
+  "admin.traders.name": "نام کسب‌وکار",
+  "admin.traders.phone": "شماره تماس",
+  "admin.traders.status": "وضعیت",
+  "admin.traders.actions": "اقدام",
+  "admin.traders.approve": "تأیید",
+  "admin.traders.reject": "رد",
+  "admin.traders.working": "در حال ثبت…",
+  "admin.traders.reasonLabel": "دلیل رد",
+  "admin.traders.reasonRequired": "برای رد کردن، نوشتن دلیل الزامی است.",
+  "admin.traders.decisionFailed": "ثبت تصمیم ممکن نشد. فهرست را تازه کنید و دوباره تلاش کنید.",
+  "admin.traders.staleTitle": "اطلاعات شما قدیمی است",
+  "admin.traders.stale": "این کسب‌وکار در این فاصله تغییر کرده است. فهرست تازه شد؛ تصمیم را دوباره بگیرید.",
+  "admin.traders.refresh": "تازه‌سازی",
+  "status.pending_approval": "در انتظار تأیید",
+  "status.approved": "تأییدشده",
+  "status.rejected": "ردشده",
+  "status.active": "فعال",
+  "status.inactive": "غیرفعال",
+  "status.suspended": "معلق",
+  // The trader's own account screen. What a business sees about itself while it waits,
+  // and after the centre decides. Each state says what happens next rather than only
+  // naming the state: somebody who has just registered wants to know whether to wait or
+  // to act, and "pending" alone answers neither.
+  "trader.profile.title": "حساب کسب‌وکار",
+  "trader.profile.loading": "در حال دریافت اطلاعات…",
+  "trader.profile.failedTitle": "خطا در دریافت",
+  "trader.profile.failed": "اطلاعات کسب‌وکار دریافت نشد. لطفاً دوباره تلاش کنید.",
+  "trader.profile.refresh": "تلاش دوباره",
+  "trader.profile.name": "نام کسب‌وکار",
+  "trader.profile.phone": "شماره تماس",
+  "trader.profile.legalName": "نام حقوقی",
+  "trader.profile.notProvided": "ثبت نشده",
+  "trader.profile.pendingTitle": "در انتظار تأیید مرکز",
+  "trader.profile.pending": "درخواست شما ثبت شده و در نوبت بررسی مرکز است. تا زمان تأیید امکان انجام معامله وجود ندارد. نیازی به ثبت درخواست دوباره نیست.",
+  "trader.profile.approvedTitle": "کسب‌وکار شما تأیید شد",
+  "trader.profile.approved": "مرکز کسب‌وکار شما را تأیید کرده است.",
+  "trader.profile.rejectedTitle": "درخواست پذیرفته نشد",
+  "trader.profile.rejected": "مرکز درخواست عضویت شما را نپذیرفته است. برای پیگیری با مرکز تماس بگیرید.",
+  "trader.profile.suspendedTitle": "فعالیت کسب‌وکار معلق است",
+  "trader.profile.suspended": "فعالیت کسب‌وکار شما توسط مرکز معلق شده است. برای پیگیری با مرکز تماس بگیرید.",
 } as const;
 
 export type MessageKey = keyof typeof faMessages;

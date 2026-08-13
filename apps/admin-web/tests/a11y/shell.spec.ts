@@ -8,6 +8,14 @@ const paths = [
   "/states/empty",
   "/states/forbidden",
   "/states/conflict",
+  // The approval screen, added with the screen rather than after it. This suite keeps a
+  // fixed list precisely so a new page is a visible edit rather than an oversight — a
+  // screen outside the list is a screen nobody checks.
+  //
+  // It renders here against no backend, so what is asserted is its failure state. That is
+  // the state most likely to ship without a heading or without an announced region, and
+  // it is the one an operator sees on the worst day.
+  "/traders",
 ] as const;
 
 for (const path of paths) {
