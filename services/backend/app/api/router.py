@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+from app.api.v1.admin_users import router as admin_users_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.center_profile import router as center_profile_router
 from app.api.v1.health import router as health_router
@@ -18,3 +19,4 @@ api_v1_router.include_router(center_profile_router)
 api_v1_router.include_router(operations_router)
 api_v1_router.include_router(trader_self_service_router)
 api_v1_router.include_router(traders_router)
+api_v1_router.include_router(admin_users_router)

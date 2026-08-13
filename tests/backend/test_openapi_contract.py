@@ -85,6 +85,13 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # from the other direction: the caller is already established, so the audience
         # is a property of the session rather than of the URL.
         "changeOwnPassword",
+        # M3 slice 8D. Four operations rather than two, because the approved catalogue
+        # resolves doc 05's `admin_user.manage` to three action-specific canonical
+        # permissions and the endpoints have to follow the permissions.
+        "listAdminUsers",
+        "getAdminUser",
+        "createAdminUser",
+        "updateAdminUser",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

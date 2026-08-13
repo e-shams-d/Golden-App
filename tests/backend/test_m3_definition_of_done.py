@@ -105,6 +105,14 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     ("POST", "/api/v1/traders/{trader_id}/reject"): PERMISSION,
     ("POST", "/api/v1/traders/{trader_id}/suspend"): PERMISSION,
     ("POST", "/api/v1/traders/{trader_id}/reactivate"): PERMISSION,
+    # Slice 8D. Each on the *canonical* permission the approved catalogue resolves
+    # doc 05's `admin_user.*` aliases to, one per action: doc 12:700 forbids merging
+    # unrelated high-risk actions into one broad permission, and `declare` on an alias
+    # raises rather than granting.
+    ("GET", "/api/v1/admin-users"): PERMISSION,
+    ("POST", "/api/v1/admin-users"): PERMISSION,
+    ("GET", "/api/v1/admin-users/{admin_user_id}"): PERMISSION,
+    ("PATCH", "/api/v1/admin-users/{admin_user_id}"): PERMISSION,
     # FastAPI's own, absent in production — `test_openapi_contract.py` asserts they
     # 404 there. Listed rather than filtered by pattern, because a filter would also
     # hide a real route somebody named `/docs`.
@@ -169,6 +177,21 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ),
     ("POST", "/api/v1/auth/change-password", "ownership"): (
         "test_a_password_change_touches_only_the_callers_own_sessions"
+    ),
+    # One parametrised test covers all four, and the parametrisation itself is guarded:
+    # `test_the_denial_parametrisation_covers_every_admin_user_route` fails if the list
+    # shrinks, which is how a parametrised negative quietly stops covering a route.
+    ("GET", "/api/v1/admin-users", "permission"): (
+        "test_an_admin_without_the_permission_is_refused"
+    ),
+    ("POST", "/api/v1/admin-users", "permission"): (
+        "test_an_admin_without_the_permission_is_refused"
+    ),
+    ("GET", "/api/v1/admin-users/{admin_user_id}", "permission"): (
+        "test_an_admin_without_the_permission_is_refused"
+    ),
+    ("PATCH", "/api/v1/admin-users/{admin_user_id}", "permission"): (
+        "test_an_admin_without_the_permission_is_refused"
     ),
 }
 
