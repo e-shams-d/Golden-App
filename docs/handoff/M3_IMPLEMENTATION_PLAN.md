@@ -951,15 +951,87 @@ session" condition and confirm the caller is signed out by their own change. Rem
 carries the caller's session forward and confirm the unsafe request afterwards returns 401 — that
 one is the whole reason this is a command rather than an `UPDATE`.
 
-## Slice 8D — Administration endpoints, role management, and the high-risk-grant alert
+## Slice 8D — Staff account administration: list, create, read, amend
 
 ### Goal
 
-The `/admin-users` family and `PUT /roles/{id}/permissions`, plus the alert doc 12:642 requires.
+The first four routes of the `/admin-users` family, and the first command in this
+repository other than `rename-center-profile` that actually **uses** the idempotency
+record it requires.
+
+**Narrowed from the original 8D**, which also owned suspend, reactivate, role management,
+the reset and the alert. Those move to 8E. The split is along a real seam rather than a
+convenient one: these four are CRUD over an identity, while the rest are state
+transitions and authority changes that each need a guard this slice does not have — the
+rule that the last account holding `user.*` cannot be deactivated, a recovery path, and
+the phrase-to-permission mapping behind the alert.
 
 ### What it changes
 
-- `/admin-users` list, create, get, patch, suspend, reactivate. **Not on doc 05's declared
+- `GET /admin-users`, `POST /admin-users`, `GET /admin-users/{id}`, `PATCH
+  /admin-users/{id}`, each on the **canonical** permission rather than the one doc 05
+  declares. `admin_user.read` and `admin_user.manage` are recorded in the approved
+  catalogue as deprecated aliases, the second `deprecated_ambiguous` with the instruction
+  to select the action-specific canonical permission per endpoint. So the four routes take
+  `user.read`, `user.create`, `user.read` and `user.update`, and the mapping is written
+  into the catalogue's `endpoint_permission_discrepancies` — four rows, following the two
+  trader precedents — so the substitution is reviewable rather than decided inside a route
+  decorator. `declare("admin_user.manage")` would raise, which is the fail-closed design
+  working: an alias is not a grantable row.
+- Splitting one declared permission three ways is not a preference. Doc 12:700 states that
+  implementations "may add narrower permissions but must not merge unrelated high-risk
+  actions into one broad permission", and one permission covering all three would mean an
+  operator who may correct a colleague's phone number may also remove their access.
+- `POST` claims and completes an idempotency record through `IdempotencyResolver`. Doc 12
+  §12 requires both steps and the four trader decision routes do neither — they require
+  the header and discard it, recorded in §3.5 above. The password is deliberately **not**
+  in the claim payload: the resolver hashes it to detect a same-key-different-body retry,
+  and a credential inside that hash would be a credential in a durable table.
+- `PATCH` accepts contact details only. Username, status, credential and role grants each
+  belong to their own command, and `extra="forbid"` makes an attempt a 422 rather than a
+  silently ignored key — an ignored key is worse, because the caller believes it worked.
+
+### What proves it
+
+- `API-ADMIN-001` — a caller holding none of the four canonical permissions is refused on
+  every route, on a request that is otherwise entirely valid, and the refusal is
+  attributable to the permission rather than to CSRF. Paired with a privileged caller
+  succeeding, because "returns 403" is equally satisfied by a route that refuses everybody.
+- `API-ADMIN-002` — a repeated `Idempotency-Key` returns the **first** account rather than
+  creating a second person with the same name, an `idempotency_records` row exists for the
+  operation, and the same key with a different body is refused with 409.
+- `API-ADMIN-003` — no response carries the stored credential or the lockout counters,
+  asserted by reading the hash from the database and searching for it verbatim in the
+  serialised body rather than by checking field names the test would have to guess right.
+
+### Negative controls
+
+Delete each `requires(...)` in turn and confirm the matching denial case flips to 200 —
+which only works because every request in the parametrisation is otherwise valid; omit the
+`If-Match` and the mutant answers 428, and the control cannot tell a missing guard from a
+present one.
+
+Remove a case from the denial parametrisation and confirm the guard fails: the DoD gate
+names **one** test for all four routes, so a parametrised negative that quietly lost a case
+would leave a route reported covered by something that no longer runs. The expected set is
+derived from the committed OpenAPI contract rather than written beside the parametrisation,
+because a hand-written twin can be edited in the same commit. *The first version of that
+derivation matched nothing — it stripped the `/api/v1` prefix from the wrong side — and the
+non-vacuity floor is what caught it rather than two empty sets comparing equal.*
+
+Skip the `resolver.complete` call and confirm the replay assertion fails rather than the
+creation silently succeeding twice.
+
+## Slice 8E — State transitions, role management, and the high-risk-grant alert
+
+### Goal
+
+The rest of the `/admin-users` family and `PUT /roles/{id}/permissions`, plus the alert doc
+12:642 requires.
+
+### What it changes
+
+- `/admin-users` suspend and reactivate. The other four shipped in 8D. **Not on doc 05's declared
   permissions:** `admin_user.read` and `admin_user.manage` are recorded in the approved catalogue as
   deprecated aliases, the second `deprecated_ambiguous` with `resolution: select the action-specific
   canonical permission per endpoint`. The canonical four — `user.read`, `user.create`, `user.update`,

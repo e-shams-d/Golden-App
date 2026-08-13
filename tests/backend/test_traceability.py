@@ -109,12 +109,14 @@ PENDING: dict[str, str] = {
     # shipped, and none of it is M3.
     "DB-SPEC-001": "M3 slice 1B",
     "TRACE-PLAN-001": "M3 slice 1B",
-    # M3 slice 8D — /admin-users, role management, the high-risk-grant alert, and the
-    # administrative reset. The reset moved here from 8C: it is one route of the
-    # /admin-users family and belongs with the other five, and the recovery path it needs
-    # exists only because the reset is what creates a `recovery_required` account.
-    "API-PWD-002": "M3 slice 8D",
-    "AUD-ROLE-001": "M3 slice 8D",
+    # M3 slice 8E — the /admin-users state transitions, role management, the
+    # high-risk-grant alert, and the administrative reset. The reset moved out of 8C
+    # because it is one route of the /admin-users family and belongs with the others, and
+    # the recovery path it needs exists only because the reset is what creates a
+    # `recovery_required` account. 8D took the four CRUD routes; these are the ones that
+    # each need a guard 8D does not have.
+    "API-PWD-002": "M3 slice 8E",
+    "AUD-ROLE-001": "M3 slice 8E",
     # Renamed in slice 8B from SEC-ROLE-001, which M2:516 uses for an unrelated Postgres
     # privilege test that a merged test already cites — so M2's test was discharging
     # M3's obligation and the plan's own negative control could not fire.
@@ -125,7 +127,7 @@ PENDING: dict[str, str] = {
     # PostgreSQL runtime roles, not application grants), and SEC-RBAC-001 is M2:923's
     # permission matrix. Picking a plausible name and hitting an occupied one twice in
     # a row is exactly the failure the new gate reports.
-    "SEC-ROLECHANGE-001": "M3 slice 8D",
+    "SEC-ROLECHANGE-001": "M3 slice 8E",
     # Still owed, and re-owned in slice 10B with the reason narrowed by what that slice
     # measured. The *mechanism* this depends on is now proved in a real browser
     # (UI-ISO-003: Chromium refuses a `__Host-` cookie carrying Domain, and plain-HTTP

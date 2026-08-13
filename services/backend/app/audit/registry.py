@@ -183,6 +183,37 @@ CREATE_FIRST_ADMIN = CommandNames(
 )
 
 
+# Staff account lifecycle through the API. Deliberately distinct names from
+# `CREATE_FIRST_ADMIN`: that one cannot have an actor and these always do, and an auditor
+# reading a creation should never have to work out whether a human authorised it.
+#
+# Outbox events on both, unlike the credential names above. Doc 05's endpoint catalogue
+# says role changes, suspension and reactivation create audit **and** outbox events, and a
+# staff account appearing or changing is exactly the kind of fact a downstream directory
+# or notification consumer would act on. The event types are not catalogued for the same
+# reason the trader ones are not — `audit_outbox_catalog.yaml` enumerates financial flows.
+CREATE_ADMIN_USER = CommandNames(
+    audit_action="admin_user.created",
+    outbox_event_type="AdminUserCreated",
+    catalogued=False,
+    provisional_reason=(
+        "The catalogue has no identity-lifecycle action at all, so there is nothing to "
+        "align this with rather than a name it contradicts. " + _OUTBOX_GAP
+    ),
+)
+
+UPDATE_ADMIN_USER = CommandNames(
+    audit_action="admin_user.updated",
+    outbox_event_type="AdminUserUpdated",
+    catalogued=False,
+    provisional_reason=(
+        "Same catalogue gap. Scoped to contact details: username, status, credential and "
+        "role grants each have their own command, because a PATCH that accepted them "
+        "would be four commands wearing one name and one audit action. " + _OUTBOX_GAP
+    ),
+)
+
+
 ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     RENAME_CENTER_PROFILE,
     REGISTER_TRADER,
@@ -193,4 +224,6 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     CHANGE_OWN_PASSWORD,
     RESET_ADMIN_PASSWORD,
     CREATE_FIRST_ADMIN,
+    CREATE_ADMIN_USER,
+    UPDATE_ADMIN_USER,
 )

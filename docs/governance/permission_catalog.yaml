@@ -853,6 +853,50 @@ endpoint_permission_discrepancies:
     source_refs:
       - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:895-896"
       - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:727-729"
+  # M3 slice 8D. Document 05 declares `admin_user.read` and `admin_user.manage` for the
+  # whole /admin-users family. Both are recorded above as deprecated aliases, and the
+  # second is `deprecated_ambiguous` with the instruction to select the action-specific
+  # canonical permission per endpoint — so these four rows are that selection, made
+  # explicit rather than decided inside a route decorator.
+  #
+  # Splitting `admin_user.manage` three ways is not a preference. Document 12:700 states
+  # that implementations "may add narrower permissions but must not merge unrelated
+  # high-risk actions into one broad permission", and creating an account, editing its
+  # contact details and deactivating it are three unrelated high-risk actions. One
+  # permission covering all three would also mean an operator who may fix a colleague's
+  # phone number may also delete their access.
+  - endpoint: "GET /api/v1/admin-users"
+    document_05_declared_permission: admin_user.read
+    canonical_permission: user.read
+    status: provisional_pending_m0_approval
+    runtime_effect_until_approved: deny_if_only_admin_user_read_is_present
+    source_refs:
+      - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:867"
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:704-707"
+  - endpoint: "GET /api/v1/admin-users/{id}"
+    document_05_declared_permission: admin_user.read
+    canonical_permission: user.read
+    status: provisional_pending_m0_approval
+    runtime_effect_until_approved: deny_if_only_admin_user_read_is_present
+    source_refs:
+      - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:869"
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:704-707"
+  - endpoint: "POST /api/v1/admin-users"
+    document_05_declared_permission: admin_user.manage
+    canonical_permission: user.create
+    status: provisional_pending_m0_approval
+    runtime_effect_until_approved: deny_if_only_admin_user_manage_is_present
+    source_refs:
+      - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:868"
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:700-707"
+  - endpoint: "PATCH /api/v1/admin-users/{id}"
+    document_05_declared_permission: admin_user.manage
+    canonical_permission: user.update
+    status: provisional_pending_m0_approval
+    runtime_effect_until_approved: deny_if_only_admin_user_manage_is_present
+    source_refs:
+      - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:870"
+      - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:700-707"
 
 catalog_gaps_pending_m0:
   - id: health_operations_permission
