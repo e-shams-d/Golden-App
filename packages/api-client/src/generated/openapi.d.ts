@@ -64,8 +64,14 @@ export interface paths {
   "/api/v1/operations/release-evidence": {
     get: operations["getReleaseEvidence"];
   };
+  "/api/v1/traders": {
+    get: operations["listTraders"];
+  };
   "/api/v1/traders/register": {
     post: operations["registerTrader"];
+  };
+  "/api/v1/traders/{trader_id}": {
+    get: operations["getTrader"];
   };
   "/api/v1/traders/{trader_id}/approve": {
     post: operations["approveTrader"];
@@ -116,6 +122,7 @@ export interface components {
     "SchemaState": { applied_revisions: Array<string>; expected_revisions: Array<string>; matches: boolean };
     "SessionListResponse": { sessions: Array<components["schemas"]["SessionSummary"]> };
     "SessionSummary": { authentication_level: string; expires_at: string; id: string };
+    "TraderListResponse": { traders: Array<components["schemas"]["TraderResponse"]> };
     "TraderProfilePatch": { display_name?: string | null; legal_name?: string | null };
     "TraderProfileResponse": { approval_status: string; approved_at: string | null; credit_limit_irr: number | null; display_name: string; id: string; legal_name: string | null; operational_status: string; primary_phone: string; record_version: number };
     "TraderResponse": { approval_status: string; approved_at: string | null; display_name: string; id: string; legal_name: string | null; operational_status: string; primary_phone: string; record_version: number };
@@ -141,8 +148,10 @@ export interface operations {
   "getOwnTraderProfile": { responses: { "200": { content: { "application/json": components["schemas"]["TraderProfileResponse"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getReleaseEvidence": { security: Array<{ OperationsToken: Array<never> }>; responses: { "200": { content: { "application/json": components["schemas"]["ReleaseEvidenceResponse"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getReleaseMetadata": { responses: { "200": { content: { "application/json": components["schemas"]["ReleaseResponse"] } } } };
+  "getTrader": { parameters: { path: { trader_id: string } }; responses: { "200": { content: { "application/json": components["schemas"]["TraderResponse"] } }; "400": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "412": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "428": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "listAdminUsers": { responses: { "200": { content: { "application/json": components["schemas"]["AdminUserListResponse"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "listOwnSessions": { responses: { "200": { content: { "application/json": components["schemas"]["SessionListResponse"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
+  "listTraders": { responses: { "200": { content: { "application/json": components["schemas"]["TraderListResponse"] } }; "400": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "412": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "428": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "loginAdmin": { requestBody: { content: { "application/json": components["schemas"]["LoginRequest"] } }; responses: { "200": { content: { "application/json": components["schemas"]["LoginResponse"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "loginTrader": { requestBody: { content: { "application/json": components["schemas"]["LoginRequest"] } }; responses: { "200": { content: { "application/json": components["schemas"]["LoginResponse"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "logout": { responses: { "200": { content: { "application/json": components["schemas"]["RevocationResponse"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };

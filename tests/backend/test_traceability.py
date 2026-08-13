@@ -157,9 +157,6 @@ PENDING: dict[str, str] = {
     # status or an error code into a state, so there is nothing for a real response to
     # drive. Recorded against 10C with the twelve doc-21 states nothing has ever named.
     "UI-STATE-001": "M3 slice 10C",
-    # An admin response carrying another trader's data needs a list endpoint to carry
-    # it, and M3 has none. Recorded against M5 in the IDOR ledger too.
-    "SEC-IDOR-004": "M5 (needs an internal list endpoint)",
     # The evidence emitter's M3 items — and first a decision about the identifier. The
     # plan says `OPS-EVID-001`; the two tests that exist say `OPS-EVIDENCE-001`, which is
     # M2's id (M2 plan:1358). Coverage is keyed by exact string, so this obligation has

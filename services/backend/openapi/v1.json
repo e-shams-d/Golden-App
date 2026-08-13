@@ -1048,6 +1048,24 @@
         "title": "SessionSummary",
         "type": "object"
       },
+      "TraderListResponse": {
+        "additionalProperties": false,
+        "description": "The centre's view of the businesses it has been asked to approve.\n\nUnpaged, and recorded as a decision rather than an omission: the population is the\nbusinesses one gold centre deals with, which is tens rather than thousands, and the\nlist-convention envelope M2 built would be a contract change to introduce. When the\ncount justifies paging, that envelope is what it should use.",
+        "properties": {
+          "traders": {
+            "items": {
+              "$ref": "#/components/schemas/TraderResponse"
+            },
+            "title": "Traders",
+            "type": "array"
+          }
+        },
+        "required": [
+          "traders"
+        ],
+        "title": "TraderListResponse",
+        "type": "object"
+      },
       "TraderProfilePatch": {
         "additionalProperties": false,
         "description": "Only what a trader may change about itself.\n\nAbsent on purpose: `primary_phone` (an identity change, `:925`), both status\ncolumns and `approved_at` (the center's decisions, not the trader's),\n`credit_limit_irr` (a limit the trader would otherwise raise), `risk_level`\nand `notes_internal` (internal).",
@@ -2723,6 +2741,98 @@
         ]
       }
     },
+    "/api/v1/traders": {
+      "get": {
+        "description": "The endpoint that turns approval from a database task into an operator's.\n\nUntil this existed, a staff member could approve a business only if somebody told\nthem its id out of band — `POST /traders/register` deliberately returns none, because\nreturning one would let a caller tell a real registration from the no-op a duplicate\nproduces. So the id existed nowhere a person could reach.\n\nGuarded on `trader.read`, which no trader holds: a trader resolves no permissions at\nall, so the audience separation is what refuses them rather than a filter that could\nbe written wrongly.",
+        "operationId": "listTraders",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraderListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The transition is not allowed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Permission denied."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such trader."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The If-Match value is stale."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match or Idempotency-Key is missing."
+          }
+        },
+        "summary": "List the businesses the center has been asked to approve.",
+        "tags": [
+          "traders"
+        ]
+      }
+    },
     "/api/v1/traders/register": {
       "post": {
         "description": "The only unauthenticated write surface on the platform.\n\nLimited on the network axis alone, because there is no account identifier to\nlimit against until the account exists.",
@@ -2770,6 +2880,110 @@
           }
         },
         "summary": "Apply to become a trader. Public and rate-limited.",
+        "tags": [
+          "traders"
+        ]
+      }
+    },
+    "/api/v1/traders/{trader_id}": {
+      "get": {
+        "description": "SEC-IDOR-004: the response carries this business and no other.\n\nThe ETag is what makes the decision routes usable from a screen: an operator reads a\nbusiness, then approves it with the `If-Match` this hands them, and a stale view is\nrefused rather than silently overwriting somebody else's decision.",
+        "operationId": "getTrader",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trader_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trader Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraderResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The transition is not allowed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Permission denied."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such trader."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The If-Match value is stale."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match or Idempotency-Key is missing."
+          }
+        },
+        "summary": "Read one business.",
         "tags": [
           "traders"
         ]
