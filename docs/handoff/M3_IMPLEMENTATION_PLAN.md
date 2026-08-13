@@ -1075,6 +1075,59 @@ is this test's failure mode. Assert every code in the mapping exists in `permiss
 artifact the test did not write. And assert that granting an **ordinary** permission emits nothing:
 without that half the test passes on the generic audit row every command already writes.
 
+## Slice D1 — The centre's read surface over the businesses it approves
+
+### Goal
+
+Make approval an operator's task rather than a database task.
+
+**This is a deliberate reordering, recorded here rather than taken quietly.** `GET /traders` is
+M5's in the original sequence — `SEC-IDOR-004` has sat pending since slice 6 with the note "needs
+an internal list endpoint" — and it is built now because the demonstration path breaks without it.
+`POST /traders/register` returns no identifier on purpose: returning one would let a caller tell a
+real registration from the no-op a duplicate produces, which is the membership oracle that endpoint
+exists to avoid. So until this slice the id of a business awaiting approval was reachable only
+through `psql`, and showing the platform to anyone required a detour into its database halfway
+through.
+
+Nothing is skipped for the reordering. The slice carries its own obligations, negative tests and
+controls, and it **discharges** `SEC-IDOR-004` rather than inheriting it — an early endpoint quietly
+carrying somebody else's pending obligation is exactly the drift the traceability gate exists to
+stop.
+
+### What it changes
+
+- `GET /traders` and `GET /traders/{trader_id}`, both guarded on `trader.read`. Unpaged, recorded as
+  a decision: the population is one centre's counterparties, tens rather than thousands, and the
+  list-convention envelope M2 built would be a contract change to introduce here.
+- `GET /traders/{trader_id}` publishes an `ETag`, which is what makes the four decision routes usable
+  from a screen — an operator reads a business and approves it with the `If-Match` the read handed
+  them, so a stale view is refused rather than silently overwriting somebody else's decision.
+- The rendering of a trader extracted into one helper. `_decide` built the response inline, and a
+  second copy is how a field added for one route silently appears — or fails to appear — in the
+  other.
+
+### What proves it
+
+- `API-TRADER-001` — the operator path end to end without touching the database: register,
+  list, read, approve with the `If-Match` the read returned, and the list then reflects the
+  decision. The last step matters because an operator who cannot see the result of their own action
+  will take it twice.
+- `SEC-IDOR-004` — a response for one business carries no other business's name, phone number or id,
+  asserted by serialising and searching rather than by comparing fields a test would have to name
+  correctly. Paired with the positive half, because the search assertions are all satisfied by an
+  empty response.
+
+### Negative controls
+
+Remove either guard and confirm the denial test flips to 200. The unprivileged caller is
+`technical_admin`, which the seed grants no `trader.*` at all — chosen rather than invented, so the
+test proves the seeded catalogue withholds the permission rather than that a fixture did.
+
+Return the whole table from the single-business route and confirm `SEC-IDOR-004` fails. Return an
+empty body and confirm it fails too: without the positive half, "the other business is absent" is
+satisfied by a response containing nothing.
+
 ## Slice 9 — The two frontends: login, role-aware navigation, and audience isolation
 
 ### Goal

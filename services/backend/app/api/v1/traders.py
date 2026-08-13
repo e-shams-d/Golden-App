@@ -30,6 +30,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 
 from app.api.contract import VALIDATION_ERROR_RESPONSE
 from app.api.dependencies import get_runtime, get_settings
@@ -45,10 +46,16 @@ from app.audit.registry import (
 from app.audit.writer import AuditActor, AuditContext
 from app.commands import trader_lifecycle
 from app.core.config import Settings
-from app.core.errors import ErrorEnvelope, PreconditionRequiredError, VersionConflictError
+from app.core.errors import (
+    ErrorEnvelope,
+    NotFoundError,
+    PreconditionRequiredError,
+    VersionConflictError,
+)
 from app.core.request_context import get_request_id
 from app.core.runtime import RuntimeServices
 from app.core.time import utc_now
+from app.db.models.trader import Trader
 from app.security.actor import ActorContext
 from app.security.identifiers import InvalidIdentifier
 from app.security.passwords import Argon2Parameters
@@ -116,6 +123,20 @@ class TraderResponse(BaseModel):
     approval_status: str
     approved_at: datetime | None
     record_version: int
+
+
+class TraderListResponse(BaseModel):
+    """The centre's view of the businesses it has been asked to approve.
+
+    Unpaged, and recorded as a decision rather than an omission: the population is the
+    businesses one gold centre deals with, which is tens rather than thousands, and the
+    list-convention envelope M2 built would be a contract change to introduce. When the
+    count justifies paging, that envelope is what it should use.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    traders: list[TraderResponse]
 
 
 class DecisionRequest(BaseModel):
@@ -279,16 +300,7 @@ def _decide(
             context=context,
             now=utc_now(),
         )
-        rendered = TraderResponse(
-            id=trader.id,
-            display_name=trader.display_name,
-            legal_name=trader.legal_name,
-            primary_phone=trader.primary_phone,
-            operational_status=trader.operational_status,
-            approval_status=trader.approval_status,
-            approved_at=trader.approved_at,
-            record_version=trader.record_version,
-        )
+        rendered = _render(trader)
         uow.commit()
 
     response.headers["ETag"] = f'"rv-{rendered.record_version}"'
@@ -300,6 +312,94 @@ def _parse_record_version(value: str) -> int:
     if not cleaned.startswith("rv-") or not cleaned[3:].isdigit():
         raise VersionConflictError()
     return int(cleaned[3:])
+
+
+def _render(trader: Trader) -> TraderResponse:
+    """One place that decides what the centre may see of a business.
+
+    Extracted rather than repeated: `_decide` built this inline, and a second copy is how
+    a field added for one route silently appears — or fails to appear — in the other.
+    Nothing here is derived from another trader's row, which is what `SEC-IDOR-004` is
+    about.
+    """
+
+    return TraderResponse(
+        id=trader.id,
+        display_name=trader.display_name,
+        legal_name=trader.legal_name,
+        primary_phone=trader.primary_phone,
+        operational_status=trader.operational_status,
+        approval_status=trader.approval_status,
+        approved_at=trader.approved_at,
+        record_version=trader.record_version,
+    )
+
+
+@router.get(
+    "",
+    response_model=TraderListResponse,
+    operation_id="listTraders",
+    summary="List the businesses the center has been asked to approve.",
+    responses=DECISION_RESPONSES,
+    dependencies=[requires(declare("trader.read"))],
+)
+def list_traders(
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+) -> TraderListResponse:
+    """The endpoint that turns approval from a database task into an operator's.
+
+    Until this existed, a staff member could approve a business only if somebody told
+    them its id out of band — `POST /traders/register` deliberately returns none, because
+    returning one would let a caller tell a real registration from the no-op a duplicate
+    produces. So the id existed nowhere a person could reach.
+
+    Guarded on `trader.read`, which no trader holds: a trader resolves no permissions at
+    all, so the audience separation is what refuses them rather than a filter that could
+    be written wrongly.
+    """
+
+    del actor
+    with runtime.uow_factory() as uow:
+        session = uow.session
+        rows = list(session.scalars(select(Trader).order_by(Trader.created_at)))
+        rendered = [_render(row) for row in rows]
+        uow.rollback()
+    return TraderListResponse(traders=rendered)
+
+
+@router.get(
+    "/{trader_id}",
+    response_model=TraderResponse,
+    operation_id="getTrader",
+    summary="Read one business.",
+    responses=DECISION_RESPONSES,
+    dependencies=[requires(declare("trader.read"))],
+)
+def get_trader(
+    trader_id: uuid.UUID,
+    response: Response,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+) -> TraderResponse:
+    """SEC-IDOR-004: the response carries this business and no other.
+
+    The ETag is what makes the decision routes usable from a screen: an operator reads a
+    business, then approves it with the `If-Match` this hands them, and a stale view is
+    refused rather than silently overwriting somebody else's decision.
+    """
+
+    del actor
+    with runtime.uow_factory() as uow:
+        session = uow.session
+        trader = session.get(Trader, trader_id)
+        if trader is None:
+            raise NotFoundError()
+        rendered = _render(trader)
+        uow.rollback()
+
+    response.headers["ETag"] = f'"rv-{rendered.record_version}"'
+    return rendered
 
 
 @router.post(

@@ -105,6 +105,12 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     ("POST", "/api/v1/traders/{trader_id}/reject"): PERMISSION,
     ("POST", "/api/v1/traders/{trader_id}/suspend"): PERMISSION,
     ("POST", "/api/v1/traders/{trader_id}/reactivate"): PERMISSION,
+    # The centre's read surface over the businesses it approves. Guarded on
+    # `trader.read`, which no trader holds — a trader resolves no permissions at all,
+    # so the audience separation refuses them rather than a filter somebody could
+    # write wrongly.
+    ("GET", "/api/v1/traders"): PERMISSION,
+    ("GET", "/api/v1/traders/{trader_id}"): PERMISSION,
     # Slice 8D. Each on the *canonical* permission the approved catalogue resolves
     # doc 05's `admin_user.*` aliases to, one per action: doc 12:700 forbids merging
     # unrelated high-risk actions into one broad permission, and `declare` on an alias
@@ -192,6 +198,12 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ),
     ("PATCH", "/api/v1/admin-users/{admin_user_id}", "permission"): (
         "test_an_admin_without_the_permission_is_refused"
+    ),
+    ("GET", "/api/v1/traders", "permission"): (
+        "test_reading_traders_without_the_permission_is_refused"
+    ),
+    ("GET", "/api/v1/traders/{trader_id}", "permission"): (
+        "test_reading_traders_without_the_permission_is_refused"
     ),
 }
 

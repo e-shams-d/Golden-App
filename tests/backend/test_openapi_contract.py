@@ -92,6 +92,11 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "getAdminUser",
         "createAdminUser",
         "updateAdminUser",
+        # The centre's read surface. Brought forward from M5 deliberately — see the
+        # plan's slice D1 — because without it an operator cannot learn the id of a
+        # business to approve, and registration returns none by design.
+        "listTraders",
+        "getTrader",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas
