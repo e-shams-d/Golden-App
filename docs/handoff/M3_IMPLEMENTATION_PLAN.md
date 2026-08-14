@@ -1184,6 +1184,90 @@ owned by the slice that will build them. The spec does not name their ids at all
 scanner counts any obligation id in a test file as coverage, so a sentence explaining that
 something is deferred would register as proof that it is done.
 
+## Slice D4 — The way in: a goldsmith can apply without anybody running a command
+
+### Goal
+
+Close the last manual step on the demonstration path.
+
+`POST /traders/register` has existed since slice 8 and nothing in either interface called it.
+The rehearsal registered its business with `curl`, and said so in a comment that this slice
+deletes: *"there is no registration screen yet, and pretending otherwise in a rehearsal would hide
+the one manual step a demonstration still has."* That comment was the honest thing to write and the
+wrong thing to keep. A goldsmith is the one person on this
+platform who arrives with no account, no invitation and nobody to run a command for them, and until
+this slice the only door was an HTTP client.
+
+### What it changes
+
+- `apps/trader-pwa/app/register/page.tsx` and `src/registration.ts`: six fields, Persian,
+  right-to-left, against the public route. Per-app rather than shared, on `UI-ISO-001`'s standing
+  argument — a path absent from the module graph cannot reach the bundle.
+- The trader login footer becomes a link. It has read *"no account? apply to work with us"* since
+  slice 9 and pointed nowhere; a prompt to do something the interface offers no way to do reads as
+  a broken page rather than a missing feature.
+- `packages/config/styles/tokens.css` gains `--danger-50`, `--danger-500` and `--danger-700`.
+  `login-form.tsx:85` has styled its failure box with the first two since it was written and none
+  of them were ever defined — an undefined custom property is not a build error and not a lint
+  error, so `var(--danger-50)` fell back to transparent and the error box has never been red.
+- The rehearsal registers **through the form**, so the one step it faked is now the first thing it
+  proves.
+
+### The decision this screen turns on
+
+The endpoint answers `{accepted: true, pending_approval: true}` to three different situations: a
+real registration, a phone number already registered, and a string that is not an Iranian mobile
+number at all (`services/backend/app/api/v1/traders.py:253-256`). The first two are identical **on
+purpose** — anything else is a membership oracle for the centre's customer list — and the third is
+swallowed under the same reasoning.
+
+Two consequences follow, and they pull in opposite directions.
+
+The screen cannot say an account was created, because it does not know. Whatever it says has to be
+true of a duplicate too, which rules out every natural phrasing of success and leaves one that is
+better anyway: *sign in with the number you entered to see where you stand*. That lands the reader
+on `/profile`, which is where the status actually lives, rather than on a claim.
+
+And the phone number has to be checked **here**, because the server has decided not to. Without it
+a mistyped number produces a confident "you are in the queue" for an application that was never
+written, and the person waits for a decision on nothing. This is safe to do on the client precisely
+because it is not the secret: the shape of a phone number is computable offline by anybody, while
+membership stays the server's to refuse. The rule is a mirror of
+`app/security/identifiers.py:80-109` and is **not a control** — if the two ever disagree the server
+wins. The drift is asymmetric and the client is written to accept when in doubt: a client stricter
+than the server locks somebody out of their own registration, a client looser only returns to
+today's behaviour.
+
+No password policy is invented. `app/security/passwords.py:25` records that the platform
+deliberately has no minimum length, no composition rules and no strength meter; a form adding its
+own would be making that decision in the one place nobody would look for it, and enforcing it only
+on the people who arrive through the form. The confirmation field is not a policy — it catches a
+typo in a value the person cannot see and would otherwise meet at their first login.
+
+### What proves it
+
+- `UI-REG-001` — the client's phone rule accepts every spelling of one number that the server
+  accepts, including Persian and Arabic-Indic digits and the invisible marks pasted text carries,
+  and refuses a landline, a foreign number and the wrong lengths. The cases are lifted from the
+  server module's own docstring rather than invented, so a change to the server's rule is what
+  fails them. Paired with the assertion that the request sends the number **as typed**: the
+  server's normalisation is what decides which row `UNIQUE (phone_number)` collides with, and
+  sending our folded form would make this bundle's copy part of the identity — a drift would then
+  open a second account for one person instead of being corrected.
+- `UI-REG-002` — the success wording asserts nothing the screen cannot know. Checked against the
+  message table, negatively against four phrasings that claim an account now exists, and positively
+  against the sentence pointing the reader at their profile — because "does not contain four
+  phrases" is also satisfied by a message that says nothing.
+
+### Negative controls
+
+Make the client's phone rule reject Persian digits and confirm `UI-REG-001` fails — the case that
+matters most in the deployment country and the one an ASCII-only rule silently loses. Change the
+success message to announce a new account and confirm `UI-REG-002` fails. Delete the
+`trader.register.done` key and confirm the guard-the-guard fails **first**: every assertion in that
+group reads a string out of `messages.ts` by pattern, and a key that stopped matching would yield
+the empty string, which claims nothing and passes everything.
+
 ## Slice 9 — The two frontends: login, role-aware navigation, and audience isolation
 
 ### Goal

@@ -12,6 +12,11 @@ const paths = [
   // admin list is: a page outside this fixed list is a page nobody checks. Against no
   // backend it renders its failure state, which is the one worth holding to the standard.
   "/profile",
+  // Applying. The one screen in this app a person reaches before they have any account at
+  // all — so it is the one most likely to be met by somebody who has never seen the
+  // platform, on whatever phone they own. Six labelled fields, their hints and their
+  // objections is also the largest amount of form this app has anywhere.
+  "/register",
 ] as const;
 
 for (const path of paths) {

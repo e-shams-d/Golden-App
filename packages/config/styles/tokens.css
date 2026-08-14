@@ -15,6 +15,23 @@
   --success: #17663a;
   --warning: #8b4a08;
   --danger: #9f2727;
+  /* The danger scale the components were already written against.
+   *
+   * `packages/ui/src/login-form.tsx` has styled its failure box with `--danger-500` and
+   * `--danger-50` since it was written, and neither was ever defined here. An undefined
+   * custom property is not a build error and not a lint error: `var(--danger-50)` with no
+   * fallback makes the declaration invalid at computed-value time, so the background fell
+   * back to transparent and the border to `currentColor`. The form looked deliberate and
+   * the error box was simply not red — the kind of defect that survives review precisely
+   * because nothing reports it and the screen still reads correctly.
+   *
+   * Defined rather than rewritten at the call sites: the components' names are the better
+   * ones — a tint for a background and a mid tone for a border are two different jobs, and
+   * a single `--danger` cannot do both. `-700` is the text weight, dark enough to carry a
+   * message on the `-50` tint at AA. */
+  --danger-50: #fdf1f1;
+  --danger-500: #9f2727;
+  --danger-700: #7a1c1c;
   --info: #175c8b;
   --radius-sm: 0.5rem;
   --radius-md: 0.875rem;

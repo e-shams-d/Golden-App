@@ -2,6 +2,7 @@
 
 import { t } from "@gold/localization";
 import { LoginForm } from "@gold/ui";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { login } from "../../src/auth";
@@ -19,6 +20,11 @@ import { login } from "../../src/auth";
  * so the server can now answer as an authenticated caller, and asking it to
  * re-render is what makes that visible. A push to `/` with stale client state
  * would show the signed-out shell until something else happened to refetch.
+ *
+ * The footer has said "no account? apply to work with us" since it was written, and until
+ * `/register` existed it was a sentence with nowhere to go. It is a link now — a prompt to
+ * do something the interface offers no way to do is worse than no prompt, because the
+ * reader concludes the page is broken rather than that the feature is missing.
  */
 export default function TraderLoginPage() {
   const router = useRouter();
@@ -27,7 +33,11 @@ export default function TraderLoginPage() {
     <main className="mx-auto w-full max-w-3xl px-4 py-10" dir="rtl">
       <LoginForm
         failureMessage={t("login.failure")}
-        footer={t("trader.login.registerPrompt")}
+        footer={
+          <Link className="underline" href="/register">
+            {t("trader.login.registerPrompt")}
+          </Link>
+        }
         identifierHint={t("trader.login.identifierHint")}
         identifierLabel={t("trader.login.identifier")}
         onSubmit={async (input) => {
