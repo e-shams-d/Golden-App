@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { visibleNavigation, type NavigationItem } from "@gold/ui";
@@ -76,31 +76,51 @@ describe("what the catalogue actually grants", () => {
 });
 
 describe("the navigation a role sees", () => {
-  it("shows the two internal roles different screens, each with something the other lacks", () => {
-    // NOT "the administrator sees more". That was the first version of this test and it
-    // failed: `business_admin` sees four items and `accountant` sees six.
+  it("shows the two internal roles different navigations", () => {
+    // Difference, and deliberately not an ordering — this assertion has now been wrong in
+    // both directions and the history is why it is written this way.
     //
-    // The design is right and the assumption was wrong. Gating on the permission that lets
-    // you *act* makes the navigation role-shaped rather than role-ranked: `accountant` is
-    // the operational role and holds `manual_review.assign`, `payment_request.review`,
-    // `payment_batch.create` and `bank_result_bundle.upload`; `business_admin` is the
-    // administrative one and holds `trader.approve` and `source_bank_account.manage`.
-    // Neither is a superset of the other, and a seniority ordering does not exist to
-    // assert. What the obligation actually claims is that navigation *reflects*
-    // permissions, and mutual difference is the honest form of that.
+    // The first version said the administrator sees *more*, and failed: with all eight
+    // items, `business_admin` saw four and `accountant` six, because gating on actions
+    // makes the navigation role-shaped rather than role-ranked. The second said each role
+    // sees something the other lacks, and failed once the demo-screens slice removed every
+    // item whose page did not exist — the four that remain are all administrative, so
+    // `business_admin` is a superset again.
+    //
+    // Both failures were the test's assumption and not the design. The obligation claims
+    // navigation *reflects* permissions; the durable form of that is that two roles with
+    // different grants get different menus, which survives screens arriving and leaving.
     const administrator = visibleNavigation(adminNavigation, grantsFor("business_admin"));
     const accountant = visibleNavigation(adminNavigation, grantsFor("accountant"));
 
-    const administratorOnly = administrator.filter(
-      (item) => !accountant.some((other) => other.href === item.href),
+    const administratorHrefs = administrator.map((item) => item.href);
+    const accountantHrefs = accountant.map((item) => item.href);
+
+    expect(administratorHrefs).not.toEqual(accountantHrefs);
+    // Anchored on a specific item, because "the two arrays differ" is also satisfied by a
+    // filter that has started returning nonsense.
+    expect(administratorHrefs).toContain("/traders");
+    expect(accountantHrefs).not.toContain("/traders");
+  });
+
+  it("hides every administrative screen from the operational role", () => {
+    // Named item by item rather than as a count. The sabotage run found the weakness: the
+    // list-level check below asks only that *some* item discriminates, so re-gating the
+    // staff screen on `audit.read` — which `accountant` holds — hid nothing new and the
+    // suite stayed green. The demo's claim is about these three specifically.
+    const accountant = visibleNavigation(adminNavigation, grantsFor("accountant")).map(
+      (item) => item.href,
     );
-    const accountantOnly = accountant.filter(
-      (item) => !administrator.some((other) => other.href === item.href),
+    const administrator = visibleNavigation(adminNavigation, grantsFor("business_admin")).map(
+      (item) => item.href,
     );
 
-    expect(administratorOnly.map((item) => item.href)).toContain("/traders");
-    expect(accountantOnly.length, "the accountant sees nothing the administrator does not").
-      toBeGreaterThan(0);
+    for (const href of ["/traders", "/admin-users", "/roles"]) {
+      expect(accountant, `${href} is visible to the operational role`).not.toContain(href);
+      // Paired every time. "Absent from the accountant's menu" is also satisfied by an item
+      // nobody sees, which is what a gate on a non-existent permission produces.
+      expect(administrator, `${href} is visible to nobody`).toContain(href);
+    }
   });
 
   it("hides the traders screen from a role that cannot approve one", () => {
@@ -128,6 +148,36 @@ describe("the navigation a role sees", () => {
       .filter((permission): permission is string => permission !== undefined);
 
     expect(visibleNavigation(adminNavigation, everything).length).toBe(adminNavigation.length);
+  });
+});
+
+describe("where the navigation actually goes", () => {
+  it("gives every item a page that exists", () => {
+    // The gate that would have caught this before a demo. Six of the eight items pointed at
+    // routes with no `page.tsx` at all, so clicking them answered 404 — and the
+    // permission-gated menu shipped in slice 10D made it read as a working menu rather than
+    // a placeholder one, which is worse.
+    //
+    // Checked against the filesystem rather than against a list, because a list would be a
+    // second thing to keep in step with the router and would drift the same way.
+    const missing = items
+      .map((item) => item.href)
+      .filter((href) => {
+        const segment = href === "/" ? "" : href.replace(/^\//, "");
+        const page = segment
+          ? join(REPOSITORY_ROOT, "apps", "admin-web", "app", segment, "page.tsx")
+          : join(REPOSITORY_ROOT, "apps", "admin-web", "app", "page.tsx");
+        return !existsSync(page);
+      });
+
+    expect(
+      missing,
+      "these navigation items point at routes with no page, so clicking them answers 404",
+    ).toEqual([]);
+  });
+
+  it("has items to check, so the filesystem check above is not vacuous", () => {
+    expect(items.length).toBeGreaterThanOrEqual(3);
   });
 });
 

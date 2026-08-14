@@ -55,6 +55,11 @@ export const faMessages = {
   "admin.nav.results": "نتایج بانک",
   "admin.nav.audit": "ممیزی",
   "admin.nav.settings": "تنظیمات",
+  // The two items whose screens exist. The six above are kept because their screens return
+  // with M4–M6 and their wording is already reviewed; the navigation module is what decides
+  // which are rendered, and it renders only the ones with a page.
+  "admin.nav.staff": "کارکنان",
+  "admin.nav.roles": "نقش‌ها و دسترسی‌ها",
   "foundation.title": "زیرساخت رابط کاربری M1",
   "foundation.noAuthority": "وضعیت‌های نمایش صرفاً تجربه کاربری‌اند؛ مرجع اختیار، API سمت سرور است.",
   "foundation.statesTitle": "وضعیت‌های پایه",
@@ -87,6 +92,46 @@ export const faMessages = {
   "admin.landing.anonymousTitle": "برای ادامه وارد شوید",
   "admin.landing.anonymousBody": "بدون ورود، تنها بخش‌های عمومی نمایش داده می‌شوند.",
   "admin.landing.signIn": "ورود کارکنان",
+  // Staff administration. Slice 8E built ten routes and no way to reach them; these are the
+  // words for the screen that reaches them.
+  "adminUsers.title": "مدیریت کارکنان",
+  "adminUsers.description": "حساب‌های کارکنان مرکز، نقش‌هایشان و وضعیت دسترسی. تغییر وضعیت یک حساب، نشست‌های فعال آن را همان لحظه پایان می‌دهد.",
+  "adminUsers.listTitle": "حساب‌های موجود",
+  "adminUsers.emptyTitle": "هنوز حسابی ساخته نشده",
+  "adminUsers.emptyDescription": "با فرم پایین نخستین حساب کارکنان را بسازید.",
+  "adminUsers.createTitle": "ساخت حساب جدید",
+  "adminUsers.username": "نام کاربری",
+  "adminUsers.fullName": "نام و نام خانوادگی",
+  "adminUsers.password": "گذرواژهٔ اولیه",
+  "adminUsers.role": "نقش",
+  "adminUsers.roles": "نقش‌ها",
+  "adminUsers.create": "ساخت حساب",
+  "adminUsers.created": "حساب {username} ساخته شد.",
+  "adminUsers.suspend": "تعلیق",
+  "adminUsers.reactivate": "فعال‌سازی دوباره",
+  "adminUsers.suspended": "حساب معلق شد و نشست‌های فعالش پایان یافت.",
+  "adminUsers.reactivated": "حساب دوباره فعال شد.",
+  "adminUsers.resetPassword": "بازنشانی گذرواژه",
+  // The temporary password is shown once, here, because the server returns none — that is
+  // the obligation. Somebody has to be able to read the value they are about to hand over,
+  // and the only place it can be read is where it was chosen.
+  "adminUsers.resetDone": "گذرواژهٔ موقت: {password} — آن را به صاحب حساب برسانید. حساب تا زمانی که خودش گذرواژه‌ای انتخاب نکند وارد نمی‌شود.",
+  "adminUsers.defaultSuspendReason": "تعلیق از طریق صفحهٔ مدیریت کارکنان",
+  "adminUsers.defaultResetReason": "بازنشانی از طریق صفحهٔ مدیریت کارکنان",
+  "adminUsers.actionFailed": "این درخواست انجام نشد",
+  "adminUsers.genericFailure": "درخواست انجام نشد. لطفاً صفحه را تازه کنید و دوباره تلاش کنید.",
+  "adminUsers.status.recoveryRequired": "در انتظار بازیابی",
+  "adminUsers.status.deactivated": "غیرفعال‌شده",
+  "roles.title": "نقش‌ها و دسترسی‌ها",
+  "roles.description": "هر نقش چه کارهایی می‌تواند انجام دهد. ناوبری بر همین اساس تصمیم می‌گیرد کدام بخش‌ها را نشان دهد.",
+  // Said plainly rather than hidden behind a disabled button: an editor that could only ever
+  // add a permission would teach the reader something false about the platform.
+  "roles.readOnlyNotice": "این صفحه فقط نمایشی است. تغییر مجوزهای یک نقش نیازمند احراز هویت مجدد است و حذف مجوز تا زمان تصویب ADR-005 ممکن نیست.",
+  "roles.enabled": "فعال",
+  "roles.disabled": "غیرفعال",
+  "roles.permissionCount": "تعداد مجوزها: {count}",
+  "roles.failedTitle": "دریافت نقش‌ها انجام نشد",
+  "roles.failed": "فهرست نقش‌ها دریافت نشد. لطفاً دوباره تلاش کنید.",
   "admin.queueTitle": "صف‌های عملیاتی",
   "admin.queueDescription": "محتوای صف‌ها پس از اتصال قراردادهای API و مجوزهای سمت سرور نمایش داده می‌شود.",
   "admin.queue.traderApproval": "تأیید طلافروشان",

@@ -21,37 +21,32 @@ import type { NavigationItem } from "@gold/ui";
  * The dashboard carries no permission because it is what an authenticated person lands on;
  * an item everybody reaches needs no gate, and inventing one for it would be a permission
  * that exists only to satisfy a type.
+ *
+ * **Every item here has a page**, which was not true until this slice. Six of the eight
+ * pointed at routes that do not exist, so clicking them answered 404 — and slice 10D made
+ * that worse rather than better, because a personalised menu reads as a menu whose items
+ * work. A `business_admin` saw four items of which two were dead.
+ *
+ * `test_every_navigation_target_has_a_page` is what keeps it true. Work queues, payment
+ * requests, batches, bank results, audit and settings return with the milestones that build
+ * their screens (M4–M6); an item comes back when its page does, not before. The audit item
+ * carries a decision worth keeping for when it returns: there is no "act on the audit
+ * trail" permission, because the trail is append-only and nobody edits it, and
+ * `audit.export` — the nearest action — is held by **no** seeded role, so gating on it
+ * would hide the item from everyone. `audit.read` is the honest gate there, and it is the
+ * one place the action rule is deliberately broken.
  */
 export const adminNavigation = [
   { href: "/", label: t("admin.nav.dashboard") },
-  { href: "/work-queues", label: t("admin.nav.queues"), permission: "manual_review.assign" },
   // `trader.approve` rather than `trader.read`: approving is what this screen is for, and
   // the three roles that hold it are the three that would use it.
   { href: "/traders", label: t("admin.nav.traders"), permission: "trader.approve" },
-  {
-    href: "/payment-requests",
-    label: t("admin.nav.requests"),
-    permission: "payment_request.review",
-  },
-  {
-    href: "/payment-batches",
-    label: t("admin.nav.batches"),
-    permission: "payment_batch.create",
-  },
-  {
-    href: "/bank-result-bundles",
-    label: t("admin.nav.results"),
-    permission: "bank_result_bundle.upload",
-  },
-  // The exception that proves the rule is a decision and not a formula. There is no
-  // "act on the audit trail" permission — the trail is append-only and nobody edits it —
-  // so `audit.export` is the action, and it is held by no seeded role at all. Gating on it
-  // would hide the item from everyone, which is worse than showing it. `audit.read` is the
-  // honest gate here, and this comment is why the pattern is broken exactly once.
-  { href: "/audit", label: t("admin.nav.audit"), permission: "audit.read" },
-  {
-    href: "/settings",
-    label: t("admin.nav.settings"),
-    permission: "source_bank_account.manage",
-  },
+  // Staff administration. `user.read` is the action here in the sense that matters — it is
+  // the permission the list route is guarded on, and it is held by `business_admin` alone,
+  // so it discriminates without needing a stronger one.
+  { href: "/admin-users", label: t("admin.nav.staff"), permission: "user.read" },
+  // Roles are read-only for now; `role.read` is the guard the route carries. Gating on
+  // `role.manage` would hide the screen from `manager`, who holds the read and has a
+  // legitimate reason to see why a colleague's menu differs from theirs.
+  { href: "/roles", label: t("admin.nav.roles"), permission: "role.read" },
 ] as const satisfies readonly NavigationItem[];
