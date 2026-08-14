@@ -15,6 +15,11 @@ import { expect, test } from "@playwright/test";
  * this milestone measured rather than assumed. Two hours of a curl harness returning 401
  * is the reason that sentence is written here.
  *
+ * THE REGISTRATION IS THE FIRST STEP NOW. It used to be a `curl` inside the script,
+ * carrying a comment that said pretending otherwise would hide the one manual step a
+ * demonstration still had. Slice D4 built the screen, so the walk starts where a goldsmith
+ * starts — and the run no longer depends on any HTTP client but the browser.
+ *
  * WHAT IT DOES NOT PROVE. It signs in through both real forms and lands on each app's
  * root, which is a static shell today; it says nothing about role-aware navigation or a
  * session-derived dashboard, and those obligations stay owned by their own slice. The ids
@@ -44,6 +49,27 @@ test("the centre approves a goldsmith, and the goldsmith sees the decision", asy
     !phone || !adminUser,
     "run through infra/scripts/rehearse-demo.sh, which stands up the stack and seeds the identities",
   );
+
+  await test.step("a goldsmith applies through the registration screen", async () => {
+    const context = await browser.newContext();
+    const applicant = await context.newPage();
+    await applicant.goto(`${TRADER}/register`);
+    await expect(applicant.getByRole("heading", { level: 1, name: /درخواست همکاری/ })).toBeVisible();
+
+    await applicant.getByLabel("نام کسب‌وکار").fill(businessName);
+    await applicant.getByLabel("نام و نام خانوادگی مسئول").fill("مالک نمونه");
+    await applicant.getByLabel("شماره موبایل").fill(phone);
+    await applicant.getByLabel("گذرواژه", { exact: true }).fill(traderPassword);
+    await applicant.getByLabel("تکرار گذرواژه").fill(traderPassword);
+    await applicant.getByRole("button", { name: "ثبت درخواست" }).click();
+
+    await expect(applicant.getByRole("heading", { name: /درخواست شما دریافت شد/ })).toBeVisible({
+      timeout: 15_000,
+    });
+    // A fresh context, thrown away: an applicant has no session, and reusing this one for
+    // the administrator would let a cookie set here decide a later step.
+    await context.close();
+  });
 
   await test.step("the administrator signs in through the real form", async () => {
     await page.goto(`${ADMIN}/login`);

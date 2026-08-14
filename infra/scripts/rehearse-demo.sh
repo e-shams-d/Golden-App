@@ -7,20 +7,25 @@
 # decide whether the repository is sound; this decides whether a person can be shown the
 # platform, which is a different question and needs a stack the gates do not assume.
 #
-# Three host-level facts are handled here because each cost a diagnosis the first time:
+# Two host-level facts are handled here because each cost a diagnosis the first time:
 #
 #   1. Every `docker compose` call must see the same `LOCAL_DATA_ROOT`. Without it compose
 #      resolves a different bind mount, decides the service configuration changed, and
 #      recreates the backend mid-run — which surfaces as a 502 from nginx with the
 #      backend's own log showing it shutting down while a request was in flight.
 #
-#   2. `curl` must bypass any proxy for loopback. A VPN client exporting
-#      `http_proxy=127.0.0.1:10808` will answer 503 itself, and the request never reaches
-#      nginx — the access log stays silent, which makes it look like the stack is broken.
+#   2. A browser drives every HTTP step, and no step uses `curl`. Two separate reasons,
+#      and this script met both: the session cookie carries the `__Host-` prefix, which
+#      curl refuses to store when it arrives over plain HTTP while Chromium stores it
+#      because `localhost` is a trustworthy origin; and a VPN client exporting
+#      `http_proxy=127.0.0.1:10808` answers 503 to curl itself, so the request never
+#      reaches nginx and the access log stays silent — which reads exactly like a broken
+#      stack. Chromium is configured to ignore the host proxy and neither applies.
 #
-#   3. The browser, not curl, drives the signed-in steps. The session cookie carries the
-#      `__Host-` prefix and curl refuses to store a prefixed cookie received over plain
-#      HTTP; Chromium stores it because it treats `localhost` as a trustworthy origin.
+#      Written as a fact about the tool rather than as a rule about `--noproxy`, because
+#      the last `curl` left this script when slice D4 built the registration screen. A
+#      note explaining how to configure a command nothing runs is how a comment starts
+#      being wrong.
 set -eu
 
 REPOSITORY_ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -67,16 +72,6 @@ done
 printf '\n  %s services healthy\n' "$healthy"
 [ "$healthy" -ge 6 ] || { printf '%s\n' "the stack did not become healthy" >&2; exit 1; }
 
-printf '\n== a goldsmith applies ==\n'
-# Through the API: there is no registration screen yet, and pretending otherwise in a
-# rehearsal would hide the one manual step a demonstration still has.
-printf '  '
-curl --noproxy '*' --silent --show-error --max-time 20 \
-    --header 'Host: trader.localhost' --header 'Content-Type: application/json' \
-    --data "{\"display_name\":\"${BUSINESS_NAME}\",\"primary_phone\":\"${PHONE}\",\"contact_full_name\":\"مالک نمونه\",\"password\":\"${TRADER_PASSWORD}\"}" \
-    "http://127.0.0.1:${HTTP_PORT}/api/v1/traders/register"
-printf '\n  phone %s\n' "$PHONE"
-
 printf '\n== the centre creates its first administrator ==\n'
 printf '%s' "$ADMIN_PASSWORD" | compose run --rm --no-deps -T backend \
     python -m app.cli.create_first_admin --username "$ADMIN_USER" \
@@ -84,6 +79,11 @@ printf '%s' "$ADMIN_PASSWORD" | compose run --rm --no-deps -T backend \
     | sed 's/^/  /'
 
 printf '\n== walking the path in Chromium ==\n'
+# The registration is in there too, as the first step. It used to happen here, as a curl
+# against the public route, with a comment admitting that a rehearsal hiding a manual step
+# rehearses a different performance than the one being given. Slice D4 built the screen,
+# so the step is now driven the way a goldsmith drives it.
+printf '  phone %s\n' "$PHONE"
 cd apps/admin-web
 DEMO_PHONE="$PHONE" \
 DEMO_TRADER_PASSWORD="$TRADER_PASSWORD" \

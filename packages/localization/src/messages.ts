@@ -120,6 +120,40 @@ export const faMessages = {
   "trader.profile.rejected": "مرکز درخواست عضویت شما را نپذیرفته است. برای پیگیری با مرکز تماس بگیرید.",
   "trader.profile.suspendedTitle": "فعالیت کسب‌وکار معلق است",
   "trader.profile.suspended": "فعالیت کسب‌وکار شما توسط مرکز معلق شده است. برای پیگیری با مرکز تماس بگیرید.",
+  // Applying. The screen a goldsmith meets before they have any account at all, which is
+  // why it is the only trader screen whose text has to be understandable to somebody who
+  // has never seen the platform.
+  "trader.register.title": "درخواست همکاری",
+  "trader.register.intro": "اطلاعات کسب‌وکار خود را وارد کنید. پس از بررسی مرکز، نتیجه به شما اعلام می‌شود.",
+  "trader.register.displayName": "نام کسب‌وکار",
+  "trader.register.displayNameHint": "نامی که مرکز با آن شما را می‌شناسد",
+  "trader.register.legalName": "نام حقوقی (اختیاری)",
+  "trader.register.legalNameHint": "اگر کسب‌وکار شما شخصیت حقوقی ثبت‌شده دارد",
+  "trader.register.contactName": "نام و نام خانوادگی مسئول",
+  "trader.register.phone": "شماره موبایل",
+  "trader.register.phoneHint": "مثل ۰۹۱۲۳۴۵۶۷۸۹ — با ارقام فارسی یا انگلیسی",
+  "trader.register.password": "گذرواژه",
+  "trader.register.passwordHint": "با همین شماره و گذرواژه وارد می‌شوید.",
+  "trader.register.passwordConfirm": "تکرار گذرواژه",
+  "trader.register.submit": "ثبت درخواست",
+  "trader.register.submitting": "در حال ارسال…",
+  // Every reason a field is refused before the request leaves the browser. None of these
+  // is a decision the server made — each is this form catching a typo.
+  "trader.register.requiredField": "این فیلد الزامی است.",
+  "trader.register.invalidPhone": "شماره موبایل معتبر نیست. شماره‌ای مثل ۰۹۱۲۳۴۵۶۷۸۹ وارد کنید.",
+  "trader.register.passwordMismatch": "دو گذرواژه یکسان نیستند.",
+  "trader.register.problemsTitle": "چند مورد را اصلاح کنید",
+  "trader.register.failureTitle": "درخواست ارسال نشد",
+  "trader.register.failure": "ارسال درخواست ممکن نشد. لطفاً دوباره تلاش کنید.",
+  "trader.register.rateLimited": "تعداد درخواست‌ها زیاد بوده است. کمی بعد دوباره تلاش کنید.",
+  // What a person is told afterwards. Deliberately true whether a new application was
+  // created or the number was already registered and nothing happened: the endpoint
+  // answers identically either way, so a message announcing a new account would be a
+  // claim this screen has no way to support.
+  "trader.register.doneTitle": "درخواست شما دریافت شد",
+  "trader.register.done": "مرکز درخواست شما را بررسی می‌کند. برای دیدن وضعیت، با شماره موبایل و گذرواژه‌ای که ثبت کرده‌اید وارد شوید.",
+  "trader.register.goToLogin": "ورود به حساب",
+  "trader.register.backToLogin": "قبلاً درخواست داده‌اید؟ وارد شوید.",
 } as const;
 
 export type MessageKey = keyof typeof faMessages;
