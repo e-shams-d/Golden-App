@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 /**
  * The whole onboarding path, driven through both interfaces against the running stack.
@@ -38,6 +38,17 @@ const traderPassword = process.env.DEMO_TRADER_PASSWORD ?? "";
 const adminUser = process.env.DEMO_ADMIN_USER ?? "";
 const adminPassword = process.env.DEMO_ADMIN_PASSWORD ?? "";
 const businessName = process.env.DEMO_BUSINESS_NAME ?? "طلافروشی نمونه";
+
+/**
+ * The approval screen's row for the business this walk registered.
+ *
+ * A table row rather than the page, because the seeded deployment holds nine other
+ * businesses and three of them are also awaiting a decision. Every assertion about "the
+ * pending application" has to name which one, or it is an assertion about whichever row
+ * the server happened to return first.
+ */
+const applicantRow = (page: Page) =>
+  page.locator("tr").filter({ hasText: businessName });
 
 test("the centre approves a goldsmith, and the goldsmith sees the decision", async ({
   page,
@@ -94,15 +105,24 @@ test("the centre approves a goldsmith, and the goldsmith sees the decision", asy
   await test.step("the pending application is on the approval screen", async () => {
     await page.goto(`${ADMIN}/traders`);
     await expect(page.getByRole("heading", { level: 1, name: /طلافروشان/ })).toBeVisible();
-    await expect(page.getByText(businessName)).toBeVisible();
-    await expect(page.getByText("در انتظار تأیید").first()).toBeVisible();
+    // Scoped to this business's own row. `.first()` was correct only while the deployment
+    // held exactly one business, and seeding nine of them showed what that assumption was
+    // worth: the click landed on somebody else's application, the approval succeeded, the
+    // "تأییدشده" assertion passed on the wrong row, and the failure surfaced three steps
+    // later as the goldsmith not seeing a decision that was never made about them.
+    //
+    // The demonstration is the reason to fix it rather than loosen it: an operator's screen
+    // has many rows, and a test that only works against one is not testing the screen.
+    await expect(applicantRow(page)).toBeVisible();
+    await expect(applicantRow(page).getByText("در انتظار تأیید")).toBeVisible();
   });
 
   await test.step("the centre approves, and sees its own decision", async () => {
-    await page.getByRole("button", { name: "تأیید", exact: true }).first().click();
+    await applicantRow(page).getByRole("button", { name: "تأیید", exact: true }).click();
     // The list refreshes from the server rather than mutating in place, so this also
-    // asserts the decision reached the database and came back.
-    await expect(page.getByText("تأییدشده").first()).toBeVisible({ timeout: 15_000 });
+    // asserts the decision reached the database and came back — and it is asserted on this
+    // business's row, so a decision applied to a different one cannot satisfy it.
+    await expect(applicantRow(page).getByText("تأییدشده")).toBeVisible({ timeout: 15_000 });
   });
 
   await test.step("the goldsmith signs in on its own host and sees the decision", async () => {
