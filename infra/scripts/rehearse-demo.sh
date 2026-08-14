@@ -83,6 +83,14 @@ printf '%s' "$ADMIN_PASSWORD" | compose run --rm --no-deps -T backend \
     --full-name 'Rehearsal Administrator' --role business_admin 2>/dev/null \
     | sed 's/^/  /'
 
+printf '\n== a plausible amount of work to look at ==\n'
+# Nine businesses across every state and three colleagues in three roles. A demonstration
+# where every list holds one row reads as a prototype whatever the code behind it does, and
+# the approval screen in particular cannot show what approving *is* with nothing to choose
+# between. Written through the same commands the HTTP routes call, so nothing on screen is
+# a row the application could not have produced.
+compose run --rm --no-deps -T backend python -m app.cli.seed_demo 2>/dev/null | sed 's/^/  /'
+
 printf '\n== walking the path in Chromium ==\n'
 # The registration is in there too, as the first step. It used to happen here, as a curl
 # against the public route, with a comment admitting that a rehearsal hiding a manual step
