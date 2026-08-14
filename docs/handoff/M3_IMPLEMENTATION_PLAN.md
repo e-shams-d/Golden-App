@@ -1552,6 +1552,43 @@ Delete the fixture and confirm the frontend test **fails rather than skips**. Re
 inside the fixture and confirm the Python test fails — that is the assertion binding the two layers,
 and without it the fixture is a hand-written stub with extra steps.
 
+### What the slice found
+
+**The plan said twelve states were missing; eleven were.** Its list includes "empty state", which
+`StateKind` has carried since slice 9. The error is invisible from inside the plan and obvious from
+the document, which is why `packages/api-client/test/application-state.test.ts` parses the floor out
+of `21_UI_Design_System_and_Screen_Specification.md` §7 rather than restating it. Eighteen
+documented, four that existed, fourteen added.
+
+**`OPS-EVID-001` and `OPS-EVIDENCE-001` are two obligations, not one misspelling.** M2's is about the
+emitter's shape and its refusals — every field M2 can supply is present, an unreachable instance
+produces no artifact, an unsupplyable field is null with its reason. M3's is about the artifact
+carrying **M3's own state**. Ruling them the same would have discharged an M3 obligation with an M2
+test, and it needed exactly one docstring line. `tests/backend/test_evidence_m3_items.py` is a
+separate file for that reason.
+
+**The evidence item an identity milestone would most want is the one it cannot supply.** "Which
+permissions does the deployment actually resolve" needs the running instance, and the instance does
+not publish it; adding that to `/api/v1/operations/release-evidence` changes a published schema whose
+breaking-change waiver process is an unresolved `TODO(governance)`.
+`authorization.catalogue_digest` answers a **different** question — what the build was made to grant
+— so it is attributed to `repository` in `source_of_each_field`, and the instance's answer is
+recorded as unfilled with that reason. Filing the repository's answer under the instance's name is
+the same substitution the emitter already refuses for the Alembic revision.
+
+**A guard-the-guard caught the role counter before it could report a fact.** The first
+`declared_roles` pattern looked for a `code:` child that roles in `permission_catalog.yaml` do not
+have, and counted zero. Nothing about the artifact would have looked wrong: the digest beside it was
+correct, and "this release declares 0 roles" would have been filed as evidence that authority is
+absent rather than as evidence that a regular expression broke.
+
+**`packages/api-client` could not read a file.** Its only file-reading test was `.mjs`, so the
+package had never needed `@types/node`; a `.ts` test importing `node:fs` failed with TypeScript
+reporting the module specifier itself as an unknown name. `apps/admin-web` gets those types through
+Next's `next-env.d.ts` and has never had to say so. Fixed by naming `types: ["node"]` in the
+package's own tsconfig rather than by moving the test somewhere it would compile — the test belongs
+beside the mapping it drives.
+
 ## Slice 10D — A landing surface, role-aware navigation, and the end-to-end browser run
 
 ### Goal

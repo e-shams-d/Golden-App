@@ -24,6 +24,18 @@ export const faMessages = {
   "state.forbidden.description": "برای مشاهده این بخش دسترسی لازم را ندارید.",
   "state.conflict.title": "اطلاعات این صفحه تغییر کرده است",
   "state.conflict.description": "آخرین نسخه را دریافت و پیش از ادامه دوباره بررسی کنید.",
+  // The three kinds slice 10C added. Each of the three had no component, no kind and no
+  // wording, so a route answering 428, 409-idempotency or a lost connection had nothing to
+  // render — a screen would have shown the generic error and said something untrue.
+  "state.precondition.title": "پیش‌نیاز این درخواست کامل نیست",
+  "state.precondition.description": "برای انجام این کار ابتدا باید مرحله‌ای دیگر انجام شود. صفحه را تازه کنید و دوباره تلاش کنید.",
+  "state.idempotency.title": "این درخواست قبلاً ثبت شده است",
+  "state.idempotency.description": "همین درخواست پیش‌تر با اطلاعات دیگری ارسال شده بود. برای جلوگیری از ثبت دوباره، انجام نشد.",
+  // The wording is the control, not the styling. Somebody told an operation "failed" will
+  // retry it; this state exists exactly where a retry could apply the same change twice,
+  // so it says the result is unknown and asks them to check before acting.
+  "state.timeout.title": "نتیجه این درخواست مشخص نیست",
+  "state.timeout.description": "پاسخ سامانه دریافت نشد و معلوم نیست درخواست انجام شده یا نه. پیش از تلاش دوباره، وضعیت را بررسی کنید.",
   "trader.appName": "سامانه طلا ـ پنل طلافروش",
   "trader.shellTitle": "پیگیری امن درخواست‌ها و نتایج",
   "trader.shellDescription": "این پوسته برای گردش‌های Trader در فاز ۱A آماده شده است.",

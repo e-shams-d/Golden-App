@@ -8,6 +8,12 @@ const paths = [
   "/states/empty",
   "/states/forbidden",
   "/states/conflict",
+  // The three kinds slice 10C added. Listed here and not derived from `STATE_KINDS`
+  // deliberately: this file is the check, and a check that iterated the same list the
+  // pages are generated from would pass over a kind that renders nothing.
+  "/states/precondition",
+  "/states/idempotency",
+  "/states/timeout",
   // The business's own account screen, added with the screen for the same reason the
   // admin list is: a page outside this fixed list is a page nobody checks. Against no
   // backend it renders its failure state, which is the one worth holding to the standard.

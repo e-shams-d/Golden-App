@@ -1,9 +1,12 @@
 import { t, type MessageKey } from "@gold/localization";
-import { StateView, type StateKind } from "@gold/ui";
+import { STATE_KINDS, StateView, type StateKind } from "@gold/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-const stateKinds = ["loading", "error", "empty", "forbidden", "conflict"] as const;
+// From the package rather than restated here. The literal list was written when there were
+// five kinds; slice 10C added three, and a hand-kept copy is how a kind ships with no page
+// to look at it on — which is also how the accessibility sweep stops covering it.
+const stateKinds = STATE_KINDS;
 
 export function generateStaticParams() {
   return stateKinds.map((kind) => ({ kind }));

@@ -1,0 +1,134 @@
+{
+  "BACKGROUND_PROCESSING_UNAVAILABLE": {
+    "body": {
+      "error": {
+        "code": "BACKGROUND_PROCESSING_UNAVAILABLE",
+        "details": [],
+        "message": "Background processing is unavailable.",
+        "request_id": "00000000-0000-4000-8000-000000000000"
+      }
+    },
+    "status": 503
+  },
+  "BUSINESS_RULE_VIOLATION": {
+    "body": {
+      "error": {
+        "code": "BUSINESS_RULE_VIOLATION",
+        "details": [],
+        "message": "the transition is not allowed",
+        "request_id": "00000000-0000-4000-8000-000000000000"
+      }
+    },
+    "status": 400
+  },
+  "DEPENDENCY_UNAVAILABLE": {
+    "body": {
+      "error": {
+        "code": "DEPENDENCY_UNAVAILABLE",
+        "details": [],
+        "message": "A required service dependency is unavailable.",
+        "request_id": "00000000-0000-4000-8000-000000000000"
+      }
+    },
+    "status": 503
+  },
+  "FORBIDDEN": {
+    "body": {
+      "error": {
+        "code": "FORBIDDEN",
+        "details": [],
+        "message": "Permission denied.",
+        "request_id": "00000000-0000-4000-8000-000000000000"
+      }
+    },
+    "status": 403
+  },
+  "IDEMPOTENCY_KEY_REUSED": {
+    "body": {
+      "error": {
+        "code": "IDEMPOTENCY_KEY_REUSED",
+        "details": [],
+        "message": "The idempotency key was used for a different request.",
+        "request_id": "00000000-0000-4000-8000-000000000000"
+      }
+    },
+    "status": 409
+  },
+  "INTERNAL_ERROR": {
+    "body": {
+      "error": {
+        "code": "INTERNAL_ERROR",
+        "details": [],
+        "message": "The request could not be completed.",
+        "request_id": "00000000-0000-4000-8000-000000000000"
+      }
+    },
+    "status": 500
+  },
+  "INVALID_STATE_TRANSITION": {
+    "body": {
+      "error": {
+        "code": "INVALID_STATE_TRANSITION",
+        "details": [],
+        "message": "the record is not in a state that permits this",
+        "request_id": "00000000-0000-4000-8000-000000000000"
+      }
+    },
+    "status": 400
+  },
+  "NOT_FOUND": {
+    "body": {
+      "error": {
+        "code": "NOT_FOUND",
+        "details": [],
+        "message": "The requested resource was not found.",
+        "request_id": "00000000-0000-4000-8000-000000000000"
+      }
+    },
+    "status": 404
+  },
+  "PRECONDITION_REQUIRED": {
+    "body": {
+      "error": {
+        "code": "PRECONDITION_REQUIRED",
+        "details": [],
+        "message": "The If-Match header is required for this command.",
+        "request_id": "00000000-0000-4000-8000-000000000000"
+      }
+    },
+    "status": 428
+  },
+  "RATE_LIMITED": {
+    "body": {
+      "error": {
+        "code": "RATE_LIMITED",
+        "details": [],
+        "message": "Too many attempts. Try again later.",
+        "request_id": "00000000-0000-4000-8000-000000000000"
+      }
+    },
+    "status": 429
+  },
+  "UNAUTHENTICATED": {
+    "body": {
+      "error": {
+        "code": "UNAUTHENTICATED",
+        "details": [],
+        "message": "Authentication is required.",
+        "request_id": "00000000-0000-4000-8000-000000000000"
+      }
+    },
+    "status": 401
+  },
+  "VERSION_CONFLICT": {
+    "body": {
+      "error": {
+        "code": "VERSION_CONFLICT",
+        "details": [],
+        "message": "The record changed after it was loaded.",
+        "request_id": "00000000-0000-4000-8000-000000000000"
+      }
+    },
+    "status": 412
+  }
+}

@@ -142,17 +142,14 @@ PENDING: dict[str, str] = {
     # wrong — `accountant` holds `trader.read`, so gating the traders item on it would
     # hide nothing from the only unprivileged role that exists.
     "UI-NAV-001": "M3 slice 10D (the href-to-permission mapping is an owner decision)",
-    # The mapping this needs does not exist anywhere: no code in either frontend turns a
-    # status or an error code into a state, so there is nothing for a real response to
-    # drive. Recorded against 10C with the twelve doc-21 states nothing has ever named.
-    "UI-STATE-001": "M3 slice 10C",
-    # The evidence emitter's M3 items — and first a decision about the identifier. The
-    # plan says `OPS-EVID-001`; the two tests that exist say `OPS-EVIDENCE-001`, which is
-    # M2's id (M2 plan:1358). Coverage is keyed by exact string, so this obligation has
-    # zero citations today and the cheapest possible false discharge would be to add the
-    # M3 spelling to a docstring that already describes M2's behaviour. Whether they are
-    # one obligation or two is the first thing 10C decides.
-    "OPS-EVID-001": "M3 slice 10C",
+    # `OPS-EVID-001` and `UI-STATE-001` were owed by slice 10C and are discharged by it.
+    #
+    # The identifier question 10C had to settle first: the plan writes `OPS-EVID-001` and
+    # the two existing tests write `OPS-EVIDENCE-001`, which is M2's id (M2 plan:1358).
+    # They are **two obligations**, not one misspelling. M2's is about the emitter's shape
+    # and its refusals; M3's is about the artifact carrying M3's own state. Deciding they
+    # were the same would have discharged an M3 obligation with an M2 test — the cheapest
+    # false discharge available anywhere in this ledger, and it needed one docstring line.
 }
 
 

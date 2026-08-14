@@ -1,5 +1,13 @@
 export { ApiError, normalizeApiError } from "./api-error";
 export {
+  APPLICATION_STATES,
+  OWED_STATES,
+  STATE_FOR_CODE,
+  stateForError,
+  stateForStatus,
+  type ApplicationState,
+} from "./application-state";
+export {
   createCommandSubmission,
   createIdempotencyKey,
   type CommandSubmission,

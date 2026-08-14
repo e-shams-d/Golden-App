@@ -30,8 +30,10 @@ nobody verified, which is worse than no artifact.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -59,6 +61,29 @@ UNFILLABLE_AT_M2: dict[str, str] = {
         "Recorded separately with its data volume and environment. A latency "
         "figure without both is not acceptable evidence, and this script has "
         "neither to hand."
+    ),
+}
+
+# The same treatment for M3's two, kept in a separate dictionary so a reader can tell which
+# milestone owes which. Merged into `unfilled` on the way out.
+UNFILLABLE_AT_M3: dict[str, str] = {
+    "assurance_factor": (
+        "ADR-009 is Open: `password` is the only registered step-up factor, and which "
+        "factor a production deployment requires depends on operational facts — SMS "
+        "deliverability in Iran, whether the people holding manager authority carry "
+        "smartphones — that are the owner's knowledge rather than a technical judgement. "
+        "M3 owed the interface, which exists, so adding a factor is a registration rather "
+        "than a rewrite. The choice itself is not made and is not implied here."
+    ),
+    "resolved_permissions_from_instance": (
+        "The running instance does not publish the permission set it actually resolves. "
+        "Adding that to /api/v1/operations/release-evidence would change a published "
+        "schema, and the oasdiff breaking-change gate's waiver process is still an "
+        "unresolved TODO(governance). `authorization.catalogue_digest` below is read from "
+        "the repository and answers a different question — what the deployment was built "
+        "to grant, not what it grants. Filing the repository's answer under the "
+        "instance's name is exactly the substitution this script refuses for the Alembic "
+        "revision, and it would be no more honest here."
     ),
 }
 
@@ -121,6 +146,37 @@ def fixture_versions() -> dict[str, str]:
     }
 
 
+def authorization_state() -> dict[str, Any]:
+    """What this build was constructed to grant — M3's addition to the evidence set.
+
+    Read from `docs/governance/permission_catalog.yaml`, and labelled `repository` in
+    `source_of_each_field` so nobody reads it as a statement about the running instance.
+    That distinction is the whole reason `resolved_permissions_from_instance` is recorded
+    as unfilled beside it: the catalogue says what the deployment *should* grant, and only
+    the instance can say what it *does*.
+
+    The digest is over the file's bytes. A permission added, removed or re-scoped changes
+    it, so two release artifacts can be compared without reading either catalogue — which
+    is the question an auditor actually asks about a release: did authority change.
+    """
+
+    catalogue = REPOSITORY_ROOT / "docs" / "governance" / "permission_catalog.yaml"
+    raw = catalogue.read_bytes()
+    text = raw.decode("utf-8")
+
+    return {
+        "catalogue_digest": hashlib.sha256(raw).hexdigest(),
+        "declared_permissions": len(re.findall(r"^ {6}[a-z_]+\.[a-z_]+:", text, re.M)),
+        # A role is a two-space key whose first child is `identity_domain`. Matched on the
+        # child rather than on the key alone, because two-space keys appear all over this
+        # file — the first attempt matched a `code:` child that roles do not have and
+        # counted zero, which the floor in `test_evidence_m3_items.py` reported before this
+        # artifact could ever record "0 roles declared" as if that were a fact.
+        "declared_roles": len(re.findall(r"^  [a-z_]+:\n    identity_domain:", text, re.M)),
+        "read_from": "docs/governance/permission_catalog.yaml, not the running instance",
+    }
+
+
 def ai_is_disabled(flags: list[dict[str, Any]]) -> bool:
     """Every AI-adjacent flag off, checked by name rather than by counting.
 
@@ -143,7 +199,10 @@ def build_artifact(instance: dict[str, Any], *, run_id: str, moment: datetime) -
         "test_run_id": run_id,
         "source_of_each_field": {
             "instance": ["service", "version", "commit", "environment", "schema", "feature_flags"],
-            "repository": ["fixture_versions", "test_data_set_version"],
+            # `authorization` is listed here and not under `instance`, deliberately. It is
+            # the repository's answer to "what was this built to grant", and the instance's
+            # answer to "what does it grant" is recorded as unfilled with its reason.
+            "repository": ["fixture_versions", "test_data_set_version", "authorization"],
             "build": ["image_digests"],
         },
         "instance": {
@@ -174,7 +233,12 @@ def build_artifact(instance: dict[str, Any], *, run_id: str, moment: datetime) -
                 ("nginx", "NGINX_IMAGE_DIGEST"),
             )
         },
-        "unfilled": UNFILLABLE_AT_M2,
+        "authorization": authorization_state(),
+        # Merged rather than nested, because a reader asking "what is missing from this
+        # artifact" should get one answer. Which milestone owes each is recoverable from
+        # the two dictionaries above; splitting the output would make the question
+        # "what is missing" require reading two lists and knowing there were two.
+        "unfilled": {**UNFILLABLE_AT_M2, **UNFILLABLE_AT_M3},
     }
 
     versions = artifact["fixture_versions"]
@@ -235,6 +299,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  schema matches   {artifact['schema']['matches']}")
     print(f"  AI disabled      {artifact['ai_disabled']}")
     print(f"  data set         {artifact['test_data_set_version']}")
+    print(f"  permissions      {artifact['authorization']['declared_permissions']} declared")
+    print(f"  catalogue        {artifact['authorization']['catalogue_digest'][:16]}…")
     print(f"  unfilled fields  {', '.join(sorted(artifact['unfilled']))}")
 
     if not artifact["schema"]["matches"]:
