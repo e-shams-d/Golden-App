@@ -3,7 +3,34 @@ import type { ReactNode } from "react";
 export type NavigationItem = Readonly<{
   href: string;
   label: string;
+  /**
+   * The permission that must be held for this item to appear.
+   *
+   * **Not a control.** `12_Security_RBAC_Audit.md:625-626` makes the server authoritative,
+   * so a hidden item is not a denial and a shown one is not a grant — the route refuses
+   * the call either way, and `UI-NAV-001`'s second half is what proves it. What this buys
+   * is a person not being shown four screens that will turn them away.
+   *
+   * Optional because an item everybody reaches needs no permission, and making it required
+   * would force one to be invented for the dashboard.
+   */
+  permission?: string;
 }>;
+
+/**
+ * The items a holder of these permissions should see.
+ *
+ * Lives here rather than in each app because both apps need it and the rule is identical;
+ * *which* permission gates *which* item is per-app and stays in each app's navigation
+ * module, where the reasoning about that deployment's roles belongs.
+ */
+export function visibleNavigation(
+  navigation: readonly NavigationItem[],
+  permissions: readonly string[],
+): readonly NavigationItem[] {
+  const held = new Set(permissions);
+  return navigation.filter((item) => item.permission === undefined || held.has(item.permission));
+}
 
 export type ApplicationShellProps = Readonly<{
   appName: string;

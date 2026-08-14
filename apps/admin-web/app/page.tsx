@@ -2,6 +2,7 @@ import { t } from "@gold/localization";
 import Link from "next/link";
 
 import { AdminShell } from "../components/admin-shell";
+import { SessionPanel } from "../components/session-panel";
 
 const queueCards = [
   t("admin.queue.traderApproval"),
@@ -23,6 +24,11 @@ export default function AdminHomePage() {
           {t("foundation.noAuthority")}
         </p>
       </section>
+
+      {/* The one part of this page that differs by session, and the only thing
+          `UI-LOGIN-001` has to assert against. Everything above and below renders
+          identically for an administrator and a stranger. */}
+      <SessionPanel />
 
       <section aria-labelledby="queue-heading" className="mt-6">
         <div className="flex flex-wrap items-end justify-between gap-3">

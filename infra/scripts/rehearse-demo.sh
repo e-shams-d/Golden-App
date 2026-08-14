@@ -59,7 +59,12 @@ printf '\n== a fresh deployment ==\n'
 compose down --remove-orphans >/dev/null 2>&1 || true
 docker run --rm -v "${REPOSITORY_ROOT}/.local/demo:/target" alpine:3.21 \
     sh -c 'rm -rf /target/postgres /target/storage' >/dev/null 2>&1 || true
-compose up -d >/dev/null
+# `--build`, added in slice 10D. The images on disk are whatever the last run produced, and
+# the rehearsal's whole claim is that *this* working tree can be demonstrated — a run
+# against a stale frontend image proves the previous commit works. It cost a diagnosis
+# once: `UI-ISO-002` could not be written because the deployed frontends predated the login
+# screens, so there was nothing to sign in to.
+compose up -d --build >/dev/null
 printf '  waiting for the stack to report healthy'
 attempts=0
 while [ "$attempts" -lt 60 ]; do

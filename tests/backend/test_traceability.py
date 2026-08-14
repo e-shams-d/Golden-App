@@ -117,31 +117,18 @@ PENDING: dict[str, str] = {
     # collided again, which is why `test_no_obligation_id_means_two_different_things`
     # exists. It has now failed for the first time under the name it was given.
     #
-    # Still owed, and re-owned in slice 10B with the reason narrowed by what that slice
-    # measured. The *mechanism* this depends on is now proved in a real browser
-    # (UI-ISO-003: Chromium refuses a `__Host-` cookie carrying Domain, and plain-HTTP
-    # localhost is a secure context). What remains is the end-to-end claim — a trader
-    # session cannot reach an admin surface — which needs the compose stack's two
-    # hostnames, and needs the frontend images rebuilt because the ones on disk predate
-    # the login screens.
-    "UI-ISO-002": "M3 slice 10D (compose-stack browser run, needs rebuilt frontend images)",
-    # Re-deferred in slice 10B rather than attempted, because both are build-then-prove
-    # and the plan listed them as prove-only.
+    # UI-ISO-002, UI-LOGIN-001 and UI-NAV-001 were owed by slice 10D and are discharged by
+    # it. All three were blocked on the same absence: `adminAuthAdapter` was exported and
+    # imported nowhere, so neither app ever called `GET /auth/me`, the shell rendered a
+    # literal "role unknown", and an authenticated administrator and an anonymous visitor
+    # produced identical bytes. There was no difference to assert against — the third time
+    # in this milestone a complete mechanism turned out to have no caller.
     #
-    # There is no dashboard to land on: both login handlers do `router.refresh()` then
-    # `router.replace("/")`, and `/` is a static shell with a hard-coded navigation and
-    # a literal "role unknown" header — so an authenticated admin and an anonymous
-    # visitor render identical bytes, and "lands on its own dashboard" has nothing to
-    # assert against.
-    "UI-LOGIN-001": "M3 slice 10D (needs a session-derived landing surface to assert)",
-    # And no navigation reads permissions: `NavigationItem` is `{href, label}`, both
-    # renderers map unconditionally, and neither app fetches `/auth/me` at runtime —
-    # both auth adapters are exported and imported nowhere. Worse, the mapping itself is
-    # an owner decision rather than an implementation one: doc 21 §6.3's per-role lists
-    # disagree with migration `_0008`'s seeded grants, and the naive choice is actively
-    # wrong — `accountant` holds `trader.read`, so gating the traders item on it would
-    # hide nothing from the only unprivileged role that exists.
-    "UI-NAV-001": "M3 slice 10D (the href-to-permission mapping is an owner decision)",
+    # UI-NAV-001 additionally needed an owner decision, recorded in slice 10D: navigation is
+    # gated on the permission that lets you **act**, not the one that lets you read.
+    # `accountant` holds a read permission behind every item, so read-gating would have
+    # hidden nothing and the test would have been written against a permission nobody holds.
+    #
     # `OPS-EVID-001` and `UI-STATE-001` were owed by slice 10C and are discharged by it.
     #
     # The identifier question 10C had to settle first: the plan writes `OPS-EVID-001` and
