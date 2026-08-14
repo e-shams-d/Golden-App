@@ -104,11 +104,15 @@ RECORDED_GAPS: dict[str, str] = {
 # An entry here is a commitment, not an exemption: two tests below fail on an entry
 # whose obligation no plan states, and on an entry for something already covered.
 PENDING: dict[str, str] = {
-    # M3 slice 1B — the doc-04 index parity gate, split out because its day-one
-    # disposition ledger is roughly forty pre-existing divergences across tables M2
-    # shipped, and none of it is M3.
-    "DB-SPEC-001": "M3 slice 1B",
-    "TRACE-PLAN-001": "M3 slice 1B",
+    # DB-SPEC-001 and TRACE-PLAN-001 were owed by slice 1B and are discharged by it.
+    #
+    # TRACE-PLAN-001 had **no definition anywhere**. It appeared exactly twice in the
+    # repository: in the plan line deferring it, and in this dictionary recording the
+    # deferral. It was carried for two milestones as a name with an owner and no content,
+    # which is a small instance of the failure it now catches — slice 1B defined it from
+    # the defect that slice found rather than from the name, and the definition is in
+    # `tests/backend/test_governance_evidence_exists.py`.
+    #
     # API-PWD-002, AUD-ROLE-001 and SEC-ROLECHANGE-001 were owed by slice 8E and are
     # discharged by it. SEC-ROLECHANGE-001 is the one worth a note: it was renamed in
     # slice 8B from SEC-ROLE-001, which M2:516 uses for an unrelated Postgres privilege

@@ -13,7 +13,7 @@ still blocked by another decision, conflict, catalogue, or milestone gate.
 1. M0_READINESS.md — current gate and remaining approvals.
 2. DOCUMENT_APPROVAL_REGISTER.md — document authority versus recorded owner sign-off.
 3. ../adr/ADR_INDEX.md — 33 canonical decisions: ADR-001, ADR-006, POL-002 and POL-005 Approved, 29 Open, plus alias mapping.
-4. CONFLICT_REGISTER.md — 43 conflicts: 21 Resolved/Approved and 22 Open, none Critical.
+4. CONFLICT_REGISTER.md — 44 conflicts: 21 Resolved/Approved and 23 Open, none Critical.
 5. status_catalog.yaml — 23 aggregates and 156 states from document 06.
 6. permission_catalog.yaml — 118 canonical permissions, roles, constraints, and API aliases.
 7. api_error_catalog.yaml — 25 stable API error codes.

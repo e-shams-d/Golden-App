@@ -442,6 +442,90 @@ close the three conflicts from section 2.3 so the rest of M3 is not building on 
 `DB-SPEC-001` and `TRACE-PLAN-001` move to slice 1B, for the reason recorded in the revision note
 above. Named here so the deferral is visible rather than a quiet omission.
 
+## Slice 1B — The specification is compared against, and an obligation that never had a definition
+
+### Goal
+
+The two obligations slice 1 deferred. Recorded as a section for the same reason 10B–10D are: an
+owner with no section is an owner nobody can review.
+
+### What it changes
+
+- `tests/integration/test_schema_matches_the_specification.py` — the comparison **M2 never made**.
+  `test_schema_matches_models.py` compares the database to `Base.metadata`; `test_constraint_names.py`
+  compares names to what the models compile to. Neither has ever opened `04_Database_Schema.md`. This
+  slice's own retrospective at `M3_IMPLEMENTATION_PLAN.md:1727-1731` says why that matters: "a
+  constraint the specification states and the code does not is the one shape a
+  model-versus-migration comparison can never see, because both sides can be wrong together."
+- `tests/backend/test_governance_evidence_exists.py` — a definition for `TRACE-PLAN-001`.
+- `CONFLICT_REGISTER.md` gains DOC-CONFLICT-044 and a correction to DOC-CONFLICT-042.
+
+### The finding, which is not "forty divergences"
+
+The estimate in slice 1's revision note was made before the gate existed. Built and run, it produces
+**nine**, and the shape matters more than the count:
+
+- **Six indexes renamed against an approved resolution.** DOC-CONFLICT-042 was approved on
+  2026-08-06 with the rule that an index document 04 names keeps that name verbatim. Every one of
+  the six exists and does the specified work under another name, so nothing is unindexed and no
+  query is slow. What was wrong is that an approved rule went unfollowed and nothing reported it.
+- **Two of those six also name columns the schema does not have** — doc 04 writes
+  `file_links(entity_type, entity_id, link_type)` and `audit_logs(event_type, created_at)` against
+  the real `resource_type/resource_id/link_role` and `action/occurred_at`. The doc-04 name could not
+  be adopted verbatim even if somebody wanted to. That is a documentation correction owed to
+  document 04's owner, and a different repair from the other four.
+- **One genuine absence.** No index covers `admin_users(status)` under any name. Recorded rather
+  than added: the staff list is unpaged over tens of rows by a decision `list_admin_users` already
+  records, so a sequential scan is cheaper than the index today.
+- **Two predicate divergences, both already decided.** `uq_trader_users_one_primary` names
+  `'deactivated'` where doc 04 writes `'inactive'` — DOC-CONFLICT-037's approved four-value account
+  set, which doc 04 predates, and whose doc-04 predicate would now be a condition no row can satisfy.
+  `idx_outbox_dispatch` diverges for a reason the model's own docstring already states.
+
+### `TRACE-PLAN-001` had no definition, anywhere
+
+It appeared exactly twice in the repository: in the line deferring it, and in the pending ledger
+recording that deferral. Two milestones carried it as a name with an owner and no content.
+
+So slice 1B defines it from the defect this slice found rather than from the name. **A governance
+record's evidence must name something that exists.** DOC-CONFLICT-042's approved resolution cited
+`test_constraint_names.py` as asserting the doc-04 names verbatim; that test compares against the
+models and has never read document 04. The rule was approved, recorded as enforced, and unenforced.
+
+The damage is specific: a reviewer checking whether a rule is enforced finds a named test, sees it
+green, and stops. A wrong evidence citation converts an unchecked rule into an apparently-checked
+one, which is worse than no citation — the second invites the check that the first prevents.
+
+### `SEED-ACCT-001` is now registered
+
+DOC-CONFLICT-044. Document 12:386 forbids seeded development credentials "in production images or
+migrations"; document 13:907 permits initial administrator creation by "a controlled command **or
+migration task**". This repository's gate forbids any identity `INSERT` in any migration — the
+stricter reading, chosen silently in slice 1 and never registered. Slice 8B's command makes the
+question moot in practice, so nothing is blocked; what is owed is the owner deciding whether the
+migration route is permitted at all. Adding the row moves the register to 44 conflicts and 23 open,
+which four other sites restate — the header sentence, the summary table, `README.md`,
+`TRACEABILITY_MATRIX.md` and `M0_MANIFEST.json`. `test_governance_counts_reconcile.py` named every
+one of them.
+
+### What proves it
+
+- `DB-SPEC-001` — every index document 04 states exists on the table it names, with the uniqueness it
+  states and a partial predicate naming the same identifiers and literals. Divergences are a ledger
+  with a disposition each, and `test_no_disposition_is_stale` fails on an entry whose divergence has
+  been fixed, so the ledger cannot accumulate permissions for solved problems.
+- `TRACE-PLAN-001` — every file `CONFLICT_REGISTER.md` cites as evidence exists, and a row citing a
+  test names one the suite collects. DOC-CONFLICT-042's corrected row is pinned by name, because the
+  general check cannot see that failure: the file it wrongly cited exists and is collected.
+
+### Negative controls
+
+Break the doc-04 parser and confirm the floor fires rather than an empty comparison passing. Remove a
+disposition and confirm its divergence is reported. Add a disposition for an index that matches the
+specification and confirm `test_no_disposition_is_stale` names it. Point DOC-CONFLICT-042's evidence
+back at `test_constraint_names.py` and confirm the pinned test fails — that is the whole obligation,
+and the general structural checks pass over it.
+
 ### Negative controls
 
 Re-key `uq_trader_users_one_primary` back to `is_primary` and confirm `DB-PRIMARY-001` fails — the
