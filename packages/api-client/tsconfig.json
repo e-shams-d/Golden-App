@@ -1,7 +1,8 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "tsBuildInfoFile": "node_modules/.cache/api-client.tsbuildinfo"
+    "tsBuildInfoFile": "node_modules/.cache/api-client.tsbuildinfo",
+    "types": ["node"]
   },
   "include": ["src/**/*.ts", "test/**/*.ts"]
 }
