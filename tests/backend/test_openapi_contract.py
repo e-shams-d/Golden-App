@@ -97,6 +97,25 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # business to approve, and registration returns none by design.
         "listTraders",
         "getTrader",
+        # M3 slice 8E. The three acts on somebody else, each guarded separately: the
+        # catalogue's four canonical codes have no `user.suspend`, so suspension takes
+        # `user.deactivate` and the other two take `user.update`, which keeps "can remove
+        # access" and "can restore it" expressible as different authorities.
+        "suspendAdminUser",
+        "reactivateAdminUser",
+        "resetAdminUserPassword",
+        # The far side of that reset, and unauthenticated by necessity: an account in
+        # `recovery_required` is refused every action except recovery, so it can hold no
+        # session to present. Published so a client can be generated for it — the flow is
+        # otherwise reachable only by somebody who read this file.
+        "recoverAdminPassword",
+        # Roles. `updateRolePermissions` is the first operation in the contract to require
+        # `X-Recent-Auth`: the step-up machinery has existed since slice 7 with no
+        # consumer at all, so six obligations were green against a mechanism no route
+        # exercised.
+        "listRoles",
+        "getRole",
+        "updateRolePermissions",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

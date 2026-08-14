@@ -50,6 +50,21 @@ ALLOWED_METADATA_KEYS: frozenset[str] = frozenset(
         "stamp_identity",
         "probe_correlation",  # truncated second-order digest; see `probe_correlation`
         "reason",  # a revocation reason, drawn from the code's own vocabulary
+        # The high-risk-grant alert doc 12:642 requires. Three keys, each a value this
+        # codebase chose rather than one a caller supplied:
+        #
+        #   `capability` is one of the five phrases `:642` uses, quoted from the document.
+        #   `permission_code` is a row in `permissions`, which is public vocabulary — the
+        #     catalogue naming every code is a governance artifact in this repository.
+        #   `role_code` is a row in `roles`, the same.
+        #
+        # None can carry a secret: an operator reading "role.manage was granted to
+        # accountant" learns what the alert exists to tell them and nothing more. Added
+        # deliberately, per this module's own instruction above, rather than by widening
+        # the allowlist to admit whatever a caller passes.
+        "capability",
+        "permission_code",
+        "role_code",
     }
 )
 

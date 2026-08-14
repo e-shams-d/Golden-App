@@ -8,6 +8,7 @@ from app.api.v1.center_profile import router as center_profile_router
 from app.api.v1.health import router as health_router
 from app.api.v1.metadata import router as metadata_router
 from app.api.v1.operations import router as operations_router
+from app.api.v1.roles import router as roles_router
 from app.api.v1.trader_self_service import router as trader_self_service_router
 from app.api.v1.traders import router as traders_router
 
@@ -20,3 +21,4 @@ api_v1_router.include_router(operations_router)
 api_v1_router.include_router(trader_self_service_router)
 api_v1_router.include_router(traders_router)
 api_v1_router.include_router(admin_users_router)
+api_v1_router.include_router(roles_router)

@@ -678,6 +678,30 @@
         "title": "OutboxHealth",
         "type": "object"
       },
+      "PasswordResetRequest": {
+        "additionalProperties": false,
+        "description": "The administrator supplies the temporary credential; nothing is generated.\n\nA generated password would have to be returned to be usable, and `API-PWD-002` is the\nobligation that no credential leaves this route. Supplying it means the administrator\nalready knows the value they are about to communicate out of band, so the response has\nnothing to carry.",
+        "properties": {
+          "new_password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "New Password",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "new_password",
+          "reason"
+        ],
+        "title": "PasswordResetRequest",
+        "type": "object"
+      },
       "ReadinessResponse": {
         "additionalProperties": false,
         "properties": {
@@ -768,6 +792,52 @@
           "authentication_level"
         ],
         "title": "ReauthenticateResponse",
+        "type": "object"
+      },
+      "RecoverPasswordRequest": {
+        "additionalProperties": false,
+        "description": "The temporary credential an administrator set, and the one its owner chooses.",
+        "properties": {
+          "current_password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Current Password",
+            "type": "string"
+          },
+          "new_password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "New Password",
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "current_password",
+          "new_password"
+        ],
+        "title": "RecoverPasswordRequest",
+        "type": "object"
+      },
+      "RecoverPasswordResponse": {
+        "additionalProperties": false,
+        "description": "`recovered: true`, and nothing else — not a session, not a token.\n\nNo session is issued deliberately. The account could not act a moment ago, and handing\nit one here would turn a credential its owner was given by somebody else into access\nwithout them ever having chosen anything. Recovery ends with a normal sign-in: one\nextra step, and the only shape in which the administrator's temporary password never\nbecomes access on its own.",
+        "properties": {
+          "recovered": {
+            "title": "Recovered",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "recovered"
+        ],
+        "title": "RecoverPasswordResponse",
         "type": "object"
       },
       "RegisterTraderRequest": {
@@ -972,6 +1042,73 @@
         "title": "RevocationResponse",
         "type": "object"
       },
+      "RoleListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleView"
+            },
+            "title": "Roles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "roles"
+        ],
+        "title": "RoleListResponse",
+        "type": "object"
+      },
+      "RoleView": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_enabled": {
+            "title": "Is Enabled",
+            "type": "boolean"
+          },
+          "is_system": {
+            "title": "Is System",
+            "type": "boolean"
+          },
+          "permission_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permission Codes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "description",
+          "is_system",
+          "is_enabled",
+          "permission_codes"
+        ],
+        "title": "RoleView",
+        "type": "object"
+      },
       "SchemaState": {
         "additionalProperties": false,
         "properties": {
@@ -1046,6 +1183,57 @@
           "authentication_level"
         ],
         "title": "SessionSummary",
+        "type": "object"
+      },
+      "StateChangeRequest": {
+        "additionalProperties": false,
+        "description": "`reason` is optional in the shape and required per route.\n\nSuspension needs one and reactivation does not: an access removal nobody explained\ncannot be reviewed later, while restoring access needs no defence. The same split the\nfour trader decision routes make, for the same reason.",
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "StateChangeRequest",
+        "type": "object"
+      },
+      "StateChangeResponse": {
+        "additionalProperties": false,
+        "description": "No credential, and no field one could be added to without changing this type.\n\n`sessions_revoked` is here because an administrator who suspends somebody needs to\nknow whether that person was signed in at the time — and because a count of zero on a\nsuspension is worth noticing.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "record_version": {
+            "title": "Record Version",
+            "type": "integer"
+          },
+          "sessions_revoked": {
+            "title": "Sessions Revoked",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "record_version",
+          "sessions_revoked"
+        ],
+        "title": "StateChangeResponse",
         "type": "object"
       },
       "TraderListResponse": {
@@ -1240,6 +1428,32 @@
           "record_version"
         ],
         "title": "TraderResponse",
+        "type": "object"
+      },
+      "UpdateRolePermissionsRequest": {
+        "additionalProperties": false,
+        "description": "The complete desired set, not a diff.\n\nA PUT of the whole set is what makes the `If-Match` digest meaningful: a diff applied\nto a set somebody else has changed produces a result neither caller asked for, and no\nprecondition can detect it. `reason` is required because `:642` lists it among what a\nrole change must produce.",
+        "properties": {
+          "permission_codes": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 0,
+            "title": "Permission Codes",
+            "type": "array"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "permission_codes",
+          "reason"
+        ],
+        "title": "UpdateRolePermissionsRequest",
         "type": "object"
       },
       "WorkerStatus": {
@@ -1724,6 +1938,425 @@
         ]
       }
     },
+    "/api/v1/admin-users/{admin_user_id}/password-reset": {
+      "post": {
+        "description": "The caller's own id is passed to the command, which refuses a self-reset.\n\nTaken from the authenticated actor and never from the body, for the reason\n`change_own_password` gives about which session is \"current\": a rule about who the\ncaller is cannot be enforced against a value the caller supplies.",
+        "operationId": "resetAdminUserPassword",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "admin_user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Admin User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordResetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateChangeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request violates a business rule."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Permission denied."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such account."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The idempotency key was reused with a different body."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The If-Match value is stale."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match or Idempotency-Key is missing."
+          }
+        },
+        "summary": "Set another staff account's credential and require recovery.",
+        "tags": [
+          "admin-users"
+        ]
+      }
+    },
+    "/api/v1/admin-users/{admin_user_id}/reactivate": {
+      "post": {
+        "description": "`user.update` rather than `user.deactivate`.\n\nRestoring access is not the same authority as removing it, and the catalogue's four\ncodes let the two be separated. An installation that wants one person able to suspend\nin an incident without also being able to undo somebody else's suspension can express\nthat; one broad permission could not.",
+        "operationId": "reactivateAdminUser",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "admin_user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Admin User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StateChangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateChangeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request violates a business rule."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Permission denied."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such account."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The idempotency key was reused with a different body."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The If-Match value is stale."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match or Idempotency-Key is missing."
+          }
+        },
+        "summary": "Return a suspended staff account to active.",
+        "tags": [
+          "admin-users"
+        ]
+      }
+    },
+    "/api/v1/admin-users/{admin_user_id}/suspend": {
+      "post": {
+        "operationId": "suspendAdminUser",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "admin_user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Admin User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StateChangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateChangeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request violates a business rule."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Permission denied."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such account."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The idempotency key was reused with a different body."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The If-Match value is stale."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match or Idempotency-Key is missing."
+          }
+        },
+        "summary": "Suspend a staff account and end its live sessions.",
+        "tags": [
+          "admin-users"
+        ]
+      }
+    },
     "/api/v1/auth/admin/login": {
       "post": {
         "operationId": "loginAdmin",
@@ -1770,6 +2403,68 @@
           }
         },
         "summary": "Authenticate an internal user and open a session.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/admin/recover-password": {
+      "post": {
+        "description": "The way out of `recovery_required`, which had none until this route.\n\n`app/security/account_state.py` has described this flow since M2 —\n`AccountAction.RECOVER` is one of its three intents, and the only combination it\npermits is a `recovery_required` account that is not locked. **Nothing ever passed\nthat intent.** The branch that makes the state escapable was reachable only from a\nunit test, which is why slice 8B declined to provision accounts into it: it would have\nproduced a correctly-built account nobody could sign in to.\n\n**One answer for every failure.** An unknown username, a wrong temporary password and\nan account that is not awaiting recovery are all `UNAUTHENTICATED`, exactly as login\nis (`12_Security_RBAC_Audit.md:403`). Distinguishing them would be worse here than at\nlogin: this route would become a status oracle for the centre's own staff, telling an\nattacker which accounts an administrator has just reset — the moment those accounts\nare most exposed, because their credential is one somebody typed and communicated.\n\n**Rate-limited on both axes.** Unlike registration there *is* an account identifier to\nlimit against, so one username cannot be ground through at network speed.",
+        "operationId": "recoverAdminPassword",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoverPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoverPasswordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The recovery could not be completed."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many attempts."
+          }
+        },
+        "summary": "Complete a recovery after an administrative reset. Unauthenticated.",
         "tags": [
           "auth"
         ]
@@ -2738,6 +3433,296 @@
         "summary": "Release identity, applied schema revision and flag snapshot",
         "tags": [
           "operations"
+        ]
+      }
+    },
+    "/api/v1/roles": {
+      "get": {
+        "operationId": "listRoles",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Permission denied."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such role."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "List roles and the permissions each carries.",
+        "tags": [
+          "roles"
+        ]
+      }
+    },
+    "/api/v1/roles/{role_id}": {
+      "get": {
+        "operationId": "getRole",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Role Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Permission denied."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such role."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Read one role. Publishes the ETag the update must echo.",
+        "tags": [
+          "roles"
+        ]
+      }
+    },
+    "/api/v1/roles/{role_id}/permissions": {
+      "put": {
+        "description": "Both preconditions, and they answer different questions.\n\n`If-Match` stops this landing on a permission set somebody else has changed.\n`X-Recent-Auth` proves the person holding the session was present a moment ago. Neither\nsubstitutes for the other: a fresh step-up does not make a stale write safe, and an\nup-to-date digest says nothing about who is holding the browser.\n\nThe step-up must have been issued for **this role** — purpose `role.permissions.update`,\nresource type `role`, resource id this one. A context obtained to edit `accountant`\npresented here is refused as `WRONG_RESOURCE`, which is the binding the whole step-up\ndesign exists for.",
+        "operationId": "updateRolePermissions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Role Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Recent-Auth",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Recent-Auth"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRolePermissionsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request violates a business rule."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Permission denied."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such role."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The If-Match digest is stale."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match or X-Recent-Auth is missing."
+          },
+          "440": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Recent authentication is required, or the one presented does not authorise this change."
+          }
+        },
+        "summary": "Replace a role's permission set. Requires recent authentication.",
+        "tags": [
+          "roles"
         ]
       }
     },

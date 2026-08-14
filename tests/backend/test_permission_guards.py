@@ -84,6 +84,16 @@ UNGUARDED_ROUTES: dict[tuple[str, str], str] = {
     # establishing one is what the endpoint is for. Guarded by a network rate
     # limit and by revealing nothing, not by a permission.
     ("POST", "/api/v1/traders/register"): "public application; rate-limited",
+    # The far side of an administrative reset. Unauthenticated by necessity rather than by
+    # choice: `recovery_required` refuses every action except recovery, so the account
+    # cannot hold a session to present and there is nothing to check a permission against.
+    # What stands in for a guard is the temporary credential the administrator set, a rate
+    # limit on both the identifier and the network, and one generic refusal for every
+    # reason — so the route reveals nothing about which accounts have been reset.
+    ("POST", "/api/v1/auth/admin/recover-password"): (
+        "completes a recovery; the account cannot act, so it holds no session to "
+        "authorise against. Rate-limited on both axes, one refusal for every reason"
+    ),
     ("POST", "/api/v1/center-profile/rename"): (
         "M2's exemplar command, written before guards existed; slice 8 gives it settings.manage"
     ),
