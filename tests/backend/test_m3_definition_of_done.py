@@ -119,6 +119,25 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     ("POST", "/api/v1/admin-users"): PERMISSION,
     ("GET", "/api/v1/admin-users/{admin_user_id}"): PERMISSION,
     ("PATCH", "/api/v1/admin-users/{admin_user_id}"): PERMISSION,
+    # Slice 8E's three acts on somebody else. Suspension is `user.deactivate` because the
+    # catalogue's four canonical codes contain no `user.suspend`, and deactivate is the
+    # code that names removal of access; reactivation and the reset are `user.update`,
+    # deliberately separate from it — an installation that wants one person able to
+    # suspend during an incident without also being able to undo somebody else's
+    # suspension can express that, and one broad permission could not.
+    ("POST", "/api/v1/admin-users/{admin_user_id}/suspend"): PERMISSION,
+    ("POST", "/api/v1/admin-users/{admin_user_id}/reactivate"): PERMISSION,
+    ("POST", "/api/v1/admin-users/{admin_user_id}/password-reset"): PERMISSION,
+    # Roles. `role.read` and `role.manage` are the catalogue's own codes and document 05
+    # agrees with document 12 on both, so no alias resolution is needed here.
+    ("GET", "/api/v1/roles"): PERMISSION,
+    ("GET", "/api/v1/roles/{role_id}"): PERMISSION,
+    ("PUT", "/api/v1/roles/{role_id}/permissions"): PERMISSION,
+    # PUBLIC by necessity rather than by choice, which is why it is not SESSION: an
+    # account in `recovery_required` is refused every action except recovery, so it holds
+    # no session to classify. The temporary credential an administrator set is what stands
+    # in, together with a rate limit on both axes.
+    ("POST", "/api/v1/auth/admin/recover-password"): PUBLIC,
     # FastAPI's own, absent in production — `test_openapi_contract.py` asserts they
     # 404 there. Listed rather than filtered by pattern, because a filter would also
     # hide a real route somebody named `/docs`.
@@ -204,6 +223,37 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ),
     ("GET", "/api/v1/traders/{trader_id}", "permission"): (
         "test_reading_traders_without_the_permission_is_refused"
+    ),
+    # Slice 8E's three, covered by the same parametrised denial as the four above — and
+    # covered honestly, because that parametrisation is guarded against the *published
+    # contract*. Adding these routes is what made `test_the_denial_parametrisation_covers_
+    # every_admin_user_route` fail, which is exactly the design: a new route with no
+    # denial case cannot reach this ledger without somebody noticing.
+    ("POST", "/api/v1/admin-users/{admin_user_id}/suspend", "permission"): (
+        "test_an_admin_without_the_permission_is_refused"
+    ),
+    ("POST", "/api/v1/admin-users/{admin_user_id}/reactivate", "permission"): (
+        "test_an_admin_without_the_permission_is_refused"
+    ),
+    ("POST", "/api/v1/admin-users/{admin_user_id}/password-reset", "permission"): (
+        "test_an_admin_without_the_permission_is_refused"
+    ),
+    # The role surface, parametrised over the three routes and guarded against the
+    # published contract the same way. The unprivileged caller is `accountant`, which the
+    # seed grants neither `role.read` nor `role.manage` — chosen rather than invented, so
+    # the denial proves the seeded catalogue withholds the permission.
+    #
+    # Naming `test_a_reader_cannot_change_a_role` here instead would have been wrong and
+    # was the first thing written: that test signs in as `manager`, which *holds*
+    # `role.read`, so it proves the two GETs succeed. It would have discharged two
+    # obligations with a test asserting their opposite. It stays as the other half —
+    # holding the read and being refused the write is what proves the two are separate.
+    ("GET", "/api/v1/roles", "permission"): "test_an_admin_without_the_permission_is_refused",
+    ("GET", "/api/v1/roles/{role_id}", "permission"): (
+        "test_an_admin_without_the_permission_is_refused"
+    ),
+    ("PUT", "/api/v1/roles/{role_id}/permissions", "permission"): (
+        "test_an_admin_without_the_permission_is_refused"
     ),
 }
 

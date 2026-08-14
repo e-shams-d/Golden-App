@@ -1067,6 +1067,11 @@ The rest of the `/admin-users` family and `PUT /roles/{id}/permissions`, plus th
   only surface on which all four can be granted is this route's permission-set diff — a design that
   hung the obligation on role *assignment* could never exercise more than two of them. The test must
   say in its name that it proves a row exists and not that anything was delivered.
+- `SEC-HIGHRISK-001` — the phrase-to-permission mapping is a human reading English prose, so every
+  code in it is checked against `permission_catalog.yaml`, an approved artifact the test did not
+  write and cannot edit. A mapping naming a permission the platform does not have would read as
+  complete coverage while alerting on nothing, and would be discovered missing at the moment somebody
+  wanted it.
 
 ### Negative controls
 
@@ -1074,6 +1079,42 @@ Assert the parametrisation has exactly the four keys the plan states — a loop 
 is this test's failure mode. Assert every code in the mapping exists in `permission_catalog.yaml`, an
 artifact the test did not write. And assert that granting an **ordinary** permission emits nothing:
 without that half the test passes on the generic audit row every command already writes.
+
+### What the slice found, and what it could not build
+
+**Doc 12:642 names five capabilities, not four.** The list above says "manager approval, role
+management, audit export or retention approval" and omits break-glass; the document's sentence ends
+"…retention approval, **or break-glass capability**". The fifth is handled differently rather than
+added to the alert list: `permission_catalog.yaml:289-292` records `break_glass.activate` with
+`default_roles: []`, `assignment: disabled_for_phase_1a` and
+`availability: disabled_by_approved_POL_005`, and the constraint entry says "no endpoint, grant,
+feature flag, runtime activation, or financial bypass". A grant of it is therefore not a high-risk
+act to be recorded — it is one the approved policy forbids, so it is **refused**. Alerting while
+permitting would be the weaker reading, and the alert would be the only trace of a capability
+POL-005 says cannot exist. `test_the_document_still_names_the_five_capabilities` pins the sentence
+so a later edit re-opens the derivation instead of silently invalidating it.
+
+**Removing a permission from a role cannot be built while ADR-005 is open.** It means deleting a
+`role_permissions` row, and `tests/backend/test_no_deletion_machinery.py` forbids every `delete(...)`
+in `app/`, absolutely and with **no allowlist**. Its own docstring anticipates the argument for an
+exception — "nobody reviews a pull request looking for the purge job it *added*, because adding one
+looks like finishing the feature" — and names a route as the most dangerous place for one, which is
+precisely where this would have been. Widening a gate in the first slice that trips it, justified by
+the slice that needs it, is the failure that gate exists to prevent.
+
+So `PUT /roles/{id}/permissions` accepts the full set, applies additions, and **refuses a request
+that would remove anything**, naming ADR-005 in the message. No deployment is stranded: authority is
+withdrawn at the two layers where the schema already models revocation properly —
+`admin_user_roles.revoked_at`, which keeps the history a composite key could not, and
+`roles.is_enabled`. Removing a permission from a role is the only one of the three that needs a
+DELETE, and it is the only one refused. **Owed by the slice that closes ADR-005**, not by this one.
+
+**`GET /roles` and `GET /roles/{id}` nearly shipped with a negative test asserting their opposite.**
+The first ledger entry named `test_a_reader_cannot_change_a_role`, which signs in as `manager` — a
+role the seed grants `role.read` — so it proves the two reads *succeed*. Two DoD obligations would
+have been discharged by a test asserting the reverse of what they claim. The denial now uses
+`accountant`, which the catalogue grants neither code, and is parametrised over all three routes with
+the parametrisation checked against the published contract.
 
 ## Slice D1 — The centre's read surface over the businesses it approves
 

@@ -213,6 +213,58 @@ UPDATE_ADMIN_USER = CommandNames(
     ),
 )
 
+# The two state transitions. Separate names from `UPDATE_ADMIN_USER` for the reason that
+# module's docstring gives: an amendment and a suspension are different events to
+# everybody who reads this trail, and one action string covering both would make
+# "who cut this person off" unanswerable without reading the payload of every update.
+SUSPEND_ADMIN_USER = CommandNames(
+    audit_action="admin_user.suspended",
+    outbox_event_type="AdminUserSuspended",
+    catalogued=False,
+    provisional_reason=(
+        "Same identity-lifecycle gap in the catalogue. Doc 05's endpoint table says "
+        "suspension creates audit and outbox events, and a staff account losing its "
+        "access is exactly what a downstream directory would act on. " + _OUTBOX_GAP
+    ),
+)
+
+REACTIVATE_ADMIN_USER = CommandNames(
+    audit_action="admin_user.reactivated",
+    outbox_event_type="AdminUserReactivated",
+    catalogued=False,
+    provisional_reason=("Same gap, and the counterpart of the suspension. " + _OUTBOX_GAP),
+)
+
+# Role permission management. The one command in this family whose *subject* is a role
+# rather than a person, and the only one doc 12:642 requires an alert for.
+UPDATE_ROLE_PERMISSIONS = CommandNames(
+    audit_action="role.permissions_updated",
+    outbox_event_type="RolePermissionsUpdated",
+    catalogued=False,
+    provisional_reason=(
+        "audit_outbox_catalog.yaml enumerates financial-flow actions; role administration "
+        "is not among them. Named for the permission set rather than for the role, because "
+        "the role row itself is untouched and an auditor searching for `role.updated` "
+        "would otherwise find nothing when authority changed. " + _OUTBOX_GAP
+    ),
+)
+
+# The far side of an administrative reset. Deliberately distinct from
+# `CHANGE_OWN_PASSWORD`: both are somebody setting their own credential, but this one
+# happens without a session, under `AccountAction.RECOVER`, and is the act that ends a
+# `recovery_required` state. Merging them would make "did this person recover, or simply
+# rotate?" a question answered by joining to another table.
+RECOVER_ADMIN_PASSWORD = CommandNames(
+    audit_action="credential.recovered",
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=(
+        "Same catalogue gap as the other credential names. No outbox event: nothing "
+        "outside the platform acts on somebody completing a recovery, and publishing it "
+        "would put a credential event on a queue for no consumer."
+    ),
+)
+
 
 ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     RENAME_CENTER_PROFILE,
@@ -226,4 +278,8 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     CREATE_FIRST_ADMIN,
     CREATE_ADMIN_USER,
     UPDATE_ADMIN_USER,
+    SUSPEND_ADMIN_USER,
+    REACTIVATE_ADMIN_USER,
+    UPDATE_ROLE_PERMISSIONS,
+    RECOVER_ADMIN_PASSWORD,
 )

@@ -16,12 +16,16 @@ but must not merge unrelated high-risk actions into one broad permission". The m
 recorded in the catalogue's `endpoint_permission_discrepancies` so the substitution is
 reviewable rather than invented here.
 
-**What this family does not include yet.** Suspend and reactivate need a state guard and
-the rule that the last account holding `user.*` cannot be deactivated — nothing today
-stops one administrator stranding the deployment. The reset needs a recovery path. Both
-are slice 8E's, recorded in the plan rather than half-built here.
+**The three acts on somebody else** — suspend, reactivate and the administrative reset —
+arrived in slice 8E with the guards the four CRUD routes above do not need. Their reasoning
+lives in `app/commands/admin_user_state.py`. What belongs here is the permission each is
+guarded on, and `user.deactivate` is the one worth explaining: the catalogue's four
+canonical codes contain no `user.suspend`, and suspension is the removal of access that
+`deactivate` names. Inventing a fifth code would put a permission into the seeded catalogue
+that no governance document approved, which is the failure the alias resolution above
+exists to avoid.
 
-Covers: API-ADMIN-001, API-ADMIN-002, API-ADMIN-003.
+Covers: API-ADMIN-001, API-ADMIN-002, API-ADMIN-003, API-PWD-002.
 """
 
 from __future__ import annotations
@@ -45,6 +49,13 @@ from app.commands.admin_user_lifecycle import (
     create_admin_user,
     list_admin_users,
     read_admin_user,
+)
+from app.commands.admin_user_state import (
+    PasswordReset,
+    StateChange,
+    reactivate_admin_user,
+    reset_admin_password,
+    suspend_admin_user,
 )
 from app.core.config import Settings
 from app.core.errors import ErrorEnvelope, PreconditionRequiredError
@@ -266,6 +277,197 @@ def create_account(
     rendered = _view(result)
     response.headers["ETag"] = f'"rv-{rendered.record_version}"'
     return rendered
+
+
+class StateChangeRequest(BaseModel):
+    """`reason` is optional in the shape and required per route.
+
+    Suspension needs one and reactivation does not: an access removal nobody explained
+    cannot be reviewed later, while restoring access needs no defence. The same split the
+    four trader decision routes make, for the same reason.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str | None = Field(default=None, max_length=1000)
+
+
+class PasswordResetRequest(BaseModel):
+    """The administrator supplies the temporary credential; nothing is generated.
+
+    A generated password would have to be returned to be usable, and `API-PWD-002` is the
+    obligation that no credential leaves this route. Supplying it means the administrator
+    already knows the value they are about to communicate out of band, so the response has
+    nothing to carry.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    new_password: str = Field(min_length=1, max_length=1024)
+    reason: str = Field(min_length=1, max_length=1000)
+
+
+class StateChangeResponse(BaseModel):
+    """No credential, and no field one could be added to without changing this type.
+
+    `sessions_revoked` is here because an administrator who suspends somebody needs to
+    know whether that person was signed in at the time — and because a count of zero on a
+    suspension is worth noticing.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    status: str
+    record_version: int
+    sessions_revoked: int
+
+
+def _state_response(result: object, response: Response) -> StateChangeResponse:
+    from app.commands.admin_user_state import StateChanged
+
+    assert isinstance(result, StateChanged)
+    response.headers["ETag"] = f'"rv-{result.record_version}"'
+    return StateChangeResponse(
+        id=result.admin_user_id,
+        status=result.status,
+        record_version=result.record_version,
+        sessions_revoked=result.sessions_revoked,
+    )
+
+
+@router.post(
+    "/{admin_user_id}/suspend",
+    response_model=StateChangeResponse,
+    operation_id="suspendAdminUser",
+    summary="Suspend a staff account and end its live sessions.",
+    responses=WRITE_RESPONSES,
+    dependencies=[requires(declare("user.deactivate"))],
+)
+def suspend_account(
+    admin_user_id: uuid.UUID,
+    payload: StateChangeRequest,
+    response: Response,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> StateChangeResponse:
+    if if_match is None:
+        raise PreconditionRequiredError("If-Match")
+
+    audit_actor, context = _audit_pair(actor)
+    with runtime.uow_factory() as uow:
+        result = suspend_admin_user(
+            StateChange(
+                admin_user_id=admin_user_id,
+                expected_record_version=_parse_record_version(if_match),
+                reason=payload.reason,
+            ),
+            uow=uow,
+            actor=audit_actor,
+            context=context,
+            policy=ADMIN_USER_REDACTION,
+            now=utc_now(),
+        )
+        uow.commit()
+
+    return _state_response(result, response)
+
+
+@router.post(
+    "/{admin_user_id}/reactivate",
+    response_model=StateChangeResponse,
+    operation_id="reactivateAdminUser",
+    summary="Return a suspended staff account to active.",
+    responses=WRITE_RESPONSES,
+    dependencies=[requires(declare("user.update"))],
+)
+def reactivate_account(
+    admin_user_id: uuid.UUID,
+    payload: StateChangeRequest,
+    response: Response,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> StateChangeResponse:
+    """`user.update` rather than `user.deactivate`.
+
+    Restoring access is not the same authority as removing it, and the catalogue's four
+    codes let the two be separated. An installation that wants one person able to suspend
+    in an incident without also being able to undo somebody else's suspension can express
+    that; one broad permission could not.
+    """
+
+    if if_match is None:
+        raise PreconditionRequiredError("If-Match")
+
+    audit_actor, context = _audit_pair(actor)
+    with runtime.uow_factory() as uow:
+        result = reactivate_admin_user(
+            StateChange(
+                admin_user_id=admin_user_id,
+                expected_record_version=_parse_record_version(if_match),
+                reason=payload.reason,
+            ),
+            uow=uow,
+            actor=audit_actor,
+            context=context,
+            policy=ADMIN_USER_REDACTION,
+            now=utc_now(),
+        )
+        uow.commit()
+
+    return _state_response(result, response)
+
+
+@router.post(
+    "/{admin_user_id}/password-reset",
+    response_model=StateChangeResponse,
+    operation_id="resetAdminUserPassword",
+    summary="Set another staff account's credential and require recovery.",
+    responses=WRITE_RESPONSES,
+    dependencies=[requires(declare("user.update"))],
+)
+def reset_account_password(
+    admin_user_id: uuid.UUID,
+    payload: PasswordResetRequest,
+    response: Response,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> StateChangeResponse:
+    """The caller's own id is passed to the command, which refuses a self-reset.
+
+    Taken from the authenticated actor and never from the body, for the reason
+    `change_own_password` gives about which session is "current": a rule about who the
+    caller is cannot be enforced against a value the caller supplies.
+    """
+
+    if if_match is None:
+        raise PreconditionRequiredError("If-Match")
+
+    audit_actor, context = _audit_pair(actor)
+    with runtime.uow_factory() as uow:
+        result = reset_admin_password(
+            PasswordReset(
+                admin_user_id=admin_user_id,
+                expected_record_version=_parse_record_version(if_match),
+                new_password=payload.new_password,
+                reason=payload.reason,
+            ),
+            uow=uow,
+            caller_admin_id=actor.actor_id,
+            actor=audit_actor,
+            context=context,
+            policy=ADMIN_USER_REDACTION,
+            parameters=Argon2Parameters.from_settings(settings),
+            password_max_length=settings.password_max_length,
+            now=utc_now(),
+        )
+        uow.commit()
+
+    return _state_response(result, response)
 
 
 @router.patch(

@@ -42,6 +42,7 @@ from app.commands.authenticate import (
     authenticate,
 )
 from app.commands.change_own_password import change_own_password
+from app.commands.recover_admin_password import RecoveryAttempt, recover_admin_password
 from app.core.config import Settings
 from app.core.errors import AppError, ErrorEnvelope, ForbiddenError
 from app.core.request_context import get_request_id
@@ -500,6 +501,130 @@ def login_trader(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> LoginResponse:
     return _login(request, response, payload, Audience.TRADER, runtime, settings)
+
+
+class RecoverPasswordRequest(BaseModel):
+    """The temporary credential an administrator set, and the one its owner chooses."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    username: str = Field(min_length=1, max_length=64)
+    current_password: str = Field(min_length=1, max_length=1024)
+    new_password: str = Field(min_length=1, max_length=1024)
+
+
+class RecoverPasswordResponse(BaseModel):
+    """`recovered: true`, and nothing else — not a session, not a token.
+
+    No session is issued deliberately. The account could not act a moment ago, and handing
+    it one here would turn a credential its owner was given by somebody else into access
+    without them ever having chosen anything. Recovery ends with a normal sign-in: one
+    extra step, and the only shape in which the administrator's temporary password never
+    becomes access on its own.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    recovered: bool
+
+
+@router.post(
+    "/admin/recover-password",
+    response_model=RecoverPasswordResponse,
+    operation_id="recoverAdminPassword",
+    summary="Complete a recovery after an administrative reset. Unauthenticated.",
+    responses={
+        401: {"model": ErrorEnvelope, "description": "The recovery could not be completed."},
+        429: {"model": ErrorEnvelope, "description": "Too many attempts."},
+        **VALIDATION_ERROR_RESPONSE,
+    },
+)
+def recover_admin_password_route(
+    request: Request,
+    payload: RecoverPasswordRequest,
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> RecoverPasswordResponse:
+    """The way out of `recovery_required`, which had none until this route.
+
+    `app/security/account_state.py` has described this flow since M2 —
+    `AccountAction.RECOVER` is one of its three intents, and the only combination it
+    permits is a `recovery_required` account that is not locked. **Nothing ever passed
+    that intent.** The branch that makes the state escapable was reachable only from a
+    unit test, which is why slice 8B declined to provision accounts into it: it would have
+    produced a correctly-built account nobody could sign in to.
+
+    **One answer for every failure.** An unknown username, a wrong temporary password and
+    an account that is not awaiting recovery are all `UNAUTHENTICATED`, exactly as login
+    is (`12_Security_RBAC_Audit.md:403`). Distinguishing them would be worse here than at
+    login: this route would become a status oracle for the centre's own staff, telling an
+    attacker which accounts an administrator has just reset — the moment those accounts
+    are most exposed, because their credential is one somebody typed and communicated.
+
+    **Rate-limited on both axes.** Unlike registration there *is* an account identifier to
+    limit against, so one username cannot be ground through at network speed.
+    """
+
+    now = utc_now()
+    # Read before the transaction opens, like `_login`: a header lookup is not database
+    # work and `test_no_io_under_lock` enforces the shape.
+    client_host = _client_address(request)
+    user_agent = request.headers.get("user-agent")
+    limiter = _limiter(runtime, settings)
+
+    if limiter is not None and client_host is not None:
+        decision = limiter.check(f"recover:{payload.username}", client_host)
+        if not decision.allowed:
+            raise AppError("RATE_LIMITED", "Too many attempts. Try again later.", 429)
+
+    with runtime.uow_factory() as uow:
+        outcome = recover_admin_password(
+            RecoveryAttempt(
+                username=payload.username,
+                current_password=payload.current_password,
+                new_password=payload.new_password,
+            ),
+            session=uow.session,
+            policy=CREDENTIAL_REDACTION,
+            parameters=Argon2Parameters.from_settings(settings),
+            password_max_length=settings.password_max_length,
+            # No session exists, so there is no actor to attribute this to. The
+            # `system_maintenance` type is what doc 12:344 reserves for exactly that, and
+            # inventing the target's own id would put a claim in an append-only table that
+            # the platform cannot support — it does not yet know the caller is that person.
+            actor=AuditActor(actor_type="system_maintenance"),
+            context=AuditContext(request_id=get_request_id()),
+            now=now,
+        )
+
+        if not outcome.succeeded:
+            # The identity writes are discarded and the event is not. `rollback` on the
+            # session drops the failed attempt's changes; the row below is added
+            # afterwards so it survives the commit.
+            uow.session.rollback()
+            uow.session.add(
+                AuthEvent(
+                    **SecurityEvent(
+                        actor_type="system_maintenance",
+                        event_type="credential.recovery_failed",
+                        event_class="credential",
+                        outcome=OUTCOME_FAILURE,
+                        ip_address=client_host,
+                        user_agent=user_agent,
+                        # The reason the server decided, never the one the client is told.
+                        metadata_payload={"rejection_reason": outcome.refusal or "unknown"},
+                    ).as_row()
+                )
+            )
+            # Committed for the same reason a failed login is: the row explaining the
+            # refusal is the whole record of an attempt, and rolling it back would erase
+            # exactly the evidence this route exists to leave.
+            uow.commit()
+            raise UnauthenticatedError()
+
+        uow.commit()
+
+    return RecoverPasswordResponse(recovered=True)
 
 
 @router.get(

@@ -57,6 +57,16 @@ ADMIN_USER_ROUTES: list[tuple[str, str, dict[str, Any] | None]] = [
         },
     ),
     ("PATCH", "/api/v1/admin-users/{admin_user_id}", {"full_name": "Renamed Person"}),
+    # Slice 8E's three. Added here rather than in that slice's own file because the guard
+    # below derives the expected set from the published contract, so a new route with no
+    # denial case fails this file — which is exactly what it was built to do, and did.
+    ("POST", "/api/v1/admin-users/{admin_user_id}/suspend", {"reason": "left the company"}),
+    ("POST", "/api/v1/admin-users/{admin_user_id}/reactivate", {}),
+    (
+        "POST",
+        "/api/v1/admin-users/{admin_user_id}/password-reset",
+        {"new_password": PASSWORD, "reason": "reported a compromise"},
+    ),
 ]
 
 
