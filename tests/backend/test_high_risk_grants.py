@@ -26,7 +26,6 @@ import re
 from pathlib import Path
 
 import pytest
-
 from app.security import high_risk_grants
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -93,8 +92,8 @@ def test_every_alertable_code_exists_in_the_approved_catalogue(
 def test_the_forbidden_code_exists_and_is_the_one_policy_disables(
     catalogue_codes: frozenset[str],
 ) -> None:
-    assert high_risk_grants.FORBIDDEN_GRANTS <= catalogue_codes
-    assert high_risk_grants.FORBIDDEN_GRANTS == {"break_glass.activate"}
+    assert catalogue_codes >= high_risk_grants.FORBIDDEN_GRANTS
+    assert {"break_glass.activate"} == high_risk_grants.FORBIDDEN_GRANTS
 
     catalogue = CATALOGUE.read_text(encoding="utf-8")
     # The refusal's justification, checked against the file that justifies it. Without

@@ -261,6 +261,11 @@ def test_granting_a_high_risk_permission_writes_an_alert_row(
     rows = _alerts(migrated.owner_url)
     assert len(rows) == 1, f"expected exactly one alert for {code}, saw {rows}"
     event_type, event_class, outcome, metadata = rows[0]
+    # Asserted rather than unpacked and dropped. The first version of this test bound
+    # `event_type` and never looked at it, which ruff reported — and it was right about
+    # more than tidiness: `_alerts` selects **by** that column, so leaving it unchecked
+    # meant the one field the query filters on was the one field nothing verified.
+    assert event_type == "role.high_risk_permission_granted"
     assert event_class == "administrative"
     # `success`, not a failure: the grant succeeded. Recorded as a failure it would land
     # in `idx_auth_events_failures` and make every high-risk grant look like an incident.
@@ -381,7 +386,8 @@ def test_a_context_cannot_be_spent_twice(client: Any) -> None:
     }
     headers = {"If-Match": etag, "X-Recent-Auth": reference, CSRF_HEADER: token}
 
-    assert client.put(f"/api/v1/roles/{role['id']}/permissions", json=body, headers=headers).status_code == 200
+    applied = client.put(f"/api/v1/roles/{role['id']}/permissions", json=body, headers=headers)
+    assert applied.status_code == 200, applied.text
 
     # Same reference, and the ETag is now stale too — so this asserts the *step-up* is
     # refused by reading the code, not merely that something failed.
@@ -534,7 +540,7 @@ def test_a_reader_cannot_change_a_role(client: Any) -> None:
     listed = client.get("/api/v1/roles")
     assert listed.status_code == 200, "the reader genuinely holds role.read"
 
-    role = [row for row in listed.json()["roles"] if row["code"] == "accountant"][0]
+    role = next(row for row in listed.json()["roles"] if row["code"] == "accountant")
     refused = client.put(
         f"/api/v1/roles/{role['id']}/permissions",
         json={"permission_codes": role["permission_codes"], "reason": "should be denied"},
