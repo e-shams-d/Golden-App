@@ -1608,7 +1608,7 @@ this plan did not describe, and an owner with no section is an owner nobody can 
 - The compose-stack browser run for end-to-end audience isolation, which needs the frontend images
   rebuilt — the ones on disk predate the login screens.
 
-### The owner decision this slice needs first
+### The owner decision this slice needed first — **resolved**
 
 **Which permission gates each navigation item.** `21_UI_Design_System_and_Screen_Specification.md`
 §6.3 gives per-role navigation lists that disagree with migration `_0008`'s seeded grants, and the
@@ -1618,10 +1618,25 @@ obvious mapping is actively wrong: `accountant` — the only unprivileged role t
 traders item on `trader.read` would therefore hide nothing from anybody, and the test asserting it
 hides something would have to be written against a permission nobody is granted.
 
-The only permissions that both discriminate the two seeded roles and guard a route are
-`trader.approve/reject/suspend/reactivate`. Whether navigation is gated on the *action* permission
-rather than the read one is a product decision, not an implementation detail, and `UI-NAV-001`'s two
-halves cannot be made to touch the same grant until it is recorded.
+**Decision (owner, slice 10D): gate on the permission that lets you *act*, not the one that lets you
+read.** So the traders item is gated on `trader.approve`, work queues on `manual_review.assign`,
+payment requests on `payment_request.review`, batches on `payment_batch.create`, bank results on
+`bank_result_bundle.upload`, and settings on `source_bank_account.manage`.
+
+The rule is broken exactly once and the exception is recorded in
+`apps/admin-web/src/navigation.ts`: there is no "act on the audit trail" permission, because the
+trail is append-only and nobody edits it. `audit.export` is the nearest action and **no seeded role
+holds it**, so gating on it would hide the item from everyone — which is worse than showing it.
+`audit.read` is the honest gate there.
+
+### What the decision turned out to mean
+
+**Gating on actions makes the navigation role-shaped, not role-ranked.** The first version of the
+test asserted that an administrator sees more than an accountant, and it failed: `business_admin`
+sees four items and `accountant` sees six. Neither is a superset of the other — `accountant` is the
+operational role and `business_admin` the administrative one. The design was right and the
+assumption was wrong, so `UI-NAV-001` asserts *mutual difference* with each role holding something
+the other lacks, which is the honest form of "navigation reflects permissions".
 
 ### What proves it
 

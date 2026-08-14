@@ -67,7 +67,26 @@ export const faMessages = {
   "foundation.requestIdExample": "نمونه شناسه پیگیری",
   "trader.welcome": "خوش آمدید",
   "trader.noData": "در این مرحله داده مالی نمونه نمایش داده نمی‌شود.",
+  // Kept, and no longer rendered by the shell. Slice 10D replaced it with the three
+  // messages below, which say what is actually known — but the string is left here because
+  // `foundation.noAuthority` and the M1 static shell still reference this vocabulary, and
+  // deleting a message to prove a screen changed is how a translation file loses history.
   "admin.roleUnknown": "نقش جاری: تعیین‌نشده",
+  // What the header says about the session. Three states, because "not signed in" and
+  // "still asking" are different facts and a person who sees the first while the second is
+  // true will go and sign in again for no reason.
+  "admin.session.loading": "در حال شناسایی نشست…",
+  "admin.session.anonymous": "وارد نشده‌اید",
+  // The identifier rather than a name: `/auth/me` returns no display name, and inventing
+  // one — or inferring a role from the permission list — would be the screen asserting
+  // something the server never told it.
+  "admin.session.signedIn": "شناسه کاربر: {id}",
+  "admin.landing.signedInTitle": "شما وارد شده‌اید",
+  "admin.landing.signedInBody": "دسترسی‌های شما تعیین‌کنندهٔ بخش‌هایی است که در ناوبری می‌بینید. نبودن یک بخش به معنی نداشتن اختیار آن است، و سرور در هر حال درخواست بدون مجوز را رد می‌کند.",
+  "admin.landing.permissionCount": "تعداد دسترسی‌های فعال: {count}",
+  "admin.landing.anonymousTitle": "برای ادامه وارد شوید",
+  "admin.landing.anonymousBody": "بدون ورود، تنها بخش‌های عمومی نمایش داده می‌شوند.",
+  "admin.landing.signIn": "ورود کارکنان",
   "admin.queueTitle": "صف‌های عملیاتی",
   "admin.queueDescription": "محتوای صف‌ها پس از اتصال قراردادهای API و مجوزهای سمت سرور نمایش داده می‌شود.",
   "admin.queue.traderApproval": "تأیید طلافروشان",
