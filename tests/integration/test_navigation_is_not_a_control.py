@@ -56,12 +56,25 @@ GATED_ROUTES: list[tuple[str, str, str, str]] = [
 ]
 
 _ITEM = re.compile(r'href:\s*"([^"]+)"[^}]*?permission:\s*"([^"]+)"', re.S)
+_HREF = re.compile(r'href:\s*"([^"]+)"')
+
+# The one item that carries no permission, because it is what an authenticated person lands
+# on. Named rather than counted: the floor below asks that *only* this is ungated, which is
+# a rule, where "at least N items are gated" was a number that went stale the moment the
+# navigation legitimately shrank.
+UNGATED = frozenset({"/"})
 
 
 def gated_navigation() -> dict[str, str]:
     """Every navigation item that carries a permission, read from the module itself."""
 
     return dict(_ITEM.findall(NAVIGATION.read_text(encoding="utf-8")))
+
+
+def every_navigation_href() -> list[str]:
+    """Every item, gated or not — the denominator the floor is derived from."""
+
+    return _HREF.findall(NAVIGATION.read_text(encoding="utf-8"))
 
 
 @pytest.fixture
@@ -144,14 +157,34 @@ def test_the_navigation_module_still_gates_items_on_permissions() -> None:
     The pattern reads a TypeScript file, which is the fragile part of this arrangement — so
     it is asserted directly rather than left to produce an empty mapping that makes the
     tests below pass by having nothing to check.
+
+    **The floor is a rule, not a number, and it is written that way because the number was
+    wrong within a day.** The first version asserted "at least five gated items", which was
+    true when the navigation had seven and false the moment a later slice removed the six
+    items whose pages did not exist. Editing the number to match is the obvious repair and
+    the wrong one: a floor somebody adjusts whenever it fires is a floor that has stopped
+    meaning anything, and the next adjustment is the one that lets it reach zero.
+
+    So it asserts what the navigation module actually promises — every item except the
+    dashboard is gated. That survives screens arriving and leaving, and it still fails
+    loudly if the pattern stops matching: an unparseable file yields no gated items, every
+    href lands in `ungated`, and the comparison below reports all of them.
     """
 
-    items = gated_navigation()
+    hrefs = every_navigation_href()
+    gated = gated_navigation()
 
-    assert len(items) >= 5, (
-        f"only {len(items)} gated navigation items were parsed out of {NAVIGATION.name}; "
-        "either the module stopped gating on permissions or the pattern no longer matches "
-        "how it writes them, and every assertion below is now about nothing"
+    assert len(hrefs) >= 2, (
+        f"only {len(hrefs)} navigation items were parsed out of {NAVIGATION.name}; the "
+        "pattern no longer matches how the module writes them, and every assertion below "
+        "is now about nothing"
+    )
+
+    ungated = set(hrefs) - set(gated)
+    assert ungated == UNGATED, (
+        f"these navigation items carry no permission: {sorted(ungated)}. Only the dashboard "
+        "may be ungated; anything else is a screen shown to everybody, and an item the "
+        "permission pattern failed to parse looks exactly the same from here."
     )
 
 
