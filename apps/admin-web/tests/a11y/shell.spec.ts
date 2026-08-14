@@ -22,6 +22,12 @@ const paths = [
   // the state most likely to ship without a heading or without an announced region, and
   // it is the one an operator sees on the worst day.
   "/traders",
+  // The two screens that finally give slice 8E's ten routes a way to be reached. Added with
+  // the screens rather than after them — this suite keeps a fixed list precisely so a new
+  // page is a visible edit, and against no backend both render their failure state, which
+  // is the one an operator meets on the worst day.
+  "/admin-users",
+  "/roles",
 ] as const;
 
 for (const path of paths) {
