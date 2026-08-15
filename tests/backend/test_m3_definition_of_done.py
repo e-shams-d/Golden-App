@@ -133,6 +133,11 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     ("GET", "/api/v1/roles"): PERMISSION,
     ("GET", "/api/v1/roles/{role_id}"): PERMISSION,
     ("PUT", "/api/v1/roles/{role_id}/permissions"): PERMISSION,
+    # M4 slice 2. PERMISSION rather than OWNERSHIP: an upload creates a file that nobody
+    # owns yet, so there is no existing resource whose owner could be compared against
+    # the actor. Ownership starts to matter at download, which is slice 5 and arrives
+    # with its own resolver and its own negative tests.
+    ("POST", "/api/v1/files"): PERMISSION,
     # PUBLIC by necessity rather than by choice, which is why it is not SESSION: an
     # account in `recovery_required` is refused every action except recovery, so it holds
     # no session to classify. The temporary credential an administrator set is what stands
@@ -254,6 +259,14 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ),
     ("PUT", "/api/v1/roles/{role_id}/permissions", "permission"): (
         "test_an_admin_without_the_permission_is_refused"
+    ),
+    # M4 slice 2. The privileged/unprivileged pair is inverted from every entry above:
+    # `file.upload` is held by accountant, trader_owner and warehouse_operator and *not*
+    # by business_admin, which holds all four `user.*` permissions. So the account that
+    # is privileged everywhere else in this ledger is the unauthorised one here, which is
+    # what makes the denial about `file.upload` rather than about being signed in.
+    ("POST", "/api/v1/files", "permission"): (
+        "test_an_authenticated_actor_without_the_permission_is_denied"
     ),
 }
 

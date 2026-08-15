@@ -116,6 +116,11 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "listRoles",
         "getRole",
         "updateRolePermissions",
+        # M4 slice 2. The first operation in this contract whose request body is not
+        # JSON, and the first that writes a byte to storage. Its response is pinned
+        # elsewhere by `API-FILE-001`, which reads the response model's field names so
+        # that a storage address added later cannot reach a client.
+        "uploadFile",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

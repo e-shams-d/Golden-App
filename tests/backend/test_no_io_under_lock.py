@@ -34,6 +34,13 @@ IO_CALL_NAMES = frozenset(
     {
         "put", "put_object", "upload", "upload_file", "write_bytes", "write_text",
         "save", "store",
+        # Added in M4 slice 2. The list already watched `put`, `put_object` and `upload`
+        # — every storage verb except the one this repository's own `StorageBackend`
+        # actually uses. Streaming a file to storage inside a transaction is the single
+        # worst case this rule exists for, and it was the one case the rule could not
+        # see. The receiver check keeps `sink.write(chunk)` inside the local adapter from
+        # becoming noise, because that write is not inside a unit of work at all.
+        "write",
         "get", "post", "put_request", "patch", "delete", "request", "send",
         "urlopen", "fetch",
         "run", "check_output", "check_call", "Popen",
@@ -67,8 +74,29 @@ def _is_uow_context(node: ast.With) -> bool:
 
 
 def _receiver_of(call: ast.Call) -> str | None:
-    if isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name):
-        return call.func.value.id
+    """The name the call is made on: `session` for both `session.get` and
+    `uow.session.get`.
+
+    The attribute chain has to be walked, not just its first level. Every command until
+    M4 received an already-entered unit of work and wrote `uow.session.get(...)` in a
+    module with no `with` block of its own, so the receiver was never examined here. The
+    upload command opens its own transactions — it must, because it needs two with the
+    streaming step between them — and `uow.session.get` was then read as an unknown
+    receiver calling `get`, and reported as network I/O under lock.
+
+    Taking the last attribute before the call is the correct reading in both cases and
+    does not widen the rule: `session` is already recorded as safe, and a genuinely
+    unsafe receiver like `runtime.storage.write` still resolves to `storage`, which is
+    not.
+    """
+
+    if not isinstance(call.func, ast.Attribute):
+        return None
+    receiver = call.func.value
+    if isinstance(receiver, ast.Name):
+        return receiver.id
+    if isinstance(receiver, ast.Attribute):
+        return receiver.attr
     return None
 
 
@@ -158,7 +186,20 @@ def test_the_scanner_does_not_flag_work_after_the_transaction(tmp_path: Path) ->
     assert io_calls_inside_transactions(correct) == []
 
 
-@pytest.mark.parametrize("safe", ["session.get(Model, key)", "values.get('name')"])
+@pytest.mark.parametrize(
+    "safe",
+    [
+        "session.get(Model, key)",
+        "values.get('name')",
+        # Through the unit of work, which is how every command in this repository
+        # actually writes it. Added in M4 slice 2: the receiver matcher only looked one
+        # level deep, so this form was read as an unknown receiver calling `get` and
+        # reported as network I/O. It was invisible until a command opened its own
+        # transaction, because until then no command's `uow.session.get` sat inside a
+        # `with` block in its own module.
+        "uow.session.get(Model, key)",
+    ],
+)
 def test_ordinary_lookups_are_not_mistaken_for_io(tmp_path: Path, safe: str) -> None:
     """`session.get` is a primary-key lookup and `dict.get` is everywhere.
 
@@ -177,3 +218,39 @@ def test_ordinary_lookups_are_not_mistaken_for_io(tmp_path: Path, safe: str) -> 
     )
 
     assert io_calls_inside_transactions(module) == []
+
+
+@pytest.mark.parametrize(
+    "unsafe",
+    [
+        "storage.write(key, source)",
+        # The nested form, which is the whole risk of walking the attribute chain. If
+        # taking the last attribute had been done carelessly — say by taking the first
+        # name instead — this would resolve to `runtime`, which is not in the safe list
+        # either, and the rule would look intact while matching the wrong thing. This is
+        # the case that proves the widened matcher still sees the receiver that matters.
+        "runtime.storage.write(key, source)",
+        "runtime.redis.get(cache_key)",
+    ],
+)
+def test_a_nested_receiver_is_still_caught(tmp_path: Path, unsafe: str) -> None:
+    """Guard the guard for the widened receiver matcher.
+
+    Teaching `_receiver_of` to walk one more level made `uow.session.get` safe. It must
+    not have made `runtime.storage.write` safe as well — the two have the same shape and
+    only one of them is a database lookup.
+    """
+
+    module = tmp_path / "nested.py"
+    module.write_text(
+        "def command(uow_factory, runtime, storage, key, source, cache_key):\n"
+        "    with uow_factory() as uow:\n"
+        f"        result = {unsafe}\n"
+        "        uow.commit()\n"
+        "        return result\n",
+        encoding="utf-8",
+    )
+
+    assert io_calls_inside_transactions(module) != [], (
+        f"{unsafe} was not flagged; walking the attribute chain has blunted the rule"
+    )

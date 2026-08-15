@@ -51,6 +51,9 @@ export interface paths {
   "/api/v1/center-profile/rename": {
     post: operations["renameCenterProfile"];
   };
+  "/api/v1/files": {
+    post: operations["uploadFile"];
+  };
   "/api/v1/health/dependencies": {
     get: operations["getHealthDependencies"];
   };
@@ -115,6 +118,7 @@ export interface components {
     "AdminUserView": { email: string | null; full_name: string; id: string; phone_number: string | null; record_version: number; role_codes: Array<string>; status: string; username: string };
     "AmendAdminUserRequest": { email?: string | null; full_name?: string | null; phone_number?: string | null };
     "BackgroundProcessingResponse": { jobs: components["schemas"]["JobHealth"]; needs_attention: boolean; outbox: components["schemas"]["OutboxHealth"] };
+    "Body_uploadFile": { client_filename?: string | null; file: Blob; purpose: string };
     "CenterProfileResponse": { name: string; profile_id: string; record_version: number; replayed: boolean };
     "ChangePasswordRequest": { current_password: string; new_password: string };
     "ChangePasswordResponse": { changed: boolean };
@@ -155,6 +159,7 @@ export interface components {
     "TraderProfileResponse": { approval_status: string; approved_at: string | null; credit_limit_irr: number | null; display_name: string; id: string; legal_name: string | null; operational_status: string; primary_phone: string; record_version: number };
     "TraderResponse": { approval_status: string; approved_at: string | null; display_name: string; id: string; legal_name: string | null; operational_status: string; primary_phone: string; record_version: number };
     "UpdateRolePermissionsRequest": { permission_codes: Array<string>; reason: string };
+    "UploadedFileResponse": { id: string; mime_type: string; original_filename: string; processing_job_id: string | null; sha256: string | null; size_bytes: number; status: string };
     "WorkerStatus": { active_job_count: number; last_heartbeat_at: string; name: string; queues: Array<string>; release_version: string; status: "running" | "stale" };
     "WorkersResponse": { workers: Array<components["schemas"]["WorkerStatus"]> };
   };
@@ -200,4 +205,5 @@ export interface operations {
   "updateAdminUser": { parameters: { header?: { "If-Match"?: string | null }; path: { admin_user_id: string } }; requestBody: { content: { "application/json": components["schemas"]["AmendAdminUserRequest"] } }; responses: { "200": { content: { "application/json": components["schemas"]["AdminUserView"] } }; "400": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "409": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "412": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "428": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "updateOwnTraderProfile": { parameters?: { header?: { "If-Match"?: string | null } }; requestBody: { content: { "application/json": components["schemas"]["TraderProfilePatch"] } }; responses: { "200": { content: { "application/json": components["schemas"]["TraderProfileResponse"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "412": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "428": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "updateRolePermissions": { parameters: { header?: { "If-Match"?: string | null; "X-Recent-Auth"?: string | null }; path: { role_id: string } }; requestBody: { content: { "application/json": components["schemas"]["UpdateRolePermissionsRequest"] } }; responses: { "200": { content: { "application/json": components["schemas"]["RoleView"] } }; "400": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "412": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "428": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "440": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
+  "uploadFile": { parameters?: { header?: { "Idempotency-Key"?: string | null } }; requestBody: { content: { "multipart/form-data": components["schemas"]["Body_uploadFile"] } }; responses: { "201": { content: { "application/json": components["schemas"]["UploadedFileResponse"] } }; "400": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
 }
