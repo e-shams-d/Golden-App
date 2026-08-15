@@ -109,6 +109,10 @@ def settings_factory(tmp_path: Path) -> Callable[..., Settings]:
             # override this to None, and every other test is unaffected.
             "auth_rate_limit_key_secret": "r" * 40,
             "auth_csrf_key_secret": "c" * 40,
+            # The same reasoning, for the POL-006 upload-limits refusal: supplied by
+            # default so every test that happens to build production settings is
+            # unaffected, and the one test that proves the refusal fires overrides it.
+            "file_upload_limits_are_production_approved": True,
             "dependency_timeout_seconds": 0.2,
             "worker_probe_timeout_seconds": 0.2,
             "log_level": "CRITICAL",
