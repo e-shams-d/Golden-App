@@ -20,7 +20,16 @@ dependencies = [
   # Required by `POST /api/v1/files`. `05_API_Specification.md:977` specifies
   # `multipart/form-data`, and Starlette raises at route registration without it — so it
   # is a dependency of the contract, not a convenience.
-  "python-multipart==0.0.20",
+  #
+  # **At least 0.0.30.** 0.0.20 was pinned first and the image scanner refused it with
+  # three HIGH advisories: arbitrary file write via path traversal (fixed 0.0.22), and
+  # two denial-of-service paths through multipart part headers and form-urlencoded
+  # bodies (fixed 0.0.27 and 0.0.30). The first is the one that matters most here — it is
+  # the exact risk surface of the endpoint this dependency exists for, and while
+  # `generate_storage_key` never consults a client filename so our own path is not built
+  # from input, the library writes its own temporary files and that is not our guard to
+  # rely on.
+  "python-multipart==0.0.32",
   "redis==5.2.1",
   "sqlalchemy==2.0.44",
   "uvicorn[standard]==0.35.0",
