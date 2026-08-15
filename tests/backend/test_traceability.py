@@ -166,13 +166,11 @@ PENDING: dict[str, str] = {
     # by tests/integration/test_file_upload.py, and TRACE-CALLER-001 by
     # tests/backend/test_storage_has_a_caller.py — the gate that asks the question no
     # other test in this suite asks, which is whether anything calls the mechanism.
-    # Slice 3 — Content inspection, and what happens to a file that fails it
-    "FILE-VAL-001": "Slice 3",
-    "FILE-VAL-002": "Slice 3",
-    "FILE-VAL-003": "Slice 3",
-    "FILE-VAL-004": "Slice 3",
-    "FILE-VAL-005": "Slice 3",
-    "SEC-FILEUP-001": "Slice 3",
+    # Slice 3 is merged: FILE-VAL-005 is discharged by the decision function's own tests
+    # in tests/backend/test_file_inspection.py, and FILE-VAL-001 to -004 and
+    # SEC-FILEUP-001 by tests/integration/test_file_inspection.py — the consequences
+    # (which outcomes keep a row, which keep the bytes, which never reach storage) are
+    # claims about the route and the database, not about the detector.
     # Slice 4 — `available` requires a scan, and there is no scanner
     "FILE-SCAN-001": "Slice 4",
     "FILE-SCAN-002": "Slice 4",
