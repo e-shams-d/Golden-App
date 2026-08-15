@@ -208,6 +208,36 @@
         "title": "BackgroundProcessingResponse",
         "type": "object"
       },
+      "Body_uploadFile": {
+        "properties": {
+          "client_filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Filename"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "purpose"
+        ],
+        "title": "Body_uploadFile",
+        "type": "object"
+      },
       "CenterProfileResponse": {
         "additionalProperties": false,
         "properties": {
@@ -1454,6 +1484,67 @@
           "reason"
         ],
         "title": "UpdateRolePermissionsRequest",
+        "type": "object"
+      },
+      "UploadedFileResponse": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1000-1012`.\n\n`extra=\"forbid\"` is not cosmetic here: with it, adding a storage field to this model\nis the only way one could ever reach a client, and `API-FILE-001` reads these field\nnames. Without it, a dict returned from somewhere else could carry one through.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "original_filename": {
+            "title": "Original Filename",
+            "type": "string"
+          },
+          "processing_job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processing Job Id"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "original_filename",
+          "mime_type",
+          "size_bytes",
+          "sha256",
+          "processing_job_id"
+        ],
+        "title": "UploadedFileResponse",
         "type": "object"
       },
       "WorkerStatus": {
@@ -3006,6 +3097,75 @@
         "summary": "Rename the center profile",
         "tags": [
           "center-profile"
+        ]
+      }
+    },
+    "/api/v1/files": {
+      "post": {
+        "operationId": "uploadFile",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_uploadFile"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadedFileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The purpose, media type, size or idempotency key was refused."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Upload File",
+        "tags": [
+          "files"
         ]
       }
     },

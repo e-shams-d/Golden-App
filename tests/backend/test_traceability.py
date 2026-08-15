@@ -162,15 +162,10 @@ PENDING: dict[str, str] = {
     #
     # Slice 1 is merged: FILE-PURPOSE-001/-002/-003, SEC-PURPOSE-001 and OPS-LIMIT-001 are
     # discharged by tests/backend/test_file_purposes.py.
-    # Slice 2 — The storage backend gets its first byte
-    "FILE-UP-001": "Slice 2",
-    "FILE-UP-002": "Slice 2",
-    "FILE-UP-003": "Slice 2",
-    "FILE-UP-004": "Slice 2",
-    "FILE-UP-005": "Slice 2",
-    "API-FILE-001": "Slice 2",
-    "TRACE-CALLER-001": "Slice 2",
-    "AUD-FILE-001": "Slice 2",
+    # Slice 2 is merged: FILE-UP-001 to -005, API-FILE-001 and AUD-FILE-001 are discharged
+    # by tests/integration/test_file_upload.py, and TRACE-CALLER-001 by
+    # tests/backend/test_storage_has_a_caller.py — the gate that asks the question no
+    # other test in this suite asks, which is whether anything calls the mechanism.
     # Slice 3 — Content inspection, and what happens to a file that fails it
     "FILE-VAL-001": "Slice 3",
     "FILE-VAL-002": "Slice 3",

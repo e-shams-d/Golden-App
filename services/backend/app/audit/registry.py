@@ -94,6 +94,19 @@ _OUTBOX_GAP = (
     "but it must be renamed to whatever M0 approves. Raised for the register."
 )
 
+UPLOAD_FILE = CommandNames(
+    audit_action="file.uploaded",
+    # No outbox event. Preview dispatch is slice 6, and nothing consumes an upload event
+    # today — emitting one now would be a message with no reader, which is the shape this
+    # milestone is deliberately not repeating.
+    outbox_event_type=None,
+    # Catalogued as of M4 slice 1, which added `file.upload` to `command_catalog.yaml`
+    # under DOC-CONFLICT-046: document 05 defines `POST /api/v1/files` and the catalogue
+    # had no entry for it, so the mutation every other upload builds on carried no
+    # idempotency or audit contract at all.
+    catalogued=True,
+)
+
 REGISTER_TRADER = CommandNames(
     audit_action="trader.registered",
     outbox_event_type="TraderRegistered",

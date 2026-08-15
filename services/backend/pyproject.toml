@@ -17,6 +17,10 @@ dependencies = [
   "pydantic==2.11.10",
   "pydantic-settings==2.10.1",
   "psycopg[binary]==3.2.12",
+  # Required by `POST /api/v1/files`. `05_API_Specification.md:977` specifies
+  # `multipart/form-data`, and Starlette raises at route registration without it — so it
+  # is a dependency of the contract, not a convenience.
+  "python-multipart==0.0.20",
   "redis==5.2.1",
   "sqlalchemy==2.0.44",
   "uvicorn[standard]==0.35.0",
