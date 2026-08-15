@@ -94,6 +94,17 @@ RECORDED_GAPS: dict[str, str] = {
         "this field as unfilled with the same reason rather than omitting it, so a "
         "release reader sees the gap instead of a complete-looking set."
     ),
+    "SEC-FILEDL-008": (
+        "M4 issues no signed URLs, so there is no expiry to test. The milestone's "
+        "authority lists 'signed/authorized access expires or is re-authorized correctly' "
+        "as an M4 test (15_Agent_Implementation_Plan.md:726) and its authorized half is "
+        "discharged by SEC-FILEDL-006, which revokes a session between two identical "
+        "download requests. The signed half needs a backend that can sign: the local "
+        "pilot adapter cannot, ADR-003 has not chosen the production adapter, and a "
+        "signed URL is a bearer credential — building one against an undecided backend "
+        "would be guessing at the shape of a credential. Recorded rather than dropped so "
+        "that whoever accepts M4 reads the absence instead of a complete-looking set."
+    ),
 }
 
 
@@ -141,6 +152,96 @@ PENDING: dict[str, str] = {
     # and its refusals; M3's is about the artifact carrying M3's own state. Deciding they
     # were the same would have discharged an M3 obligation with an M2 test — the cheapest
     # false discharge available anywhere in this ledger, and it needed one docstring line.
+    #
+    # ---- M4, stated by `docs/handoff/M4_IMPLEMENTATION_PLAN.md` and not yet written ----
+    #
+    # The plan lands before its slices, so every obligation it states is owed rather than
+    # covered. Each entry names the slice that owes it; each slice PR removes its own.
+    # SEC-FILEDL-008 is deliberately absent: M4 issues no signed URLs, so it is a recorded
+    # gap rather than pending work.
+    #
+    # Slice 1 — What M4 is allowed to accept, before anything accepts it
+    "FILE-PURPOSE-001": "Slice 1",
+    "FILE-PURPOSE-002": "Slice 1",
+    "FILE-PURPOSE-003": "Slice 1",
+    "OPS-LIMIT-001": "Slice 1",
+    "SEC-PURPOSE-001": "Slice 1",
+    # Slice 2 — The storage backend gets its first byte
+    "FILE-UP-001": "Slice 2",
+    "FILE-UP-002": "Slice 2",
+    "FILE-UP-003": "Slice 2",
+    "FILE-UP-004": "Slice 2",
+    "FILE-UP-005": "Slice 2",
+    "API-FILE-001": "Slice 2",
+    "TRACE-CALLER-001": "Slice 2",
+    "AUD-FILE-001": "Slice 2",
+    # Slice 3 — Content inspection, and what happens to a file that fails it
+    "FILE-VAL-001": "Slice 3",
+    "FILE-VAL-002": "Slice 3",
+    "FILE-VAL-003": "Slice 3",
+    "FILE-VAL-004": "Slice 3",
+    "FILE-VAL-005": "Slice 3",
+    "SEC-FILEUP-001": "Slice 3",
+    # Slice 4 — `available` requires a scan, and there is no scanner
+    "FILE-SCAN-001": "Slice 4",
+    "FILE-SCAN-002": "Slice 4",
+    "FILE-SCAN-003": "Slice 4",
+    "FILE-SCAN-004": "Slice 4",
+    "FILE-LIFE-001": "Slice 4",
+    "FILE-LIFE-002": "Slice 4",
+    # Slice 5 — Every download is authorized again, and a category with no owner is denied
+    "SEC-FILEDL-001": "Slice 5",
+    "SEC-FILEDL-002": "Slice 5",
+    "SEC-FILEDL-003": "Slice 5",
+    "SEC-FILEDL-004": "Slice 5",
+    "SEC-FILEDL-005": "Slice 5",
+    "SEC-FILEDL-006": "Slice 5",
+    "API-FILE-002": "Slice 5",
+    "API-FILE-003": "Slice 5",
+    "SEC-FILEDL-007": "Slice 5",
+    # Slice 6 — Derived files know their source, and preview work is dispatched rather than done
+    "FILE-DERIV-001": "Slice 6",
+    "FILE-DERIV-002": "Slice 6",
+    "FILE-DERIV-003": "Slice 6",
+    "JOB-PREVIEW-001": "Slice 6",
+    "JOB-PREVIEW-002": "Slice 6",
+    # Slice 7 — The six reconciliation checks get an operator
+    "OPS-RECON-001": "Slice 7",
+    "OPS-RECON-002": "Slice 7",
+    "OPS-RECON-003": "Slice 7",
+    "TRACE-CALLER-002": "Slice 7",
+    "OPS-RECON-004": "Slice 7",
+    # Slice 8 — Bank configuration: structure without content
+    "BANK-CFG-001": "Slice 8",
+    "BANK-CFG-002": "Slice 8",
+    "BANK-CFG-003": "Slice 8",
+    "BANK-CFG-004": "Slice 8",
+    "BANK-FIXTURE-002": "Slice 8",
+    "BANK-ACCT-001": "Slice 8",
+    "SEC-BANKCFG-001": "Slice 8",
+    "AUD-BANKCFG-001": "Slice 8",
+    "OPS-BANKCFG-001": "Slice 8",
+    # Slice 9 — A version is resolved by date, and a used version cannot change
+    "BANK-VER-001": "Slice 9",
+    "BANK-VER-002": "Slice 9",
+    "BANK-VER-003": "Slice 9",
+    "BANK-VER-004": "Slice 9",
+    "BANK-VER-005": "Slice 9",
+    "BANK-VER-006": "Slice 9",
+    "BANK-VER-007": "Slice 9",
+    # Slice 10 — Upload and view it in a browser
+    "UI-FILE-001": "Slice 10",
+    "UI-FILE-002": "Slice 10",
+    "UI-FILE-003": "Slice 10",
+    "UI-FILE-004": "Slice 10",
+    "UI-FILE-005": "Slice 10",
+    "UI-FILE-006": "Slice 10",
+    # Slice 11 — The Definition of Done gate
+    "TRACE-DOD-003": "Slice 11",
+    "TRACE-DOD-004": "Slice 11",
+    "TRACE-DOD-005": "Slice 11",
+    "TRACE-DOD-006": "Slice 11",
+    "TRACE-M4-001": "Slice 11",
 }
 
 
