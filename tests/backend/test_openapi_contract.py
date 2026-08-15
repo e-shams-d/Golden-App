@@ -121,6 +121,11 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # elsewhere by `API-FILE-001`, which reads the response model's field names so
         # that a storage address added later cannot reach a client.
         "uploadFile",
+        # M4 slice 5. The first operations that stream bytes rather than JSON, and the
+        # first whose refusal is deliberately indistinguishable from "not found".
+        "getFileMetadata",
+        "downloadFile",
+        "previewFile",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas
