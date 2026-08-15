@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { adminNavigation } from "../src/navigation";
 import { loadAdminSession, type AdminSession } from "../src/session";
+import { SignOutButton } from "./sign-out-button";
 
 /**
  * The shell, and the first thing in this app that differs by who is looking at it.
@@ -49,7 +50,15 @@ export function AdminShell({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <ApplicationShell
       appName={t("admin.appName")}
-      headerContext={headerFor(session)}
+      headerContext={
+        <div className="flex items-center gap-4">
+          <span>{headerFor(session)}</span>
+          {/* Only when there is a session to end. Offering sign-out to an anonymous visitor
+              would be a button that either does nothing or logs a 401 — and on this shell
+              the header is the only place a person looks for it. */}
+          {session.kind === "signed-in" ? <SignOutButton /> : null}
+        </div>
+      }
       navigation={visibleNavigation(adminNavigation, permissions)}
       navigationLabel="ناوبری عملیات داخلی"
       skipToContentLabel={t("common.skipToContent")}

@@ -16,16 +16,27 @@ body {
   min-width: 20rem;
 }
 
-a {
-  color: inherit;
-}
+/* `@layer base`, not unlayered.
+ *
+ * These three were unlayered, and an unlayered rule beats every cascade layer regardless
+ * of specificity — so `a { color: inherit }` overrode Tailwind's `.text-white`, which
+ * lives in `@layer utilities`, and every white-on-dark link button rendered as black text
+ * on a black pill. A solid unreadable lozenge, on the first screen a goldsmith sees.
+ *
+ * Inside the layer they still reset what they always reset, and a utility class now wins
+ * over them, which is the relationship the framework assumes. */
+@layer base {
+  a {
+    color: inherit;
+  }
 
-:focus-visible {
-  outline: 0.2rem solid var(--focus);
-  outline-offset: 0.2rem;
-}
+  :focus-visible {
+    outline: 0.2rem solid var(--focus);
+    outline-offset: 0.2rem;
+  }
 
-::selection {
-  background: var(--gold-100);
-  color: var(--ink-950);
+  ::selection {
+    background: var(--gold-100);
+    color: var(--ink-950);
+  }
 }

@@ -105,5 +105,34 @@ DEMO_ADMIN_PASSWORD="$ADMIN_PASSWORD" \
 DEMO_BUSINESS_NAME="$BUSINESS_NAME" \
     pnpm exec playwright test --config=playwright.demo.config.ts
 
-printf '\nThe onboarding path works end to end. The stack is left running on port %s;\n' "$HTTP_PORT"
+printf '\nThe onboarding path works end to end.\n'
+
+# What a person needs to open the two applications, which this script generated and until
+# now kept to itself. It was written to *verify* the path in a browser and printed only
+# what the verification needed; the moment it became the way a deployment is stood up for a
+# demonstration, an operator was left with an administrator account whose password existed
+# nowhere. Everything below is generated per run and dies with the deployment.
+cat <<SIGNIN
+
+================ how to sign in ================
+
+  Centre (staff)      http://admin.localhost:${HTTP_PORT}
+    username          ${ADMIN_USER}
+    password          ${ADMIN_PASSWORD}
+
+  Goldsmith (trader)  http://trader.localhost:${HTTP_PORT}
+    phone             ${PHONE}
+    password          ${TRADER_PASSWORD}
+    business          ${BUSINESS_NAME}  (approved during this run)
+
+  Nine more businesses and three more staff accounts were seeded above, each with
+  its own password. The staff ones are worth signing in as: 'hesabdar' holds the
+  accountant role and sees a different menu from ${ADMIN_USER}.
+
+  Walkthrough: docs/handoff/DEMO_SCRIPT_FA.md
+
+================================================
+SIGNIN
+
+printf '\nThe stack is left running on port %s;\n' "$HTTP_PORT"
 printf 'stop it with: docker compose --project-name %s --env-file .env -f infra/compose/compose.local.yml down\n' "$PROJECT"
