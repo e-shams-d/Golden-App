@@ -105,6 +105,7 @@ def upload_file(
         ),
         uow_factory=runtime.uow_factory,
         storage=runtime.storage,
+        scan_policy=runtime.scan_policy,
         actor=AuditActor(
             actor_type=actor.actor_type.value,
             actor_id=actor.actor_id,

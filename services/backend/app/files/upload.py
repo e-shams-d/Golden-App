@@ -21,12 +21,16 @@ carries who was uploading and why. Bytes-first would leave an orphan blob —
 `storage_objects_without_a_record` detects that too, but a blob carries nothing, so the
 operator learns that something was uploaded and nothing about what or by whom.
 
-**Every upload lands in `quarantined`.** No scan policy exists yet: ADR-008 is open and
-slice 4 introduces the port. Until then the honest answer to "has this been scanned" is
-no, and `available_requires_clean_scan` — a whitelist of the single value `clean` —
-turns that answer into a refusal at the database whether or not application code
-remembers to. This is DOC-CONFLICT-029's fail-closed rule, and it is a state this slice
-produces on purpose rather than a gap in it.
+**A file becomes `available` only if inspection accepted it and the scan policy reported
+`clean`.** Both conditions, and the database enforces the second independently:
+`ck_file_objects_available_requires_clean_scan` is a whitelist of that single value. Two
+layers deliberately — the CHECK is what holds when a future code path forgets this one.
+
+Under the production default there is no scanner, the policy reports `pending`, and every
+upload is therefore quarantined. That is not a gap; it is DOC-CONFLICT-029's fail-closed
+rule arriving as an outcome rather than as a promise, and `app/files/scanning.py` records
+why the only two adapters are the one that scans nothing and the one that refuses to run
+in production.
 
 **Idempotency is keyed on the caller's header, never on the checksum** (DOC-CONFLICT-046).
 Two people legitimately uploading the same document are two pieces of evidence with two
@@ -59,6 +63,8 @@ from app.files.inspection import (
     is_structurally_readable,
 )
 from app.files.purposes import UnknownFilePurposeError, resolve
+from app.files.scanning import ScanPolicy, ScanResult
+from app.files.states import AVAILABLE, PENDING, QUARANTINED, SCAN_PENDING
 from app.idempotency import IdempotencyResolver, key_hash
 from app.idempotency.resolver import IdempotencyClaim
 from app.storage.interface import StorageBackend
@@ -71,11 +77,9 @@ METADATA_VERSION = 1
 
 MAX_FILENAME_LENGTH = 255
 
-# What a file lands in until slice 4 gives the finalize step a scan policy to consult.
-# Named rather than inlined so that slice 4 changes one place and the reason travels with
-# the value.
-UNSCANNED_STORAGE_STATUS = "quarantined"
-UNSCANNED_SCAN_STATUS = "pending"
+# The state an upload is initiated in, before there are any bytes to describe.
+INITIAL_STORAGE_STATUS = PENDING
+INITIAL_SCAN_STATUS = SCAN_PENDING
 
 # `file_objects.storage_provider` / `.storage_bucket`. ADR-003 has not chosen the
 # production adapter, so the triple records what actually wrote the bytes rather than
@@ -175,6 +179,7 @@ def execute(
     *,
     uow_factory: Callable[[], SqlAlchemyUnitOfWork],
     storage: StorageBackend,
+    scan_policy: ScanPolicy,
     actor: AuditActor,
     context: AuditContext,
     idempotency_key: str,
@@ -235,8 +240,8 @@ def execute(
             sha256_hash=None,
             category=command.purpose,
             visibility_scope=purpose.visibility_scope,
-            storage_status="pending",
-            scan_status=UNSCANNED_SCAN_STATUS,
+            storage_status=INITIAL_STORAGE_STATUS,
+            scan_status=INITIAL_SCAN_STATUS,
             uploaded_by_actor_type=actor.actor_type,
             uploaded_by_actor_id=actor.actor_id,
             original_or_derived_relation="original",
@@ -273,6 +278,19 @@ def execute(
                     finding.detected_media_type, QuarantineReason.UNREADABLE_STRUCTURE
                 )
 
+    # ---- 2c. Scan ---------------------------------------------------------------
+    # Also outside any transaction: a scanner is a slow external dependency, and holding
+    # a transaction across one is the same mistake as holding it across the upload.
+    #
+    # A file that already failed inspection is not scanned. It is quarantined either way,
+    # and asking a scanner about content we have already refused wastes the one call that
+    # would matter if a real scanner were configured.
+    scan = (
+        scan_policy.scan(storage_key=storage_key)
+        if finding.is_acceptable
+        else ScanResult(SCAN_PENDING)
+    )
+
     # ---- 3. Finalize ------------------------------------------------------------
     with uow_factory() as uow:
         resolver = IdempotencyResolver(uow)
@@ -280,10 +298,18 @@ def execute(
         if stored_record is None:  # pragma: no cover - the row was committed above
             raise BusinessRuleViolationError("the initiated file record disappeared")
 
+        # Two conditions, both required, and the database enforces the second
+        # independently: `ck_file_objects_available_requires_clean_scan` is a whitelist
+        # of the single value `clean`. Two layers deliberately — the CHECK is what holds
+        # when a future code path forgets this one.
+        becomes_available = finding.is_acceptable and scan.permits_availability
+        resulting_status = AVAILABLE if becomes_available else QUARANTINED
+
         stored_record.size_bytes = written.size_bytes
         stored_record.sha256_hash = written.sha256_hash
         stored_record.mime_type_detected = finding.detected_media_type
-        stored_record.storage_status = UNSCANNED_STORAGE_STATUS
+        stored_record.scan_status = scan.status
+        stored_record.storage_status = resulting_status
         if finding.quarantine_reason is not None:
             # Recorded, never inferred later from the type columns. "Detected does not
             # equal declared" and "nothing recognised these bytes" are different facts
@@ -296,7 +322,7 @@ def execute(
 
         response = {
             "id": str(file_id),
-            "status": UNSCANNED_STORAGE_STATUS,
+            "status": resulting_status,
             "original_filename": filename,
             "mime_type": command.declared_media_type,
             "size_bytes": written.size_bytes,
@@ -317,8 +343,8 @@ def execute(
                 # leaked here outlives every other place it could have leaked.
                 new_values={
                     "purpose": command.purpose,
-                    "storage_status": UNSCANNED_STORAGE_STATUS,
-                    "scan_status": UNSCANNED_SCAN_STATUS,
+                    "storage_status": resulting_status,
+                    "scan_status": scan.status,
                     "size_bytes": written.size_bytes,
                     "sha256": written.sha256_hash,
                     "mime_type_declared": command.declared_media_type,
@@ -352,7 +378,7 @@ def execute(
 
     return UploadResult(
         file_id=file_id,
-        status=UNSCANNED_STORAGE_STATUS,
+        status=resulting_status,
         original_filename=filename,
         mime_type=command.declared_media_type,
         size_bytes=written.size_bytes,

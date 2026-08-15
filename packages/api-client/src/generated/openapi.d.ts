@@ -124,7 +124,7 @@ export interface components {
     "ChangePasswordResponse": { changed: boolean };
     "CreateAdminUserRequest": { email?: string | null; full_name: string; password: string; phone_number?: string | null; role_codes: Array<string>; username: string };
     "DecisionRequest": { reason?: string | null };
-    "DependenciesResponse": { dependencies: { [key: string]: components["schemas"]["DependencyStatus"] }; status: "ok" | "degraded" };
+    "DependenciesResponse": { dependencies: { [key: string]: components["schemas"]["DependencyStatus"] }; scan_policy: string; status: "ok" | "degraded" };
     "DependencyStatus": { error_code?: string | null; last_success_at?: string | null; latency_ms: number; required: boolean; status: "ok" | "unavailable" };
     "ErrorBody": { code: string; details: Array<components["schemas"]["ErrorDetail"]>; message: string; request_id: string };
     "ErrorDetail": { field?: string | null; reason: string };

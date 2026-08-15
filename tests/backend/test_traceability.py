@@ -171,13 +171,16 @@ PENDING: dict[str, str] = {
     # SEC-FILEUP-001 by tests/integration/test_file_inspection.py — the consequences
     # (which outcomes keep a row, which keep the bytes, which never reach storage) are
     # claims about the route and the database, not about the detector.
-    # Slice 4 — `available` requires a scan, and there is no scanner
-    "FILE-SCAN-001": "Slice 4",
-    "FILE-SCAN-002": "Slice 4",
-    "FILE-SCAN-003": "Slice 4",
-    "FILE-SCAN-004": "Slice 4",
-    "FILE-LIFE-001": "Slice 4",
-    "FILE-LIFE-002": "Slice 4",
+    # Slice 4 is merged. FILE-SCAN-002/-004 and FILE-LIFE-002 are discharged by
+    # tests/backend/test_scan_adapters.py; FILE-SCAN-001/-003 and FILE-LIFE-001 by
+    # tests/integration/test_scan_policy.py. The split is deliberate: FILE-SCAN-003 is
+    # the claim that the *database* refuses `available` without a clean scan, so it is
+    # proved with direct SQL that bypasses the command — a test going through the route
+    # could not say which of the two layers was holding.
+    #
+    # Slice 3's file was renamed on the way: tests/backend/test_file_inspection.py is now
+    # test_content_inspection.py, because a basename shared with the integration suite
+    # stops pytest collecting either.
     # Slice 5 — Every download is authorized again, and a category with no owner is denied
     "SEC-FILEDL-001": "Slice 5",
     "SEC-FILEDL-002": "Slice 5",

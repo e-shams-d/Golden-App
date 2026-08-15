@@ -114,6 +114,14 @@ class Settings(BaseSettings):
         default=False, validation_alias="FILE_UPLOAD_LIMITS_ARE_PRODUCTION_APPROVED"
     )
 
+    # ADR-008 is open, so the default is the adapter that reports every file as unscanned
+    # and lets the database's one-value whitelist refuse it. `development_bypass` reports
+    # every file clean and refuses to construct in production; see `app/files/scanning.py`
+    # for why those are the only two.
+    file_scan_policy: Literal["none", "development_bypass"] = Field(
+        default="none", validation_alias="FILE_SCAN_POLICY"
+    )
+
     dependency_timeout_seconds: float = Field(
         default=1.5, gt=0.05, le=10.0, validation_alias="DEPENDENCY_TIMEOUT_SECONDS"
     )
