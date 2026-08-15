@@ -6,6 +6,13 @@ The end-to-end outcomes — quarantine, the row surviving, the executable refusa
 `tests/integration/test_file_inspection.py`, because they are claims about what the route
 and the database do. This file is about the decision function itself, where the cases can
 be enumerated cheaply.
+
+Named `test_content_inspection` rather than `test_file_inspection` because pytest derives
+a module name from the basename alone. Two files sharing one across `tests/backend` and
+`tests/integration` collide at collection — neither directory is a package — and the
+collision only appears when both are collected in one run, which is what CI does and what
+running a directory at a time does not. `test_repository_layout.py` now enforces the rule
+instead of leaving it to whoever names the next file.
 """
 
 from __future__ import annotations
