@@ -26,6 +26,7 @@ Usage:  python3 infra/scripts/bridge-demo-port.py [listen_port] [target_port]
 
 from __future__ import annotations
 
+import contextlib
 import socket
 import socketserver
 import sys
@@ -53,10 +54,10 @@ def _pump(source: socket.socket, destination: socket.socket) -> None:
     except OSError:
         pass
     finally:
-        try:
+        # The peer may already be gone, which is not an error worth reporting: the
+        # half-close is best-effort cleanup on a connection that is ending either way.
+        with contextlib.suppress(OSError):
             destination.shutdown(socket.SHUT_WR)
-        except OSError:
-            pass
 
 
 class _Handler(socketserver.BaseRequestHandler):
