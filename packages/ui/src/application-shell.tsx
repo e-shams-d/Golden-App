@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { Icon, type IconName } from "./icon";
+
 export type NavigationItem = Readonly<{
   href: string;
   label: string;
@@ -15,6 +17,14 @@ export type NavigationItem = Readonly<{
    * would force one to be invented for the dashboard.
    */
   permission?: string;
+  /**
+   * The icon beside the label, never instead of it.
+   *
+   * Optional so an item can ship before somebody has chosen one, and never a substitute for
+   * the text: `Icon` renders `aria-hidden`, so an item with only an icon would have no
+   * accessible name at all — and on a bottom navigation bar, a rebus.
+   */
+  icon?: IconName;
 }>;
 
 /**
@@ -83,10 +93,11 @@ export function ApplicationShell({
               {navigation.map((item) => (
                 <li key={item.href}>
                   <a
-                    className="block rounded-lg px-3 py-3 font-bold hover:bg-[var(--gold-50)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus)]"
+                    className="flex items-center gap-3 rounded-lg px-3 py-3 font-bold hover:bg-[var(--gold-50)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus)]"
                     href={item.href}
                   >
-                    {item.label}
+                    {item.icon ? <Icon name={item.icon} /> : null}
+                    <span>{item.label}</span>
                   </a>
                 </li>
               ))}
@@ -102,14 +113,15 @@ export function ApplicationShell({
           aria-label={navigationLabel}
           className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--border)] bg-[var(--surface)] px-2 py-2"
         >
-          <ul className="mx-auto grid max-w-3xl grid-cols-5 gap-1">
+          <ul className="mx-auto flex max-w-3xl items-stretch justify-around gap-1">
             {navigation.map((item) => (
               <li key={item.href}>
                 <a
-                  className="flex min-h-12 items-center justify-center rounded-lg px-1 text-center text-xs font-bold hover:bg-[var(--gold-50)] focus-visible:outline-2 focus-visible:outline-[var(--focus)]"
+                  className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg px-1 text-center text-xs font-bold hover:bg-[var(--gold-50)] focus-visible:outline-2 focus-visible:outline-[var(--focus)]"
                   href={item.href}
                 >
-                  {item.label}
+                  {item.icon ? <Icon name={item.icon} size={22} /> : null}
+                  <span>{item.label}</span>
                 </a>
               </li>
             ))}

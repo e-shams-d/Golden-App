@@ -11,6 +11,10 @@ export const faMessages = {
   "admin.login.identifier": "نام کاربری",
   "admin.login.identifierHint": "نام کاربری سازمانی شما",
   "common.skipToContent": "رفتن به محتوای اصلی",
+  // The way out. Both auth adapters have carried a complete `logout` since slice 9 and
+  // nothing called it, so a signed-in person could only leave by clearing cookies.
+  "common.signOut": "خروج",
+  "common.signingOut": "در حال خروج…",
   "common.retry": "تلاش دوباره",
   "common.refresh": "دریافت آخرین اطلاعات",
   "common.backToHome": "بازگشت به صفحه اصلی",
@@ -230,6 +234,17 @@ export const faMessages = {
   "trader.register.done": "مرکز درخواست شما را بررسی می‌کند. برای دیدن وضعیت، با شماره موبایل و گذرواژه‌ای که ثبت کرده‌اید وارد شوید.",
   "trader.register.goToLogin": "ورود به حساب",
   "trader.register.backToLogin": "قبلاً درخواست داده‌اید؟ وارد شوید.",
+  // The way in. Until now the trader home page offered neither door: a goldsmith arriving
+  // at the application had no link to sign in and no link to apply, so the only way past
+  // the front page was to know a URL.
+  "trader.entry.loading": "در حال بررسی وضعیت ورود…",
+  "trader.entry.anonymousTitle": "به سامانه خوش آمدید",
+  "trader.entry.anonymousBody": "اگر پیش‌تر درخواست همکاری داده‌اید وارد شوید؛ در غیر این صورت درخواست خود را ثبت کنید تا مرکز بررسی کند.",
+  "trader.entry.register": "ثبت درخواست همکاری",
+  "trader.entry.signIn": "ورود به حساب",
+  "trader.entry.signedInTitle": "شما وارد شده‌اید",
+  "trader.entry.signedInBody": "وضعیت کسب‌وکار شما و نتیجهٔ بررسی مرکز در صفحهٔ حساب نمایش داده می‌شود.",
+  "trader.entry.openAccount": "مشاهده حساب کسب‌وکار",
 } as const;
 
 export type MessageKey = keyof typeof faMessages;

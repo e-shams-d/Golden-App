@@ -8,11 +8,31 @@ RUN corepack enable \
     && corepack prepare pnpm@11.15.1 --activate
 
 WORKDIR /workspace
+
+# Manifests first, sources second. Both used to be copied before `pnpm install`, so any
+# source edit invalidated the install layer and forced a fresh download of the whole
+# dependency graph. That is invisible while the registry is fast and total when it is not:
+# on this deployment's network registry.npmjs.org answers in roughly thirty seconds, and
+# every rebuild after a one-line change died with TimeoutError four minutes in. With this
+# order a code change rebuilds only the build step, and needs no network at all.
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml turbo.json tsconfig.base.json ./
+COPY apps/admin-web/package.json ./apps/admin-web/
+COPY apps/trader-pwa/package.json ./apps/trader-pwa/
+COPY packages/api-client/package.json ./packages/api-client/
+COPY packages/auth-client/package.json ./packages/auth-client/
+COPY packages/config/package.json ./packages/config/
+COPY packages/localization/package.json ./packages/localization/
+COPY packages/ui/package.json ./packages/ui/
+
+# Sixty seconds per request rather than pnpm's default, with more retries. The layering
+# above does not help the *first* install on a machine with no store, and a registry that
+# takes thirty seconds to answer cannot complete one under a shorter timeout.
+RUN pnpm config set fetch-timeout 60000 \
+    && pnpm config set fetch-retries 5 \
+    && pnpm install --frozen-lockfile
+
 COPY apps ./apps
 COPY packages ./packages
-
-RUN pnpm install --frozen-lockfile
 
 ARG NEXT_PUBLIC_API_BASE_URL=/api/v1
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
