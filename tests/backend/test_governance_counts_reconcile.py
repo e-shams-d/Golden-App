@@ -106,6 +106,66 @@ def test_the_header_sentence_matches_the_rows(rows: dict[str, tuple[str, str]]) 
     )
 
 
+def test_the_closing_paragraph_matches_the_rows(rows: dict[str, tuple[str, str]]) -> None:
+    """The sixth restatement site, and the one that stayed wrong the longest.
+
+    The register's closing paragraph read "Twenty-six conflicts remain Open. Seven
+    decisions are Resolved — Approved" while its header said 23 and 21. The 2026-08-06
+    note in the same file records that exact pair — "7 Resolved; 26 Open" — as having
+    already been corrected, so the sentence the note was about survived the correction
+    the note describes.
+
+    It survived because it **spelled its numbers as words**, and every one of the five
+    reconciliation tests above matches `(\\d+)`. A restatement is only checked in the
+    notation somebody thought to check, which is the same shape as the defect this whole
+    file exists to catch. The paragraph now uses digits and this reads it.
+    """
+
+    counts = tally(rows)
+    text = REGISTER.read_text(encoding="utf-8")
+
+    match = re.search(
+        r"(\d+) conflicts remain Open\. (\d+) decisions are Resolved", text
+    )
+
+    assert match, (
+        "the register's closing paragraph no longer states its counts in digits. If it "
+        "was reworded, reword it with digits: this site was wrong for two milestones "
+        "because it spelled them out and nothing could read it"
+    )
+    assert (int(match.group(1)), int(match.group(2))) == (counts["open"], counts["resolved"]), (
+        f"the closing paragraph says {match.group(1)} open / {match.group(2)} resolved; "
+        f"the rows say {counts['open']} / {counts['resolved']}"
+    )
+
+
+def test_no_count_in_the_register_is_spelled_as_a_word(rows: dict[str, tuple[str, str]]) -> None:
+    """Guard the guard for the test above.
+
+    Restoring the words would make that test fail on its `assert match` — but only while
+    the phrasing stays recognisable. This refuses the number-words outright in the two
+    sentences that carry counts, so the failure mode cannot come back by rewording.
+    """
+
+    del rows
+    text = REGISTER.read_text(encoding="utf-8")
+
+    # Anchored at the start of the line, so a sentence that *quotes* the old wording —
+    # the note recording this very correction does — is prose about a count rather than
+    # a count. The distinction is the whole reason this is anchored and not a substring
+    # search: the first version of this test failed on the note explaining it.
+    statements = re.findall(r"^(\S+) conflicts remain Open", text, re.M)
+
+    assert statements, "the register's closing count statement has gone missing entirely"
+    for stated in statements:
+        assert stated.isdigit(), (
+            f"the register opens its count sentence with {stated!r}. Counts are "
+            "reconciled by enumeration and must be written in digits so they can be "
+            "read — this exact sentence was wrong for two milestones because it was "
+            "spelled out and no test could see it"
+        )
+
+
 def test_the_summary_table_matches_the_rows(rows: dict[str, tuple[str, str]]) -> None:
     counts = tally(rows)
     text = REGISTER.read_text(encoding="utf-8")

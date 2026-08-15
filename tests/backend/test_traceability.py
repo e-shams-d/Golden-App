@@ -160,12 +160,8 @@ PENDING: dict[str, str] = {
     # SEC-FILEDL-008 is deliberately absent: M4 issues no signed URLs, so it is a recorded
     # gap rather than pending work.
     #
-    # Slice 1 — What M4 is allowed to accept, before anything accepts it
-    "FILE-PURPOSE-001": "Slice 1",
-    "FILE-PURPOSE-002": "Slice 1",
-    "FILE-PURPOSE-003": "Slice 1",
-    "OPS-LIMIT-001": "Slice 1",
-    "SEC-PURPOSE-001": "Slice 1",
+    # Slice 1 is merged: FILE-PURPOSE-001/-002/-003, SEC-PURPOSE-001 and OPS-LIMIT-001 are
+    # discharged by tests/backend/test_file_purposes.py.
     # Slice 2 — The storage backend gets its first byte
     "FILE-UP-001": "Slice 2",
     "FILE-UP-002": "Slice 2",

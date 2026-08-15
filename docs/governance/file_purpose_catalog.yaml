@@ -1,0 +1,159 @@
+# Upload purposes for Phase 1A, and what each one accepts.
+#
+# The seven purposes are `05_API_Specification.md:991-997`, verbatim and in order.
+# `FILE-PURPOSE-001` parses that document and compares, so this file cannot drift from
+# the contract without failing a gate — a restated list would be a second place to
+# maintain the same set, which is the drift this repository has been bitten by before.
+#
+# WHY THIS FILE EXISTS AT ALL. `file_objects.category` and `.visibility_scope` were
+# deliberately left without a value CHECK in M2, because "no approved catalogue
+# enumerates them, and inventing a set here would decide questions this slice is not
+# allowed to decide" (`app/db/models/file_object.py`). This is that catalogue. It lives
+# in governance rather than in code because the accepted-type decision is a policy one,
+# and because `POL-006` will one day replace the limits below with approved numbers.
+#
+# `purpose` (the API field, `05_API_Specification.md:983`) and `category` (the column,
+# and the name `12_Security_RBAC_Audit.md:1476` uses in the mandatory metadata) are the
+# same field under two names. Nothing in any authority distinguishes them, and treating
+# them as two would create a second uncatalogued dimension. The mapping is identity.
+#
+# EVERY PURPOSE IS ALSO A STORAGE-KEY PATH SEGMENT. `app/storage/keys.py` builds
+# `<category>/<YYYY>/<MM>/<DD>/<32 hex>` and constrains the category to
+# `^[a-z][a-z0-9_]{0,39}$`, saying that "categories come from our own code today, and the
+# point of a guard is the caller who does not exist yet". This file is that caller, so
+# `FILE-PURPOSE-002` checks every name here against the pattern compiled from that
+# module. An unconstrained purpose would be both a path-injection surface and an
+# unbounded key namespace.
+#
+# THE LIMITS BELOW ARE NOT PRODUCTION VALUES. POL-006 — "Production file size/type
+# limits" — is open, and its safe default is "no guessed production values; use
+# conservative development-only limits and block production acceptance/load sign-off".
+# So every entry carries `limits_status: blocked_by_POL_006`, per entry rather than as a
+# header note, because a header note is a thing one entry can quietly escape. The
+# application refuses to start in production unless an operator has explicitly declared
+# the limits approved (`OPS-LIMIT-001`), which is what makes the marker load-bearing
+# rather than decorative.
+#
+# VISIBILITY SCOPE IS NOT OWNERSHIP. A trader always reaches a file they uploaded
+# themselves; that is decided by the ownership resolver, not here. This field decides
+# whether a trader may ever reach a file somebody *else* uploaded:
+#
+#   internal_only                     never trader-visible
+#   trader_visible_after_publication  trader-visible once published — and publication is
+#                                     M9, so within M4 this grants nothing and is tested
+#                                     as a refusal (`SEC-FILEDL-005`)
+#
+# Assigning the second value now rather than in M9 is deliberate. It costs nothing while
+# both behave identically, and it means M9 turns an existing refusal into an allowance
+# instead of discovering there was never a check.
+
+metadata:
+  catalog: phase1a_file_purposes
+  status: provisional_pending_POL_006
+  version: "0.1.0"
+  purpose_source: "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:991-997"
+  validation_source: "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:1497-1510"
+  visibility_values: [internal_only, trader_visible_after_publication]
+
+purposes:
+  - id: payment_request_source
+    description: The document a trader submits as the source of a payment request.
+    visibility_scope: internal_only
+    visibility_reason: >-
+      One trader's request document must never be reachable by another trader. The
+      uploading trader reaches it through ownership, not through this field.
+    accepted_media_types:
+      - application/pdf
+      - image/jpeg
+      - image/png
+    accepted_extensions: [pdf, jpg, jpeg, png]
+    max_bytes_development_only: 10485760
+    limits_status: blocked_by_POL_006
+
+  - id: incoming_payment_receipt
+    description: Evidence of a payment received into a centre account.
+    visibility_scope: trader_visible_after_publication
+    visibility_reason: >-
+      A trader is entitled to see the evidence that their payment was received, but only
+      once it has been published to them. M4 builds no publication, so this is currently
+      a refusal.
+    accepted_media_types:
+      - application/pdf
+      - image/jpeg
+      - image/png
+    accepted_extensions: [pdf, jpg, jpeg, png]
+    max_bytes_development_only: 10485760
+    limits_status: blocked_by_POL_006
+
+  - id: bank_statement
+    description: A statement file imported from a bank for reconciliation.
+    visibility_scope: internal_only
+    visibility_reason: >-
+      A statement covers every trader at once. It is the clearest case in the set of a
+      file that no trader may ever read.
+    accepted_media_types:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      - text/csv
+    accepted_extensions: [xlsx, csv]
+    max_bytes_development_only: 26214400
+    limits_status: blocked_by_POL_006
+
+  - id: bank_result_bundle_source
+    description: The mixed result bundle a bank returns after a payment batch.
+    visibility_scope: internal_only
+    visibility_reason: >-
+      A bundle mixes many traders' results in one document.
+      `15_Agent_Implementation_Plan.md:721` names this exact case as an M4 test: a trader
+      cannot download an internal bank bundle. What a trader eventually sees is a crop
+      derived from it (M8), which is a different file with its own row.
+    accepted_media_types:
+      - application/pdf
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+    accepted_extensions: [pdf, xlsx]
+    max_bytes_development_only: 26214400
+    limits_status: blocked_by_POL_006
+
+  - id: gold_dispatch_evidence
+    description: Evidence that gold was dispatched against a settled payment.
+    visibility_scope: trader_visible_after_publication
+    visibility_reason: >-
+      The trader is the counterparty to the dispatch and is entitled to the proof, once
+      published.
+    accepted_media_types:
+      - application/pdf
+      - image/jpeg
+      - image/png
+    accepted_extensions: [pdf, jpg, jpeg, png]
+    max_bytes_development_only: 10485760
+    limits_status: blocked_by_POL_006
+
+  - id: manual_external_evidence
+    description: Evidence attached by staff from outside the normal flow.
+    visibility_scope: internal_only
+    visibility_reason: >-
+      Provenance is unknown by definition — this is the purpose used when something
+      arrived by a route the system does not model. Defaulting it to trader-visible would
+      make the least controlled input the most widely readable.
+    accepted_media_types:
+      - application/pdf
+      - image/jpeg
+      - image/png
+    accepted_extensions: [pdf, jpg, jpeg, png]
+    max_bytes_development_only: 10485760
+    limits_status: blocked_by_POL_006
+
+  - id: misc_internal
+    description: Internal working attachments with no financial role.
+    visibility_scope: internal_only
+    visibility_reason: >-
+      The catch-all, and therefore the one that must never be trader-visible: nobody can
+      say in advance what ends up here.
+    accepted_media_types:
+      - application/pdf
+      - image/jpeg
+      - image/png
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      - text/csv
+    accepted_extensions: [pdf, jpg, jpeg, png, xlsx, csv]
+    max_bytes_development_only: 10485760
+    limits_status: blocked_by_POL_006

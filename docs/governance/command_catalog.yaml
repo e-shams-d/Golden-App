@@ -247,6 +247,20 @@
       "status": "provisional"
     },
     {
+      "_note": "DOC-CONFLICT-046. Document 05 section 14.2 defines this endpoint and this catalogue had no entry for it, so the mutation every other upload builds on carried no idempotency, audit or concurrency contract — while bank_result_bundle.upload below names file.upload in its own permission list. The permission existed and the command it is named after did not. Idempotency is keyed on the caller's Idempotency-Key header and deliberately NOT on the file checksum: two people legitimately uploading the same document are two pieces of evidence with two owners, and deduplicating on content would attach one trader's file to another's request. The checksum is recorded and reported as a duplicate indicator per 12_Security_RBAC_Audit.md:1506, and never merges rows.",
+      "id": "file.upload",
+      "method": "POST",
+      "path": "/api/v1/files",
+      "permission": ["file.upload"],
+      "idempotency": "required",
+      "concurrency": "not_applicable_new_aggregate",
+      "preconditions": ["private_storage", "validation_and_quarantine_policy"],
+      "audit_action": "file.uploaded",
+      "outbox_event": null,
+      "source": "05_API_Specification.md:976",
+      "status": "provisional"
+    },
+    {
       "id": "bank_result_bundle.upload",
       "method": "POST",
       "path": "/api/v1/bank-result-bundles",

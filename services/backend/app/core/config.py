@@ -101,6 +101,19 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("LOCAL_STORAGE_ROOT", "STORAGE_ROOT")
     )
 
+    # POL-006 is open. `docs/governance/file_purpose_catalog.yaml` carries conservative
+    # development-only size limits, each marked `blocked_by_POL_006`, and the safe
+    # default the register records is "no guessed production values ... and block
+    # production acceptance/load sign-off".
+    #
+    # A marker in a YAML file blocks nothing on its own, so this is what makes it real:
+    # production refuses to start while the limits are still the guessed ones. Declaring
+    # them approved is a deliberate act by whoever holds POL-006, not a default somebody
+    # inherits by deploying.
+    file_upload_limits_are_production_approved: bool = Field(
+        default=False, validation_alias="FILE_UPLOAD_LIMITS_ARE_PRODUCTION_APPROVED"
+    )
+
     dependency_timeout_seconds: float = Field(
         default=1.5, gt=0.05, le=10.0, validation_alias="DEPENDENCY_TIMEOUT_SECONDS"
     )
@@ -386,6 +399,14 @@ class Settings(BaseSettings):
                     "AUTH_CSRF_KEY_SECRET must contain at least 32 characters in "
                     "production; the CSRF token is an HMAC under this key, so without it "
                     "the token is forgeable by anyone who learns a session's stored digest"
+                )
+            if not self.file_upload_limits_are_production_approved:
+                raise ValueError(
+                    "FILE_UPLOAD_LIMITS_ARE_PRODUCTION_APPROVED must be set in production. "
+                    "The size limits in docs/governance/file_purpose_catalog.yaml are "
+                    "development-only values marked blocked_by_POL_006, and POL-006 — "
+                    "production file size/type limits — is open. Accepting uploads under "
+                    "guessed limits is the failure its safe default names"
                 )
         return self
 

@@ -43,16 +43,16 @@
       "DOC-CONFLICT-041",
       "DOC-CONFLICT-042"
     ],
-    "total_conflicts": 44,
-    "open_conflicts": 23,
+    "total_conflicts": 47,
+    "open_conflicts": 26,
     "open_critical_conflicts": 0,
     "m0_exit_gate_complete": false,
     "owner_reapproval_of_this_baseline": "pending"
   },
   "summary": {
     "file_count": 17,
-    "total_bytes": 301216,
-    "total_lines": 3632
+    "total_bytes": 310794,
+    "total_lines": 3680
   },
   "validation": {
     "utf8": true,
@@ -108,15 +108,15 @@
     },
     {
       "path": "docs/governance/command_catalog.yaml",
-      "bytes": 29932,
-      "lines": 712,
-      "sha256": "886b95eb5824de903aa3c308a3ea4667169b949d6f8fb48f5476a9b54f1daa48"
+      "bytes": 31153,
+      "lines": 726,
+      "sha256": "0028809b008d2356ecf8aae41a4b8bfbe13cae808de0f66d9169b4efeae1d751"
     },
     {
       "path": "docs/governance/CONFLICT_REGISTER.md",
-      "bytes": 48830,
-      "lines": 134,
-      "sha256": "7346ad21a4db88925492d03e8f2d12033454db5ebcefdcdc9df20acfa523aed3"
+      "bytes": 55472,
+      "lines": 141,
+      "sha256": "783045a928902b59b88b69d71bbb5896dfa045034f861a92447c5c3a68d6f986"
     },
     {
       "path": "docs/governance/DOCUMENT_APPROVAL_REGISTER.md",
@@ -144,15 +144,15 @@
     },
     {
       "path": "docs/governance/permission_catalog.yaml",
-      "bytes": 49242,
-      "lines": 960,
-      "sha256": "9bdd34051271c6ebcdab0f386f48bc8b42e672917d211a72071eda7f0bc72212"
+      "bytes": 50957,
+      "lines": 987,
+      "sha256": "5335ee6089912f9a227517c2a72862266cb72e378088f759fd3598d491e36580"
     },
     {
       "path": "docs/governance/README.md",
       "bytes": 4107,
       "lines": 74,
-      "sha256": "ab575274c047a39406a501b517e5a4f2c1b9f1e2e45698f1f64a6704ea225c2b"
+      "sha256": "772130ef17e08c4330910ff3f1bc02d3e76eef34ff01ced16a8f65d32d9d5904"
     },
     {
       "path": "docs/governance/REPOSITORY_BASELINE.md",
@@ -170,7 +170,7 @@
       "path": "docs/governance/TRACEABILITY_MATRIX.md",
       "bytes": 37573,
       "lines": 58,
-      "sha256": "9aa39d6197fcb9bbd1e1b643df27c5d3213d7d4d921a7f2139d72338dc13d924"
+      "sha256": "88426572dd8f29ecd9d9e564e19fe55a4ac705a3297a6fdc0bb4940ad1ac7642"
     }
   ]
 }
