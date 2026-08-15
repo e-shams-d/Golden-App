@@ -1,3 +1,31 @@
+/* Vazirmatn, self-hosted.
+ *
+ * The stack was `Tahoma, Arial, sans-serif`, which renders Persian legibly and looks like
+ * a 2005 intranet — Tahoma's Arabic-script glyphs are wide, loosely spaced and have no
+ * weight above bold, so headings and body text differ only in size. For a platform whose
+ * entire interface is Persian, the typeface is not decoration.
+ *
+ * **Self-hosted rather than from a CDN, and that is a deployment constraint rather than a
+ * preference.** This platform runs only inside Iran, where Google Fonts and the other font
+ * hosts are unreachable; a stylesheet that waits on one renders in the fallback for as long
+ * as the request takes to fail, which is the worst of both. The apps' own security headers
+ * would refuse the request in any case.
+ *
+ * The variable font: one file for every weight the design uses, rather than four static
+ * files of which one is eventually referenced and never shipped.
+ *
+ * `font-display: swap` on purpose. The alternative, `block`, hides text until the font
+ * arrives — and on a first visit over a slow connection that is a blank screen where a
+ * goldsmith expected a form.
+ */
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/fonts/Vazirmatn-Variable.woff2") format("woff2-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light;
   --gold-50: #fff9e8;
@@ -38,7 +66,11 @@
   --radius-lg: 1.25rem;
   --shadow-raised: 0 12px 32px rgb(36 30 17 / 9%);
   --space-page: clamp(1rem, 2vw, 2rem);
-  --font-sans: Tahoma, Arial, sans-serif;
+  /* Tahoma stays as the first fallback rather than being dropped: it is installed on every
+   * Windows machine in the deployment country, so a browser that has not yet loaded the
+   * webfont — or refuses it — still renders Persian correctly rather than falling through
+   * to a Latin default that has no Arabic-script coverage at all. */
+  --font-sans: "Vazirmatn", Tahoma, Arial, sans-serif;
 }
 
 @media (prefers-reduced-motion: reduce) {

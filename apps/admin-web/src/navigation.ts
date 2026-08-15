@@ -37,16 +37,16 @@ import type { NavigationItem } from "@gold/ui";
  * one place the action rule is deliberately broken.
  */
 export const adminNavigation = [
-  { href: "/", label: t("admin.nav.dashboard") },
+  { href: "/", label: t("admin.nav.dashboard"), icon: "dashboard" },
   // `trader.approve` rather than `trader.read`: approving is what this screen is for, and
   // the three roles that hold it are the three that would use it.
-  { href: "/traders", label: t("admin.nav.traders"), permission: "trader.approve" },
+  { href: "/traders", label: t("admin.nav.traders"), permission: "trader.approve", icon: "traders" },
   // Staff administration. `user.read` is the action here in the sense that matters — it is
   // the permission the list route is guarded on, and it is held by `business_admin` alone,
   // so it discriminates without needing a stronger one.
-  { href: "/admin-users", label: t("admin.nav.staff"), permission: "user.read" },
+  { href: "/admin-users", label: t("admin.nav.staff"), permission: "user.read", icon: "staff" },
   // Roles are read-only for now; `role.read` is the guard the route carries. Gating on
   // `role.manage` would hide the screen from `manager`, who holds the read and has a
   // legitimate reason to see why a colleague's menu differs from theirs.
-  { href: "/roles", label: t("admin.nav.roles"), permission: "role.read" },
+  { href: "/roles", label: t("admin.nav.roles"), permission: "role.read", icon: "roles" },
 ] as const satisfies readonly NavigationItem[];

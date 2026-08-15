@@ -1,6 +1,7 @@
 import { t } from "@gold/localization";
 import Link from "next/link";
 
+import { EntryPanel } from "../components/entry-panel";
 import { TraderShell } from "../components/trader-shell";
 
 const foundationCards = [
@@ -26,6 +27,11 @@ export default function TraderHomePage() {
         <h1 className="mt-2 text-3xl font-black leading-tight">{t("trader.shellTitle")}</h1>
         <p className="mt-4 max-w-prose leading-8 text-white/85">{t("trader.shellDescription")}</p>
       </section>
+
+      {/* Immediately under the banner, because it is the only thing on this page a person
+          arriving at the application needs. Everything below is M1 scaffolding describing
+          what the shell is, which is interesting to a reviewer and useless to a goldsmith. */}
+      <EntryPanel />
 
       <section aria-labelledby="foundation-heading" className="mt-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
