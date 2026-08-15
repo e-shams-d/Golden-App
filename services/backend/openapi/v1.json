@@ -401,6 +401,10 @@
             "title": "Dependencies",
             "type": "object"
           },
+          "scan_policy": {
+            "title": "Scan Policy",
+            "type": "string"
+          },
           "status": {
             "enum": [
               "ok",
@@ -412,7 +416,8 @@
         },
         "required": [
           "status",
-          "dependencies"
+          "dependencies",
+          "scan_policy"
         ],
         "title": "DependenciesResponse",
         "type": "object"

@@ -38,6 +38,13 @@ class DependenciesResponse(BaseModel):
 
     status: Literal["ok", "degraded"]
     dependencies: dict[str, DependencyStatus]
+    # Which scan adapter is live. Reported because ADR-008 is open and the choice decides
+    # whether an uploaded file can ever be used as evidence: `none` scans nothing and
+    # every upload stays quarantined, `development_bypass` reports every file clean
+    # without looking at it. An operator should read which one is running rather than
+    # infer it from environment variables. This endpoint is behind the operations token,
+    # so it discloses nothing to anyone else.
+    scan_policy: str
 
 
 class WorkerStatus(BaseModel):

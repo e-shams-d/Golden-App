@@ -14,6 +14,7 @@ from app.core.logging import get_logger, log_event
 from app.core.release import ReleaseMetadata
 from app.db.session import SessionFactory, create_engine_and_session_factory
 from app.db.unit_of_work import UnitOfWorkFactory
+from app.files.scanning import ScanPolicy, build_scan_policy
 from app.observability.health import (
     CeleryWorkerHealthProbe,
     HealthService,
@@ -35,6 +36,7 @@ class RuntimeServices:
     uow_factory: UnitOfWorkFactory
     redis: Redis
     storage: StorageBackend
+    scan_policy: ScanPolicy
     celery: Celery
     health: HealthService
     worker_health: WorkerHealthProbe
@@ -50,6 +52,11 @@ class RuntimeServices:
             health_check_interval=30,
         )
         storage = LocalStorageBackend(settings.local_storage_root)
+        # Built here rather than inside the command so that an unknown or
+        # production-forbidden policy fails at startup, not on the first upload.
+        scan_policy = build_scan_policy(
+            policy_name=settings.file_scan_policy, app_env=settings.app_env
+        )
         celery = create_celery_app(settings)
         probes = {
             "database": database_probe(
@@ -75,6 +82,7 @@ class RuntimeServices:
             uow_factory=UnitOfWorkFactory(session_factory),
             redis=redis_client,
             storage=storage,
+            scan_policy=scan_policy,
             celery=celery,
             health=HealthService(probes, required_for_readiness=frozenset(required)),
             worker_health=CeleryWorkerHealthProbe(

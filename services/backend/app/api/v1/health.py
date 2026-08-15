@@ -81,6 +81,7 @@ async def dependencies(
             )
             for name, result in results.items()
         },
+        scan_policy=runtime.scan_policy.name,
     )
 
 

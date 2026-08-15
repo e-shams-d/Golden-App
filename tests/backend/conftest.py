@@ -18,6 +18,7 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "tests" / "fixtures"))
 
 from app.core.config import Settings  # noqa: E402
 from app.core.release import ReleaseMetadata  # noqa: E402
+from app.files.scanning import build_scan_policy  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.observability.health import (  # noqa: E402
     HealthService,
@@ -62,6 +63,11 @@ class FakeRuntime:
             required_for_readiness=frozenset({"database", "redis", "storage"}),
         )
         self.worker_health = StaticWorkerProbe(worker_result)
+        # Built from the same factory the real runtime uses rather than stubbed, so a
+        # test double cannot report a policy the application could not actually select.
+        self.scan_policy = build_scan_policy(
+            policy_name=settings.file_scan_policy, app_env=settings.app_env
+        )
         self.closed = False
 
     def close(self) -> None:
