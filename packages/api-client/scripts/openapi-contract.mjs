@@ -67,10 +67,22 @@ const schemaStructuralKeywords = new Set([
   "required",
   "type",
 ]);
+// `contentMediaType` is how OpenAPI 3.1 says "these bytes are not text". JSON Schema
+// 2020-12 dropped `format: binary`, so a multipart file field arrives as
+// `{"type": "string", "contentMediaType": "application/octet-stream"}`.
+//
+// Kept in its own set rather than folded into the annotations, because it is not an
+// annotation: it changes the emitted TypeScript. A field carrying it is `Blob`, never
+// `string`. Typing an upload field as `string` would let a caller pass a filename or a
+// base64 body and get a green type check followed by a runtime failure, which is worse
+// than the generator refusing the keyword outright — and refusing it outright is what it
+// did until the first upload endpoint shipped.
+const schemaContentKeywords = new Set(["contentEncoding", "contentMediaType"]);
 const supportedSchemaKeywords = new Set([
   ...schemaAnnotationKeywords,
   ...schemaValidationKeywords,
   ...schemaStructuralKeywords,
+  ...schemaContentKeywords,
 ]);
 
 function compareText(left, right) {
@@ -202,6 +214,18 @@ function schemaType(schema) {
     case "null":
       return "null";
     case "string":
+      // Binary content, not text. See `schemaContentKeywords`: this is the only
+      // place the distinction can be made, because by the time a caller holds the
+      // generated type the schema is gone.
+      if (Object.hasOwn(resolved, "contentMediaType")) {
+        if (resolved.contentEncoding !== undefined) {
+          throw new Error(
+            "contentEncoding is not supported: an encoded string is not a Blob and " +
+              "the generator must not guess which one the caller should send.",
+          );
+        }
+        return "Blob";
+      }
       return "string";
     case "integer":
       if (resolved.format === "int64") {
@@ -347,7 +371,19 @@ function contentType(content, context) {
   if (entries.length === 0) return "never";
   return `{ ${entries
     .map(([mediaType, media]) => {
-      if (mediaType !== "application/json") {
+      // `multipart/form-data` is accepted for request bodies only, and only because the
+      // file API requires it: `05_API_Specification.md:977` specifies it, and a binary
+      // upload cannot be JSON without base64 inflating every payload by a third.
+      //
+      // Responses stay JSON-only. The transport parses every response as JSON and
+      // refuses any other media type, so accepting one here would generate a typed
+      // client method that cannot read its own reply. Slice 5's download route returns
+      // bytes and will need a deliberate decision rather than this one widened.
+      const multipartAllowed = context.endsWith("request body");
+      if (
+        mediaType !== "application/json" &&
+        !(multipartAllowed && mediaType === "multipart/form-data")
+      ) {
         throw new Error(
           `${context} uses unsupported media type ${mediaType}; the transport accepts application/json only.`,
         );

@@ -21,7 +21,16 @@ export function createApiTransport(config: TransportConfig = {}): ApiTransport {
       assertRelativePath(options.path);
       const headers = new Headers({ Accept: JSON_MEDIA_TYPE });
 
-      if (options.body !== undefined) headers.set("Content-Type", JSON_MEDIA_TYPE);
+      // `FormData` is the one body this transport must NOT label. A multipart body is
+      // only parseable with the boundary token that separates its parts; the boundary is
+      // generated when the request is dispatched, so setting `Content-Type` by hand
+      // sends the media type with no boundary and the server rejects the body as
+      // malformed — which reads like a server fault rather than a client one. The
+      // platform sets the full header, and only if this one is absent.
+      const multipart = isFormData(options.body);
+      if (options.body !== undefined && !multipart) {
+        headers.set("Content-Type", JSON_MEDIA_TYPE);
+      }
       if (options.idempotencyKey) headers.set("Idempotency-Key", options.idempotencyKey);
       if (options.ifMatch) headers.set("If-Match", options.ifMatch);
       if (options.recentAuthToken) {
@@ -39,7 +48,7 @@ export function createApiTransport(config: TransportConfig = {}): ApiTransport {
         redirect: "manual",
         ...(options.signal ? { signal: options.signal } : {}),
         ...(options.body !== undefined
-          ? { body: JSON.stringify(options.body) }
+          ? { body: multipart ? (options.body as unknown as FormData) : JSON.stringify(options.body) }
           : {}),
       });
 
@@ -64,6 +73,14 @@ function normalizeBaseUrl(baseUrl: string): string {
     throw new Error("API base URL must be same-origin relative or HTTPS.");
   }
   return baseUrl.replace(/\/$/, "");
+}
+
+function isFormData(body: unknown): boolean {
+  // Feature-detected rather than `body instanceof FormData`. This module runs in a
+  // browser, in Node during tests, and in a Next.js server component, and `FormData` is
+  // not guaranteed to be a global in all three — an `instanceof` against a missing
+  // global is a ReferenceError, which would turn every JSON request into a crash.
+  return typeof FormData !== "undefined" && body instanceof FormData;
 }
 
 function assertRelativePath(path: string): void {

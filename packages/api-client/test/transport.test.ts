@@ -72,4 +72,59 @@ describe("API transport", () => {
       },
     });
   });
+
+  it("does not label a multipart body, so the platform can add the boundary", async () => {
+    // A multipart body is only parseable with the boundary token that separates its
+    // parts, and the boundary is generated when the request is dispatched. Setting
+    // `Content-Type` by hand sends the media type with no boundary, and the server
+    // rejects the body as malformed — which reads like a server fault, not a client one.
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      new Response(JSON.stringify({ id: "file-1" }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const transport = createApiTransport({ fetchImpl });
+
+    const body = new FormData();
+    body.append("purpose", "incoming_payment_receipt");
+    body.append("file", new Blob([new Uint8Array([1, 2, 3])]), "receipt.png");
+
+    await transport.request<{ id: string }, FormData>({
+      method: "POST",
+      path: "/files",
+      body,
+      idempotencyKey: "upload-1",
+    });
+
+    const init = fetchImpl.mock.calls[0]?.[1];
+    expect(new Headers(init?.headers).get("Content-Type")).toBeNull();
+    // Passed through untouched. `JSON.stringify(FormData)` yields "{}", which would send
+    // an empty request the server could only report as a missing-file validation error
+    // on a file the caller believes it attached.
+    expect(init?.body).toBe(body);
+    expect(new Headers(init?.headers).get("Idempotency-Key")).toBe("upload-1");
+  });
+
+  it("still labels an ordinary JSON body", async () => {
+    // The other direction, and what keeps the multipart case an exception: a transport
+    // that stopped labelling everything would send JSON with no content type.
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const transport = createApiTransport({ fetchImpl });
+
+    await transport.request<{ ok: boolean }, { value: string }>({
+      method: "POST",
+      path: "/commands/example",
+      body: { value: "1000" },
+    });
+
+    const init = fetchImpl.mock.calls[0]?.[1];
+    expect(new Headers(init?.headers).get("Content-Type")).toBe("application/json");
+    expect(init?.body).toBe(JSON.stringify({ value: "1000" }));
+  });
 });

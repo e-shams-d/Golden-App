@@ -96,4 +96,70 @@ describe("local OpenAPI generator", () => {
       "Duplicate operationId: getWidget",
     );
   });
+
+  it("types a binary upload field as Blob and keeps responses JSON-only", async () => {
+    // OpenAPI 3.1 dropped `format: binary`, so a multipart file field arrives as
+    // `{"type": "string", "contentMediaType": ...}`. Emitting `string` would be worse
+    // than refusing the keyword: a caller would reasonably pass a filename and get a
+    // green type check followed by a runtime failure.
+    const fixture = await readFixture();
+    fixture.paths["/api/v1/widgets/{widget_id}"].post.requestBody = {
+      required: true,
+      content: {
+        "multipart/form-data": {
+          schema: {
+            type: "object",
+            required: ["file"],
+            properties: {
+              file: { type: "string", contentMediaType: "application/octet-stream" },
+              purpose: { type: "string" },
+            },
+          },
+        },
+      },
+    };
+
+    const generated = renderTypesFromSchema(fixture);
+    expect(generated).toContain("file: Blob");
+    expect(generated).toContain('"multipart/form-data"');
+
+    // A response may not be multipart. The transport parses every reply as JSON and
+    // refuses any other media type, so a typed method returning multipart could not read
+    // its own answer. Slice 5's download route needs a deliberate decision rather than
+    // this exception widened by accident.
+    const responseSide = await readFixture();
+    responseSide.paths["/api/v1/widgets/{widget_id}"].post.responses["200"] = {
+      description: "Bytes.",
+      content: { "multipart/form-data": { schema: { type: "string" } } },
+    };
+    expect(() => renderTypesFromSchema(responseSide)).toThrow(
+      /unsupported media type multipart\/form-data/,
+    );
+  });
+
+  it("refuses a content encoding rather than guessing what to send", async () => {
+    // `contentEncoding: base64` describes a string, not a Blob. Choosing either silently
+    // produces a client that sends the wrong thing, so the generator stops instead.
+    const fixture = await readFixture();
+    fixture.paths["/api/v1/widgets/{widget_id}"].post.requestBody = {
+      required: true,
+      content: {
+        "multipart/form-data": {
+          schema: {
+            type: "object",
+            required: ["file"],
+            properties: {
+              file: {
+                type: "string",
+                contentMediaType: "application/octet-stream",
+                contentEncoding: "base64",
+              },
+            },
+          },
+        },
+      },
+    };
+
+    expect(() => renderTypesFromSchema(fixture)).toThrow(/contentEncoding is not supported/);
+  });
 });
