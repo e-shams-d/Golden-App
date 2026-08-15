@@ -50,6 +50,14 @@ from app.core.errors import BusinessRuleViolationError
 from app.db.models.file_object import FileObject
 from app.db.models.idempotency_record import IdempotencyRecord
 from app.db.unit_of_work import SqlAlchemyUnitOfWork
+from app.files.inspection import (
+    Inspection,
+    PrefixCapturingReader,
+    QuarantineReason,
+    Readable,
+    inspect,
+    is_structurally_readable,
+)
 from app.files.purposes import UnknownFilePurposeError, resolve
 from app.idempotency import IdempotencyResolver, key_hash
 from app.idempotency.resolver import IdempotencyClaim
@@ -93,7 +101,7 @@ class _LimitedReader:
     `read` leaves no object behind. `FILE-UP-005` asserts that rather than assuming it.
     """
 
-    def __init__(self, source: BinaryIO, *, limit: int, purpose: str) -> None:
+    def __init__(self, source: Readable, *, limit: int, purpose: str) -> None:
         self._source = source
         self._limit = limit
         self._purpose = purpose
@@ -241,10 +249,29 @@ def execute(
 
     # ---- 2. Stream --------------------------------------------------------------
     # No transaction is open here, and that is the point of the whole module.
+    #
+    # The prefix is captured on the way past rather than by reopening the object
+    # afterwards, so deciding what the file is costs no second pass and does not depend
+    # on storage still holding what was just written.
+    capturing = PrefixCapturingReader(command.stream)
     limited = _LimitedReader(
-        command.stream, limit=purpose.max_bytes_development_only, purpose=command.purpose
+        capturing, limit=purpose.max_bytes_development_only, purpose=command.purpose
     )
     written = storage.write(storage_key, limited)  # type: ignore[arg-type]
+
+    # ---- 2b. Inspect ------------------------------------------------------------
+    # Still outside any transaction. The structural check reopens the stored object,
+    # which is I/O, and I/O under an open transaction is what `test_no_io_under_lock`
+    # exists to refuse.
+    finding = inspect(
+        declared_media_type=command.declared_media_type, prefix=capturing.prefix
+    )
+    if finding.is_acceptable and finding.detected_media_type is not None:
+        with storage.open(storage_key) as body:
+            if not is_structurally_readable(finding.detected_media_type, body):
+                finding = Inspection(
+                    finding.detected_media_type, QuarantineReason.UNREADABLE_STRUCTURE
+                )
 
     # ---- 3. Finalize ------------------------------------------------------------
     with uow_factory() as uow:
@@ -255,7 +282,17 @@ def execute(
 
         stored_record.size_bytes = written.size_bytes
         stored_record.sha256_hash = written.sha256_hash
+        stored_record.mime_type_detected = finding.detected_media_type
         stored_record.storage_status = UNSCANNED_STORAGE_STATUS
+        if finding.quarantine_reason is not None:
+            # Recorded, never inferred later from the type columns. "Detected does not
+            # equal declared" and "nothing recognised these bytes" are different facts
+            # about the uploader, and a reader three milestones from now cannot
+            # reconstruct which one happened from the two columns alone.
+            stored_record.metadata_payload = {
+                **(stored_record.metadata_payload or {}),
+                "quarantine_reason": finding.quarantine_reason,
+            }
 
         response = {
             "id": str(file_id),
@@ -284,6 +321,9 @@ def execute(
                     "scan_status": UNSCANNED_SCAN_STATUS,
                     "size_bytes": written.size_bytes,
                     "sha256": written.sha256_hash,
+                    "mime_type_declared": command.declared_media_type,
+                    "mime_type_detected": finding.detected_media_type,
+                    "quarantine_reason": finding.quarantine_reason,
                 },
                 idempotency_record_id=claim_id,
                 idempotency_key_hash=key_hash(idempotency_key),
