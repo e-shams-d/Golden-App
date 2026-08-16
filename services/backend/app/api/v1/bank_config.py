@@ -1,9 +1,10 @@
 """Bank configuration over HTTP, per `05_API_Specification.md:2096-2136`.
 
-Creation only. Activation is slice 9 and needs two permissions that do not exist yet
-(DOC-CONFLICT-045), so the routes that would use them are not here — a route guarded by an
-identifier nobody has approved is a route that denies everyone, and shipping it before the
-guard is reviewable would be shipping a decision as an accident.
+Creation, and activation that denies everyone. DOC-CONFLICT-045: the two activation
+permissions now exist and are granted to no role, so `POST .../activate` refuses every
+caller including `business_admin`. That is the interim rule rather than an omission — the
+route, its command, its audit record and its negative tests are all reviewable in that
+state, and approving the grant changes nothing else.
 
 **Account numbers and IBANs are masked according to permission**
 (`05_API_Specification.md:2136`). POL-003 has not settled which roles see a full IBAN, so
@@ -25,6 +26,7 @@ from app.api.dependencies import get_runtime
 from app.api.v1.auth import authenticated_actor, requires
 from app.audit.redaction import RedactionPolicy
 from app.audit.writer import AuditActor, AuditContext
+from app.bankconfig import resolution
 from app.commands import bank_configuration
 from app.core.errors import ErrorEnvelope
 from app.core.request_context import get_request_id
@@ -178,6 +180,44 @@ def create_bank_profile(
         )
         uow.commit()
     return ProfileCreatedResponse(profile_id=profile_id, version_id=version_id)
+
+
+@router.post(
+    "/bank-profile-versions/{version_id}/activate",
+    operation_id="activateBankProfileVersion",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[requires(declare("bank_profile.activate_version"))],
+    responses={
+        400: {"model": ErrorEnvelope},
+        404: {"model": ErrorEnvelope},
+        **VALIDATION_ERROR_RESPONSE,
+    },
+)
+def activate_bank_profile_version(
+    version_id: uuid.UUID,
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+) -> None:
+    """DOC-CONFLICT-045: **this route denies everyone today, deliberately.**
+
+    `bank_profile.activate_version` exists as a permission and is granted to no role, so
+    the guard above refuses every caller including `business_admin`. The route, its
+    command, its audit record and its negative tests are reviewable in that state, and the
+    day the owner approves the grant nothing here changes.
+
+    Shipping it guarded by a borrowed permission was the alternative, and it would have
+    made the role that drafts a configuration the role that puts it into production.
+    """
+
+    with runtime.uow_factory() as uow:
+        resolution.activate_version(
+            version_id,
+            uow=uow,
+            actor=_audit_actor(actor),
+            context=AuditContext(request_id=get_request_id()),
+            policy=BANK_REDACTION,
+        )
+        uow.commit()
 
 
 @router.get(

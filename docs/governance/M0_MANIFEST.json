@@ -51,8 +51,8 @@
   },
   "summary": {
     "file_count": 17,
-    "total_bytes": 309079,
-    "total_lines": 3653
+    "total_bytes": 311008,
+    "total_lines": 3684
   },
   "validation": {
     "utf8": true,
@@ -144,9 +144,9 @@
     },
     {
       "path": "docs/governance/permission_catalog.yaml",
-      "bytes": 49242,
-      "lines": 960,
-      "sha256": "9bdd34051271c6ebcdab0f386f48bc8b42e672917d211a72071eda7f0bc72212"
+      "bytes": 51171,
+      "lines": 991,
+      "sha256": "109d303190cb44eda92ed4e53653c438092d7ef0e9c38c235b684a9edb47a6fe"
     },
     {
       "path": "docs/governance/README.md",

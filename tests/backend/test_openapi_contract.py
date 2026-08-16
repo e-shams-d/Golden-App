@@ -134,6 +134,9 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "createBankProfile",
         "listBankAccounts",
         "createBankAccount",
+        # M4 slice 9. Present in the contract and denied to every role: the permission
+        # exists and is granted to nobody (DOC-CONFLICT-045).
+        "activateBankProfileVersion",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

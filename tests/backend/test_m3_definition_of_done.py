@@ -153,6 +153,11 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     ("POST", "/api/v1/bank-profiles"): PERMISSION,
     ("GET", "/api/v1/bank-accounts"): PERMISSION,
     ("POST", "/api/v1/bank-accounts"): PERMISSION,
+    # M4 slice 9. Guarded by `bank_profile.activate_version`, which exists and is granted
+    # to no role — so this route denies every caller today, deliberately
+    # (DOC-CONFLICT-045). Its negative test is the one that must be *rewritten* rather
+    # than deleted when the owner approves the grant.
+    ("POST", "/api/v1/bank-profile-versions/{version_id}/activate"): PERMISSION,
     # PUBLIC by necessity rather than by choice, which is why it is not SESSION: an
     # account in `recovery_required` is refused every action except recovery, so it holds
     # no session to classify. The temporary credential an administrator set is what stands
@@ -303,6 +308,9 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ),
     ("POST", "/api/v1/bank-accounts", "permission"): (
         "test_an_actor_without_the_bank_permission_is_denied"
+    ),
+    ("POST", "/api/v1/bank-profile-versions/{version_id}/activate", "permission"): (
+        "test_activation_is_denied_to_every_role"
     ),
 }
 

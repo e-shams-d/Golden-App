@@ -23,6 +23,12 @@ BACKEND_ROOT = REPOSITORY_ROOT / "services" / "backend"
 MIGRATION = (
     BACKEND_ROOT / "alembic" / "versions" / "20260801_0008_seed_rbac_catalogue.py"
 )
+# The second migration that seeds permissions. `_0008` has shipped, so editing its list
+# would seed nothing on a database that already ran it — DOC-CONFLICT-045's two activation
+# permissions therefore arrive in their own revision, and the seeded set is the union.
+ACTIVATION_MIGRATION = (
+    BACKEND_ROOT / "alembic" / "versions" / "20260816_0014_activation_permissions.py"
+)
 
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
@@ -41,7 +47,17 @@ def load_migration() -> object:
     package and the filenames are not identifiers.
     """
 
-    spec = importlib.util.spec_from_file_location("seed_rbac", MIGRATION)
+    return _load(MIGRATION, "seed_rbac")
+
+
+def load_activation_seed() -> object:
+    """The second seeding revision. See `ACTIVATION_MIGRATION`."""
+
+    return _load(ACTIVATION_MIGRATION, "seed_activation_permissions")
+
+
+def _load(path: Path, name: str) -> object:
+    spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -74,8 +90,21 @@ class TestSeedMatchesCatalogue:
         assert seeded_codes == catalogue_codes
 
     def test_the_permission_set_is_identical(self, seed: object) -> None:
+        """The seeded set is the union of every migration that seeds permissions.
+
+        Reading only `_0008` reported the catalogue as ahead of the schema when both were
+        correct — DOC-CONFLICT-045's two activation permissions are seeded by a later
+        revision, and had to be, because editing an applied migration seeds nothing on a
+        database that already ran it.
+        """
+
+        activation = load_activation_seed()
         catalogue_codes = {permission.code for permission in permissions()}
         seeded_codes = {code for code, _domain in seed.PERMISSIONS}  # type: ignore[attr-defined]
+        seeded_codes |= {
+            code
+            for code, _domain in activation.ACTIVATION_PERMISSIONS  # type: ignore[attr-defined]
+        }
 
         assert seeded_codes == catalogue_codes
 

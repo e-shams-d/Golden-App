@@ -693,6 +693,37 @@ permission_groups:
           manager: approval_or_review_only
           technical_admin: technical_validation_only
         constraints: [authenticated_active, bank_configuration_change, state_guarded_command]
+      # DOC-CONFLICT-045, added in M4 slice 9 together with the migration that seeds them.
+      # Activation is "a critical audited command" (05_API_Specification.md:2125) and
+      # document 08:347 restricts it to authorized configuration roles — and no permission
+      # for it has ever existed. The command catalogue already records the consequence, as
+      # `permission: []`.
+      #
+      # PROPOSED, AND GRANTED TO NOBODY. `default_roles` is empty, so every activation
+      # request is denied under deny_by_default, including for business_admin. That is the
+      # interim rule rather than an oversight: the route, its guards, its audit record and
+      # its negative tests are all reviewable in that state, and approving the grant
+      # changes nothing else.
+      #
+      # Borrowing `bank_profile.create_version` was the alternative and is worse than
+      # blocking: it would make the role that drafts a configuration the role that puts it
+      # into production, which is the split FINANCIAL_INTEGRITY_BASELINE.md §5 makes
+      # non-configurable elsewhere — and this file already marks `manager` as
+      # `approval_or_review_only` there, describing an approval authority with no
+      # permission to exercise.
+      #
+      # The proposal is [manager, business_admin], and explicitly not technical_admin,
+      # whose conditional role on both create permissions is technical_validation_only.
+      bank_profile.activate_version:
+        status: proposed_pending_owner_decision
+        proposed_roles: [manager, business_admin]
+        default_roles: []
+        constraints: [authenticated_active, bank_configuration_change, state_guarded_command]
+      bank_mapping.activate:
+        status: proposed_pending_owner_decision
+        proposed_roles: [manager, business_admin]
+        default_roles: []
+        constraints: [authenticated_active, bank_configuration_change, state_guarded_command]
       bank_mapping.create_version:
         default_roles: [technical_admin]
         conditional_roles:
