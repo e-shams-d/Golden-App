@@ -243,12 +243,18 @@ PENDING: dict[str, str] = {
     # plain functions and the tests call those: this package renders to static markup and
     # has no DOM-interaction library, and adding one to assert a boolean would be a
     # dependency bought for a conditional.
-    # Slice 11 — The Definition of Done gate
-    "TRACE-DOD-003": "Slice 11",
-    "TRACE-DOD-004": "Slice 11",
-    "TRACE-DOD-005": "Slice 11",
-    "TRACE-DOD-006": "Slice 11",
-    "TRACE-M4-001": "Slice 11",
+    # Slice 11 is merged, and with it M4: all five are discharged by
+    # tests/backend/test_m4_definition_of_done.py.
+    #
+    # **Nothing is owed for M4.** TRACE-M4-001 is the obligation that says so, and it reads
+    # this dictionary — so it failed on its own five entries until they came out, which is
+    # the gate working rather than a nuisance: an obligation cannot certify a milestone
+    # complete while it is itself outstanding.
+    #
+    # Two of M4's obligations are in RECORDED_GAPS above rather than here, each with the
+    # reason it will never be discharged in this milestone: SEC-FILEDL-008 (no signed URLs
+    # are issued, so there is no expiry to test) and BANK-VER-005 (no mapping parser exists
+    # until M8, and a validation step that always passes reads as a check).
 }
 
 
