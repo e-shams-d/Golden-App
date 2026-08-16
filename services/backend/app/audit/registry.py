@@ -94,17 +94,38 @@ _OUTBOX_GAP = (
     "but it must be renamed to whatever M0 approves. Raised for the register."
 )
 
+_FILE_LIFECYCLE_OUTBOX_GAP = (
+    "`audit_outbox_catalog.yaml:107` lists its own open item: complete events for "
+    "trader rejection/suspension, **file lifecycle**, bank import, gold settlement and "
+    "legal-hold release. So the catalogue records that no file-lifecycle event name has "
+    "been approved, and this is one. The name may be implemented under the catalogue's "
+    "`provisional_pending_m0_approval` status and must be renamed to whatever M0 "
+    "approves; `:106` additionally leaves PascalCase against a dotted convention open, "
+    "so the spelling here follows the existing `TraderRegistered` form rather than "
+    "inventing a second."
+)
+
 UPLOAD_FILE = CommandNames(
     audit_action="file.uploaded",
-    # No outbox event. Preview dispatch is slice 6, and nothing consumes an upload event
-    # today — emitting one now would be a message with no reader, which is the shape this
-    # milestone is deliberately not repeating.
+    # No outbox event. Preview dispatch has its own name below, and an upload event has
+    # no consumer at all — emitting one would be a message with no reader, which is the
+    # shape this milestone is deliberately not repeating.
     outbox_event_type=None,
     # Catalogued as of M4 slice 1, which added `file.upload` to `command_catalog.yaml`
     # under DOC-CONFLICT-046: document 05 defines `POST /api/v1/files` and the catalogue
     # had no entry for it, so the mutation every other upload builds on carried no
     # idempotency or audit contract at all.
     catalogued=True,
+)
+
+REQUEST_FILE_PREVIEW = CommandNames(
+    # Not a command anybody calls: it is the dispatch an upload emits when the file it
+    # finalised can have a preview rendered. The audit action is the upload's own, so
+    # this entry exists for the event name and its reason.
+    audit_action="file.uploaded",
+    outbox_event_type="FilePreviewRequested",
+    catalogued=False,
+    provisional_reason=_FILE_LIFECYCLE_OUTBOX_GAP,
 )
 
 REGISTER_TRADER = CommandNames(

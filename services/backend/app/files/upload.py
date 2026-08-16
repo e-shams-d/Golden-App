@@ -47,9 +47,16 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import BinaryIO
 
-from app.audit import AuditActor, AuditContext, AuditEntry, AuditWriter
+from app.audit import (
+    AuditActor,
+    AuditContext,
+    AuditEntry,
+    AuditWriter,
+    OutboxMessage,
+    OutboxWriter,
+)
 from app.audit.redaction import RedactionPolicy
-from app.audit.registry import UPLOAD_FILE
+from app.audit.registry import REQUEST_FILE_PREVIEW, UPLOAD_FILE
 from app.core.errors import BusinessRuleViolationError
 from app.db.models.file_object import FileObject
 from app.db.models.idempotency_record import IdempotencyRecord
@@ -76,6 +83,18 @@ METADATA_SCHEMA = "audit.file.upload"
 METADATA_VERSION = 1
 
 MAX_FILENAME_LENGTH = 255
+PAYLOAD_VERSION = 1
+
+# Media types a preview can be rendered from. A CSV or a spreadsheet has no page to show,
+# so dispatching for one would enqueue work no renderer could do — the queue is not the
+# place to discover that.
+PREVIEWABLE_MEDIA_TYPES: frozenset[str] = frozenset(
+    {"application/pdf", "image/jpeg", "image/png"}
+)
+
+
+def _is_previewable(media_type: str) -> bool:
+    return media_type in PREVIEWABLE_MEDIA_TYPES
 
 # The state an upload is initiated in, before there are any bytes to describe.
 INITIAL_STORAGE_STATUS = PENDING
@@ -358,6 +377,34 @@ def execute(
             actor=actor,
             context=context,
         )
+
+        # Preview dispatch, in the same transaction as the state change it describes.
+        # `15_Agent_Implementation_Plan.md:698` asks for dispatch through the outbox, and
+        # the outbox is what makes "the file became available" and "somebody was told"
+        # either both durable or both absent — a message published after the commit can
+        # be lost, and one published before it can describe a change that never happened.
+        #
+        # Only for a file that actually became available: rendering a preview of
+        # quarantined content would put the renderer in front of the bytes inspection
+        # just refused.
+        if becomes_available and _is_previewable(command.declared_media_type):
+            OutboxWriter(uow.session, policy).enqueue(
+                OutboxMessage(
+                    aggregate_type="file_object",
+                    aggregate_id=file_id,
+                    # Files carry no `record_version`; the first version of a row is 1 and
+                    # a derivative is a new row rather than a new version, so this is a
+                    # constant by construction rather than a value read from anywhere.
+                    aggregate_version=1,
+                    event_type=REQUEST_FILE_PREVIEW.outbox_event_type or "",
+                    payload={
+                        "file_id": str(file_id),
+                        "purpose": command.purpose,
+                        "media_type": command.declared_media_type,
+                    },
+                    payload_version=PAYLOAD_VERSION,
+                )
+            )
 
         # The claim was made in transaction 1 and is completed here, in transaction 3.
         # Re-claiming would be wrong: `claim` on an in-flight record is the concurrent

@@ -189,12 +189,11 @@ PENDING: dict[str, str] = {
     #
     # SEC-FILEDL-008 stays in RECORDED_GAPS: M4 issues no signed URLs, so there is no
     # expiry to test.
-    # Slice 6 — Derived files know their source, and preview work is dispatched rather than done
-    "FILE-DERIV-001": "Slice 6",
-    "FILE-DERIV-002": "Slice 6",
-    "FILE-DERIV-003": "Slice 6",
-    "JOB-PREVIEW-001": "Slice 6",
-    "JOB-PREVIEW-002": "Slice 6",
+    # Slice 6 is merged: all five are discharged by
+    # tests/integration/test_file_derivation.py. Every claim in that slice is about
+    # atomicity or about a row existing, so none of it can be proved without a database —
+    # including FILE-DERIV-002, which runs the writer and the reconciliation check
+    # against each other rather than asserting either alone.
     # Slice 7 — The six reconciliation checks get an operator
     "OPS-RECON-001": "Slice 7",
     "OPS-RECON-002": "Slice 7",
