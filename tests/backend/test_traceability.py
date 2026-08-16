@@ -255,15 +255,81 @@ PENDING: dict[str, str] = {
     # reason it will never be discharged in this milestone: SEC-FILEDL-008 (no signed URLs
     # are issued, so there is no expiry to test) and BANK-VER-005 (no mapping parser exists
     # until M8, and a validation step that always passes reads as a check).
+    #
+    # ---- M5, stated by `docs/handoff/M5_IMPLEMENTATION_PLAN.md` and not yet written ----
+    #
+    # The plan lands before its slices, so all 43 are owed. Each slice PR removes its own
+    # entries; the milestone is over when the last one goes and TRACE-M5-001 can pass.
+    #
+    # Nothing is in RECORDED_GAPS for M5. That is worth stating rather than leaving to be
+    # noticed: M5 builds its own tables, so unlike M4 there is no dependency on an
+    # undecided ADR or an unwritten parser to excuse anything.
+    "DB-TRADER-002": "M5 slice 1 — trader status values, owed since M3 under DOC-CONFLICT-024",
+    "DB-BEN-001": "M5 slice 1 — beneficiaries table, trader-scoped",
+    "DB-BEN-002": "M5 slice 1 — normalized_iban NOT NULL and the IR CHECK",
+    "DB-BEN-003": "M5 slice 1 — no unique on IBAN or name; duplicates are a warning, not a refusal",
+    "SVC-BEN-001": "M5 slice 2 — beneficiary create/update commands",
+    "SVC-BEN-002": "M5 slice 2 — duplicate detection warns and names the match",
+    "SVC-BEN-003": "M5 slice 2 — a beneficiary stores no amount",
+    "SEC-BEN-001": "M5 slice 2 — a trader reaches only its own beneficiaries",
+    "SEC-BEN-002": "M5 slice 2 — no cross-trader reuse (DOC-CONFLICT-011)",
+    "AUD-BEN-001": "M5 slice 2 — beneficiary writes are audited",
+    "DB-REQ-001": "M5 slice 3 — payment_requests, with no amount and no snapshot columns",
+    "DB-REV-001": "M5 slice 3 — payment_request_revisions per 04:873-906",
+    "DB-REV-002": "M5 slice 3 — composite FK ties current_revision_id to the same request",
+    "DB-REV-003": "M5 slice 3 — no column of a revision may be updated, one case per column",
+    "CON-REQ-001": "M5 slice 3 — record_version supports If-Match; a stale value returns 412",
+    "SEC-REQ-001": "M5 slice 3 — a pending or suspended trader cannot create a draft",
+    "SVC-REQ-001": "M5 slice 4 — entered amount and unit are stored as typed",
+    "SVC-REQ-002": "M5 slice 4 — the server computes canonical IRR and refuses a mismatch",
+    "SVC-REQ-003": "M5 slice 4 — an invalid unit is refused",
+    "API-REQ-001": "M5 slice 4 — money crosses the API as string integers",
+    "SVC-REV-001": "M5 slice 5 — correction creates revision n+1 and leaves n byte-identical",
+    "SVC-REV-002": "M5 slice 5 — history is readable in order and every revision reachable",
+    "SVC-REV-003": "M5 slice 5 — identical content is permitted and hashes equally",
+    "SVC-REV-004": "M5 slice 5 — revision creation is idempotent under a repeated key",
+    "CON-REQ-002": "M5 slice 5 — creating a revision requires If-Match on the request",
+    "SVC-SUB-001": "M5 slice 6 — submission fills every snapshot column at that instant",
+    "SVC-SUB-002": "M5 slice 6 — editing the beneficiary afterwards does not change the revision",
+    "SVC-SUB-003": "M5 slice 6 — an attachment that is not `available` cannot be submitted",
+    "SEC-REQ-002": "M5 slice 6 — a trader cannot submit another trader's request",
+    "AUD-REQ-001": "M5 slice 6 — submission audits and emits in the command's transaction",
+    "SVC-REVIEW-001": "M5 slice 7 — accountant review moves the request through its states",
+    "SVC-REVIEW-002": "M5 slice 7 — return for correction, and what the trader may then do",
+    "SVC-REVIEW-003": "M5 slice 7 — marking eligible for batching is an accountant action",
+    "SEC-REQ-003": "M5 slice 7 — a trader cannot perform a review action",
+    "AUD-REQ-002": "M5 slice 7 — the accountant's action is audited and emitted through outbox",
+    "UI-REQ-001": "M5 slice 8 — the trader's request screens",
+    "UI-REQ-002": "M5 slice 8 — the correction flow as the trader sees it",
+    "UI-REQ-003": "M5 slice 8 — the accountant's review queue",
+    "UI-REQ-004": "M5 slice 8 — a screen imports these, which no component test asks",
+    "TRACE-DOD-007": "M5 slice 9 — the six-step journey runs end to end in one test",
+    "TRACE-DOD-008": "M5 slice 9 — no request-level route requires a manager-only permission",
+    "TRACE-DOD-009": "M5 slice 9 — no request-scoped command consults one",
+    "TRACE-M5-001": "M5 slice 9 — nothing is owed for M5; it reads this dictionary",
 }
+
+
+def obligations_stated_by(plan: Path) -> set[str]:
+    """The obligations one plan states, so a milestone gate can ask about its own.
+
+    Added by the M5 plan, which found the M4 Definition-of-Done gate deciding what M4
+    owed by prefix — `TRACE-` among them. M5 states `TRACE-DOD-007`, and M4's gate
+    promptly reported it as an outstanding M4 obligation. The prefix was never the
+    rule; it was a shorthand for one, and it stopped agreeing with the rule the moment
+    a second milestone used the same family of identifiers.
+    """
+
+    found: set[str] = set()
+    for section in _PROVES_SECTION.findall(plan.read_text(encoding="utf-8")):
+        found.update(_ID.findall(section))
+    return found
 
 
 def plan_obligations() -> set[str]:
     found: set[str] = set()
     for plan in plans():
-        text = plan.read_text(encoding="utf-8")
-        for section in _PROVES_SECTION.findall(text):
-            found.update(_ID.findall(section))
+        found.update(obligations_stated_by(plan))
     return found
 
 
