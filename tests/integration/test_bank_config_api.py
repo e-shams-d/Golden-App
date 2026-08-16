@@ -201,22 +201,44 @@ def test_a_mapping_type_from_the_other_document_is_refused(world: dict[str, Any]
 
     `xlsx` is document 08's reading of `file_type`. Under it, two statement-import
     mappings could share a version and the failure would surface during the first export
-    in M7. The CHECK moves it to the write.
+    in M7.
+
+    Refused by the command, not by a database CHECK, and that is the corrected position.
+    A CHECK was added first and had to be removed twice over: it enumerated document 08's
+    identifiers while this repository uses `outgoing_export` and `incoming_result`, and
+    even with the spellings fixed it would have been enumerating a vocabulary nobody
+    approved — document 04 supplies prose, not identifiers. An application allowlist is a
+    decision somebody can revisit; a CHECK claims to be canonical.
     """
 
-    client, url = world["client"], world["url"]
+    from app.audit.redaction import RedactionPolicy
+    from app.audit.writer import AuditActor, AuditContext
+    from app.commands import bank_configuration
+
+    client, runtime = world["client"], world["runtime"]
     response = create_profile(client, sign_in(client))
     assert response.status_code == 201
     version_id = response.json()["version_id"]
 
-    refusal = pytest.raises(psycopg.errors.CheckViolation, match="file_type")
-    with psycopg.connect(_psycopg(url)) as connection, refusal, connection.transaction():
-        connection.execute(
-            "INSERT INTO bank_mappings (bank_profile_version_id, file_type, "
-            "template_version, status, mapping, required_fields, config_hash) "
-            "VALUES (%s, 'xlsx', 1, 'draft', '{}', '{}', %s)",
-            (version_id, "a" * 64),
+    actor = AuditActor(actor_type="admin_user", actor_id=uuid.uuid4(), role_snapshot=())
+    with pytest.raises(Exception, match="not a mapping type"), runtime.uow_factory() as uow:
+        bank_configuration.create_mapping(
+            bank_configuration.CreateBankMapping(
+                version_id=uuid.UUID(version_id), file_type="xlsx", mapping={}
+            ),
+            uow=uow,
+            actor=actor,
+            context=AuditContext(request_id="test"),
+            policy=RedactionPolicy(mask_iban=True),
+            app_env="test",
         )
+
+    # And the three the repository actually uses are accepted.
+    assert set(bank_configuration.MAPPING_TYPES) == {
+        "statement_import",
+        "outgoing_export",
+        "incoming_result",
+    }
 
 
 def test_an_import_and_an_export_mapping_coexist_at_one_template_version(
@@ -234,7 +256,7 @@ def test_an_import_and_an_export_mapping_coexist_at_one_template_version(
     version_id = response.json()["version_id"]
 
     with psycopg.connect(_psycopg(url)) as connection:
-        for file_type, digest in (("statement_import", "a"), ("payment_export", "b")):
+        for file_type, digest in (("statement_import", "a"), ("outgoing_export", "b")):
             connection.execute(
                 "INSERT INTO bank_mappings (bank_profile_version_id, file_type, "
                 "template_version, status, mapping, required_fields, config_hash) "

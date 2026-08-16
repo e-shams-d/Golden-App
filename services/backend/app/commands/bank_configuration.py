@@ -42,6 +42,7 @@ from app.audit import AuditActor, AuditContext, AuditEntry, AuditWriter
 from app.audit.redaction import RedactionPolicy
 from app.core.errors import BusinessRuleViolationError, NotFoundError
 from app.core.hashing import unversioned_digest
+from app.db.models.bank import MAPPING_TYPES as _MODEL_MAPPING_TYPES
 from app.db.models.bank import BankAccount, BankMapping, BankProfile, BankProfileVersion
 from app.db.unit_of_work import SqlAlchemyUnitOfWork
 
@@ -54,10 +55,12 @@ CONFIGURATION_STATUSES: Final = (DRAFT, ACTIVE, RETIRED)
 # reading — and not the file format, which is document 08's. M2 implemented document 04's
 # meaning: both mapping uniques include this column so an import mapping and an export
 # mapping can coexist at `template_version` 1, which is only coherent under that reading.
-STATEMENT_IMPORT: Final = "statement_import"
-PAYMENT_EXPORT: Final = "payment_export"
-PAYMENT_RESULT_IMPORT: Final = "payment_result_import"
-MAPPING_TYPES: Final = (STATEMENT_IMPORT, PAYMENT_EXPORT, PAYMENT_RESULT_IMPORT)
+#
+# Imported from the model rather than restated, after a first attempt wrote document 08's
+# identifiers (`payment_export`, `payment_result_import`) here while the repository's own
+# fixtures used `outgoing_export` and `incoming_result` — enforcing the right meaning with
+# the wrong vocabulary. One definition means the next reader cannot repeat that.
+MAPPING_TYPES: Final = _MODEL_MAPPING_TYPES
 
 ACCOUNT_ROLES: Final = ("outgoing_source", "incoming_destination", "both")
 
