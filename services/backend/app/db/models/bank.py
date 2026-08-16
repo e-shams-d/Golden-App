@@ -86,6 +86,17 @@ from app.db.base import Base, created_at_column, named_check, updated_at_column,
 # would let an outgoing batch draw on an incoming-only account.
 ACCOUNT_ROLES: tuple[str, ...] = ("outgoing_source", "incoming_destination", "both")
 
+# The three values `status_catalog.yaml:634-640` lists for both `bank_profile_version` and
+# `bank_mapping`, under `canonical: null`.
+CONFIGURATION_STATUSES: tuple[str, ...] = ("draft", "active", "retired")
+
+# DOC-CONFLICT-047: `bank_mappings.file_type` is the mapping type, per document 04.
+MAPPING_TYPES: tuple[str, ...] = (
+    "statement_import",
+    "payment_export",
+    "payment_result_import",
+)
+
 # Iranian IBAN: `IR` then 24 digits. Applied null-tolerantly on `bank_accounts`.
 IBAN_PATTERN = "^IR[0-9]{24}$"
 
@@ -233,6 +244,13 @@ class BankProfileVersion(Base):
             name="effective_window_is_ordered",
         ),
         named_check(HEX_64_CHECK.format(column="config_hash"), name="config_hash_is_lowercase_hex"),
+        # No `status` CHECK, deliberately. M4 slice 8 added one and
+        # `test_status_catalogue_drift.py` refused it: the catalogue records
+        # `bank_profile_version` with `canonical: null`, and that file's own note says the
+        # reason is there so "the next person to reach for an enum finds the reason before
+        # the constraint". The argument for adding it — that constraining the column to
+        # the three aliases on offer decides nothing — is exactly the argument the rule
+        # exists to refuse, because it is how an alias set quietly becomes canonical.
         Index("idx_bank_profile_versions_profile", "bank_profile_id", "version_number"),
     )
 
@@ -347,6 +365,16 @@ class BankMapping(Base):
         ),
         named_check("template_version > 0", name="template_version_positive"),
         named_check("length(btrim(file_type)) > 0", name="file_type_not_blank"),
+        # M4 slice 8, DOC-CONFLICT-047. This column is the **mapping type** (document 04)
+        # and not the file format (document 08). The uniques above only make sense under
+        # that reading — an import and an export mapping coexisting at template_version 1
+        # — so under document 08's reading two statement-import mappings could share a
+        # version and the failure would surface during the first export, in M7. The CHECK
+        # moves it to the write.
+        named_check(f"file_type IN ({_quoted(MAPPING_TYPES)})", name="file_type"),
+        # And no `status` CHECK here either, for the same reason — see the note on
+        # `bank_profile_versions` above. `file_type` is a *type* column that no catalogue
+        # entry covers, which is why constraining it is not the same act.
         named_check(HEX_64_CHECK.format(column="config_hash"), name="config_hash_is_lowercase_hex"),
         named_check(
             "sample_header_hash IS NULL OR " + HEX_64_CHECK.format(column="sample_header_hash"),

@@ -44,4 +44,4 @@ from __future__ import annotations
 # singleton rather than one primary per business; it is rebuilt on `trader_id` under
 # the name doc 04 gives it. And the identity `status` columns gain the value CHECK
 # DOC-CONFLICT-037 reserved until the account lifecycle was decided.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260808_0013"})
+EXPECTED_MIGRATION_HEADS = frozenset({"20260816_0014"})

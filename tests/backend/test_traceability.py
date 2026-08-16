@@ -201,16 +201,16 @@ PENDING: dict[str, str] = {
     # aggregator M2 had already written. OPS-RECON-001 is enumerated from the module for
     # exactly that reason — a literal count in the test would have encoded the plan's
     # mistake and passed.
-    # Slice 8 — Bank configuration: structure without content
-    "BANK-CFG-001": "Slice 8",
-    "BANK-CFG-002": "Slice 8",
-    "BANK-CFG-003": "Slice 8",
-    "BANK-CFG-004": "Slice 8",
-    "BANK-FIXTURE-002": "Slice 8",
-    "BANK-ACCT-001": "Slice 8",
-    "SEC-BANKCFG-001": "Slice 8",
-    "AUD-BANKCFG-001": "Slice 8",
-    "OPS-BANKCFG-001": "Slice 8",
+    # Slice 8 is merged: all nine are discharged by
+    # tests/integration/test_bank_config_api.py.
+    #
+    # The slice also tried to add value CHECKs to `bank_profile_versions.status` and
+    # `bank_mappings.status`, and `test_status_catalogue_drift.py` refused them. Its
+    # `DELIBERATELY_UNCONSTRAINED` note exists so "the next person to reach for an enum
+    # finds the reason before the constraint", and it worked exactly that way. Only
+    # `bank_mappings.file_type` is constrained — a *type* column no catalogue entry
+    # covers, refusing a value from another document's vocabulary rather than a spelling
+    # of this one's.
     # Slice 9 — A version is resolved by date, and a used version cannot change
     "BANK-VER-001": "Slice 9",
     "BANK-VER-002": "Slice 9",

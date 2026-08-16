@@ -37,6 +37,10 @@ class RuntimeServices:
     redis: Redis
     storage: StorageBackend
     scan_policy: ScanPolicy
+    # Carried so a command can refuse an action in production without importing
+    # settings. ADR-007 blocks bank configuration there, and the refusal belongs in
+    # the command rather than at each call site.
+    app_env: str
     celery: Celery
     health: HealthService
     worker_health: WorkerHealthProbe
@@ -83,6 +87,7 @@ class RuntimeServices:
             redis=redis_client,
             storage=storage,
             scan_policy=scan_policy,
+            app_env=settings.app_env,
             celery=celery,
             health=HealthService(probes, required_for_readiness=frozenset(required)),
             worker_health=CeleryWorkerHealthProbe(
