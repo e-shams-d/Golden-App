@@ -194,12 +194,13 @@ PENDING: dict[str, str] = {
     # atomicity or about a row existing, so none of it can be proved without a database —
     # including FILE-DERIV-002, which runs the writer and the reconciliation check
     # against each other rather than asserting either alone.
-    # Slice 7 — The six reconciliation checks get an operator
-    "OPS-RECON-001": "Slice 7",
-    "OPS-RECON-002": "Slice 7",
-    "OPS-RECON-003": "Slice 7",
-    "TRACE-CALLER-002": "Slice 7",
-    "OPS-RECON-004": "Slice 7",
+    # Slice 7 is merged: all five are discharged by
+    # tests/integration/test_reconciliation_cli.py.
+    #
+    # The plan's heading says "the six reconciliation checks". There are **seven**, plus an
+    # aggregator M2 had already written. OPS-RECON-001 is enumerated from the module for
+    # exactly that reason — a literal count in the test would have encoded the plan's
+    # mistake and passed.
     # Slice 8 — Bank configuration: structure without content
     "BANK-CFG-001": "Slice 8",
     "BANK-CFG-002": "Slice 8",
