@@ -20,5 +20,6 @@ import type { NavigationItem } from "@gold/ui";
  */
 export const traderNavigation = [
   { href: "/", label: t("trader.nav.home"), icon: "home" },
+  { href: "/evidence", label: t("trader.nav.evidence"), icon: "upload" },
   { href: "/profile", label: t("trader.nav.account"), icon: "account" },
 ] as const satisfies readonly NavigationItem[];

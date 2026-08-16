@@ -33,7 +33,8 @@ export type IconName =
   | "key"
   | "plus"
   | "refresh"
-  | "logout";
+  | "logout"
+  | "upload";
 
 /** The runtime list, so a test can iterate what exists rather than restate it. */
 export const ICON_NAMES = [
@@ -51,6 +52,7 @@ export const ICON_NAMES = [
   "plus",
   "refresh",
   "logout",
+  "upload",
 ] as const satisfies readonly IconName[];
 
 // Stroked rather than filled, at a uniform 1.75 width: a mixed set reads as icons borrowed
@@ -70,6 +72,9 @@ const PATHS: Readonly<Record<IconName, string>> = {
   plus: "M12 5v14M5 12h14",
   refresh: "M20 12a8 8 0 1 1-2.5-5.8M20 4v4h-4",
   logout: "M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M11 16l4-4-4-4M15 12H4",
+  // An arrow into a tray: the file goes to the platform, not from it. Distinct from
+  // , which adds a record somebody typed rather than bytes they had.
+  upload: "M12 16V4M8 8l4-4 4 4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3",
 };
 
 export type IconProps = Omit<SVGProps<SVGSVGElement>, "children"> &

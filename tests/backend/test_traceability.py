@@ -233,13 +233,16 @@ PENDING: dict[str, str] = {
     # with the migration that seeds them, which is what slice 8 deferred. Adding the
     # identifier without the seed row would have left the catalogue and the database
     # disagreeing.
-    # Slice 10 — Upload and view it in a browser
-    "UI-FILE-001": "Slice 10",
-    "UI-FILE-002": "Slice 10",
-    "UI-FILE-003": "Slice 10",
-    "UI-FILE-004": "Slice 10",
-    "UI-FILE-005": "Slice 10",
-    "UI-FILE-006": "Slice 10",
+    # Slice 10 is merged: UI-FILE-001 to -005 are discharged by
+    # packages/ui/test/file-components.test.tsx and UI-FILE-006 by
+    # apps/trader-pwa/test/evidence-screen.test.ts.
+    #
+    # The split is deliberate. UI-FILE-006 is the question no component test asks — does a
+    # screen import this — and it belongs with the application rather than the package.
+    # The rest are decisions rather than renderings, so the components expose them as
+    # plain functions and the tests call those: this package renders to static markup and
+    # has no DOM-interaction library, and adding one to assert a boolean would be a
+    # dependency bought for a conditional.
     # Slice 11 — The Definition of Done gate
     "TRACE-DOD-003": "Slice 11",
     "TRACE-DOD-004": "Slice 11",
