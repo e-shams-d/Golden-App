@@ -53,6 +53,7 @@ REGISTER = GOVERNANCE / "CONFLICT_REGISTER.md"
 # `file_object` aggregate, and a convention that guessed that would guess wrong
 # somewhere else. An unmapped status CHECK fails the first test below.
 STATUS_COLUMN_TO_AGGREGATE: dict[tuple[str, str], str] = {
+    ("beneficiaries", "status"): "beneficiary",
     ("outbox_events", "status"): "outbox_event",
     ("processing_jobs", "status"): "processing_job",
     ("file_objects", "storage_status"): "file_object",
@@ -85,6 +86,14 @@ DELIBERATELY_UNCONSTRAINED: dict[tuple[str, str], str] = {
     # Both Open under DOC-CONFLICT-029 and ADR-008; the availability gate constrains
     # the consequence instead. See tests/backend/test_reserved_scan_status.py.
     ("file_objects", "scan_status"): "scan outcomes — DOC-CONFLICT-029 and ADR-008 are Open",
+    # DOC-CONFLICT-048. The `beneficiary` aggregate covers the lifecycle only, and
+    # the four verification values live in a Notes cell of document 04 that no
+    # approved catalogue restates. Unlike the entries above, nothing here is
+    # *disputed* — the values are perfectly clear. What is missing is approval, and
+    # a CHECK is the one way to make an unapproved vocabulary permanent.
+    ("beneficiaries", "verification_status"): (
+        "beneficiary verification — DOC-CONFLICT-048, no approved aggregate covers it"
+    ),
 }
 
 # A value the catalogue records that the schema deliberately does not permit, and the

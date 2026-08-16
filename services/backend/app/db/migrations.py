@@ -44,4 +44,14 @@ from __future__ import annotations
 # singleton rather than one primary per business; it is rebuilt on `trader_id` under
 # the name doc 04 gives it. And the identity `status` columns gain the value CHECK
 # DOC-CONFLICT-037 reserved until the account lifecycle was decided.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260816_0014"})
+# 20260816_0014 closes M4: it seeds `bank_profile.activate_version` and
+# `bank_mapping.activate` with no role grants at all, so under deny-by-default the
+# activation route refuses every role. That is DOC-CONFLICT-045's interim rule, and
+# the permissions exist so the grant is a data change rather than a code change.
+# 20260816_0015 opens M5: `beneficiaries`, the trader-owned payment destination.
+# Two deliberate absences, both of which look like omissions and are not. No unique
+# on IBAN or name — document 04 prohibits it because duplicates are legitimate and
+# the service warns rather than merging. And no value CHECK on
+# `verification_status`, whose four values appear only in a Notes cell that no
+# approved catalogue restates (DOC-CONFLICT-048).
+EXPECTED_MIGRATION_HEADS = frozenset({"20260816_0015"})
