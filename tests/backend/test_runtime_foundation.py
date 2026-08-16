@@ -21,6 +21,10 @@ EXPECTED_TABLES = frozenset(
         "bank_mappings",
         "bank_profile_versions",
         "bank_profiles",
+        # The trader's payment destinations, added by 20260816_0015. One trader per
+        # row and no sharing mechanism: DOC-CONFLICT-011's isolation is a fact about
+        # the schema rather than a check a service performs.
+        "beneficiaries",
         "center_profile",
         "file_derivations",
         "file_links",

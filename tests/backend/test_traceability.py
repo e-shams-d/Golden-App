@@ -264,10 +264,22 @@ PENDING: dict[str, str] = {
     # Nothing is in RECORDED_GAPS for M5. That is worth stating rather than leaving to be
     # noticed: M5 builds its own tables, so unlike M4 there is no dependency on an
     # undecided ADR or an unwritten parser to excuse anything.
-    "DB-TRADER-002": "M5 slice 1 — trader status values, owed since M3 under DOC-CONFLICT-024",
-    "DB-BEN-001": "M5 slice 1 — beneficiaries table, trader-scoped",
-    "DB-BEN-002": "M5 slice 1 — normalized_iban NOT NULL and the IR CHECK",
-    "DB-BEN-003": "M5 slice 1 — no unique on IBAN or name; duplicates are a warning, not a refusal",
+    # Slice 1 is merged: DB-BEN-001/-002/-003 and DB-TRADER-002 are discharged by
+    # tests/backend/test_beneficiary_schema.py.
+    #
+    # DB-TRADER-002 is discharged in its *second* passing state, not its first. The
+    # plan states two: the columns carry the approved CHECK, or they carry none and
+    # `DELIBERATELY_UNCONSTRAINED` still records why. DOC-CONFLICT-024's values are
+    # the owner's decision and it has not arrived, so the columns stay unconstrained
+    # and slice 1 shipped the rest — §2.4's rule, applied rather than worked around.
+    # The test asserts exactly one of the two holds, so when the CHECK is approved it
+    # fails until the reserved-list entry comes out.
+    #
+    # The slice also raised DOC-CONFLICT-048: `beneficiaries.verification_status` has
+    # four perfectly clear values in a Notes cell of document 04 and no approved
+    # catalogue records them. It ships with no CHECK. Nothing about those values looks
+    # uncertain, which is why the absence needed a test on both sides rather than a
+    # comment — what is missing is approval, not clarity.
     "SVC-BEN-001": "M5 slice 2 — beneficiary create/update commands",
     "SVC-BEN-002": "M5 slice 2 — duplicate detection warns and names the match",
     "SVC-BEN-003": "M5 slice 2 — a beneficiary stores no amount",
