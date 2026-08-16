@@ -16,8 +16,6 @@ abandoned rather than absorbed and then measured.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterator
-from contextlib import ExitStack
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Header, Response, UploadFile, status
@@ -30,17 +28,16 @@ from app.api.v1.auth import authenticated_actor, requires
 from app.audit.redaction import RedactionPolicy
 from app.audit.writer import AuditActor, AuditContext
 from app.core.errors import BusinessRuleViolationError, ErrorEnvelope, NotFoundError
-from app.core.logging import get_logger
 from app.core.request_context import get_request_id
 from app.core.runtime import RuntimeServices
 from app.core.time import utc_now
 from app.db.models.file_object import FileObject
 from app.files import upload
+from app.files.download import FileBytesUnavailableError, open_stream
 from app.files.ownership import FileFacts, may_access
 from app.files.states import AVAILABLE
 from app.security.actor import ActorContext
 from app.security.permissions import declare
-from app.storage.interface import StorageError
 
 router = APIRouter(prefix="/files", tags=["files"])
 
@@ -257,44 +254,28 @@ def _stream(runtime: RuntimeServices, record: FileObject) -> StreamingResponse:
     if record.storage_status != AVAILABLE:
         raise NotFoundError()
 
-    # Entered here rather than inside the generator. `StorageBackend.open` is a context
-    # manager, so calling it only builds one — the object is not touched until entry, and
-    # entry inside the streaming generator happens *after* the response has begun, where
-    # the exception cannot become a clean status code. The first version of this caught
-    # nothing for exactly that reason.
-    stack = ExitStack()
+    # The route never sees a storage address. Slice 11's gate found this line reaching
+    # into the backend with `record.storage_key`: the code was correct and the boundary
+    # was not, and the next route to serve bytes would have copied it.
     try:
-        body = stack.enter_context(runtime.storage.open(record.storage_key))
-    except StorageError as error:
-        stack.close()
-        # The row says the object exists and storage disagrees. That is the defect
-        # `records_without_a_storage_object` exists to find, and it is not this request's
-        # to repair — but it must not surface as an unhandled error either, because
-        # `StorageError` carries the storage key in its message and an unhandled
-        # exception is the one path where a traceback can put that in front of a caller.
-        # The whole point of this milestone's boundary is that a storage address never
-        # leaves the file service, and an error page is still leaving.
-        get_logger("files").error(
-            "file_object_missing_from_storage",
-            extra={"file_id": str(record.id), "category": record.category},
-        )
+        stream = open_stream(runtime.storage, record)
+    except FileBytesUnavailableError as error:
+        # The row says the object exists and storage disagrees — the defect
+        # `records_without_a_storage_object` exists to find. Not this request's to repair,
+        # and not something to surface as an unhandled error either: the underlying
+        # `StorageError` carries the key in its message.
         raise NotFoundError() from error
 
-    def bytes_out() -> Iterator[bytes]:
-        with stack:
-            while chunk := body.read(64 * 1024):
-                yield chunk
-
     return StreamingResponse(
-        bytes_out(),
-        media_type=record.mime_type_declared,
+        stream.chunks,
+        media_type=stream.media_type,
         headers={
             "Cache-Control": "no-store",
             "X-Content-Type-Options": "nosniff",
             # `attachment` rather than `inline`: an SVG or a PDF rendered in the origin's
             # context can execute against this origin's cookies. The filename is the
             # sanitised stored one, and it is display metadata even here.
-            "Content-Disposition": f'attachment; filename="{record.original_filename}"',
+            "Content-Disposition": f'attachment; filename="{stream.filename}"',
         },
     )
 
