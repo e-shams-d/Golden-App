@@ -181,16 +181,14 @@ PENDING: dict[str, str] = {
     # Slice 3's file was renamed on the way: tests/backend/test_file_inspection.py is now
     # test_content_inspection.py, because a basename shared with the integration suite
     # stops pytest collecting either.
-    # Slice 5 — Every download is authorized again, and a category with no owner is denied
-    "SEC-FILEDL-001": "Slice 5",
-    "SEC-FILEDL-002": "Slice 5",
-    "SEC-FILEDL-003": "Slice 5",
-    "SEC-FILEDL-004": "Slice 5",
-    "SEC-FILEDL-005": "Slice 5",
-    "SEC-FILEDL-006": "Slice 5",
-    "API-FILE-002": "Slice 5",
-    "API-FILE-003": "Slice 5",
-    "SEC-FILEDL-007": "Slice 5",
+    # Slice 5 is merged. SEC-FILEDL-003 is discharged by
+    # tests/backend/test_file_ownership.py — the registry's own rules, where the cases are
+    # cheap to enumerate — and the rest by tests/integration/test_file_download.py, which
+    # is where "every request re-evaluates" can be proved by revoking a session between
+    # two identical requests rather than by reading the code.
+    #
+    # SEC-FILEDL-008 stays in RECORDED_GAPS: M4 issues no signed URLs, so there is no
+    # expiry to test.
     # Slice 6 — Derived files know their source, and preview work is dispatched rather than done
     "FILE-DERIV-001": "Slice 6",
     "FILE-DERIV-002": "Slice 6",

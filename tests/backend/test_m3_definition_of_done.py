@@ -138,6 +138,14 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # the actor. Ownership starts to matter at download, which is slice 5 and arrives
     # with its own resolver and its own negative tests.
     ("POST", "/api/v1/files"): PERMISSION,
+    # M4 slice 5. OWNERSHIP rather than PERMISSION, and the distinction is the slice: the
+    # permission says an actor may download *some* file, and the ownership resolver says
+    # whether they may have *this* one. A file the actor may not reach answers exactly as
+    # a missing one does, so the negative test asserts indistinguishability rather than a
+    # 403 — a 403 would confirm the id is real.
+    ("GET", "/api/v1/files/{file_id}"): OWNERSHIP,
+    ("GET", "/api/v1/files/{file_id}/download"): OWNERSHIP,
+    ("GET", "/api/v1/files/{file_id}/preview"): OWNERSHIP,
     # PUBLIC by necessity rather than by choice, which is why it is not SESSION: an
     # account in `recovery_required` is refused every action except recovery, so it holds
     # no session to classify. The temporary credential an administrator set is what stands
@@ -267,6 +275,15 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     # what makes the denial about `file.upload` rather than about being signed in.
     ("POST", "/api/v1/files", "permission"): (
         "test_an_authenticated_actor_without_the_permission_is_denied"
+    ),
+    ("GET", "/api/v1/files/{file_id}", "ownership"): (
+        "test_an_unreachable_file_answers_exactly_like_a_missing_one"
+    ),
+    ("GET", "/api/v1/files/{file_id}/download", "ownership"): (
+        "test_staff_without_the_sensitive_grant_cannot_reach_a_bundle_either"
+    ),
+    ("GET", "/api/v1/files/{file_id}/preview", "ownership"): (
+        "test_a_trader_cannot_reach_an_internal_bank_bundle"
     ),
 }
 
