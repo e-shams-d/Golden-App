@@ -221,19 +221,27 @@ def test_nothing_is_owed_for_m4() -> None:
     survivable.
     """
 
-    from test_traceability import PENDING, plans
+    from test_traceability import PENDING, obligations_stated_by, plans
 
     m4 = next(plan for plan in plans() if plan.name.startswith("M4"))
     assert m4.exists()
 
     # Every M4 obligation is either cited by a test or recorded as a permanent gap with a
     # reason. `PENDING` is for work not yet written, and M4 has none left.
-    m4_prefixes = ("FILE-", "BANK-", "OPS-RECON", "OPS-LIMIT", "OPS-BANKCFG", "UI-FILE", "TRACE-")
-    owed = sorted(
-        identifier
-        for identifier in PENDING
-        if identifier.startswith(m4_prefixes)
-    )
+    #
+    # Asked of the plan rather than of a prefix list. The list read
+    # `("FILE-", "BANK-", ..., "TRACE-")` until the M5 plan landed, at which point M5's
+    # own Definition-of-Done obligations — the next numbers in the same `TRACE-DOD`
+    # sequence — were reported as M4 obligations still owed. The prefixes were a guess at
+    # the boundary; the plan *is* the boundary.
+    #
+    # The identifiers are deliberately not spelled out above. Naming one here would make
+    # this file *cite* it, and the ledger counts a citation as a discharge — so an M4 test
+    # would silently satisfy an M5 obligation from within a comment explaining the bug.
+    stated = obligations_stated_by(m4)
+    assert len(stated) > 40, f"only {len(stated)} obligations parsed from the M4 plan"
+
+    owed = sorted(stated & set(PENDING))
 
     assert owed == [], f"M4 obligations still owed: {owed}"
 

@@ -51,7 +51,7 @@
   },
   "summary": {
     "file_count": 17,
-    "total_bytes": 311008,
+    "total_bytes": 311927,
     "total_lines": 3684
   },
   "validation": {
@@ -114,9 +114,9 @@
     },
     {
       "path": "docs/governance/CONFLICT_REGISTER.md",
-      "bytes": 55472,
+      "bytes": 56391,
       "lines": 141,
-      "sha256": "783045a928902b59b88b69d71bbb5896dfa045034f861a92447c5c3a68d6f986"
+      "sha256": "d33e80473dd4bc0b2d299689e09aee047489d2b8b60aef7601c20997d22fd7a1"
     },
     {
       "path": "docs/governance/DOCUMENT_APPROVAL_REGISTER.md",
