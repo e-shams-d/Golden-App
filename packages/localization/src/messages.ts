@@ -48,6 +48,7 @@ export const faMessages = {
   "trader.nav.results": "نتایج",
   "trader.nav.notifications": "اعلان‌ها",
   "trader.nav.account": "حساب",
+  "trader.nav.evidence": "رسیدها",
   "admin.appName": "سامانه طلا ـ عملیات داخلی",
   "admin.shellTitle": "صف‌های عملیاتی و کنترل نسخه",
   "admin.shellDescription": "این پوسته هیچ اختیار مالی را در مرورگر ایجاد نمی‌کند.",
