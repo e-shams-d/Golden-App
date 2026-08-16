@@ -126,6 +126,14 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "getFileMetadata",
         "downloadFile",
         "previewFile",
+        # M4 slice 8. Creation only: activation needs two permissions that do not exist
+        # yet (DOC-CONFLICT-045), and a route guarded by an unapproved identifier denies
+        # everyone — shipping it before the guard is reviewable ships a decision as an
+        # accident.
+        "listBankProfiles",
+        "createBankProfile",
+        "listBankAccounts",
+        "createBankAccount",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

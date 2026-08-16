@@ -1,6 +1,65 @@
 {
   "components": {
     "schemas": {
+      "AccountListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "bank_accounts": {
+            "items": {
+              "$ref": "#/components/schemas/AccountSummary"
+            },
+            "title": "Bank Accounts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "bank_accounts"
+        ],
+        "title": "AccountListResponse",
+        "type": "object"
+      },
+      "AccountSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "account_role": {
+            "title": "Account Role",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "normalized_iban": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalized Iban"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "account_role",
+          "status",
+          "normalized_iban"
+        ],
+        "title": "AccountSummary",
+        "type": "object"
+      },
       "ActorSummary": {
         "additionalProperties": false,
         "properties": {
@@ -208,6 +267,53 @@
         "title": "BackgroundProcessingResponse",
         "type": "object"
       },
+      "BankProfileListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "bank_profiles": {
+            "items": {
+              "$ref": "#/components/schemas/BankProfileSummary"
+            },
+            "title": "Bank Profiles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "bank_profiles"
+        ],
+        "title": "BankProfileListResponse",
+        "type": "object"
+      },
+      "BankProfileSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "status"
+        ],
+        "title": "BankProfileSummary",
+        "type": "object"
+      },
       "Body_uploadFile": {
         "properties": {
           "client_filename": {
@@ -307,6 +413,44 @@
         "title": "ChangePasswordResponse",
         "type": "object"
       },
+      "CreateAccountRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "account_role": {
+            "title": "Account Role",
+            "type": "string"
+          },
+          "display_name": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "normalized_iban": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalized Iban"
+          },
+          "profile_id": {
+            "format": "uuid",
+            "title": "Profile Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_id",
+          "display_name",
+          "account_role"
+        ],
+        "title": "CreateAccountRequest",
+        "type": "object"
+      },
       "CreateAdminUserRequest": {
         "additionalProperties": false,
         "description": "No `status` field: a new account's state is the command's decision, not the\ncaller's, and accepting it would let a creation mint a `deactivated` account or one in\n`recovery_required` that nothing can recover.",
@@ -369,6 +513,73 @@
           "role_codes"
         ],
         "title": "CreateAdminUserRequest",
+        "type": "object"
+      },
+      "CreateProfileRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "after_cutoff_transfer_limit_irr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Cutoff Transfer Limit Irr"
+          },
+          "code": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "default_transfer_limit_irr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Transfer Limit Irr"
+          },
+          "display_name": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "required_fields": {
+            "additionalProperties": true,
+            "title": "Required Fields",
+            "type": "object"
+          },
+          "rules": {
+            "additionalProperties": true,
+            "title": "Rules",
+            "type": "object"
+          },
+          "splitting_enabled": {
+            "default": false,
+            "title": "Splitting Enabled",
+            "type": "boolean"
+          },
+          "supports_description_field": {
+            "default": false,
+            "title": "Supports Description Field",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "display_name"
+        ],
+        "title": "CreateProfileRequest",
         "type": "object"
       },
       "DecisionRequest": {
@@ -796,6 +1007,27 @@
           "reason"
         ],
         "title": "PasswordResetRequest",
+        "type": "object"
+      },
+      "ProfileCreatedResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "profile_id": {
+            "format": "uuid",
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "version_id": {
+            "format": "uuid",
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_id",
+          "version_id"
+        ],
+        "title": "ProfileCreatedResponse",
         "type": "object"
       },
       "ReadinessResponse": {
@@ -3007,6 +3239,166 @@
         "summary": "Authenticate a trader contact and open a session.",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/v1/bank-accounts": {
+      "get": {
+        "operationId": "listBankAccounts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "List Bank Accounts",
+        "tags": [
+          "bank-configuration"
+        ]
+      },
+      "post": {
+        "operationId": "createBankAccount",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Create Bank Account",
+        "tags": [
+          "bank-configuration"
+        ]
+      }
+    },
+    "/api/v1/bank-profiles": {
+      "get": {
+        "operationId": "listBankProfiles",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankProfileListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "List Bank Profiles",
+        "tags": [
+          "bank-configuration"
+        ]
+      },
+      "post": {
+        "operationId": "createBankProfile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProfileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileCreatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Create Bank Profile",
+        "tags": [
+          "bank-configuration"
         ]
       }
     },

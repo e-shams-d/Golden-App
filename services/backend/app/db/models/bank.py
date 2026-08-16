@@ -86,6 +86,17 @@ from app.db.base import Base, created_at_column, named_check, updated_at_column,
 # would let an outgoing batch draw on an incoming-only account.
 ACCOUNT_ROLES: tuple[str, ...] = ("outgoing_source", "incoming_destination", "both")
 
+# DOC-CONFLICT-047: `bank_mappings.file_type` is the mapping type, per document 04's
+# prose — "Statement import, outgoing export, result import". These are the identifiers
+# this repository already uses; document 04 supplies no identifiers of its own, which is
+# why they are an application-level allowlist and not a CHECK. See the note on
+# `BankMapping.__table_args__`.
+MAPPING_TYPES: tuple[str, ...] = (
+    "statement_import",
+    "outgoing_export",
+    "incoming_result",
+)
+
 # Iranian IBAN: `IR` then 24 digits. Applied null-tolerantly on `bank_accounts`.
 IBAN_PATTERN = "^IR[0-9]{24}$"
 
@@ -233,6 +244,13 @@ class BankProfileVersion(Base):
             name="effective_window_is_ordered",
         ),
         named_check(HEX_64_CHECK.format(column="config_hash"), name="config_hash_is_lowercase_hex"),
+        # No `status` CHECK, deliberately. M4 slice 8 added one and
+        # `test_status_catalogue_drift.py` refused it: the catalogue records
+        # `bank_profile_version` with `canonical: null`, and that file's own note says the
+        # reason is there so "the next person to reach for an enum finds the reason before
+        # the constraint". The argument for adding it — that constraining the column to
+        # the three aliases on offer decides nothing — is exactly the argument the rule
+        # exists to refuse, because it is how an alias set quietly becomes canonical.
         Index("idx_bank_profile_versions_profile", "bank_profile_id", "version_number"),
     )
 
@@ -347,6 +365,22 @@ class BankMapping(Base):
         ),
         named_check("template_version > 0", name="template_version_positive"),
         named_check("length(btrim(file_type)) > 0", name="file_type_not_blank"),
+        # DOC-CONFLICT-047 is recorded and NOT enforced here, which took two attempts to
+        # get right. This column is the **mapping type** (document 04) and not the file
+        # format (document 08), and M4 slice 8 first added a value CHECK to make the wrong
+        # reading fail at the write rather than during the first export in M7.
+        #
+        # The CHECK enumerated document 08's identifiers — `payment_export`,
+        # `payment_result_import` — while this repository's own fixtures use
+        # `outgoing_export` and `incoming_result`. So it enforced document 04's *meaning*
+        # with document 08's *spellings* and broke every existing bank test.
+        #
+        # Correcting the spellings would not have made it right. Document 04 gives prose,
+        # not identifiers: "Statement import, outgoing export, result import". There is no
+        # approved identifier set, and enumerating one in a CHECK is the same act
+        # `test_status_catalogue_drift.py` refuses for the status columns. The meaning is
+        # enforced in `app/commands/bank_configuration.py`, where an allowlist is a
+        # decision somebody can revisit rather than a schema claiming to be canonical.
         named_check(HEX_64_CHECK.format(column="config_hash"), name="config_hash_is_lowercase_hex"),
         named_check(
             "sample_header_hash IS NULL OR " + HEX_64_CHECK.format(column="sample_header_hash"),

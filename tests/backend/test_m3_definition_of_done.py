@@ -146,6 +146,13 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     ("GET", "/api/v1/files/{file_id}"): OWNERSHIP,
     ("GET", "/api/v1/files/{file_id}/download"): OWNERSHIP,
     ("GET", "/api/v1/files/{file_id}/preview"): OWNERSHIP,
+    # M4 slice 8. PERMISSION rather than OWNERSHIP: bank configuration is centre-wide and
+    # belongs to no trader, so there is no owner to compare an actor against. A trader
+    # session is refused at the audience boundary before any of this is reached.
+    ("GET", "/api/v1/bank-profiles"): PERMISSION,
+    ("POST", "/api/v1/bank-profiles"): PERMISSION,
+    ("GET", "/api/v1/bank-accounts"): PERMISSION,
+    ("POST", "/api/v1/bank-accounts"): PERMISSION,
     # PUBLIC by necessity rather than by choice, which is why it is not SESSION: an
     # account in `recovery_required` is refused every action except recovery, so it holds
     # no session to classify. The temporary credential an administrator set is what stands
@@ -284,6 +291,18 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ),
     ("GET", "/api/v1/files/{file_id}/preview", "ownership"): (
         "test_a_trader_cannot_reach_an_internal_bank_bundle"
+    ),
+    ("GET", "/api/v1/bank-profiles", "permission"): (
+        "test_an_actor_without_the_bank_permission_is_denied"
+    ),
+    ("POST", "/api/v1/bank-profiles", "permission"): (
+        "test_an_actor_without_the_bank_permission_is_denied"
+    ),
+    ("GET", "/api/v1/bank-accounts", "permission"): (
+        "test_an_actor_without_the_bank_permission_is_denied"
+    ),
+    ("POST", "/api/v1/bank-accounts", "permission"): (
+        "test_an_actor_without_the_bank_permission_is_denied"
     ),
 }
 

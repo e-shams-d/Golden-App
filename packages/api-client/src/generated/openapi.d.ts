@@ -48,6 +48,14 @@ export interface paths {
   "/api/v1/auth/trader/login": {
     post: operations["loginTrader"];
   };
+  "/api/v1/bank-accounts": {
+    get: operations["listBankAccounts"];
+    post: operations["createBankAccount"];
+  };
+  "/api/v1/bank-profiles": {
+    get: operations["listBankProfiles"];
+    post: operations["createBankProfile"];
+  };
   "/api/v1/center-profile/rename": {
     post: operations["renameCenterProfile"];
   };
@@ -122,16 +130,22 @@ export interface paths {
 
 export interface components {
   schemas: {
+    "AccountListResponse": { bank_accounts: Array<components["schemas"]["AccountSummary"]> };
+    "AccountSummary": { account_role: string; display_name: string; id: string; normalized_iban: string | null; status: string };
     "ActorSummary": { audience: string; id: string; permissions: Array<string>; roles: Array<string>; status: string; trader_id: string | null };
     "AdminUserListResponse": { admin_users: Array<components["schemas"]["AdminUserView"]> };
     "AdminUserView": { email: string | null; full_name: string; id: string; phone_number: string | null; record_version: number; role_codes: Array<string>; status: string; username: string };
     "AmendAdminUserRequest": { email?: string | null; full_name?: string | null; phone_number?: string | null };
     "BackgroundProcessingResponse": { jobs: components["schemas"]["JobHealth"]; needs_attention: boolean; outbox: components["schemas"]["OutboxHealth"] };
+    "BankProfileListResponse": { bank_profiles: Array<components["schemas"]["BankProfileSummary"]> };
+    "BankProfileSummary": { code: string; id: string; name: string; status: string };
     "Body_uploadFile": { client_filename?: string | null; file: Blob; purpose: string };
     "CenterProfileResponse": { name: string; profile_id: string; record_version: number; replayed: boolean };
     "ChangePasswordRequest": { current_password: string; new_password: string };
     "ChangePasswordResponse": { changed: boolean };
+    "CreateAccountRequest": { account_role: string; display_name: string; normalized_iban?: string | null; profile_id: string };
     "CreateAdminUserRequest": { email?: string | null; full_name: string; password: string; phone_number?: string | null; role_codes: Array<string>; username: string };
+    "CreateProfileRequest": { after_cutoff_transfer_limit_irr?: number | null; code: string; default_transfer_limit_irr?: number | null; display_name: string; required_fields?: { [key: string]: unknown }; rules?: { [key: string]: unknown }; splitting_enabled?: boolean; supports_description_field?: boolean };
     "DecisionRequest": { reason?: string | null };
     "DependenciesResponse": { dependencies: { [key: string]: components["schemas"]["DependencyStatus"] }; scan_policy: string; status: "ok" | "degraded" };
     "DependencyStatus": { error_code?: string | null; last_success_at?: string | null; latency_ms: number; required: boolean; status: "ok" | "unavailable" };
@@ -146,6 +160,7 @@ export interface components {
     "LoginResponse": { session: components["schemas"]["SessionSummary"]; user: components["schemas"]["ActorSummary"] };
     "OutboxHealth": { dead_lettered: number; oldest_pending_age_seconds?: number | null; pending: number };
     "PasswordResetRequest": { new_password: string; reason: string };
+    "ProfileCreatedResponse": { profile_id: string; version_id: string };
     "ReadinessResponse": { checks: { [key: string]: "ok" | "unavailable" }; status: "ready" | "not_ready" };
     "ReauthenticateRequest": { password: string; purpose: string; resource_id: string; resource_type: string };
     "ReauthenticateResponse": { authentication_level: string; expires_at: string; recent_auth_reference: string };
@@ -182,6 +197,8 @@ export interface operations {
   "approveTrader": { parameters: { header?: { "Idempotency-Key"?: string | null; "If-Match"?: string | null }; path: { trader_id: string } }; requestBody: { content: { "application/json": components["schemas"]["DecisionRequest"] } }; responses: { "200": { content: { "application/json": components["schemas"]["TraderResponse"] } }; "400": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "412": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "428": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "changeOwnPassword": { requestBody: { content: { "application/json": components["schemas"]["ChangePasswordRequest"] } }; responses: { "200": { content: { "application/json": components["schemas"]["ChangePasswordResponse"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "createAdminUser": { parameters?: { header?: { "Idempotency-Key"?: string | null } }; requestBody: { content: { "application/json": components["schemas"]["CreateAdminUserRequest"] } }; responses: { "200": { content: { "application/json": components["schemas"]["AdminUserView"] } }; "400": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "409": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "412": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "428": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
+  "createBankAccount": { requestBody: { content: { "application/json": components["schemas"]["CreateAccountRequest"] } }; responses: { "201": { content: { "application/json": components["schemas"]["AccountSummary"] } }; "400": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
+  "createBankProfile": { requestBody: { content: { "application/json": components["schemas"]["CreateProfileRequest"] } }; responses: { "201": { content: { "application/json": components["schemas"]["ProfileCreatedResponse"] } }; "400": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "downloadFile": { parameters: { path: { file_id: string } }; responses: { "200": { content: never }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getAdminUser": { parameters: { path: { admin_user_id: string } }; responses: { "200": { content: { "application/json": components["schemas"]["AdminUserView"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getBackgroundProcessingHealth": { security: Array<{ OperationsToken: Array<never> }>; responses: { "200": { content: { "application/json": components["schemas"]["BackgroundProcessingResponse"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
@@ -197,6 +214,8 @@ export interface operations {
   "getRole": { parameters: { path: { role_id: string } }; responses: { "200": { content: { "application/json": components["schemas"]["RoleView"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getTrader": { parameters: { path: { trader_id: string } }; responses: { "200": { content: { "application/json": components["schemas"]["TraderResponse"] } }; "400": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "412": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "428": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "listAdminUsers": { responses: { "200": { content: { "application/json": components["schemas"]["AdminUserListResponse"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
+  "listBankAccounts": { responses: { "200": { content: { "application/json": components["schemas"]["AccountListResponse"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
+  "listBankProfiles": { responses: { "200": { content: { "application/json": components["schemas"]["BankProfileListResponse"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "listOwnSessions": { responses: { "200": { content: { "application/json": components["schemas"]["SessionListResponse"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "listRoles": { responses: { "200": { content: { "application/json": components["schemas"]["RoleListResponse"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "listTraders": { responses: { "200": { content: { "application/json": components["schemas"]["TraderListResponse"] } }; "400": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "412": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "428": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
