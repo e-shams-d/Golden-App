@@ -52,6 +52,9 @@ export interface paths {
     get: operations["listBankAccounts"];
     post: operations["createBankAccount"];
   };
+  "/api/v1/bank-profile-versions/{version_id}/activate": {
+    post: operations["activateBankProfileVersion"];
+  };
   "/api/v1/bank-profiles": {
     get: operations["listBankProfiles"];
     post: operations["createBankProfile"];
@@ -194,6 +197,7 @@ export interface components {
 }
 
 export interface operations {
+  "activateBankProfileVersion": { parameters: { path: { version_id: string } }; responses: { "204": { content: never }; "400": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "approveTrader": { parameters: { header?: { "Idempotency-Key"?: string | null; "If-Match"?: string | null }; path: { trader_id: string } }; requestBody: { content: { "application/json": components["schemas"]["DecisionRequest"] } }; responses: { "200": { content: { "application/json": components["schemas"]["TraderResponse"] } }; "400": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "412": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "428": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "changeOwnPassword": { requestBody: { content: { "application/json": components["schemas"]["ChangePasswordRequest"] } }; responses: { "200": { content: { "application/json": components["schemas"]["ChangePasswordResponse"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "createAdminUser": { parameters?: { header?: { "Idempotency-Key"?: string | null } }; requestBody: { content: { "application/json": components["schemas"]["CreateAdminUserRequest"] } }; responses: { "200": { content: { "application/json": components["schemas"]["AdminUserView"] } }; "400": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "409": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "412": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "428": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };

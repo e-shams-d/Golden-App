@@ -3322,6 +3322,63 @@
         ]
       }
     },
+    "/api/v1/bank-profile-versions/{version_id}/activate": {
+      "post": {
+        "description": "DOC-CONFLICT-045: **this route denies everyone today, deliberately.**\n\n`bank_profile.activate_version` exists as a permission and is granted to no role, so\nthe guard above refuses every caller including `business_admin`. The route, its\ncommand, its audit record and its negative tests are reviewable in that state, and the\nday the owner approves the grant nothing here changes.\n\nShipping it guarded by a borrowed permission was the alternative, and it would have\nmade the role that drafts a configuration the role that puts it into production.",
+        "operationId": "activateBankProfileVersion",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Activate Bank Profile Version",
+        "tags": [
+          "bank-configuration"
+        ]
+      }
+    },
     "/api/v1/bank-profiles": {
       "get": {
         "operationId": "listBankProfiles",

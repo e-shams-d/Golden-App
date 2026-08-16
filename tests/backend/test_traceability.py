@@ -94,6 +94,16 @@ RECORDED_GAPS: dict[str, str] = {
         "this field as unfilled with the same reason rather than omitting it, so a "
         "release reader sees the gap instead of a complete-looking set."
     ),
+    "BANK-VER-005": (
+        "Activation is supposed to be refused unless the version's mappings parse the "
+        "synthetic fixtures (08_Bank_File_and_Result_Processing.md:343). No parser "
+        "exists: `BankStatementParser` and its siblings are interfaces M8 implements, so "
+        "'the mappings parse' is a claim nothing can currently evaluate. The alternative "
+        "was a validation step that always passes, which is worse than an absent one "
+        "because it reads as a check and would be cited as coverage. M8 adds the parser "
+        "and this becomes a real gate; until then activation is refused to every role "
+        "anyway under DOC-CONFLICT-045, so nothing can be activated unvalidated."
+    ),
     "SEC-FILEDL-008": (
         "M4 issues no signed URLs, so there is no expiry to test. The milestone's "
         "authority lists 'signed/authorized access expires or is re-authorized correctly' "
@@ -211,14 +221,18 @@ PENDING: dict[str, str] = {
     # `bank_mappings.file_type` is constrained — a *type* column no catalogue entry
     # covers, refusing a value from another document's vocabulary rather than a spelling
     # of this one's.
-    # Slice 9 — A version is resolved by date, and a used version cannot change
-    "BANK-VER-001": "Slice 9",
-    "BANK-VER-002": "Slice 9",
-    "BANK-VER-003": "Slice 9",
-    "BANK-VER-004": "Slice 9",
-    "BANK-VER-005": "Slice 9",
-    "BANK-VER-006": "Slice 9",
-    "BANK-VER-007": "Slice 9",
+    # Slice 9 is merged. BANK-VER-001/-002/-003/-004/-006/-007 are discharged by
+    # tests/integration/test_bank_version_resolution.py.
+    #
+    # BANK-VER-005 moved to RECORDED_GAPS above rather than being discharged: it requires
+    # a mapping parser that does not exist until M8, and a validation step that always
+    # passes reads as a check while proving nothing. It is also currently unreachable —
+    # activation is denied to every role under DOC-CONFLICT-045.
+    #
+    # The slice's own correction: the two activation permissions are added here, together
+    # with the migration that seeds them, which is what slice 8 deferred. Adding the
+    # identifier without the seed row would have left the catalogue and the database
+    # disagreeing.
     # Slice 10 — Upload and view it in a browser
     "UI-FILE-001": "Slice 10",
     "UI-FILE-002": "Slice 10",
