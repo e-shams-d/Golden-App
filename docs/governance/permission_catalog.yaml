@@ -929,7 +929,60 @@ endpoint_permission_discrepancies:
       - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:870"
       - "Implementation Docs/05_Backend_and_Security/12_Security_RBAC_Audit.md:700-707"
 
+  # M5 slice 2, DOC-CONFLICT-049. Recorded rather than resolved: the routes are not
+  # built, so there is no runtime behaviour to describe, and inventing a
+  # `canonical_permission` for a name the catalogue does not contain is exactly what
+  # `declare()` exists to refuse.
+  - endpoint: "POST /api/v1/beneficiaries/{id}/block"
+    document_05_declared_permission: internal_permission_unnamed
+    canonical_permission: null
+    status: not_implemented_no_canonical_permission_exists
+    runtime_effect_until_approved: endpoint_absent
+    source_refs:
+      - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:940"
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:313-319"
+  - endpoint: "POST /api/v1/beneficiaries/{id}/reactivate"
+    document_05_declared_permission: internal_permission_unnamed
+    canonical_permission: null
+    status: not_implemented_no_canonical_permission_exists
+    runtime_effect_until_approved: endpoint_absent
+    source_refs:
+      - "Implementation Docs/02_Architecture_and_Contracts/05_API_Specification.md:941"
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:312"
+  # The converse: a catalogued permission whose endpoint document 05 omits, serving a
+  # transition document 06 does define. Built, because both of those are true of it.
+  - endpoint: "POST /api/v1/beneficiaries/{id}/deactivate"
+    document_05_declared_permission: absent_from_document_05_endpoint_table
+    canonical_permission: beneficiary.deactivate
+    status: implemented_under_doc_06_transition
+    runtime_effect_until_approved: enforced_as_canonical
+    source_refs:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:311"
+
 catalog_gaps_pending_m0:
+  # M5 slice 2, DOC-CONFLICT-049(b). Three rows above grant `trader_owner`
+  # `beneficiary.read`, `beneficiary.create_own` and `beneficiary.update_future`, and
+  # no trader actor can ever hold them: `app/security/actor.py:113-118` refuses to
+  # construct a trader `ActorContext` carrying any permission at all, citing
+  # `04_Database_Schema.md:405`. The rows describe intent; ownership is the
+  # mechanism. Recorded so the next implementer does not gate a trader route on one
+  # and lock every trader out of their own data with a 403 that reads as a bad grant.
+  - id: trader_owner_permissions_are_unreachable_at_runtime
+    description: >-
+      permissions granted to trader_owner cannot be resolved because a trader session
+      carries no grants by invariant; trader access is ownership-scoped instead
+    conservative_effect: trader_routes_authorise_by_ownership_and_never_by_these_grants
+    source_refs:
+      - "Implementation Docs/02_Architecture_and_Contracts/04_Database_Schema.md:405"
+  - id: beneficiary_lifecycle_permissions
+    description: >-
+      catalogue names beneficiary.deactivate but not block, unblock or reactivate,
+      which document 05 requires an internal permission for and document 06 defines
+      transitions for; trader.suspend/trader.reactivate is the precedent that a
+      lifecycle pair is two permissions rather than one
+    conservative_effect: block_and_reactivate_endpoints_are_not_built
+    source_refs:
+      - "Implementation Docs/02_Architecture_and_Contracts/06_Workflows_and_State_Machines.md:308-319"
   - id: health_operations_permission
     description: document 05 names system.health.read but document 12 has no exact canonical permission
     conservative_effect: deny_or_restrict_to_network_control_until_approved

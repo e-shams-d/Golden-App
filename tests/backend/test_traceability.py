@@ -280,12 +280,25 @@ PENDING: dict[str, str] = {
     # catalogue records them. It ships with no CHECK. Nothing about those values looks
     # uncertain, which is why the absence needed a test on both sides rather than a
     # comment — what is missing is approval, not clarity.
-    "SVC-BEN-001": "M5 slice 2 — beneficiary create/update commands",
-    "SVC-BEN-002": "M5 slice 2 — duplicate detection warns and names the match",
-    "SVC-BEN-003": "M5 slice 2 — a beneficiary stores no amount",
-    "SEC-BEN-001": "M5 slice 2 — a trader reaches only its own beneficiaries",
-    "SEC-BEN-002": "M5 slice 2 — no cross-trader reuse (DOC-CONFLICT-011)",
-    "AUD-BEN-001": "M5 slice 2 — beneficiary writes are audited",
+    # Slice 2 is merged. SVC-BEN-001/-002, SEC-BEN-001 and AUD-BEN-001 are discharged
+    # by tests/integration/test_beneficiaries.py; SVC-BEN-003 and SEC-BEN-002 by
+    # tests/backend/test_beneficiary_surface.py.
+    #
+    # The split is the same one M4 slice 10 made and for the same reason. The first
+    # four are claims about behaviour and need a database and two real traders. The
+    # last two are claims that something **does not exist** — no amount column, no
+    # sharing mechanism — and a runtime test of an absence can only show that some
+    # mechanism refused, which is the opposite of what is claimed.
+    #
+    # The slice also found that `beneficiary.read`, `beneficiary.create_own` and
+    # `beneficiary.update_future` are catalogued under `trader_owner` while
+    # `ActorContext` refuses, by invariant, to give a trader actor any permission at
+    # all. Those rows describe intent rather than a runtime mechanism, so the routes
+    # authorise through `owned_or_permitted` — a dependency, not an in-handler check,
+    # because `test_permission_guards.py` reads the dependency graph and an in-handler
+    # check would have had to be excused as needing no permission when it needs one
+    # from half its callers. Raised as DOC-CONFLICT-049 together with the two
+    # endpoints document 05 names and no permission covers.
     "DB-REQ-001": "M5 slice 3 — payment_requests, with no amount and no snapshot columns",
     "DB-REV-001": "M5 slice 3 — payment_request_revisions per 04:873-906",
     "DB-REV-002": "M5 slice 3 — composite FK ties current_revision_id to the same request",

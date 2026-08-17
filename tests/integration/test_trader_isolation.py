@@ -53,9 +53,13 @@ TRADER_CSRF_COOKIE = "__Host-gp_trader_csrf"
 # count was in prose rather than in an assertion.
 MANDATORY_IDOR_CASES: dict[str, str] = {
     "Trader A reads Trader B request": "M5",
-    # `beneficiaries` is `04_Database_Schema.md:491-521`, an M5 table. Missing from
-    # both lists until slice 10 counted them.
-    "Trader A reads Trader B beneficiary": "M5",
+    # `beneficiaries` is `04_Database_Schema.md:491-528`, an M5 table. Missing from
+    # both lists until M3 slice 10 counted them; discharged by M5 slice 2, the slice
+    # that built its routes. The test lives in `test_beneficiaries.py` because it
+    # needs that module's world — two traders *and* two admins, one holding the
+    # beneficiary permissions and one holding none — and this ledger names tests
+    # rather than files.
+    "Trader A reads Trader B beneficiary": "test_a_trader_reads_only_its_own_beneficiaries",
     "Trader A downloads Trader B publication file": "M7",
     "Trader A guesses mixed bank-bundle file ID": "M4",
     "Trader A submits trader_id belonging to B": (
@@ -355,15 +359,48 @@ def test_the_ledger_accounts_for_all_seven_mandatory_cases() -> None:
 def test_every_deferral_names_a_milestone_and_every_coverage_names_a_real_test() -> None:
     """TRACE-DOD-002's shape. A deferral without an owner is a case nobody writes."""
 
-    own_source = Path(__file__).read_text(encoding="utf-8")
+    # First: the two views must cover the ledger between them. Both are derived by
+    # prefix — `M` for a deferral, `test_` for coverage — so a value matching
+    # neither lands in neither view and every loop below skips it in silence. That
+    # is the exact failure this ledger exists to prevent, restated one level up:
+    # "a case in neither list is indistinguishable from a case nobody thought of."
+    #
+    # Found by a negative control in M5 slice 2. Changing a deferral from `M5` to
+    # `later` left this test green, because the malformed entry simply stopped being
+    # in either set.
+    classified = set(DEFERRED_IDOR_CASES) | set(COVERED_IDOR_CASES)
+    unclassified = sorted(set(MANDATORY_IDOR_CASES) - classified)
+    assert unclassified == [], (
+        f"these cases are in neither view: {unclassified}. An owner must be a "
+        "milestone (`M5`) or a test name (`test_...`); anything else is skipped by "
+        "every check below while reading like a decision."
+    )
 
     for case, owner in DEFERRED_IDOR_CASES.items():
         assert owner in {"M4", "M5", "M6", "M7"}, (
             f"{case!r} defers to {owner!r}, which names no milestone this project has"
         )
 
+    # Searched across the integration suite rather than in this file alone. The
+    # narrower version was correct while every covered case lived here, and M5 slice
+    # 2 is the first that legitimately does not: the beneficiary case needs a world
+    # with two traders *and* two admins, one holding the beneficiary permissions and
+    # one holding none, which is `test_beneficiaries.py`'s fixture and not this
+    # one's. Moving the test here to satisfy the guard would have meant duplicating
+    # that fixture, and a second copy of a fixture is where two worlds drift apart.
+    #
+    # The guarantee is unchanged and slightly stronger: the named test must exist,
+    # and exactly once, so a citation still cannot point at nothing and cannot point
+    # at two different things either.
+    suite = sorted(Path(__file__).parent.glob("test_*.py"))
     for case, test_name in COVERED_IDOR_CASES.items():
-        assert f"def {test_name}(" in own_source, (
-            f"{case!r} claims coverage by {test_name}(), which does not exist in this "
-            "file — a citation pointing at nothing is worse than an honest deferral"
+        homes = [
+            path.name
+            for path in suite
+            if f"def {test_name}(" in path.read_text(encoding="utf-8")
+        ]
+        assert len(homes) == 1, (
+            f"{case!r} claims coverage by {test_name}(), found in {homes or 'no file'} "
+            "— a citation pointing at nothing is worse than an honest deferral, and "
+            "one pointing at two tests names neither"
         )
