@@ -37,10 +37,16 @@ from app.core.errors import (
     PreconditionRequiredError,
     VersionConflictError,
 )
+from app.core.money import (
+    AmountUnitMismatchError,
+    Money,
+    MoneyUnit,
+    parse_integer_string,
+)
 from app.core.request_context import get_request_id
 from app.core.runtime import RuntimeServices
 from app.core.time import utc_now
-from app.db.models.payment_request import PaymentRequest
+from app.db.models.payment_request import PaymentRequest, PaymentRequestRevision
 from app.security.actor import ActorContext
 from app.security.ownership import require_owned
 from app.security.permissions import declare
@@ -108,6 +114,20 @@ def owned_or_permitted(trader_permission: str, internal_permission: str) -> Any:
     return Depends(guard)
 
 
+class EnteredAmountResponse(BaseModel):
+    """What the trader typed, nested as document 05 shows it (`:1113`).
+
+    Kept beside `amount_irr` rather than replaced by it. `500 TOMAN` and `5000 IRR`
+    are the same money and different intents, and a dispute six months later is about
+    the second.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    value: str
+    unit: str
+
+
 class DraftRevisionResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -116,8 +136,7 @@ class DraftRevisionResponse(BaseModel):
     beneficiary_name_snapshot: str
     beneficiary_iban_snapshot: str
     amount_irr: str
-    entered_amount_value: str | None
-    entered_amount_unit: str | None
+    entered_amount: EnteredAmountResponse | None
     description: str | None
     content_hash: str
 
@@ -148,20 +167,35 @@ class DraftCreated(BaseModel):
     revision: DraftRevisionResponse
 
 
-class CreateDraftRequest(BaseModel):
-    """Money crosses as a string integer, per `15_Agent_Implementation_Plan.md:800`.
+class AmountRequest(BaseModel):
+    """What was typed, and optionally what the client thinks it is worth.
 
-    Slice 4 owns the conversion and the refusals; this accepts what it is given and
-    the database's `amount_irr > 0` CHECK is what refuses a nonsense value in the
-    meantime.
+    The nested shape is document 05's (`05_API_Specification.md:1085-1091`). The
+    **string** encoding is the approved money contract's — rule 8, "API monetary
+    values are base-10 integer strings", and rule 9 forbids JavaScript Number for
+    financial amounts. Document 05's example writes them as JSON numbers, which is
+    DOC-CONFLICT-050; the contract wins because a JSON number is a float in most
+    clients and loses precision above 2^53.
+
+    `amount_irr` is **optional, and verified when present**. Requiring it would push
+    the conversion into the client, which `15_Agent_Implementation_Plan.md:802`
+    forbids in as many words. Refusing it outright would waste M2's three-way check
+    and would reject the exact payload document 05 documents. So the server always
+    computes, and a client that offers a figure has it compared rather than trusted.
     """
 
     model_config = ConfigDict(extra="forbid")
 
+    value: str = Field(pattern=r"^[1-9][0-9]{0,18}$")
+    unit: str = Field(pattern=r"^(IRR|TOMAN)$")
+    amount_irr: str | None = Field(default=None, pattern=r"^[1-9][0-9]{0,18}$")
+
+
+class CreateDraftRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     beneficiary_id: uuid.UUID
-    amount_irr: str = Field(pattern=r"^[1-9][0-9]{0,18}$")
-    entered_amount_value: str | None = Field(default=None, pattern=r"^[1-9][0-9]{0,18}$")
-    entered_amount_unit: str | None = Field(default=None, pattern=r"^(IRR|TOMAN)$")
+    amount: AmountRequest
     description: str | None = None
     source_attachment_file_id: uuid.UUID | None = None
     # Read only for an internal actor, as on the beneficiary create. For a trader the
@@ -202,13 +236,7 @@ def create_draft(
             commands.CreateDraft(
                 trader_id=owner,
                 beneficiary_id=payload.beneficiary_id,
-                amount_irr=int(payload.amount_irr),
-                entered_amount_value=(
-                    int(payload.entered_amount_value)
-                    if payload.entered_amount_value is not None
-                    else None
-                ),
-                entered_amount_unit=payload.entered_amount_unit,
+                amount=_money(payload.amount),
                 description=payload.description,
                 source_attachment_file_id=payload.source_attachment_file_id,
             ),
@@ -220,21 +248,7 @@ def create_draft(
         )
         rendered = DraftCreated(
             request=_render(result.request),
-            revision=DraftRevisionResponse(
-                id=result.revision.id,
-                revision_number=result.revision.revision_number,
-                beneficiary_name_snapshot=result.revision.beneficiary_name_snapshot,
-                beneficiary_iban_snapshot=result.revision.beneficiary_iban_snapshot,
-                amount_irr=str(result.revision.amount_irr),
-                entered_amount_value=(
-                    str(result.revision.entered_amount_value)
-                    if result.revision.entered_amount_value is not None
-                    else None
-                ),
-                entered_amount_unit=result.revision.entered_amount_unit,
-                description=result.revision.description,
-                content_hash=result.revision.content_hash,
-            ),
+            revision=_render_revision(result.revision),
         )
         uow.commit()
     return rendered
@@ -299,6 +313,63 @@ def cancel(
 
     response.headers["ETag"] = f'"rv-{rendered.record_version}"'
     return rendered
+
+
+def _money(amount: AmountRequest) -> Money:
+    """Turn the wire shape into one checked `Money`.
+
+    Both paths converge on the same three-way check. When the client sent an
+    `amount_irr`, `Money.from_wire` compares all three parts and refuses a
+    disagreement rather than picking one to believe; when it did not,
+    `Money.entered` converts once and the value it derives is by construction
+    consistent. Either way the route hands the command a value that has already
+    been verified, so nothing downstream re-derives it or has to.
+
+    `AmountUnitMismatchError` is an `AppError` carrying its own 400 and code, so it
+    reaches the client as `AMOUNT_UNIT_MISMATCH` rather than as a generic refusal —
+    a client that converted wrongly needs to know which of its three numbers the
+    server disagreed with.
+    """
+
+    try:
+        unit = MoneyUnit(amount.unit)
+    except ValueError as error:  # pragma: no cover - the pattern already refuses it
+        raise AmountUnitMismatchError(
+            f"unit must be one of {[member.value for member in MoneyUnit]}"
+        ) from error
+
+    if amount.amount_irr is None:
+        return Money.entered(parse_integer_string(amount.value, field="value"), unit)
+
+    return Money.from_wire(
+        {
+            "amount_irr": amount.amount_irr,
+            "entered_amount": amount.value,
+            "entered_unit": amount.unit,
+        }
+    )
+
+
+def _render_revision(revision: PaymentRequestRevision) -> DraftRevisionResponse:
+    """Every monetary field as a string, per the money contract's rule 8."""
+
+    entered = None
+    if revision.entered_amount_value is not None and revision.entered_amount_unit is not None:
+        entered = EnteredAmountResponse(
+            value=str(revision.entered_amount_value),
+            unit=revision.entered_amount_unit,
+        )
+
+    return DraftRevisionResponse(
+        id=revision.id,
+        revision_number=revision.revision_number,
+        beneficiary_name_snapshot=revision.beneficiary_name_snapshot,
+        beneficiary_iban_snapshot=revision.beneficiary_iban_snapshot,
+        amount_irr=str(revision.amount_irr),
+        entered_amount=entered,
+        description=revision.description,
+        content_hash=revision.content_hash,
+    )
 
 
 def _audit_actor(actor: ActorContext) -> AuditActor:

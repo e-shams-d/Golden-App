@@ -41,6 +41,7 @@ from app.audit.registry import CANCEL_PAYMENT_REQUEST, CREATE_PAYMENT_REQUEST, C
 from app.audit.writer import AuditActor, AuditContext, AuditEntry, AuditWriter
 from app.core.errors import BusinessRuleViolationError, NotFoundError
 from app.core.hashing import unversioned_digest
+from app.core.money import Money
 from app.db.concurrency import compare_and_swap
 from app.db.models.beneficiary import Beneficiary
 from app.db.models.payment_request import PaymentRequest, PaymentRequestRevision
@@ -70,9 +71,16 @@ CANCELLABLE = (DRAFT,)
 class CreateDraft:
     trader_id: uuid.UUID
     beneficiary_id: uuid.UUID
-    amount_irr: int
-    entered_amount_value: int | None = None
-    entered_amount_unit: str | None = None
+    # One `Money`, not three loose numbers. Slice 3 took `amount_irr` as an int and
+    # the entered pair as optional extras, which meant the command could be handed a
+    # canonical value that did not follow from what was typed — and M2's `Money`,
+    # built for exactly this, had no caller anywhere in the system.
+    #
+    # `Money.__post_init__` re-derives the conversion and refuses a disagreement, so
+    # by the time a `CreateDraft` exists the three parts have already been checked
+    # against each other. The command cannot construct an inconsistent revision
+    # because it is not given the parts separately.
+    amount: Money
     description: str | None = None
     source_attachment_file_id: uuid.UUID | None = None
 
@@ -139,9 +147,15 @@ def create_draft(
         beneficiary_name_snapshot=beneficiary.full_name,
         beneficiary_iban_snapshot=beneficiary.normalized_iban,
         beneficiary_national_id_snapshot=beneficiary.national_id,
-        amount_irr=command.amount_irr,
-        entered_amount_value=command.entered_amount_value,
-        entered_amount_unit=command.entered_amount_unit,
+        # All three from the one checked value. `entered_amount_*` are NOT NULL in
+        # practice from here on, even though document 04 marks them nullable: the
+        # column pair is what a dispute six months later is read against, and a
+        # revision that recorded only the canonical figure could not answer "what did
+        # they type". The CHECK that the pair is complete-or-absent still permits a
+        # future importer to write a row without provenance.
+        amount_irr=command.amount.amount_irr,
+        entered_amount_value=command.amount.entered_amount,
+        entered_amount_unit=command.amount.entered_unit.value,
         description=command.description,
         source_attachment_file_id=command.source_attachment_file_id,
         created_by_actor_type=actor.actor_type,

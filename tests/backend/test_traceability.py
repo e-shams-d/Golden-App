@@ -316,10 +316,26 @@ PENDING: dict[str, str] = {
     # Slice 3 also reversed SVC-REV-003, which slice 5 still owes: document 04's
     # UNIQUE(payment_request_id, content_hash) refuses identical content, where the
     # plan had claimed it must be permitted.
-    "SVC-REQ-001": "M5 slice 4 — entered amount and unit are stored as typed",
-    "SVC-REQ-002": "M5 slice 4 — the server computes canonical IRR and refuses a mismatch",
-    "SVC-REQ-003": "M5 slice 4 — an invalid unit is refused",
-    "API-REQ-001": "M5 slice 4 — money crosses the API as string integers",
+    # Slice 4 is merged. SVC-REQ-001/-002/-003 and API-REQ-001 are all discharged by
+    # tests/integration/test_payment_request_money.py.
+    #
+    # The arithmetic was never the work. `app/core/money.py` has held `to_rial`, a
+    # three-way consistency check and a strict wire parser since M2 — and **nothing
+    # called any of it**. Slice 3 took `amount_irr` as an integer and the entered pair
+    # as optional extras, so a caller could hand the command a canonical figure that did
+    # not follow from what was typed. Fifth instance of a complete mechanism with no
+    # caller; see the M4 plan's §1.3 for the first four.
+    #
+    # API-REQ-001 is asserted against the **raw JSON text** rather than the parsed body.
+    # `json.loads` turns an emitted `34400000000` back into a Python int, so a test that
+    # compared parsed values would pass on exactly the shape the money contract forbids —
+    # the precision loss happens in the client's parser, not in ours.
+    #
+    # DOC-CONFLICT-050 came out of the slice: document 05's examples write monetary
+    # values as JSON numbers where MONEY_TIME_CONTRACT.md rule 8 requires integer
+    # strings. The nested `amount` shape is document 05's and is implemented as written;
+    # only the encoding is in dispute, and the contract wins because it is approved M0
+    # governance and the milestone authority agrees with it.
     "SVC-REV-001": "M5 slice 5 — correction creates revision n+1 and leaves n byte-identical",
     "SVC-REV-002": "M5 slice 5 — history is readable in order and every revision reachable",
     # Reversed by slice 3, which read the constraints under the table the plan had only
