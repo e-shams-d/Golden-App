@@ -206,6 +206,27 @@ DEACTIVATE_BENEFICIARY = CommandNames(
     provisional_reason=_BENEFICIARY_CATALOGUE_GAP,
 )
 
+# The request lifecycle. Unlike the beneficiary names above, two of these **are** in
+# the catalogue: `payment_request.created` and `payment_request.cancelled` are both in
+# `audit_outbox_catalog.yaml`'s `audit_actions`. The catalogue enumerates the financial
+# flow, and a payment request is the financial flow.
+#
+# No outbox event on either, and that is the gap rather than the name. The catalogue's
+# own open item at `:107` lists the events it has not settled, and nothing outside the
+# platform acts on a trader opening or abandoning a draft — publishing would put a
+# beneficiary name and an amount on a queue for no consumer. Submission is slice 6 and
+# has a real audience; it will need one.
+CREATE_PAYMENT_REQUEST = CommandNames(
+    audit_action="payment_request.created",
+    outbox_event_type=None,
+    catalogued=True,
+)
+
+CANCEL_PAYMENT_REQUEST = CommandNames(
+    audit_action="payment_request.cancelled",
+    outbox_event_type=None,
+    catalogued=True,)
+
 # Credential changes. Deliberately audited as well as recorded in `auth_events`:
 # a security event explains a refusal, while an administrator resetting somebody
 # else's password is an authorised change to another person's account, which is
@@ -358,4 +379,6 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     REACTIVATE_ADMIN_USER,
     UPDATE_ROLE_PERMISSIONS,
     RECOVER_ADMIN_PASSWORD,
+    CREATE_PAYMENT_REQUEST,
+    CANCEL_PAYMENT_REQUEST,
 )

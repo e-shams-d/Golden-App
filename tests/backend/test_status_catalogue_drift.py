@@ -54,6 +54,7 @@ REGISTER = GOVERNANCE / "CONFLICT_REGISTER.md"
 # somewhere else. An unmapped status CHECK fails the first test below.
 STATUS_COLUMN_TO_AGGREGATE: dict[tuple[str, str], str] = {
     ("beneficiaries", "status"): "beneficiary",
+    ("payment_requests", "status"): "payment_request",
     ("outbox_events", "status"): "outbox_event",
     ("processing_jobs", "status"): "processing_job",
     ("file_objects", "storage_status"): "file_object",

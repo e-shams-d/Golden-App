@@ -11,6 +11,7 @@ from app.api.v1.files import router as files_router
 from app.api.v1.health import router as health_router
 from app.api.v1.metadata import router as metadata_router
 from app.api.v1.operations import router as operations_router
+from app.api.v1.payment_requests import router as payment_requests_router
 from app.api.v1.roles import router as roles_router
 from app.api.v1.trader_self_service import router as trader_self_service_router
 from app.api.v1.traders import router as traders_router
@@ -28,3 +29,4 @@ api_v1_router.include_router(roles_router)
 api_v1_router.include_router(files_router)
 api_v1_router.include_router(bank_config_router)
 api_v1_router.include_router(beneficiaries_router)
+api_v1_router.include_router(payment_requests_router)

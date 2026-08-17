@@ -187,18 +187,25 @@ def content_hash(value: Any) -> str:
 def unversioned_digest(value: Any) -> str:
     """A bare 64-character sha256 hex digest over the same canonical bytes.
 
-    Exists for the two columns doc 04 specifies as `CHAR(64)` —
-    `bank_profile_versions.config_hash` and `bank_mappings.sample_header_hash` —
-    which cannot hold the 67-character versioned form.
+    Exists for the columns doc 04 specifies as 64 characters, which cannot hold the
+    67-character versioned form: `bank_profile_versions.config_hash`,
+    `bank_mappings.sample_header_hash`, and — added by M5 slice 3 —
+    `payment_request_revisions.content_hash`.
 
     **The cost is real and is recorded here rather than discovered later.** Without
     the `v1:` prefix, a digest computed under a changed canonical serialiser is
-    indistinguishable from one computed under the current serialiser. These two
+    indistinguishable from one computed under the current serialiser. All three
     columns are used for uniqueness — "this exact configuration already exists as a
-    version" — so after any change to `canonical_bytes` the stored values stop
-    comparing against freshly computed ones, and the uniqueness silently stops
-    catching duplicates. Changing the serialiser therefore requires a migration
-    that recomputes both columns for every row.
+    version", and for the third "this correction changes nothing" — so after any
+    change to `canonical_bytes` the stored values stop comparing against freshly
+    computed ones, and the uniqueness silently stops catching duplicates. Changing
+    the serialiser therefore requires a migration that recomputes all three columns
+    for every row.
+
+    The third is the one where a silent failure is worst. `UNIQUE(payment_request_id,
+    content_hash)` is what refuses a correction that changes nothing; if it stopped
+    matching, a trader could resubmit identical content and it would reach a reviewer
+    looking like new work.
 
     `tests/backend/test_canonical_hashing.py` pins this function's output for a
     fixed input, so such a change breaks a test rather than passing quietly.

@@ -171,6 +171,11 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     ("GET", "/api/v1/beneficiaries/{beneficiary_id}"): DUAL,
     ("PATCH", "/api/v1/beneficiaries/{beneficiary_id}"): DUAL,
     ("POST", "/api/v1/beneficiaries/{beneficiary_id}/deactivate"): DUAL,
+    # M5 slice 3, DUAL for the same reason as the beneficiary routes: a trader
+    # reaches their own requests by ownership and holds no permission at all,
+    # while internal staff reach them by `payment_request.*` and own nothing.
+    ("POST", "/api/v1/payment-requests"): DUAL,
+    ("POST", "/api/v1/payment-requests/{payment_request_id}/cancel"): DUAL,
     # PUBLIC by necessity rather than by choice, which is why it is not SESSION: an
     # account in `recovery_required` is refused every action except recovery, so it holds
     # no session to classify. The temporary credential an administrator set is what stands
@@ -374,6 +379,19 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ),
     ("POST", "/api/v1/beneficiaries/{beneficiary_id}/deactivate", "permission"): (
         "test_an_admin_without_the_permission_is_refused_on_one_beneficiary"
+    ),
+    # M5 slice 3. Four entries, because two DUAL routes owe both kinds.
+    ("POST", "/api/v1/payment-requests", "ownership"): (
+        "test_a_trader_cannot_open_a_request_under_another_trader"
+    ),
+    ("POST", "/api/v1/payment-requests", "permission"): (
+        "test_an_admin_without_the_request_permission_is_refused"
+    ),
+    ("POST", "/api/v1/payment-requests/{payment_request_id}/cancel", "ownership"): (
+        "test_a_trader_cannot_cancel_another_traders_request"
+    ),
+    ("POST", "/api/v1/payment-requests/{payment_request_id}/cancel", "permission"): (
+        "test_an_admin_without_the_request_permission_is_refused"
     ),
 }
 

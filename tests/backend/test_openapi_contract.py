@@ -149,6 +149,12 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "getBeneficiary",
         "updateBeneficiary",
         "deactivateBeneficiary",
+        # M5 slice 3. Draft creation, and cancellation — which the plan did not
+        # list for this slice and which `CON-REQ-001` needs: a slice whose only
+        # route creates a resource has nothing for `If-Match` to be stale
+        # against, so the obligation was unprovable as scoped.
+        "createPaymentRequestDraft",
+        "cancelPaymentRequest",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

@@ -31,6 +31,27 @@ MONEY_WORDS = ("amount", "irr", "balance", "credit", "limit", "price", "value", 
 # flag; `traders` plural covers a join table's column.
 SHARING_WORDS = ("shared", "share", "visible_to", "delegat", "traders")
 
+# Tables that carry both a trader reference and a beneficiary reference for a reason
+# that is not sharing. Written down with the reason, which is what this file's own
+# assertion message told the next implementer to do — and M5 slice 3 is that
+# implementer.
+#
+# The distinction is direction. A sharing mechanism would let **one beneficiary** be
+# reached by two traders. A payment request points at one trader and one beneficiary
+# that already belong together: the request's `trader_id` is the trader who raised it,
+# and `create_draft` refuses a beneficiary whose `trader_id` differs, answering exactly
+# as it would for a missing one. So the pair narrows access rather than widening it.
+LEGITIMATELY_REFERENCES_BOTH: dict[str, str] = {
+    "payment_requests": (
+        "an outgoing request is one trader paying one beneficiary, so it references "
+        "both by definition (04_Database_Schema.md:830-832). It cannot be a sharing "
+        "mechanism because the two must already match: `create_draft` refuses a "
+        "beneficiary belonging to another trader, and `tests/integration/"
+        "test_payment_request_draft.py` proves the refusal is indistinguishable from "
+        "the beneficiary not existing."
+    ),
+}
+
 
 def test_a_beneficiary_carries_no_amount_of_any_kind() -> None:
     """SVC-BEN-003.
@@ -86,7 +107,7 @@ def test_no_table_joins_beneficiaries_to_more_than_one_trader() -> None:
 
     offenders: list[str] = []
     for name, table in sorted(Base.metadata.tables.items()):
-        if name == "beneficiaries":
+        if name == "beneficiaries" or name in LEGITIMATELY_REFERENCES_BOTH:
             continue
         columns = {column.name for column in table.columns}
         if any("beneficiary" in column for column in columns) and "trader_id" in columns:
@@ -97,6 +118,24 @@ def test_no_table_joins_beneficiaries_to_more_than_one_trader() -> None:
         "a payment request — which legitimately references both — this test needs the "
         "exception written down with its reason, not removed."
     )
+
+
+def test_every_exception_still_names_a_live_table_that_still_references_both() -> None:
+    """Guard the guard for the exception list.
+
+    An entry for a table that no longer exists, or no longer carries both references,
+    is a licence nobody is using — and it would absorb the next real sharing table
+    that happened to be named the same way. Both directions are checked.
+    """
+
+    for name, reason in sorted(LEGITIMATELY_REFERENCES_BOTH.items()):
+        assert name in Base.metadata.tables, f"exception names a missing table: {name}"
+        assert len(reason) > 40, f"{name}'s exception has no real reason recorded"
+
+        columns = {column.name for column in Base.metadata.tables[name].columns}
+        assert "trader_id" in columns and any("beneficiary" in column for column in columns), (
+            f"{name} no longer references both, so its exception describes nothing"
+        )
 
 
 def test_no_command_or_route_offers_cross_trader_reuse() -> None:
