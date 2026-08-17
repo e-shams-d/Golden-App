@@ -97,6 +97,11 @@ ignore = ["B008"]
 # purpose rather than a stray paste.
 "**/identifiers.py" = ["RUF001"]
 "**/test_identifiers.py" = ["RUF001"]
+# M5 slice 2. The IBAN a trader actually types — Persian digits in the
+# four-character grouping banks print — is the input under test, and the assertion
+# is that it normalises to the same account as the ASCII spelling. Writing that
+# constant in ASCII would delete the test while leaving it green.
+"**/test_beneficiaries.py" = ["RUF001"]
 
 [tool.mypy]
 python_version = "3.12"

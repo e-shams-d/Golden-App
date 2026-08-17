@@ -137,6 +137,18 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # M4 slice 9. Present in the contract and denied to every role: the permission
         # exists and is granted to nobody (DOC-CONFLICT-045).
         "activateBankProfileVersion",
+        # M5 slice 2. Five of the seven document 05 lists for beneficiaries.
+        # `blockBeneficiary` and `reactivateBeneficiary` are absent because no
+        # permission in the approved catalogue covers them, and a route guarded by
+        # an unapproved identifier denies everyone — the same reasoning that kept
+        # activation out of M4 slice 8. `deactivateBeneficiary` is here and not in
+        # document 05's table, because it is the one lifecycle move that has both a
+        # catalogued permission and a document 06 transition. DOC-CONFLICT-049.
+        "listBeneficiaries",
+        "createBeneficiary",
+        "getBeneficiary",
+        "updateBeneficiary",
+        "deactivateBeneficiary",
         # M5 slice 3. Draft creation, and cancellation — which the plan did not
         # list for this slice and which `CON-REQ-001` needs: a slice whose only
         # route creates a resource has nothing for `If-Match` to be stale

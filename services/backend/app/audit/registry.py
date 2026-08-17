@@ -167,6 +167,45 @@ REACTIVATE_TRADER = CommandNames(
     provisional_reason=_OUTBOX_GAP,
 )
 
+# The beneficiary lifecycle. The catalogue's `audit_actions` list runs from
+# `auth.*` through the payment and bank flows and names **no beneficiary action at
+# all** — not created, not updated, not deactivated. That is a wider gap than the
+# trader one above, where four of five names exist.
+_BENEFICIARY_CATALOGUE_GAP = (
+    "audit_outbox_catalog.yaml names no beneficiary action of any kind. "
+    "12_Security_RBAC_Audit.md:1635 requires an audit trail for the commands behind "
+    "governed permissions, and `beneficiary.create`, `beneficiary.update_future` and "
+    "`beneficiary.deactivate` are three of them, so the actions are recorded under the "
+    "catalogue's `provisional_pending_m0_approval` status and must be renamed to "
+    "whatever M0 approves. Raised for the register."
+)
+
+# No outbox event on any of the three. Nothing outside the platform acts on a
+# trader editing its own address book, and a beneficiary carries a name, an IBAN and
+# optionally a national id — publishing that would put personal data on a queue for
+# no consumer, which is the reasoning `RECOVER_ADMIN_PASSWORD` already applies and
+# `_publish` in `trader_lifecycle` applies to the phone number.
+CREATE_BENEFICIARY = CommandNames(
+    audit_action="beneficiary.created",
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=_BENEFICIARY_CATALOGUE_GAP,
+)
+
+UPDATE_BENEFICIARY = CommandNames(
+    audit_action="beneficiary.updated",
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=_BENEFICIARY_CATALOGUE_GAP,
+)
+
+DEACTIVATE_BENEFICIARY = CommandNames(
+    audit_action="beneficiary.deactivated",
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=_BENEFICIARY_CATALOGUE_GAP,
+)
+
 # The request lifecycle. Unlike the beneficiary names above, two of these **are** in
 # the catalogue: `payment_request.created` and `payment_request.cancelled` are both in
 # `audit_outbox_catalog.yaml`'s `audit_actions`. The catalogue enumerates the financial
@@ -186,8 +225,7 @@ CREATE_PAYMENT_REQUEST = CommandNames(
 CANCEL_PAYMENT_REQUEST = CommandNames(
     audit_action="payment_request.cancelled",
     outbox_event_type=None,
-    catalogued=True,
-)
+    catalogued=True,)
 
 # Credential changes. Deliberately audited as well as recorded in `auth_events`:
 # a security event explains a refusal, while an administrator resetting somebody
@@ -329,6 +367,9 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     REJECT_TRADER,
     SUSPEND_TRADER,
     REACTIVATE_TRADER,
+    CREATE_BENEFICIARY,
+    UPDATE_BENEFICIARY,
+    DEACTIVATE_BENEFICIARY,
     CHANGE_OWN_PASSWORD,
     RESET_ADMIN_PASSWORD,
     CREATE_FIRST_ADMIN,

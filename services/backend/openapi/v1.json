@@ -314,6 +314,115 @@
         "title": "BankProfileSummary",
         "type": "object"
       },
+      "BeneficiaryCreated": {
+        "additionalProperties": false,
+        "properties": {
+          "beneficiary": {
+            "$ref": "#/components/schemas/BeneficiaryResponse"
+          },
+          "duplicate_warnings": {
+            "items": {
+              "$ref": "#/components/schemas/DuplicateWarningResponse"
+            },
+            "title": "Duplicate Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "beneficiary",
+          "duplicate_warnings"
+        ],
+        "title": "BeneficiaryCreated",
+        "type": "object"
+      },
+      "BeneficiaryList": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BeneficiaryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "BeneficiaryList",
+        "type": "object"
+      },
+      "BeneficiaryResponse": {
+        "additionalProperties": false,
+        "description": "Deliberately not the whole row.\n\n`notes_internal` is internal, as it is on `traders`. Listing fields explicitly\nrather than serialising the model is what keeps a column added later from\nbecoming trader-visible by default.",
+        "properties": {
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "iban": {
+            "title": "Iban",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "national_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "National Id"
+          },
+          "phone_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone Number"
+          },
+          "record_version": {
+            "title": "Record Version",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "trader_id": {
+            "format": "uuid",
+            "title": "Trader Id",
+            "type": "string"
+          },
+          "verification_status": {
+            "title": "Verification Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "trader_id",
+          "full_name",
+          "iban",
+          "national_id",
+          "phone_number",
+          "status",
+          "verification_status",
+          "record_version"
+        ],
+        "title": "BeneficiaryResponse",
+        "type": "object"
+      },
       "Body_uploadFile": {
         "properties": {
           "client_filename": {
@@ -534,6 +643,76 @@
         "title": "CreateAdminUserRequest",
         "type": "object"
       },
+      "CreateBeneficiaryRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "full_name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Full Name",
+            "type": "string"
+          },
+          "iban": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Iban",
+            "type": "string"
+          },
+          "national_id": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "National Id"
+          },
+          "notes_internal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes Internal"
+          },
+          "phone_number": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone Number"
+          },
+          "trader_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trader Id"
+          }
+        },
+        "required": [
+          "full_name",
+          "iban"
+        ],
+        "title": "CreateBeneficiaryRequest",
+        "type": "object"
+      },
       "CreateDraftRequest": {
         "additionalProperties": false,
         "description": "Money crosses as a string integer, per `15_Agent_Implementation_Plan.md:800`.\n\nSlice 4 owns the conversion and the refusals; this accepts what it is given and\nthe database's `amount_irr > 0` CHECK is what refuses a nonsense value in the\nmeantime.",
@@ -680,6 +859,25 @@
           "display_name"
         ],
         "title": "CreateProfileRequest",
+        "type": "object"
+      },
+      "DeactivateBeneficiaryRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "DeactivateBeneficiaryRequest",
         "type": "object"
       },
       "DecisionRequest": {
@@ -875,6 +1073,32 @@
           "content_hash"
         ],
         "title": "DraftRevisionResponse",
+        "type": "object"
+      },
+      "DuplicateWarningResponse": {
+        "additionalProperties": false,
+        "description": "Advice attached to a successful create.\n\nIt is in the response body rather than a header because it is about the\nrequest's meaning, and because a header is the first thing a client drops.",
+        "properties": {
+          "beneficiary_id": {
+            "format": "uuid",
+            "title": "Beneficiary Id",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "matched_on": {
+            "title": "Matched On",
+            "type": "string"
+          }
+        },
+        "required": [
+          "beneficiary_id",
+          "matched_on",
+          "full_name"
+        ],
+        "title": "DuplicateWarningResponse",
         "type": "object"
       },
       "ErrorBody": {
@@ -2005,6 +2229,64 @@
           "record_version"
         ],
         "title": "TraderResponse",
+        "type": "object"
+      },
+      "UpdateBeneficiaryRequest": {
+        "additionalProperties": false,
+        "description": "Absent on purpose: `status`, which moves through its own endpoint, and\n`verification_status`, which no actor sets by hand.",
+        "properties": {
+          "full_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "iban": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iban"
+          },
+          "national_id": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "National Id"
+          },
+          "phone_number": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone Number"
+          }
+        },
+        "title": "UpdateBeneficiaryRequest",
         "type": "object"
       },
       "UpdateRolePermissionsRequest": {
@@ -3705,6 +3987,468 @@
         "summary": "Create Bank Profile",
         "tags": [
           "bank-configuration"
+        ]
+      }
+    },
+    "/api/v1/beneficiaries": {
+      "get": {
+        "description": "A trader sees their own; internal staff may filter by trader (`:938`).\n\nThe `trader_id` query parameter is applied **only** for an internal caller. A\ntrader's rows come from `scoped()`, which takes the actor and has no parameter\na caller's value could be passed into — so a trader sending another trader's\nid gets their own list back rather than an error, because the parameter is\nnever consulted on that path.",
+        "operationId": "listBeneficiaries",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "trader_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trader Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeneficiaryList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, or not the caller's."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Beneficiaries the caller may see.",
+        "tags": [
+          "beneficiaries"
+        ]
+      },
+      "post": {
+        "description": "A duplicate IBAN succeeds and returns a warning naming the match.\n\nThree documents say so and the reflex says otherwise, which is why\n`SVC-BEN-001` exists.",
+        "operationId": "createBeneficiary",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBeneficiaryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeneficiaryCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, or not the caller's."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Create a beneficiary, warning about duplicates without refusing them.",
+        "tags": [
+          "beneficiaries"
+        ]
+      }
+    },
+    "/api/v1/beneficiaries/{beneficiary_id}": {
+      "get": {
+        "operationId": "getBeneficiary",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "beneficiary_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Beneficiary Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeneficiaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, or not the caller's."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "One beneficiary the caller may see.",
+        "tags": [
+          "beneficiaries"
+        ]
+      },
+      "patch": {
+        "description": "`If-Match` is required (`:940`), for the stale-tab case.",
+        "operationId": "updateBeneficiary",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "beneficiary_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Beneficiary Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBeneficiaryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeneficiaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, or not the caller's."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The If-Match value is stale."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is required."
+          }
+        },
+        "summary": "Correct a beneficiary. Historical snapshots are unaffected.",
+        "tags": [
+          "beneficiaries"
+        ]
+      }
+    },
+    "/api/v1/beneficiaries/{beneficiary_id}/deactivate": {
+      "post": {
+        "description": "`active -> inactive`, per document 06's transition table.\n\nDocument 05's endpoint table names `block` and `reactivate` here and not\n`deactivate`, while the permission catalogue has `beneficiary.deactivate` and\nneither of the other two. Only this one has both a catalogued permission and a\ndocument 06 transition, so it is the only one built — see DOC-CONFLICT-049.",
+        "operationId": "deactivateBeneficiary",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "beneficiary_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Beneficiary Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeactivateBeneficiaryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeneficiaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, or not the caller's."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The If-Match value is stale."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is required."
+          }
+        },
+        "summary": "Retire a beneficiary. The row stays and nothing is deleted.",
+        "tags": [
+          "beneficiaries"
         ]
       }
     },

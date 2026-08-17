@@ -71,10 +71,8 @@ OPERATIONS = "operations-token"
 SESSION = "session-only"
 OWNERSHIP = "ownership-scoped"
 PERMISSION = "permission-guarded"
-# One path, two audiences, authorised by different mechanisms: a trader by
-# ownership and internal staff by permission. This class owes **both**
-# negatives, not a choice between them — see the note above
-# `NEGATIVE_TEST_REQUIRED`.
+# One path, two audiences, authorised by different mechanisms. See the note above
+# `NEGATIVE_TEST_REQUIRED`: this class owes both negatives, not a choice between them.
 DUAL = "ownership-and-permission"
 
 ROUTE_CLASSES: dict[tuple[str, str], str] = {
@@ -163,6 +161,16 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # (DOC-CONFLICT-045). Its negative test is the one that must be *rewritten* rather
     # than deleted when the owner approves the grant.
     ("POST", "/api/v1/bank-profile-versions/{version_id}/activate"): PERMISSION,
+    # M5 slice 2, and the first routes of either milestone that are genuinely both.
+    # A trader reaches their own address book by ownership and holds no permission at
+    # all; internal staff reach it by `beneficiary.*` and own nothing. One path, two
+    # mechanisms — so `owned_or_permitted` is a dependency rather than an in-handler
+    # check, which is what keeps `test_permission_guards.py` able to see the permission.
+    ("GET", "/api/v1/beneficiaries"): DUAL,
+    ("POST", "/api/v1/beneficiaries"): DUAL,
+    ("GET", "/api/v1/beneficiaries/{beneficiary_id}"): DUAL,
+    ("PATCH", "/api/v1/beneficiaries/{beneficiary_id}"): DUAL,
+    ("POST", "/api/v1/beneficiaries/{beneficiary_id}/deactivate"): DUAL,
     # M5 slice 3, DUAL for the same reason as the beneficiary routes: a trader
     # reaches their own requests by ownership and holds no permission at all,
     # while internal staff reach them by `payment_request.*` and own nothing.
@@ -208,12 +216,14 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
 # the owner records a choice, "the DoD gate is green" and "the DoD is met" are
 # different statements, and this comment is what keeps the difference visible.
 #
-# M5 narrows the exception rather than the rule. The argument above for the
-# narrower reading is that the wider one demands tests that cannot be written —
-# an admin does not own a trader. Where both *can* be written, it does not
-# apply, and for a route serving both audiences both can. So the values here are
-# tuples: a class may carry more than one obligation instead of the map
-# silently permitting only one.
+# M5 slice 2 narrows the exception rather than the rule. The beneficiary routes are
+# the first that serve **both** audiences on one path: a trader reaches them by
+# ownership, internal staff by permission, and both negatives are writable — a
+# trader may be handed another trader's beneficiary id, and an admin may hold a
+# session without `beneficiary.read`. The argument above for the narrower reading
+# was that the wider one demands tests that cannot be written; where they can, it
+# does not apply. So `DUAL` owes both, and the values here are tuples so a class can
+# carry more than one obligation instead of the map silently permitting only one.
 NEGATIVE_TEST_REQUIRED: dict[str, tuple[str, ...]] = {
     OWNERSHIP: ("ownership",),
     PERMISSION: ("permission",),
@@ -332,6 +342,43 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ),
     ("POST", "/api/v1/bank-profile-versions/{version_id}/activate", "permission"): (
         "test_activation_is_denied_to_every_role"
+    ),
+    # M5 slice 2. Ten entries because five routes are `DUAL` and each owes both.
+    #
+    # The two kinds answer differently on purpose and the tests assert the
+    # difference: a trader gets `404` for another trader's beneficiary, because a
+    # `403` would confirm the id is real; an internal caller gets `403`, because
+    # they already know the resource class exists and are being told they lack a
+    # grant rather than sent hunting for a typo.
+    ("GET", "/api/v1/beneficiaries", "ownership"): (
+        "test_a_trader_reads_only_its_own_beneficiaries"
+    ),
+    ("GET", "/api/v1/beneficiaries", "permission"): (
+        "test_an_admin_without_the_permission_is_refused"
+    ),
+    ("POST", "/api/v1/beneficiaries", "ownership"): (
+        "test_another_traders_beneficiary_does_not_produce_a_warning"
+    ),
+    ("POST", "/api/v1/beneficiaries", "permission"): (
+        "test_an_admin_without_the_permission_is_refused"
+    ),
+    ("GET", "/api/v1/beneficiaries/{beneficiary_id}", "ownership"): (
+        "test_a_missing_id_and_another_traders_id_are_indistinguishable"
+    ),
+    ("GET", "/api/v1/beneficiaries/{beneficiary_id}", "permission"): (
+        "test_an_admin_without_the_permission_is_refused_on_one_beneficiary"
+    ),
+    ("PATCH", "/api/v1/beneficiaries/{beneficiary_id}", "ownership"): (
+        "test_a_trader_cannot_patch_another_traders_beneficiary"
+    ),
+    ("PATCH", "/api/v1/beneficiaries/{beneficiary_id}", "permission"): (
+        "test_an_admin_without_the_permission_is_refused_on_one_beneficiary"
+    ),
+    ("POST", "/api/v1/beneficiaries/{beneficiary_id}/deactivate", "ownership"): (
+        "test_a_trader_cannot_patch_another_traders_beneficiary"
+    ),
+    ("POST", "/api/v1/beneficiaries/{beneficiary_id}/deactivate", "permission"): (
+        "test_an_admin_without_the_permission_is_refused_on_one_beneficiary"
     ),
     # M5 slice 3. Four entries, because two DUAL routes owe both kinds.
     ("POST", "/api/v1/payment-requests", "ownership"): (
@@ -520,14 +567,9 @@ class TestTheDefinitionOfDone:
 
         missing: list[str] = []
         for method, path in sorted(live_routes):
-            for kind in NEGATIVE_TEST_REQUIRED.get(
-                ROUTE_CLASSES.get((method, path), ""), ()
-            ):
+            for kind in NEGATIVE_TEST_REQUIRED.get(ROUTE_CLASSES.get((method, path), ""), ()):
                 key = (method, path, kind)
-                if (
-                    key not in NEGATIVE_COVERAGE
-                    and key not in PENDING_NEGATIVE_COVERAGE
-                ):
+                if key not in NEGATIVE_COVERAGE and key not in PENDING_NEGATIVE_COVERAGE:
                     missing.append(f"{method} {path} needs a {kind} negative test")
 
         assert missing == [], (
