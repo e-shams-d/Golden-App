@@ -23,6 +23,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, Response
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 
 from app.api.contract import VALIDATION_ERROR_RESPONSE
 from app.api.dependencies import get_runtime
@@ -312,6 +313,173 @@ def cancel(
         uow.commit()
 
     response.headers["ETag"] = f'"rv-{rendered.record_version}"'
+    return rendered
+
+
+class CreateRevisionRequest(BaseModel):
+    """A complete statement of what is being submitted, not a patch.
+
+    Every content field is required. A partial shape would make revision 3's content
+    "revision 2 plus a diff", so reading what was submitted the third time would mean
+    replaying the first two — and the whole point of an immutable revision is that it
+    answers that question on its own.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    beneficiary_id: uuid.UUID
+    amount: AmountRequest
+    description: str | None = None
+    source_attachment_file_id: uuid.UUID | None = None
+    revision_reason: str | None = Field(default=None, max_length=500)
+
+
+class RevisionCreated(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    request: PaymentRequestResponse
+    revision: DraftRevisionResponse
+    # True when an `Idempotency-Key` was replayed. Surfaced rather than hidden: a client
+    # retrying after a timeout needs to know it did not create a second revision, and a
+    # response identical to the first would leave it guessing.
+    replayed: bool
+
+
+class RevisionHistory(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[DraftRevisionResponse]
+    current_revision_id: uuid.UUID | None
+
+
+@router.post(
+    "/{payment_request_id}/revisions",
+    response_model=RevisionCreated,
+    status_code=201,
+    operation_id="createPaymentRequestRevision",
+    summary="Correct a request by adding an immutable revision.",
+    responses={
+        **WRITE_RESPONSES,
+        409: {"model": ErrorEnvelope, "description": "The Idempotency-Key was reused."},
+    },
+)
+def create_revision(
+    payment_request_id: uuid.UUID,
+    payload: CreateRevisionRequest,
+    response: Response,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    scope: Annotated[
+        uuid.UUID | None,
+        owned_or_permitted(
+            "payment_request.create_revision_own",
+            "payment_request.create_revision_internal",
+        ),
+    ],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> RevisionCreated:
+    """`If-Match` and `Idempotency-Key` are both required, and they answer different
+    questions.
+
+    `If-Match` is "is the request still in the state you read", which is `CON-REQ-002`.
+    `Idempotency-Key` is "have I already sent this exact correction", which is
+    `SVC-REV-004`. A retry after a network timeout needs the second: the first attempt
+    may have committed, and without a key the retry would create revision 3 identical
+    to revision 2 — except that `UNIQUE(payment_request_id, content_hash)` would refuse
+    it, so the trader would be told their correction was a duplicate of their own
+    correction.
+    """
+
+    if if_match is None:
+        raise PreconditionRequiredError("If-Match")
+    if idempotency_key is None:
+        raise PreconditionRequiredError("Idempotency-Key")
+    expected = _parse_record_version(if_match)
+
+    now = utc_now()
+    with runtime.uow_factory() as uow:
+        record = uow.session.get(PaymentRequest, payment_request_id)
+        if scope is None:
+            if record is None:
+                raise NotFoundError()
+        else:
+            owner = record.trader_id if record is not None else None
+            require_owned(record, owner, actor)
+
+        result = commands.create_revision(
+            commands.CreateRevision(
+                payment_request_id=payment_request_id,
+                expected_record_version=expected,
+                beneficiary_id=payload.beneficiary_id,
+                amount=_money(payload.amount),
+                description=payload.description,
+                source_attachment_file_id=payload.source_attachment_file_id,
+                revision_reason=payload.revision_reason,
+            ),
+            uow=uow,
+            policy=REQUEST_REDACTION,
+            actor=_audit_actor(actor),
+            context=AuditContext(request_id=get_request_id()),
+            idempotency_key=idempotency_key,
+            now=now,
+        )
+        rendered = RevisionCreated(
+            request=_render(result.request),
+            revision=_render_revision(result.revision),
+            replayed=result.replayed,
+        )
+        uow.commit()
+
+    response.headers["ETag"] = f'"rv-{rendered.request.record_version}"'
+    return rendered
+
+
+@router.get(
+    "/{payment_request_id}/revisions",
+    response_model=RevisionHistory,
+    operation_id="listPaymentRequestRevisions",
+    summary="Every revision of a request, oldest first.",
+    responses=COMMON_RESPONSES,
+)
+def list_revisions(
+    payment_request_id: uuid.UUID,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    scope: Annotated[
+        uuid.UUID | None,
+        owned_or_permitted("payment_request.read_own", "payment_request.read"),
+    ],
+) -> RevisionHistory:
+    """`SVC-REV-002`: readable in order, and every revision reachable.
+
+    Ordered by `revision_number` rather than `created_at`. Two revisions written in the
+    same transaction would share a timestamp to the microsecond, and the number is the
+    thing that is guaranteed unique per request.
+    """
+
+    with runtime.uow_factory() as uow:
+        record = uow.session.get(PaymentRequest, payment_request_id)
+        if scope is None:
+            if record is None:
+                raise NotFoundError()
+        else:
+            owner = record.trader_id if record is not None else None
+            require_owned(record, owner, actor)
+        assert record is not None
+
+        rows = list(
+            uow.session.scalars(
+                select(PaymentRequestRevision)
+                .where(PaymentRequestRevision.payment_request_id == payment_request_id)
+                .order_by(PaymentRequestRevision.revision_number)
+            )
+        )
+        rendered = RevisionHistory(
+            items=[_render_revision(row) for row in rows],
+            current_revision_id=record.current_revision_id,
+        )
+        uow.rollback()
     return rendered
 
 

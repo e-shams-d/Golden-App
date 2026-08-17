@@ -37,7 +37,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.audit.redaction import RedactionPolicy
-from app.audit.registry import CANCEL_PAYMENT_REQUEST, CREATE_PAYMENT_REQUEST, CommandNames
+from app.audit.registry import (
+    CANCEL_PAYMENT_REQUEST,
+    CREATE_PAYMENT_REQUEST,
+    CREATE_REVISION,
+    CommandNames,
+)
 from app.audit.writer import AuditActor, AuditContext, AuditEntry, AuditWriter
 from app.core.errors import BusinessRuleViolationError, NotFoundError
 from app.core.hashing import unversioned_digest
@@ -46,12 +51,27 @@ from app.db.concurrency import compare_and_swap
 from app.db.models.beneficiary import Beneficiary
 from app.db.models.payment_request import PaymentRequest, PaymentRequestRevision
 from app.db.models.trader import Trader
+from app.db.unit_of_work import SqlAlchemyUnitOfWork
+from app.idempotency import IdempotencyResolver
 
 METADATA_SCHEMA = "audit.payment_request.lifecycle"
 METADATA_VERSION = 1
 
 DRAFT = "draft"
 CANCELLED = "cancelled"
+SUBMITTED = "submitted_to_center"
+NEEDS_CORRECTION = "needs_trader_correction"
+
+# The operation name the idempotency record carries. Distinct from draft creation, so a
+# key reused across the two is a conflict rather than a replay of the wrong command.
+CREATE_REVISION_OPERATION = "payment_request.create_revision"
+
+# Which statuses accept a correction. `draft` because a trader may fix their own work
+# before submitting, and `needs_trader_correction` because that is what the accountant
+# asked for. Deliberately not `submitted_to_center` or `under_accountant_review`:
+# correcting a request while somebody is reading it would move the content under them,
+# and document 06 routes that through the review workflow instead.
+CORRECTABLE = (DRAFT, NEEDS_CORRECTION)
 
 # `traders`, per DOC-CONFLICT-024's two axes. Both must be right, and that is the
 # point of `SEC-REQ-001`: a business awaiting approval and a business barred today are
@@ -90,6 +110,33 @@ class CancelDraft:
     payment_request_id: uuid.UUID
     expected_record_version: int
     reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CreateRevision:
+    """A correction. Every content field is required, not patched.
+
+    Deliberately not a partial update. A revision is a complete statement of what is
+    being submitted — that is what makes it answerable later — and a patch shape would
+    mean the new revision's content is the old revision's plus a diff, so reading what
+    revision 3 said would require replaying revisions 1 and 2. The client sends the
+    whole intent and the server hashes it.
+    """
+
+    payment_request_id: uuid.UUID
+    expected_record_version: int
+    beneficiary_id: uuid.UUID
+    amount: Money
+    description: str | None = None
+    source_attachment_file_id: uuid.UUID | None = None
+    revision_reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RevisionResult:
+    request: PaymentRequest
+    revision: PaymentRequestRevision
+    replayed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,6 +294,185 @@ def cancel_draft(
     )
 
     return request
+
+
+def create_revision(
+    command: CreateRevision,
+    *,
+    uow: SqlAlchemyUnitOfWork,
+    policy: RedactionPolicy,
+    actor: AuditActor,
+    context: AuditContext,
+    idempotency_key: str,
+    now: datetime,
+) -> RevisionResult:
+    """Add revision *n+1* and move the pointer. Revision *n* is not touched.
+
+    Takes the unit of work rather than a session, because the idempotency resolver
+    needs a savepoint: it inserts the claim, flushes to force the unique violation
+    while it can still be turned into a replay, and rolls back to the savepoint if it
+    was already claimed.
+
+    **Nothing here updates a revision.** The pointer that moves is on the request. The
+    previous revision keeps its row, its `content_hash` and its `created_at` — the
+    migration grants no UPDATE on that table at all, so this is enforced by the absence
+    of a privilege rather than by the care of this function.
+
+    `superseded_at` is deliberately left NULL on the replaced revision. Document 04
+    defines the column and M5 does not write it: setting it would be an update to an
+    immutable row, and "which revision is current" is already answered by
+    `payment_requests.current_revision_id`. Recording the same fact twice, where one
+    copy requires widening a grant, is how the immutability guarantee gets traded away
+    for a denormalised convenience.
+    """
+
+    resolver = IdempotencyResolver(uow)
+    claim = resolver.claim(
+        actor_type=actor.actor_type,
+        actor_id=actor.idempotency_scope_id,
+        operation=CREATE_REVISION_OPERATION,
+        idempotency_key=idempotency_key,
+        # The content, not the record version. Two retries of the same correction are
+        # the same request even if the first one moved `record_version` — including it
+        # would make an honest retry look like a different body and raise a conflict
+        # where a replay is correct.
+        payload={
+            "payment_request_id": str(command.payment_request_id),
+            "beneficiary_id": str(command.beneficiary_id),
+            "amount_irr": command.amount.amount_irr,
+            "entered_amount": command.amount.entered_amount,
+            "entered_unit": command.amount.entered_unit.value,
+            "description": command.description,
+            "source_attachment_file_id": (
+                str(command.source_attachment_file_id)
+                if command.source_attachment_file_id
+                else None
+            ),
+        },
+    )
+
+    session = uow.session
+
+    if claim.is_replay:
+        stored = claim.record.response_body or {}
+        request = session.get(PaymentRequest, command.payment_request_id)
+        revision = session.get(PaymentRequestRevision, uuid.UUID(str(stored["revision_id"])))
+        if request is None or revision is None:  # pragma: no cover - the record made them
+            raise NotFoundError()
+        return RevisionResult(request=request, revision=revision, replayed=True)
+
+    request = session.get(PaymentRequest, command.payment_request_id)
+    if request is None:
+        raise NotFoundError()
+
+    if request.status not in CORRECTABLE:
+        raise BusinessRuleViolationError(
+            f"a {request.status} request does not take a correction; only "
+            f"{', '.join(CORRECTABLE)} does"
+        )
+
+    trader = session.get(Trader, request.trader_id)
+    if trader is None:  # pragma: no cover - the request's FK guarantees it
+        raise NotFoundError()
+    _require_operable(trader)
+
+    beneficiary = session.get(Beneficiary, command.beneficiary_id)
+    if beneficiary is None or beneficiary.trader_id != request.trader_id:
+        raise NotFoundError()
+    if beneficiary.status != "active":
+        raise BusinessRuleViolationError(
+            f"a {beneficiary.status} beneficiary cannot receive a corrected request"
+        )
+
+    previous = session.get(PaymentRequestRevision, request.current_revision_id)
+    if previous is None:  # pragma: no cover - a request always has revision 1
+        raise NotFoundError()
+
+    revision = PaymentRequestRevision(
+        payment_request_id=request.id,
+        revision_number=previous.revision_number + 1,
+        beneficiary_id=beneficiary.id,
+        # Re-snapshotted from the beneficiary as it stands *now*, not copied from the
+        # previous revision. A correction that changed the beneficiary must carry that
+        # beneficiary's details, and one that did not must still record today's values
+        # — the revision is a statement about this submission, not a delta.
+        beneficiary_name_snapshot=beneficiary.full_name,
+        beneficiary_iban_snapshot=beneficiary.normalized_iban,
+        beneficiary_national_id_snapshot=beneficiary.national_id,
+        amount_irr=command.amount.amount_irr,
+        entered_amount_value=command.amount.entered_amount,
+        entered_amount_unit=command.amount.entered_unit.value,
+        description=command.description,
+        source_attachment_file_id=command.source_attachment_file_id,
+        revision_reason=command.revision_reason,
+        created_by_actor_type=actor.actor_type,
+        created_by_actor_id=actor.actor_id,
+    )
+    revision.content_hash = revision_content_hash(revision)
+
+    if revision.content_hash == previous.content_hash:
+        # Refused here as well as by `UNIQUE(payment_request_id, content_hash)`, and
+        # the duplication is the point: the constraint is what makes the rule
+        # unbypassable, and this is what makes the refusal explicable. A caller who
+        # hits the constraint gets an integrity error naming an index; a caller who
+        # hits this gets told they changed nothing.
+        raise BusinessRuleViolationError(
+            "this correction is identical to the current revision, so there is nothing "
+            "to correct. Change what you are submitting, or leave the request as it is."
+        )
+
+    session.add(revision)
+    session.flush()
+
+    outcome = compare_and_swap(
+        session,
+        PaymentRequest,
+        entity_id=request.id,
+        expected_version=command.expected_record_version,
+        values={
+            "current_revision_id": revision.id,
+            # Back to the centre's queue. A correction the accountant asked for is not
+            # finished until it is resubmitted, and leaving it in
+            # `needs_trader_correction` would mean the trader corrected it and nobody
+            # was told.
+            "status": SUBMITTED,
+            "submitted_at": now,
+        },
+    )
+    session.expire(request)
+
+    _audit(
+        session,
+        policy,
+        CREATE_REVISION,
+        outcome="success",
+        request_id=request.id,
+        record_version=outcome.new_version,
+        reason=command.revision_reason,
+        actor=actor,
+        context=context,
+        now=now,
+        previous_values={
+            "current_revision_id": str(previous.id),
+            "revision_number": previous.revision_number,
+        },
+        new_values={
+            "current_revision_id": str(revision.id),
+            "revision_number": revision.revision_number,
+            "status": SUBMITTED,
+        },
+    )
+
+    resolver.complete(
+        claim,
+        response_code=201,
+        response_body={"revision_id": str(revision.id), "request_id": str(request.id)},
+        resource_type="payment_request",
+        resource_id=request.id,
+        now=now,
+    )
+
+    return RevisionResult(request=request, revision=revision)
 
 
 def revision_content_hash(revision: PaymentRequestRevision) -> str:

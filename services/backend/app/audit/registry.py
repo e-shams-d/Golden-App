@@ -222,6 +222,12 @@ CREATE_PAYMENT_REQUEST = CommandNames(
     catalogued=True,
 )
 
+CREATE_REVISION = CommandNames(
+    audit_action="payment_request.revision_created",
+    outbox_event_type=None,
+    catalogued=True,
+)
+
 CANCEL_PAYMENT_REQUEST = CommandNames(
     audit_action="payment_request.cancelled",
     outbox_event_type=None,
@@ -381,4 +387,5 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     RECOVER_ADMIN_PASSWORD,
     CREATE_PAYMENT_REQUEST,
     CANCEL_PAYMENT_REQUEST,
+    CREATE_REVISION,
 )

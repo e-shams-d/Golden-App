@@ -336,14 +336,37 @@ PENDING: dict[str, str] = {
     # strings. The nested `amount` shape is document 05's and is implemented as written;
     # only the encoding is in dispute, and the contract wins because it is approved M0
     # governance and the milestone authority agrees with it.
-    "SVC-REV-001": "M5 slice 5 — correction creates revision n+1 and leaves n byte-identical",
-    "SVC-REV-002": "M5 slice 5 — history is readable in order and every revision reachable",
     # Reversed by slice 3, which read the constraints under the table the plan had only
     # cited by line range: 04_Database_Schema.md:901 is UNIQUE(payment_request_id,
     # content_hash), so identical content is refused rather than permitted.
-    "SVC-REV-003": "M5 slice 5 — a byte-identical correction is refused, detected by content_hash",
-    "SVC-REV-004": "M5 slice 5 — revision creation is idempotent under a repeated key",
-    "CON-REQ-002": "M5 slice 5 — creating a revision requires If-Match on the request",
+    # Slice 5 is merged. All five are discharged by
+    # tests/integration/test_payment_request_revisions.py.
+    #
+    # SVC-REV-001 is the milestone's central property and its test is the one to read:
+    # every column of revision n is captured before a correction and compared after.
+    # Asserting only that the amount is unchanged would pass on a revision whose
+    # `content_hash` or `created_at` had been rewritten, and a row editable in any
+    # field is not evidence of anything.
+    #
+    # `superseded_at` is left NULL rather than written, and that is asserted. Document
+    # 04 defines the column; setting it would be an update to an immutable row, and
+    # 'which revision is current' is already answered by
+    # `payment_requests.current_revision_id`. Recording the fact twice, where one copy
+    # needs a widened grant, trades the guarantee for a convenience.
+    #
+    # SVC-REV-003 is the reversed obligation slice 3 corrected: a byte-identical
+    # correction is refused. Refused twice over, deliberately — the command compares
+    # hashes and says what is wrong, and UNIQUE(payment_request_id, content_hash)
+    # behind it is what makes the rule unbypassable. A description-only edit is *not*
+    # identical and has its own test, because the description is submitted intent and
+    # a reviewer read it.
+    #
+    # One gap is recorded inside the history test rather than here: it resets the
+    # status with direct SQL between corrections, because a correction moves the
+    # request to `submitted_to_center` and only the accountant's
+    # `return_for_correction` — slice 7 — can send it back. Until that exists there is
+    # no route to revision 3 at all. Slice 7 should replace the reset with the real
+    # command; a test still writing status by hand afterwards has stopped exercising it.
     "SVC-SUB-001": "M5 slice 6 — submission fills every snapshot column at that instant",
     "SVC-SUB-002": "M5 slice 6 — editing the beneficiary afterwards does not change the revision",
     "SVC-SUB-003": "M5 slice 6 — an attachment that is not `available` cannot be submitted",

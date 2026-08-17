@@ -176,6 +176,12 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # while internal staff reach them by `payment_request.*` and own nothing.
     ("POST", "/api/v1/payment-requests"): DUAL,
     ("POST", "/api/v1/payment-requests/{payment_request_id}/cancel"): DUAL,
+    # M5 slice 5. The correction path, DUAL for the same reason as the rest of
+    # this family. The GET is here too: a revision history is where "Admin response
+    # accidentally includes unrelated trader data" would show up, and that is one
+    # of the seven mandatory IDOR cases.
+    ("POST", "/api/v1/payment-requests/{payment_request_id}/revisions"): DUAL,
+    ("GET", "/api/v1/payment-requests/{payment_request_id}/revisions"): DUAL,
     # PUBLIC by necessity rather than by choice, which is why it is not SESSION: an
     # account in `recovery_required` is refused every action except recovery, so it holds
     # no session to classify. The temporary credential an administrator set is what stands
@@ -392,6 +398,19 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ),
     ("POST", "/api/v1/payment-requests/{payment_request_id}/cancel", "permission"): (
         "test_an_admin_without_the_request_permission_is_refused"
+    ),
+    # M5 slice 5. Four more, because two DUAL routes each owe both kinds.
+    ("POST", "/api/v1/payment-requests/{payment_request_id}/revisions", "ownership"): (
+        "test_a_trader_cannot_correct_another_traders_request"
+    ),
+    ("POST", "/api/v1/payment-requests/{payment_request_id}/revisions", "permission"): (
+        "test_an_admin_without_the_revision_permission_is_refused"
+    ),
+    ("GET", "/api/v1/payment-requests/{payment_request_id}/revisions", "ownership"): (
+        "test_a_trader_cannot_read_another_traders_revision_history"
+    ),
+    ("GET", "/api/v1/payment-requests/{payment_request_id}/revisions", "permission"): (
+        "test_an_admin_without_the_revision_permission_is_refused"
     ),
 }
 

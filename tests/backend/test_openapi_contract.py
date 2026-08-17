@@ -155,6 +155,10 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # against, so the obligation was unprovable as scoped.
         "createPaymentRequestDraft",
         "cancelPaymentRequest",
+        # M5 slice 5. The correction path and the history that makes it
+        # answerable. `05_API_Specification.md:1136` and `:1142`.
+        "createPaymentRequestRevision",
+        "listPaymentRequestRevisions",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas
