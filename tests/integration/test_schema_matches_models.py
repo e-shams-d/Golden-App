@@ -144,6 +144,16 @@ CYCLE_FOREIGN_KEYS: tuple[tuple[str, str], ...] = (
     ),
     ("bank_mappings", "fk_bank_mappings_bank_profile_version_id_bank_profile_versions"),
     ("file_links", "fk_file_links_file_id_file_objects"),
+    # M5 slice 3 creates a **second** cycle on the same pattern: a request points at
+    # its current revision and every revision points back at its request. Listed
+    # because the property this test proves is per-cycle — covering M2's and not this
+    # one would leave the newer composite pointer unchecked, and that pointer is what
+    # stops a request from showing another request's beneficiary and amount.
+    ("payment_requests", "fk_request_current_revision"),
+    (
+        "payment_request_revisions",
+        "fk_request_revisions_request",
+    ),
 )
 
 

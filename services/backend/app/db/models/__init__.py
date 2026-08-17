@@ -22,6 +22,7 @@ from app.db.models.file_object import FileDerivation, FileLink, FileObject
 from app.db.models.idempotency_record import IdempotencyRecord
 from app.db.models.identity import AdminUser, TraderUser
 from app.db.models.outbox_event import OutboxEvent
+from app.db.models.payment_request import PaymentRequest, PaymentRequestRevision
 from app.db.models.processing_job import ProcessingJob
 from app.db.models.rbac import AdminUserRole, Permission, Role, RolePermission
 from app.db.models.session_and_security import AuthEvent, AuthSession, RecentAuthContext
@@ -46,6 +47,8 @@ __all__ = [
     "IdempotencyRecord",
     "LegalHold",
     "OutboxEvent",
+    "PaymentRequest",
+    "PaymentRequestRevision",
     "Permission",
     "ProcessingJob",
     "RecentAuthContext",

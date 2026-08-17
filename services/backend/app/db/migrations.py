@@ -54,4 +54,10 @@ from __future__ import annotations
 # the service warns rather than merging. And no value CHECK on
 # `verification_status`, whose four values appear only in a Notes cell that no
 # approved catalogue restates (DOC-CONFLICT-048).
-EXPECTED_MIGRATION_HEADS = frozenset({"20260816_0015"})
+# 20260817_0016 adds `payment_requests` and `payment_request_revisions`, with the
+# composite deferrable pointer doc 04:1536-1547 specifies: `(current_revision_id, id)`
+# against `(id, payment_request_id)`, so a request cannot point at another request's
+# revision. `payment_request_revisions` receives **no UPDATE grant of any kind** — the
+# bootstrap default is SELECT+INSERT, so its immutability is an absence rather than a
+# rule, which is stricter than `bank_profile_versions`, where `status` moves.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260817_0016"})

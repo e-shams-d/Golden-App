@@ -392,9 +392,22 @@ and the prior revision remains unchanged.
   revision *n* byte-identical including its `content_hash`.
 - `SVC-REV-002` — the history is readable in order and every revision is reachable, so
   "what did they submit the first time" is answerable after three corrections.
-- `SVC-REV-003` — two revisions with identical content are permitted and have equal
-  hashes. A resubmission that changes nothing is a real thing a person does, and refusing
-  it would be a uniqueness rule nobody asked for.
+- `SVC-REV-003` — a correction whose content is byte-identical to the current revision is
+  **refused**, and `content_hash` is what detects it.
+
+  **This obligation is the reverse of what this plan first stated**, corrected in slice 3.
+  The original text said identical content must be permitted, on the grounds that "a
+  resubmission that changes nothing is a real thing a person does, and refusing it would be
+  a uniqueness rule nobody asked for". Somebody did ask for it:
+  `04_Database_Schema.md:901` states `UNIQUE(payment_request_id, content_hash)`. The plan
+  cited the table's line range and did not read its constraints, which is the same failure
+  as citing a line without reading it.
+
+  And the document is right. A trader who was asked to correct something and resubmits it
+  unchanged has not corrected it; storing a second identical revision would add a row that
+  means nothing and put it in front of a reviewer as though it were new work. The correct
+  answer is to refuse the correction and say why. Repeated *requests* are a different
+  question, and `SVC-REV-004`'s idempotency key is what answers it.
 - `CON-REQ-002` — creating a revision requires `If-Match` on the request, and a stale one
   returns `412`.
 - `SVC-REV-004` — revision creation is idempotent under a repeated `Idempotency-Key`:

@@ -71,6 +71,11 @@ OPERATIONS = "operations-token"
 SESSION = "session-only"
 OWNERSHIP = "ownership-scoped"
 PERMISSION = "permission-guarded"
+# One path, two audiences, authorised by different mechanisms: a trader by
+# ownership and internal staff by permission. This class owes **both**
+# negatives, not a choice between them — see the note above
+# `NEGATIVE_TEST_REQUIRED`.
+DUAL = "ownership-and-permission"
 
 ROUTE_CLASSES: dict[tuple[str, str], str] = {
     ("GET", "/api/v1/health/live"): PUBLIC,
@@ -158,6 +163,11 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # (DOC-CONFLICT-045). Its negative test is the one that must be *rewritten* rather
     # than deleted when the owner approves the grant.
     ("POST", "/api/v1/bank-profile-versions/{version_id}/activate"): PERMISSION,
+    # M5 slice 3, DUAL for the same reason as the beneficiary routes: a trader
+    # reaches their own requests by ownership and holds no permission at all,
+    # while internal staff reach them by `payment_request.*` and own nothing.
+    ("POST", "/api/v1/payment-requests"): DUAL,
+    ("POST", "/api/v1/payment-requests/{payment_request_id}/cancel"): DUAL,
     # PUBLIC by necessity rather than by choice, which is why it is not SESSION: an
     # account in `recovery_required` is refused every action except recovery, so it holds
     # no session to classify. The temporary credential an administrator set is what stands
@@ -197,7 +207,18 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
 # one, which is exactly why it is written here instead of being left implicit: until
 # the owner records a choice, "the DoD gate is green" and "the DoD is met" are
 # different statements, and this comment is what keeps the difference visible.
-NEGATIVE_TEST_REQUIRED = {OWNERSHIP: "ownership", PERMISSION: "permission"}
+#
+# M5 narrows the exception rather than the rule. The argument above for the
+# narrower reading is that the wider one demands tests that cannot be written —
+# an admin does not own a trader. Where both *can* be written, it does not
+# apply, and for a route serving both audiences both can. So the values here are
+# tuples: a class may carry more than one obligation instead of the map
+# silently permitting only one.
+NEGATIVE_TEST_REQUIRED: dict[str, tuple[str, ...]] = {
+    OWNERSHIP: ("ownership",),
+    PERMISSION: ("permission",),
+    DUAL: ("ownership", "permission"),
+}
 
 # The negative test that discharges each obligation, by (method, path, kind). Every
 # entry names a test that must exist; `test_every_claimed_test_exists` fails on one
@@ -311,6 +332,19 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ),
     ("POST", "/api/v1/bank-profile-versions/{version_id}/activate", "permission"): (
         "test_activation_is_denied_to_every_role"
+    ),
+    # M5 slice 3. Four entries, because two DUAL routes owe both kinds.
+    ("POST", "/api/v1/payment-requests", "ownership"): (
+        "test_a_trader_cannot_open_a_request_under_another_trader"
+    ),
+    ("POST", "/api/v1/payment-requests", "permission"): (
+        "test_an_admin_without_the_request_permission_is_refused"
+    ),
+    ("POST", "/api/v1/payment-requests/{payment_request_id}/cancel", "ownership"): (
+        "test_a_trader_cannot_cancel_another_traders_request"
+    ),
+    ("POST", "/api/v1/payment-requests/{payment_request_id}/cancel", "permission"): (
+        "test_an_admin_without_the_request_permission_is_refused"
     ),
 }
 
@@ -486,12 +520,15 @@ class TestTheDefinitionOfDone:
 
         missing: list[str] = []
         for method, path in sorted(live_routes):
-            kind = NEGATIVE_TEST_REQUIRED.get(ROUTE_CLASSES.get((method, path), ""))
-            if kind is None:
-                continue
-            key = (method, path, kind)
-            if key not in NEGATIVE_COVERAGE and key not in PENDING_NEGATIVE_COVERAGE:
-                missing.append(f"{method} {path} needs a {kind} negative test")
+            for kind in NEGATIVE_TEST_REQUIRED.get(
+                ROUTE_CLASSES.get((method, path), ""), ()
+            ):
+                key = (method, path, kind)
+                if (
+                    key not in NEGATIVE_COVERAGE
+                    and key not in PENDING_NEGATIVE_COVERAGE
+                ):
+                    missing.append(f"{method} {path} needs a {kind} negative test")
 
         assert missing == [], (
             "M3's Definition of Done is not met for these routes:\n"

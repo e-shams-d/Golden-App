@@ -344,6 +344,25 @@
         "title": "Body_uploadFile",
         "type": "object"
       },
+      "CancelRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "CancelRequest",
+        "type": "object"
+      },
       "CenterProfileResponse": {
         "additionalProperties": false,
         "properties": {
@@ -515,6 +534,87 @@
         "title": "CreateAdminUserRequest",
         "type": "object"
       },
+      "CreateDraftRequest": {
+        "additionalProperties": false,
+        "description": "Money crosses as a string integer, per `15_Agent_Implementation_Plan.md:800`.\n\nSlice 4 owns the conversion and the refusals; this accepts what it is given and\nthe database's `amount_irr > 0` CHECK is what refuses a nonsense value in the\nmeantime.",
+        "properties": {
+          "amount_irr": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Amount Irr",
+            "type": "string"
+          },
+          "beneficiary_id": {
+            "format": "uuid",
+            "title": "Beneficiary Id",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "entered_amount_unit": {
+            "anyOf": [
+              {
+                "pattern": "^(IRR|TOMAN)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entered Amount Unit"
+          },
+          "entered_amount_value": {
+            "anyOf": [
+              {
+                "pattern": "^[1-9][0-9]{0,18}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entered Amount Value"
+          },
+          "source_attachment_file_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Attachment File Id"
+          },
+          "trader_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trader Id"
+          }
+        },
+        "required": [
+          "beneficiary_id",
+          "amount_irr"
+        ],
+        "title": "CreateDraftRequest",
+        "type": "object"
+      },
       "CreateProfileRequest": {
         "additionalProperties": false,
         "properties": {
@@ -682,6 +782,99 @@
           "latency_ms"
         ],
         "title": "DependencyStatus",
+        "type": "object"
+      },
+      "DraftCreated": {
+        "additionalProperties": false,
+        "properties": {
+          "request": {
+            "$ref": "#/components/schemas/PaymentRequestResponse"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/DraftRevisionResponse"
+          }
+        },
+        "required": [
+          "request",
+          "revision"
+        ],
+        "title": "DraftCreated",
+        "type": "object"
+      },
+      "DraftRevisionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "amount_irr": {
+            "title": "Amount Irr",
+            "type": "string"
+          },
+          "beneficiary_iban_snapshot": {
+            "title": "Beneficiary Iban Snapshot",
+            "type": "string"
+          },
+          "beneficiary_name_snapshot": {
+            "title": "Beneficiary Name Snapshot",
+            "type": "string"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "entered_amount_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entered Amount Unit"
+          },
+          "entered_amount_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entered Amount Value"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "revision_number": {
+            "title": "Revision Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "revision_number",
+          "beneficiary_name_snapshot",
+          "beneficiary_iban_snapshot",
+          "amount_irr",
+          "entered_amount_value",
+          "entered_amount_unit",
+          "description",
+          "content_hash"
+        ],
+        "title": "DraftRevisionResponse",
         "type": "object"
       },
       "ErrorBody": {
@@ -1007,6 +1200,62 @@
           "reason"
         ],
         "title": "PasswordResetRequest",
+        "type": "object"
+      },
+      "PaymentRequestResponse": {
+        "additionalProperties": false,
+        "description": "Deliberately not the whole row.\n\n`review_note` and the trader-result columns are absent because nothing in M5 sets\nthem, and listing fields explicitly is what keeps a column added later from\nbecoming visible by default.",
+        "properties": {
+          "beneficiary_id": {
+            "format": "uuid",
+            "title": "Beneficiary Id",
+            "type": "string"
+          },
+          "current_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Revision Id"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "record_version": {
+            "title": "Record Version",
+            "type": "integer"
+          },
+          "request_number": {
+            "title": "Request Number",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "trader_id": {
+            "format": "uuid",
+            "title": "Trader Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "trader_id",
+          "beneficiary_id",
+          "request_number",
+          "status",
+          "current_revision_id",
+          "record_version"
+        ],
+        "title": "PaymentRequestResponse",
         "type": "object"
       },
       "ProfileCreatedResponse": {
@@ -4254,6 +4503,237 @@
         "summary": "Release identity, applied schema revision and flag snapshot",
         "tags": [
           "operations"
+        ]
+      }
+    },
+    "/api/v1/payment-requests": {
+      "post": {
+        "operationId": "createPaymentRequestDraft",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A domain rule refused the command."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, or not the caller's."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The If-Match value is stale."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is required."
+          }
+        },
+        "summary": "Open a draft payment request and its first immutable revision.",
+        "tags": [
+          "payment-requests"
+        ]
+      }
+    },
+    "/api/v1/payment-requests/{payment_request_id}/cancel": {
+      "post": {
+        "description": "`If-Match` is required, not optional.\n\nThe stale-tab case: two people acting on the same draft from two screens, where a\nblind write silently discards whichever decision arrived first. `428` when it is\nabsent and `412` when it does not match — different answers because the remedies\ndiffer, and answering `412` to a caller who sent nothing would send them looking\nfor a value they never had.",
+        "operationId": "cancelPaymentRequest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payment_request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Payment Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A domain rule refused the command."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, or not the caller's."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The If-Match value is stale."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is required."
+          }
+        },
+        "summary": "Cancel a draft. Nothing is deleted; the status moves.",
+        "tags": [
+          "payment-requests"
         ]
       }
     },

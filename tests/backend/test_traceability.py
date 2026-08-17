@@ -286,19 +286,33 @@ PENDING: dict[str, str] = {
     "SEC-BEN-001": "M5 slice 2 — a trader reaches only its own beneficiaries",
     "SEC-BEN-002": "M5 slice 2 — no cross-trader reuse (DOC-CONFLICT-011)",
     "AUD-BEN-001": "M5 slice 2 — beneficiary writes are audited",
-    "DB-REQ-001": "M5 slice 3 — payment_requests, with no amount and no snapshot columns",
-    "DB-REV-001": "M5 slice 3 — payment_request_revisions per 04:873-906",
-    "DB-REV-002": "M5 slice 3 — composite FK ties current_revision_id to the same request",
-    "DB-REV-003": "M5 slice 3 — no column of a revision may be updated, one case per column",
-    "CON-REQ-001": "M5 slice 3 — record_version supports If-Match; a stale value returns 412",
-    "SEC-REQ-001": "M5 slice 3 — a pending or suspended trader cannot create a draft",
+    # Slice 3 is merged. DB-REQ-001 and DB-REV-001 are discharged by
+    # tests/backend/test_payment_request_schema.py, which compares against document
+    # 04 by **parsing** it rather than transcribing it — slice 1 transcribed one type
+    # wrong and the test locked the mistake in. DB-REV-002 and DB-REV-003 by
+    # tests/integration/test_request_revision_integrity.py, and CON-REQ-001 and
+    # SEC-REQ-001 by tests/integration/test_payment_request_draft.py.
+    #
+    # CON-REQ-001 was **unprovable as the plan scoped it**. The obligation is that a
+    # stale `If-Match` returns 412, and the slice's only listed command was
+    # `create_draft` — a route that creates a resource has nothing for `If-Match` to
+    # be stale against. `cancel_draft` was added because of that; it is already in
+    # the milestone at 15_Agent_Implementation_Plan.md:766 and needs optimistic
+    # concurrency for its own sake.
+    #
+    # Slice 3 also reversed SVC-REV-003, which slice 5 still owes: document 04's
+    # UNIQUE(payment_request_id, content_hash) refuses identical content, where the
+    # plan had claimed it must be permitted.
     "SVC-REQ-001": "M5 slice 4 — entered amount and unit are stored as typed",
     "SVC-REQ-002": "M5 slice 4 — the server computes canonical IRR and refuses a mismatch",
     "SVC-REQ-003": "M5 slice 4 — an invalid unit is refused",
     "API-REQ-001": "M5 slice 4 — money crosses the API as string integers",
     "SVC-REV-001": "M5 slice 5 — correction creates revision n+1 and leaves n byte-identical",
     "SVC-REV-002": "M5 slice 5 — history is readable in order and every revision reachable",
-    "SVC-REV-003": "M5 slice 5 — identical content is permitted and hashes equally",
+    # Reversed by slice 3, which read the constraints under the table the plan had only
+    # cited by line range: 04_Database_Schema.md:901 is UNIQUE(payment_request_id,
+    # content_hash), so identical content is refused rather than permitted.
+    "SVC-REV-003": "M5 slice 5 — a byte-identical correction is refused, detected by content_hash",
     "SVC-REV-004": "M5 slice 5 — revision creation is idempotent under a repeated key",
     "CON-REQ-002": "M5 slice 5 — creating a revision requires If-Match on the request",
     "SVC-SUB-001": "M5 slice 6 — submission fills every snapshot column at that instant",

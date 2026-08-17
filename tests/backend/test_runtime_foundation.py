@@ -31,6 +31,12 @@ EXPECTED_TABLES = frozenset(
         "file_objects",
         "idempotency_records",
         "outbox_events",
+        # M5 slice 3. The aggregate and its immutable revisions. They form the
+        # tree's second foreign-key cycle, on the same pattern as bank profiles
+        # and versions: a request points at its current revision and every
+        # revision points back at its request.
+        "payment_requests",
+        "payment_request_revisions",
         "permissions",
         "processing_jobs",
         "role_permissions",
