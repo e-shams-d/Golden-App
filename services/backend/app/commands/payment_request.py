@@ -36,11 +36,13 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.audit.outbox import OutboxMessage, OutboxWriter
 from app.audit.redaction import RedactionPolicy
 from app.audit.registry import (
     CANCEL_PAYMENT_REQUEST,
     CREATE_PAYMENT_REQUEST,
     CREATE_REVISION,
+    SUBMIT_PAYMENT_REQUEST,
     CommandNames,
 )
 from app.audit.writer import AuditActor, AuditContext, AuditEntry, AuditWriter
@@ -49,11 +51,14 @@ from app.core.hashing import unversioned_digest
 from app.core.money import Money
 from app.db.concurrency import compare_and_swap
 from app.db.models.beneficiary import Beneficiary
+from app.db.models.file_object import FileObject
 from app.db.models.payment_request import PaymentRequest, PaymentRequestRevision
 from app.db.models.trader import Trader
 from app.db.unit_of_work import SqlAlchemyUnitOfWork
+from app.files.states import AVAILABLE
 from app.idempotency import IdempotencyResolver
 
+PAYLOAD_VERSION = 1
 METADATA_SCHEMA = "audit.payment_request.lifecycle"
 METADATA_VERSION = 1
 
@@ -110,6 +115,12 @@ class CancelDraft:
     payment_request_id: uuid.UUID
     expected_record_version: int
     reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SubmitRequest:
+    payment_request_id: uuid.UUID
+    expected_record_version: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -294,6 +305,140 @@ def cancel_draft(
     )
 
     return request
+
+
+def submit(
+    command: SubmitRequest,
+    *,
+    session: Session,
+    policy: RedactionPolicy,
+    actor: AuditActor,
+    context: AuditContext,
+    now: datetime,
+) -> PaymentRequest:
+    """Hand a draft to the centre. `draft -> submitted_to_center`.
+
+    **Submission does not write the snapshot; it verifies one.** The plan originally said
+    the columns are filled here, and that is not implementable: a revision cannot be
+    updated, so there is nothing for submission to fill, and creating a revision at
+    submit would produce a byte-identical second row that
+    `UNIQUE(payment_request_id, content_hash)` refuses — a trader could not submit an
+    unmodified draft. The snapshot is taken where content is stated, by `create_draft`
+    and `create_revision`.
+
+    So what is left here is the check that the thing being handed over is complete, and
+    it is worth doing rather than assuming: a request that reaches a reviewer without a
+    beneficiary name is one nobody can act on, and the database's NOT NULL constraints
+    are the only other thing standing behind it.
+
+    The outbox event is the first in this aggregate. Draft creation and cancellation
+    publish nothing — nothing outside the platform acts on a trader opening or abandoning
+    a draft — but submission has a real audience: this is the moment the centre's queue
+    changes, and `05_API_Specification.md:878` requires an event for it.
+    """
+
+    request = session.get(PaymentRequest, command.payment_request_id)
+    if request is None:
+        raise NotFoundError()
+
+    if request.status != DRAFT:
+        raise BusinessRuleViolationError(
+            f"only a draft is submitted; this request is {request.status}. A request "
+            "returned for correction is resubmitted by filing the correction, which "
+            "moves it back to the centre in one step."
+        )
+
+    trader = session.get(Trader, request.trader_id)
+    if trader is None:  # pragma: no cover - the request's FK guarantees it
+        raise NotFoundError()
+    _require_operable(trader)
+
+    revision = session.get(PaymentRequestRevision, request.current_revision_id)
+    if revision is None:
+        raise BusinessRuleViolationError(
+            "this request has no current revision, so there is no content to submit"
+        )
+
+    _require_complete_snapshot(revision)
+    _require_attachment_is_available(session, revision)
+
+    outcome = compare_and_swap(
+        session,
+        PaymentRequest,
+        entity_id=request.id,
+        expected_version=command.expected_record_version,
+        values={"status": SUBMITTED, "submitted_at": now},
+    )
+    session.expire(request)
+
+    _audit(
+        session,
+        policy,
+        SUBMIT_PAYMENT_REQUEST,
+        outcome="success",
+        request_id=request.id,
+        record_version=outcome.new_version,
+        reason=None,
+        actor=actor,
+        context=context,
+        now=now,
+        previous_values={"status": DRAFT},
+        new_values={"status": SUBMITTED, "revision_number": revision.revision_number},
+    )
+    _publish(session, policy, SUBMIT_PAYMENT_REQUEST, request, context, outcome.new_version)
+
+    return request
+
+
+def _require_complete_snapshot(revision: PaymentRequestRevision) -> None:
+    """SVC-SUB-001. Every column document 04 marks required must be populated.
+
+    `beneficiary_national_id_snapshot` is deliberately absent from this list: document 04
+    marks it optional, because not every recipient has one on file, and requiring it here
+    would refuse legitimate requests.
+    """
+
+    missing = [
+        name
+        for name in (
+            "beneficiary_name_snapshot",
+            "beneficiary_iban_snapshot",
+            "amount_irr",
+            "content_hash",
+        )
+        if not getattr(revision, name, None)
+    ]
+    if missing:
+        raise BusinessRuleViolationError(
+            f"the current revision is missing {', '.join(missing)}, so it cannot be "
+            "submitted: a reviewer would receive a request they cannot act on"
+        )
+
+
+def _require_attachment_is_available(session: Session, revision: PaymentRequestRevision) -> None:
+    """SVC-SUB-003. M4's file states carry the meaning; this is the first consumer.
+
+    `available` is the only state that means hashed and scanned clean — M4's migration
+    encodes that in a CHECK. A `pending` attachment has not finished inspection and a
+    `quarantined` one failed it, and submitting either would put a request in front of a
+    reviewer whose evidence might be a malicious file nobody has cleared.
+
+    A missing attachment is fine: document 04 marks the column nullable and not every
+    request has a receipt.
+    """
+
+    if revision.source_attachment_file_id is None:
+        return
+
+    attachment = session.get(FileObject, revision.source_attachment_file_id)
+    if attachment is None:  # pragma: no cover - the FK guarantees it
+        raise NotFoundError()
+
+    if attachment.storage_status != AVAILABLE:
+        raise BusinessRuleViolationError(
+            f"the attached file is {attachment.storage_status}, not available. Only a "
+            "file that has been hashed and scanned clean can be submitted as evidence."
+        )
 
 
 def create_revision(
@@ -581,4 +726,41 @@ def _audit(
         ),
         actor=actor,
         context=context,
+    )
+
+
+def _publish(
+    session: Session,
+    policy: RedactionPolicy,
+    names: CommandNames,
+    request: PaymentRequest,
+    context: AuditContext,
+    version: int,
+) -> None:
+    """One event, in the same transaction as the audit row and the status change.
+
+    The payload carries identifiers and nothing else. A consumer that needs the amount
+    or the beneficiary reads the aggregate; putting them on a queue would widen where a
+    payment destination and a sum live, for no gain — the same reasoning
+    `trader_lifecycle._publish` applies to a phone number.
+    """
+
+    if names.outbox_event_type is None:  # pragma: no cover - only submit publishes
+        return
+
+    OutboxWriter(session, policy).enqueue(
+        OutboxMessage(
+            aggregate_type="payment_request",
+            aggregate_id=request.id,
+            aggregate_version=version,
+            event_type=names.outbox_event_type,
+            payload={
+                "payment_request_id": str(request.id),
+                "trader_id": str(request.trader_id),
+                "request_number": request.request_number,
+            },
+            payload_version=PAYLOAD_VERSION,
+            correlation_id=context.correlation_id,
+            causation_id=context.causation_id,
+        )
     )

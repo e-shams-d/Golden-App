@@ -427,8 +427,23 @@ Submit a draft, and freeze what was submitted.
 ### What it changes
 
 - `app/commands/payment_request.py`: `submit`, `draft → submitted_to_center`.
-- The revision's snapshot columns are filled **from the beneficiary at submission time**,
-  not by reference.
+- The revision's snapshot columns are filled **when the revision is written**, not by
+  reference and **not at submission**.
+
+  **This sentence is corrected from the original, which said "at submission time".** That
+  is not implementable and the reason is the milestone's own central property: a revision
+  cannot be updated, so submission has nothing to fill. Filling it would mean submission
+  creates a revision — and for a draft-then-submit with no edits in between, that second
+  revision would be byte-identical to the first and
+  `UNIQUE(payment_request_id, content_hash)` would refuse it. So the trader would be
+  unable to submit an unmodified draft.
+
+  The snapshot is therefore taken by `create_draft` and `create_revision`, which is where
+  content is stated, and submission verifies it is complete rather than writing it. A
+  trader who edits a beneficiary and wants the new details submitted files a correction,
+  which re-snapshots — and that is the correct behaviour rather than a workaround: the
+  reviewer must see the values the trader last stated, not values that changed underneath
+  the request after they stated them.
 - The attachment is a `file_object`. M4 **already registered** the resolver:
   `app/files/ownership.py:130` maps `payment_request_source` to `uploader_or_internal`,
   "staff, plus the trader who uploaded this exact file". So M5 adds nothing here — it
@@ -443,8 +458,11 @@ Submit a draft, and freeze what was submitted.
 
 ### What proves it
 
-- `SVC-SUB-001` — submission fills every snapshot column from the beneficiary as it is at
-  that instant.
+- `SVC-SUB-001` — the submitted revision carries a **complete** snapshot: every column
+  document 04 marks required is populated and matches the beneficiary as it stood when the
+  revision was written. Submission verifies this rather than filling it, for the reason
+  recorded above, and refuses to submit a revision whose snapshot is incomplete — a
+  request that reaches a reviewer without a beneficiary name is one nobody can act on.
 - `SVC-SUB-002` — **editing the beneficiary afterwards does not change the submitted
   revision.** `15_Agent_Implementation_Plan.md:808`: beneficiary history is not mutated by
   later edits. This is the test that makes a revision evidence rather than a view.

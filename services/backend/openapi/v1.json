@@ -5830,6 +5830,126 @@
         ]
       }
     },
+    "/api/v1/payment-requests/{payment_request_id}/submit": {
+      "post": {
+        "description": "`draft -> submitted_to_center`, under `If-Match`.\n\nNo request body: submission states nothing new. What is being submitted is already\non the current revision, and a body here would invite a caller to send content that\nthe revision does not carry — which is how a request comes to say two things.",
+        "operationId": "submitPaymentRequest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payment_request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Payment Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A domain rule refused the command."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, or not the caller's."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The If-Match value is stale."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is required."
+          }
+        },
+        "summary": "Hand a draft to the centre.",
+        "tags": [
+          "payment-requests"
+        ]
+      }
+    },
     "/api/v1/roles": {
       "get": {
         "operationId": "listRoles",

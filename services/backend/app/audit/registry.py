@@ -222,6 +222,18 @@ CREATE_PAYMENT_REQUEST = CommandNames(
     catalogued=True,
 )
 
+# The first command in this aggregate that publishes. Draft creation and cancellation
+# carry no outbox event — nothing outside the platform acts on a trader opening or
+# abandoning a draft — but submission changes the centre's queue, and
+# `05_API_Specification.md:878` requires an event for it. Both names are catalogued:
+# `payment_request.submitted` in `audit_actions` and `PaymentRequestSubmitted` in the
+# outbox list.
+SUBMIT_PAYMENT_REQUEST = CommandNames(
+    audit_action="payment_request.submitted",
+    outbox_event_type="PaymentRequestSubmitted",
+    catalogued=True,
+)
+
 CREATE_REVISION = CommandNames(
     audit_action="payment_request.revision_created",
     outbox_event_type=None,
@@ -388,4 +400,5 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     CREATE_PAYMENT_REQUEST,
     CANCEL_PAYMENT_REQUEST,
     CREATE_REVISION,
+    SUBMIT_PAYMENT_REQUEST,
 )

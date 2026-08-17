@@ -353,6 +353,63 @@ class RevisionHistory(BaseModel):
 
 
 @router.post(
+    "/{payment_request_id}/submit",
+    response_model=PaymentRequestResponse,
+    operation_id="submitPaymentRequest",
+    summary="Hand a draft to the centre.",
+    responses=WRITE_RESPONSES,
+)
+def submit(
+    payment_request_id: uuid.UUID,
+    response: Response,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    scope: Annotated[
+        uuid.UUID | None,
+        owned_or_permitted("payment_request.submit", "payment_request.create_internal"),
+    ],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> PaymentRequestResponse:
+    """`draft -> submitted_to_center`, under `If-Match`.
+
+    No request body: submission states nothing new. What is being submitted is already
+    on the current revision, and a body here would invite a caller to send content that
+    the revision does not carry — which is how a request comes to say two things.
+    """
+
+    if if_match is None:
+        raise PreconditionRequiredError("If-Match")
+    expected = _parse_record_version(if_match)
+
+    now = utc_now()
+    with runtime.uow_factory() as uow:
+        record = uow.session.get(PaymentRequest, payment_request_id)
+        if scope is None:
+            if record is None:
+                raise NotFoundError()
+        else:
+            owner = record.trader_id if record is not None else None
+            require_owned(record, owner, actor)
+
+        updated = commands.submit(
+            commands.SubmitRequest(
+                payment_request_id=payment_request_id,
+                expected_record_version=expected,
+            ),
+            session=uow.session,
+            policy=REQUEST_REDACTION,
+            actor=_audit_actor(actor),
+            context=AuditContext(request_id=get_request_id()),
+            now=now,
+        )
+        rendered = _render(updated)
+        uow.commit()
+
+    response.headers["ETag"] = f'"rv-{rendered.record_version}"'
+    return rendered
+
+
+@router.post(
     "/{payment_request_id}/revisions",
     response_model=RevisionCreated,
     status_code=201,

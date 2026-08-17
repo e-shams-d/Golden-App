@@ -367,11 +367,33 @@ PENDING: dict[str, str] = {
     # `return_for_correction` — slice 7 — can send it back. Until that exists there is
     # no route to revision 3 at all. Slice 7 should replace the reset with the real
     # command; a test still writing status by hand afterwards has stopped exercising it.
-    "SVC-SUB-001": "M5 slice 6 — submission fills every snapshot column at that instant",
-    "SVC-SUB-002": "M5 slice 6 — editing the beneficiary afterwards does not change the revision",
-    "SVC-SUB-003": "M5 slice 6 — an attachment that is not `available` cannot be submitted",
-    "SEC-REQ-002": "M5 slice 6 — a trader cannot submit another trader's request",
-    "AUD-REQ-001": "M5 slice 6 — submission audits and emits in the command's transaction",
+    # Slice 6 is merged. All five are discharged by
+    # tests/integration/test_payment_request_submission.py.
+    #
+    # **The plan's SVC-SUB-001 was not implementable as written** and slice 6 corrected
+    # it. It said submission fills the snapshot columns from the beneficiary at that
+    # instant. A revision cannot be updated, so submission has nothing to fill — and
+    # filling it would mean submission creates a revision, which for a draft-then-submit
+    # with no edits would be byte-identical to the first and refused by
+    # UNIQUE(payment_request_id, content_hash). A trader could not submit an unmodified
+    # draft. The snapshot is taken where content is stated, by create_draft and
+    # create_revision, and submission verifies it is complete.
+    #
+    # That is the third plan correction this milestone: DOC-CONFLICT-005's real shape,
+    # SVC-REV-003 reversed by document 04's uniqueness constraint, and this. All three
+    # came from reading what a cited line actually says rather than from a gate.
+    #
+    # SVC-SUB-002 has two tests on purpose. One reads the table and proves the row did
+    # not move; the other reads the history endpoint and proves the *reader* does not
+    # see the new values either. A history that joined to `beneficiaries` instead of
+    # reading the snapshot columns would pass the first and fail the second.
+    #
+    # AUD-REQ-001 is the first outbox event in this aggregate. Draft creation and
+    # cancellation publish nothing — nothing outside the platform acts on a trader
+    # opening or abandoning a draft — and submission is the moment the centre's queue
+    # changes. The payload carries identifiers only: a consumer that needs the amount or
+    # the beneficiary reads the aggregate rather than having a payment destination put
+    # on a queue.
     "SVC-REVIEW-001": "M5 slice 7 — accountant review moves the request through its states",
     "SVC-REVIEW-002": "M5 slice 7 — return for correction, and what the trader may then do",
     "SVC-REVIEW-003": "M5 slice 7 — marking eligible for batching is an accountant action",

@@ -43,6 +43,8 @@ describe("generated M1 OpenAPI contract", () => {
     expectTypeOf<HasRequestCollection>().toEqualTypeOf<true>();
     expectTypeOf<GeneratedApiOperations["createPaymentRequestDraft"]>().toBeObject();
     expectTypeOf<GeneratedApiOperations["cancelPaymentRequest"]>().toBeObject();
+    // M5 slice 6.
+    expectTypeOf<GeneratedApiOperations["submitPaymentRequest"]>().toBeObject();
   });
 
   it("publishes the correction path now that slice 5 has built it", () => {
@@ -61,19 +63,13 @@ describe("generated M1 OpenAPI contract", () => {
   });
 
   it("still does not publish the endpoints M5 has not built", () => {
-    // Submission is slice 6 and accountant review is slice 7; batching is M6. Their
-    // request and response shapes are not settled, so a generated client must not be
-    // able to call them.
-    type HasSubmit =
-      "/api/v1/payment-requests/{payment_request_id}/submit" extends keyof GeneratedApiPaths
-        ? true
-        : false;
+    // Accountant review is slice 7 and batching is M6. Their request and response
+    // shapes are not settled, so a generated client must not be able to call them.
     type HasReview =
       "/api/v1/payment-requests/{payment_request_id}/review" extends keyof GeneratedApiPaths
         ? true
         : false;
 
-    expectTypeOf<HasSubmit>().toEqualTypeOf<false>();
     expectTypeOf<HasReview>().toEqualTypeOf<false>();
   });
 

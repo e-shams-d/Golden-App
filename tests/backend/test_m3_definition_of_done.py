@@ -182,6 +182,8 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # of the seven mandatory IDOR cases.
     ("POST", "/api/v1/payment-requests/{payment_request_id}/revisions"): DUAL,
     ("GET", "/api/v1/payment-requests/{payment_request_id}/revisions"): DUAL,
+    # M5 slice 6. Submission.
+    ("POST", "/api/v1/payment-requests/{payment_request_id}/submit"): DUAL,
     # PUBLIC by necessity rather than by choice, which is why it is not SESSION: an
     # account in `recovery_required` is refused every action except recovery, so it holds
     # no session to classify. The temporary credential an administrator set is what stands
@@ -411,6 +413,12 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ),
     ("GET", "/api/v1/payment-requests/{payment_request_id}/revisions", "permission"): (
         "test_an_admin_without_the_revision_permission_is_refused"
+    ),
+    ("POST", "/api/v1/payment-requests/{payment_request_id}/submit", "ownership"): (
+        "test_a_trader_cannot_submit_another_traders_request"
+    ),
+    ("POST", "/api/v1/payment-requests/{payment_request_id}/submit", "permission"): (
+        "test_an_admin_without_the_submit_permission_is_refused"
     ),
 }
 

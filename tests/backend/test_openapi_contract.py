@@ -159,6 +159,8 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # answerable. `05_API_Specification.md:1136` and `:1142`.
         "createPaymentRequestRevision",
         "listPaymentRequestRevisions",
+        # M5 slice 6.
+        "submitPaymentRequest",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas
