@@ -130,6 +130,21 @@ class EnteredAmountResponse(BaseModel):
 
 
 class DraftRevisionResponse(BaseModel):
+    """The nested shape document 05 specifies, **plus** the flat fields slice 3 emitted.
+
+    The flat pair is redundant and deliberately kept. Removing a required response
+    property is a breaking change, the oasdiff gate refuses one, and its waiver process
+    is an unresolved `TODO(governance)` in `.github/workflows/m1-verify.yml:182` — left
+    open through M2 and M3. The M2 plan records the strategy that follows from that:
+    while no waiver exists, changes stay **additive**.
+
+    So slice 4 adds `entered_amount` and keeps `entered_amount_value` and
+    `entered_amount_unit` carrying the same values. Inventing a waiver would decide a
+    governance question the owner has twice left open; carrying two spellings of one
+    fact until they can be removed in a deliberate contract-version bump is the cost of
+    not deciding it here.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     id: uuid.UUID
@@ -138,6 +153,10 @@ class DraftRevisionResponse(BaseModel):
     beneficiary_iban_snapshot: str
     amount_irr: str
     entered_amount: EnteredAmountResponse | None
+    # Deprecated in favour of `entered_amount`. Same values, kept so the change is
+    # additive; remove both in the release that bumps the contract version.
+    entered_amount_value: str | None
+    entered_amount_unit: str | None
     description: str | None
     content_hash: str
 
@@ -193,10 +212,28 @@ class AmountRequest(BaseModel):
 
 
 class CreateDraftRequest(BaseModel):
+    """Either the nested `amount` object or slice 3's flat fields. Exactly one.
+
+    `amount` is **optional** for the same reason the response keeps its flat pair:
+    making it required is a breaking request change, the oasdiff gate refuses one, and
+    its waiver is an unresolved `TODO(governance)`. So the nested shape is added rather
+    than substituted.
+
+    "Exactly one" is enforced in `_draft_amount` rather than left to precedence. Two
+    ways to state the amount is already one more than the money contract wants; two ways
+    that could *disagree*, with a rule about which wins, is how a request comes to mean
+    two things. A caller that sends both is refused.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     beneficiary_id: uuid.UUID
-    amount: AmountRequest
+    amount: AmountRequest | None = None
+    # Deprecated, and accepted only so slice 3's shape keeps working. Same validation as
+    # the nested form: string integers, and the server computes IRR.
+    amount_irr: str | None = Field(default=None, pattern=r"^[1-9][0-9]{0,18}$")
+    entered_amount_value: str | None = Field(default=None, pattern=r"^[1-9][0-9]{0,18}$")
+    entered_amount_unit: str | None = Field(default=None, pattern=r"^(IRR|TOMAN)$")
     description: str | None = None
     source_attachment_file_id: uuid.UUID | None = None
     # Read only for an internal actor, as on the beneficiary create. For a trader the
@@ -237,7 +274,7 @@ def create_draft(
             commands.CreateDraft(
                 trader_id=owner,
                 beneficiary_id=payload.beneficiary_id,
-                amount=_money(payload.amount),
+                amount=_draft_amount(payload),
                 description=payload.description,
                 source_attachment_file_id=payload.source_attachment_file_id,
             ),
@@ -540,6 +577,47 @@ def list_revisions(
     return rendered
 
 
+def _draft_amount(payload: CreateDraftRequest) -> Money:
+    """One `Money` from whichever shape the caller used, and never from both.
+
+    The flat trio is slice 3's, kept accepted because removing it would be a breaking
+    request change and the oasdiff waiver is an unresolved `TODO(governance)`. Both paths
+    end in the same `_money`, so the server computes IRR either way and a client-supplied
+    figure is verified rather than trusted in both.
+
+    Sending both is refused rather than resolved by precedence. A rule about which wins
+    is a rule somebody has to know, and a caller who sends `amount` and a contradicting
+    `entered_amount_value` has already lost track of what they are asking for.
+    """
+
+    flat = (payload.entered_amount_value, payload.entered_amount_unit, payload.amount_irr)
+    sent_flat = any(field is not None for field in flat)
+
+    if payload.amount is not None and sent_flat:
+        raise AmountUnitMismatchError(
+            "send either `amount` or the deprecated `entered_amount_value`/"
+            "`entered_amount_unit`/`amount_irr` fields, not both. The flat fields are "
+            "kept only for compatibility and will be removed."
+        )
+
+    if payload.amount is not None:
+        return _money(payload.amount)
+
+    if payload.entered_amount_value is None or payload.entered_amount_unit is None:
+        raise AmountUnitMismatchError(
+            "an amount is required: send `amount` as {value, unit}, both as base-10 "
+            "integer strings."
+        )
+
+    return _money(
+        AmountRequest(
+            value=payload.entered_amount_value,
+            unit=payload.entered_amount_unit,
+            amount_irr=payload.amount_irr,
+        )
+    )
+
+
 def _money(amount: AmountRequest) -> Money:
     """Turn the wire shape into one checked `Money`.
 
@@ -592,6 +670,10 @@ def _render_revision(revision: PaymentRequestRevision) -> DraftRevisionResponse:
         beneficiary_iban_snapshot=revision.beneficiary_iban_snapshot,
         amount_irr=str(revision.amount_irr),
         entered_amount=entered,
+        # The deprecated flat pair, from the same source as the nested object so the two
+        # cannot disagree. Rendered from `entered` rather than re-read, for that reason.
+        entered_amount_value=entered.value if entered else None,
+        entered_amount_unit=entered.unit if entered else None,
         description=revision.description,
         content_hash=revision.content_hash,
     )

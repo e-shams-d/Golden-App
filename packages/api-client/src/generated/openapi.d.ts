@@ -178,7 +178,7 @@ export interface components {
     "CreateAccountRequest": { account_role: string; display_name: string; normalized_iban?: string | null; profile_id: string };
     "CreateAdminUserRequest": { email?: string | null; full_name: string; password: string; phone_number?: string | null; role_codes: Array<string>; username: string };
     "CreateBeneficiaryRequest": { full_name: string; iban: string; national_id?: string | null; notes_internal?: string | null; phone_number?: string | null; trader_id?: string | null };
-    "CreateDraftRequest": { amount: components["schemas"]["AmountRequest"]; beneficiary_id: string; description?: string | null; source_attachment_file_id?: string | null; trader_id?: string | null };
+    "CreateDraftRequest": { amount?: components["schemas"]["AmountRequest"] | null; amount_irr?: string | null; beneficiary_id: string; description?: string | null; entered_amount_unit?: string | null; entered_amount_value?: string | null; source_attachment_file_id?: string | null; trader_id?: string | null };
     "CreateProfileRequest": { after_cutoff_transfer_limit_irr?: number | null; code: string; default_transfer_limit_irr?: number | null; display_name: string; required_fields?: { [key: string]: unknown }; rules?: { [key: string]: unknown }; splitting_enabled?: boolean; supports_description_field?: boolean };
     "CreateRevisionRequest": { amount: components["schemas"]["AmountRequest"]; beneficiary_id: string; description?: string | null; revision_reason?: string | null; source_attachment_file_id?: string | null };
     "DeactivateBeneficiaryRequest": { reason?: string | null };
@@ -186,7 +186,7 @@ export interface components {
     "DependenciesResponse": { dependencies: { [key: string]: components["schemas"]["DependencyStatus"] }; scan_policy: string; status: "ok" | "degraded" };
     "DependencyStatus": { error_code?: string | null; last_success_at?: string | null; latency_ms: number; required: boolean; status: "ok" | "unavailable" };
     "DraftCreated": { request: components["schemas"]["PaymentRequestResponse"]; revision: components["schemas"]["DraftRevisionResponse"] };
-    "DraftRevisionResponse": { amount_irr: string; beneficiary_iban_snapshot: string; beneficiary_name_snapshot: string; content_hash: string; description: string | null; entered_amount: components["schemas"]["EnteredAmountResponse"] | null; id: string; revision_number: number };
+    "DraftRevisionResponse": { amount_irr: string; beneficiary_iban_snapshot: string; beneficiary_name_snapshot: string; content_hash: string; description: string | null; entered_amount: components["schemas"]["EnteredAmountResponse"] | null; entered_amount_unit: string | null; entered_amount_value: string | null; id: string; revision_number: number };
     "DuplicateWarningResponse": { beneficiary_id: string; full_name: string; matched_on: string };
     "EnteredAmountResponse": { unit: string; value: string };
     "ErrorBody": { code: string; details: Array<components["schemas"]["ErrorDetail"]>; message: string; request_id: string };

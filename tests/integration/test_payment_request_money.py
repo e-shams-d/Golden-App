@@ -327,6 +327,105 @@ def test_no_conversion_factor_is_accepted_from_the_client(world: dict[str, Any])
         assert refused.status_code == 422, f"{field} was accepted or ignored: {refused.text}"
 
 
+def test_slice_threes_flat_shape_still_works(world: dict[str, Any]) -> None:
+    """The compatibility path, which exists because of a gate rather than a requirement.
+
+    Making `amount` required and dropping the flat fields is a breaking request change.
+    The oasdiff gate refuses one and its waiver is an unresolved `TODO(governance)` in
+    `.github/workflows/m1-verify.yml:182`, left open through M2 and M3 — and the M2 plan
+    records the strategy that follows: while no waiver exists, changes stay additive.
+
+    So the flat trio is still accepted, and it must go through the same conversion. A
+    compatibility path that skipped the checks would be the shape an attacker uses.
+    """
+
+    client = world["client"]
+    token = client.cookies.get(TRADER_CSRF_COOKIE)
+
+    created = client.post(
+        "/api/v1/payment-requests",
+        json={
+            "beneficiary_id": str(world["beneficiary"]),
+            "entered_amount_value": "500",
+            "entered_amount_unit": "TOMAN",
+        },
+        headers={CSRF_HEADER: token},
+    )
+    assert created.status_code == 201, created.text
+    revision = created.json()["revision"]
+
+    assert revision["amount_irr"] == "5000"
+    assert revision["entered_amount"] == {"value": "500", "unit": "TOMAN"}
+    # And the deprecated response fields carry the same values, from the same source.
+    assert revision["entered_amount_value"] == "500"
+    assert revision["entered_amount_unit"] == "TOMAN"
+
+
+def test_the_flat_path_verifies_a_supplied_amount_irr_too(world: dict[str, Any]) -> None:
+    """The compatibility path is not a way around the three-way check."""
+
+    client = world["client"]
+    token = client.cookies.get(TRADER_CSRF_COOKIE)
+
+    refused = client.post(
+        "/api/v1/payment-requests",
+        json={
+            "beneficiary_id": str(world["beneficiary"]),
+            "entered_amount_value": "500",
+            "entered_amount_unit": "TOMAN",
+            "amount_irr": "500",
+        },
+        headers={CSRF_HEADER: token},
+    )
+    assert refused.status_code == 400, refused.text
+    assert refused.json()["error"]["code"] == "AMOUNT_UNIT_MISMATCH"
+
+
+def test_sending_both_shapes_is_refused(world: dict[str, Any]) -> None:
+    """Refused rather than resolved by precedence.
+
+    A rule about which shape wins is a rule somebody has to know, and a caller sending
+    `amount` alongside a contradicting `entered_amount_value` has already lost track of
+    what they are asking for. Answering with one of them would pick a number on their
+    behalf.
+    """
+
+    client = world["client"]
+    token = client.cookies.get(TRADER_CSRF_COOKIE)
+
+    refused = client.post(
+        "/api/v1/payment-requests",
+        json={
+            "beneficiary_id": str(world["beneficiary"]),
+            "amount": {"value": "500", "unit": "TOMAN"},
+            "entered_amount_value": "900",
+            "entered_amount_unit": "TOMAN",
+        },
+        headers={CSRF_HEADER: token},
+    )
+    assert refused.status_code == 400, refused.text
+    assert refused.json()["error"]["code"] == "AMOUNT_UNIT_MISMATCH"
+
+
+def test_an_amount_is_required_in_one_shape_or_the_other(world: dict[str, Any]) -> None:
+    """`amount` is optional in the schema and not optional in effect.
+
+    Making it schema-optional was forced by the additive rule; it must not become a way
+    to create a request with no amount at all.
+    """
+
+    client = world["client"]
+    token = client.cookies.get(TRADER_CSRF_COOKIE)
+
+    refused = client.post(
+        "/api/v1/payment-requests",
+        json={"beneficiary_id": str(world["beneficiary"])},
+        headers={CSRF_HEADER: token},
+    )
+    assert refused.status_code == 400, refused.text
+    assert refused.json()["error"]["code"] == "AMOUNT_UNIT_MISMATCH"
+
+
 def test_the_conversion_is_not_applied_twice(world: dict[str, Any]) -> None:
     """SVC-REQ-001, the arithmetic error `to_rial`'s docstring names.
 

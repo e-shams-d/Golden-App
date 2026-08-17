@@ -749,9 +749,29 @@
       },
       "CreateDraftRequest": {
         "additionalProperties": false,
+        "description": "Either the nested `amount` object or slice 3's flat fields. Exactly one.\n\n`amount` is **optional** for the same reason the response keeps its flat pair:\nmaking it required is a breaking request change, the oasdiff gate refuses one, and\nits waiver is an unresolved `TODO(governance)`. So the nested shape is added rather\nthan substituted.\n\n\"Exactly one\" is enforced in `_draft_amount` rather than left to precedence. Two\nways to state the amount is already one more than the money contract wants; two ways\nthat could *disagree*, with a rule about which wins, is how a request comes to mean\ntwo things. A caller that sends both is refused.",
         "properties": {
           "amount": {
-            "$ref": "#/components/schemas/AmountRequest"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AmountRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "amount_irr": {
+            "anyOf": [
+              {
+                "pattern": "^[1-9][0-9]{0,18}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Irr"
           },
           "beneficiary_id": {
             "format": "uuid",
@@ -768,6 +788,30 @@
               }
             ],
             "title": "Description"
+          },
+          "entered_amount_unit": {
+            "anyOf": [
+              {
+                "pattern": "^(IRR|TOMAN)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entered Amount Unit"
+          },
+          "entered_amount_value": {
+            "anyOf": [
+              {
+                "pattern": "^[1-9][0-9]{0,18}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entered Amount Value"
           },
           "source_attachment_file_id": {
             "anyOf": [
@@ -795,8 +839,7 @@
           }
         },
         "required": [
-          "beneficiary_id",
-          "amount"
+          "beneficiary_id"
         ],
         "title": "CreateDraftRequest",
         "type": "object"
@@ -1063,6 +1106,7 @@
       },
       "DraftRevisionResponse": {
         "additionalProperties": false,
+        "description": "The nested shape document 05 specifies, **plus** the flat fields slice 3 emitted.\n\nThe flat pair is redundant and deliberately kept. Removing a required response\nproperty is a breaking change, the oasdiff gate refuses one, and its waiver process\nis an unresolved `TODO(governance)` in `.github/workflows/m1-verify.yml:182` — left\nopen through M2 and M3. The M2 plan records the strategy that follows from that:\nwhile no waiver exists, changes stay **additive**.\n\nSo slice 4 adds `entered_amount` and keeps `entered_amount_value` and\n`entered_amount_unit` carrying the same values. Inventing a waiver would decide a\ngovernance question the owner has twice left open; carrying two spellings of one\nfact until they can be removed in a deliberate contract-version bump is the cost of\nnot deciding it here.",
         "properties": {
           "amount_irr": {
             "title": "Amount Irr",
@@ -1101,6 +1145,28 @@
               }
             ]
           },
+          "entered_amount_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entered Amount Unit"
+          },
+          "entered_amount_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entered Amount Value"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -1118,6 +1184,8 @@
           "beneficiary_iban_snapshot",
           "amount_irr",
           "entered_amount",
+          "entered_amount_value",
+          "entered_amount_unit",
           "description",
           "content_hash"
         ],
