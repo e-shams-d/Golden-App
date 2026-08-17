@@ -32,6 +32,7 @@ Covers: SEC-IDENT-001.
 from __future__ import annotations
 
 import re
+import unicodedata
 
 # Iranian mobile numbers are `9` followed by nine digits, on operator prefixes
 # 90-99. Written locally with a leading `0`, internationally as +98.
@@ -51,6 +52,29 @@ _SEPARATORS = re.compile(
 
 _PERSIAN_DIGITS = {ord("۰") + index: ord("0") + index for index in range(10)}
 _ARABIC_DIGITS = {ord("٠") + index: ord("0") + index for index in range(10)}
+
+# Iranian IBAN, as the database stores it. `app/db/models/bank.py` holds the same
+# expression as `IBAN_PATTERN` for the CHECK constraint, and
+# `tests/backend/test_identifiers.py` asserts the two agree — the convention this
+# repository already uses for `ACCOUNT_STATUSES_SQL` and `BENEFICIARY_STATUSES_SQL`.
+# Importing the model here instead would pull SQLAlchemy into a module that exists
+# to turn strings into strings.
+_IBAN = re.compile("^IR[0-9]{24}$")
+
+# Local copies of `app/core/hashing.py`'s folding tables. Copied rather than
+# imported for the reason `normalize_person_name` records: that module's rules
+# serve content hashing and may change for content-hashing reasons, while this
+# result is written into a column. `tests/backend/test_identifiers.py` asserts they
+# agree today, so a divergence is a decision somebody makes rather than one that
+# happens.
+_ARABIC_TO_PERSIAN = {
+    "ي": "ی",  # ARABIC YEH -> FARSI YEH
+    "ى": "ی",  # ALEF MAKSURA -> FARSI YEH
+    "ك": "ک",  # ARABIC KAF -> KEHEH
+    "ۀ": "ه",  # HEH WITH YEH ABOVE -> HEH
+}
+
+_ZERO_WIDTH = {"‌", "‍", "‎", "‏", "﻿"}
 
 # The stored form. E.164 because it is unambiguous, because it is what any
 # messaging provider ADR-009 might later choose will expect, and because a stored
@@ -126,3 +150,61 @@ def normalize_username(value: str) -> str:
     if not normalized:
         raise InvalidIdentifier("the username is empty after normalisation")
     return normalized
+
+
+def normalize_iban(value: str) -> str:
+    """Return the stored form of an Iranian IBAN: `IR` then twenty-four digits.
+
+    The same reasoning as `normalize_mobile`, applied to a payment destination
+    rather than a login. A trader typing into a Persian interface produces Persian
+    digits, and banks print IBANs in four-character groups, so the ordinary input
+    has both non-ASCII digits and spaces in it. Storing what was typed would mean
+    two spellings of one account, and the duplicate warning this feeds would then
+    miss the duplicate it exists to find.
+
+    `iban` keeps what the trader typed, for display. This is what anything
+    compares.
+    """
+
+    folded = _SEPARATORS.sub("", fold_digits(value)).strip().upper()
+
+    if not folded:
+        raise InvalidIdentifier("the IBAN is empty after normalisation")
+
+    if not _IBAN.match(folded):
+        raise InvalidIdentifier(
+            "not an Iranian IBAN: expected IR followed by twenty-four digits"
+        )
+
+    return folded
+
+
+def normalize_person_name(value: str) -> str:
+    """A name folded to one spelling, for search and duplicate detection.
+
+    Deliberately **not** `app.core.hashing.normalise_text`, which does almost the
+    same thing. That function exists to make two spellings of a name hash alike,
+    and its rules may change for hashing reasons. This result is *stored* in
+    `beneficiaries.normalized_name`, so a change there would leave every existing
+    row folded by the old rule and every new one by the new rule — and the
+    duplicate warning would quietly stop matching rows it used to match. Two
+    functions that agree today and can diverge deliberately beat one that couples
+    a stored column to a content-hashing decision.
+
+    The Arabic-to-Persian letter folding is the part that earns its place in Iran:
+    `ي` and `ی`, `ك` and `ک` are different code points that render nearly
+    identically, and the same person's name arrives spelled both ways depending on
+    the keyboard.
+
+    Case-folded, because `Ali Example` and `ali example` are one person. Returns
+    an empty string rather than raising: a name that folds to nothing is a
+    detection helper with nothing to say, not an invalid identity, and
+    `full_name` carries the real value.
+    """
+
+    folded = unicodedata.normalize("NFC", value)
+    folded = "".join(character for character in folded if character not in _ZERO_WIDTH)
+    folded = fold_digits(folded)
+    for source, target in _ARABIC_TO_PERSIAN.items():
+        folded = folded.replace(source, target)
+    return " ".join(folded.split()).casefold()
