@@ -190,6 +190,18 @@ _NOISE = frozenset(
         "where", "and", "or", "not", "is", "null", "true", "false",
         "text", "character", "varying", "timestamp", "with", "time", "zone",
         "boolean", "uuid", "bigint", "integer", "numeric", "citext",
+        # M5 slice 3. PostgreSQL stores `status IN ('a','b')` as
+        # `status = ANY (ARRAY['a','b'])`, so a document that writes `IN` and a database
+        # that renders `ANY`/`ARRAY` describe the same rows in different spelling — the
+        # rendering difference this token-set comparison exists to tolerate, per the note
+        # at the top of this file.
+        #
+        # `idx_payment_requests_queue` is the first partial index in the tree whose
+        # predicate uses `IN`; every earlier one compares a single value, so the
+        # divergence could not appear until now. The column and all six literals still
+        # compare exactly, which is what catches a differently-scoped index — dropping
+        # the operator spelling leaves that intact.
+        "in", "any", "array",
     }
 )
 

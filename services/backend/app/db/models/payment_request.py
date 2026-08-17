@@ -187,12 +187,37 @@ class PaymentRequest(Base):
             initially="DEFERRED",
             use_alter=True,
         ),
-        # Doc 04:856-861 names both indexes.
+        # Doc 04:856-861 names both of these.
         Index("idx_payment_requests_trader_status", "trader_id", "status", "created_at"),
         Index(
             "idx_payment_requests_queue",
             "status",
             "submitted_at",
+            postgresql_where=(
+                "status IN ('submitted_to_center','under_accountant_review',"
+                "'needs_trader_correction','eligible_for_batching',"
+                "'retry_required','trader_disputed')"
+            ),
+        ),
+        # And doc 04:1648-1652, in section 18.1, names a **third** — with the same
+        # predicate as the one above and `created_at` added as a third key column.
+        #
+        # It is redundant on its face: the leading columns match, so this index answers
+        # every query the previous one does. Creating both means every insert and status
+        # change maintains two partial indexes for one read pattern.
+        #
+        # Built as specified anyway. Dropping a schema document's index is a performance
+        # judgement, and this repository already refuses performance claims without
+        # evidence — `PERF-QUEUE-001` is a recorded gap precisely because a latency figure
+        # without a data volume and an environment is not acceptable evidence. There is no
+        # production traffic to measure, so the deviation would rest on my reading of a
+        # query plan that nobody has run. Flagged for the owner instead; consolidating
+        # the two is a one-line migration whenever somebody has the measurement.
+        Index(
+            "idx_payment_request_accountant_queue",
+            "status",
+            "submitted_at",
+            "created_at",
             postgresql_where=(
                 "status IN ('submitted_to_center','under_accountant_review',"
                 "'needs_trader_correction','eligible_for_batching',"

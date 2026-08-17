@@ -261,6 +261,17 @@ def upgrade() -> None:
         ["status", "submitted_at"],
         postgresql_where=sa.text(f"status IN ({QUEUE_STATUSES_SQL})"),
     )
+    # Document 04 states a third index in section 18.1 (`:1648-1652`), same predicate
+    # with `created_at` appended. Redundant beside the one above — the leading columns
+    # match, so it answers every query that one does — and created as specified anyway,
+    # because dropping it is a performance judgement and there is nothing to measure.
+    # See the note on the model's `__table_args__`.
+    op.create_index(
+        "idx_payment_request_accountant_queue",
+        "payment_requests",
+        ["status", "submitted_at", "created_at"],
+        postgresql_where=sa.text(f"status IN ({QUEUE_STATUSES_SQL})"),
+    )
 
     bind = op.get_bind()
     for role in _runtime_roles():
@@ -272,6 +283,7 @@ def downgrade() -> None:
     op.drop_constraint(
         op.f("fk_request_current_revision"), "payment_requests", type_="foreignkey"
     )
+    op.drop_index("idx_payment_request_accountant_queue", table_name="payment_requests")
     op.drop_index("idx_payment_requests_queue", table_name="payment_requests")
     op.drop_index("idx_payment_requests_trader_status", table_name="payment_requests")
     op.drop_table("payment_request_revisions")
