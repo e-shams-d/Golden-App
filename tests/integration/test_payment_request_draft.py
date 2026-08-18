@@ -150,9 +150,21 @@ def csrf(client: Any) -> dict[str, str]:
 
 
 def open_draft(client: Any, beneficiary: uuid.UUID, **extra: Any) -> Any:
+    """The nested `amount` object document 05 specifies, with string integers.
+
+    Slice 4 moved the shape: `amount_irr` used to be a flat field the client sent and
+    the server stored. It is now derived from the entered pair, and a client-supplied
+    figure is verified rather than trusted. `tests/integration/test_payment_request_money.py`
+    owns that behaviour; this helper only needs a valid amount.
+    """
+
     return client.post(
         "/api/v1/payment-requests",
-        json={"beneficiary_id": str(beneficiary), "amount_irr": "5000000", **extra},
+        json={
+            "beneficiary_id": str(beneficiary),
+            "amount": {"value": "500000", "unit": "TOMAN"},
+            **extra,
+        },
         headers=csrf(client),
     )
 
@@ -192,26 +204,21 @@ def test_a_draft_is_a_request_and_its_first_revision(world: dict[str, Any]) -> N
 def test_money_crosses_the_api_as_a_string(world: dict[str, Any]) -> None:
     """`15_Agent_Implementation_Plan.md:800`.
 
-    Slice 4 owns the conversion; this is the contract half, and it belongs here
-    because the response schema is set by this slice. A JSON number would be a float
-    in most clients, and a float is not a currency.
+    Slice 4 owns the conversion and its refusals; this is the contract half, kept
+    here because the response schema is set by this slice. A JSON number would be a
+    float in most clients, and a float is not a currency.
     """
 
     client = world["client"]
     sign_in_trader(client, "ok")
 
-    created = open_draft(
-        client,
-        world["beneficiaries"]["ok"],
-        entered_amount_value="500",
-        entered_amount_unit="TOMAN",
-    )
+    created = open_draft(client, world["beneficiaries"]["ok"])
     assert created.status_code == 201, created.text
     revision = created.json()["revision"]
 
     assert isinstance(revision["amount_irr"], str)
-    assert isinstance(revision["entered_amount_value"], str)
-    assert revision["entered_amount_unit"] == "TOMAN"
+    assert isinstance(revision["entered_amount"]["value"], str)
+    assert revision["entered_amount"]["unit"] == "TOMAN"
 
 
 @pytest.mark.parametrize("trader", ["pending", "suspended"])
@@ -301,7 +308,7 @@ def test_an_admin_without_the_request_permission_is_refused(world: dict[str, Any
         "/api/v1/payment-requests",
         json={
             "beneficiary_id": str(world["beneficiaries"]["ok"]),
-            "amount_irr": "1000",
+            "amount": {"value": "1000", "unit": "IRR"},
             "trader_id": str(world["traders"]["ok"]),
         },
         headers=csrf(client),
@@ -320,7 +327,7 @@ def test_an_admin_without_the_request_permission_is_refused(world: dict[str, Any
         "/api/v1/payment-requests",
         json={
             "beneficiary_id": str(world["beneficiaries"]["ok"]),
-            "amount_irr": "1000",
+            "amount": {"value": "1000", "unit": "IRR"},
             "trader_id": str(world["traders"]["ok"]),
         },
         headers=csrf(client),

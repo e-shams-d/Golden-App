@@ -244,6 +244,40 @@
         "title": "AmendAdminUserRequest",
         "type": "object"
       },
+      "AmountRequest": {
+        "additionalProperties": false,
+        "description": "What was typed, and optionally what the client thinks it is worth.\n\nThe nested shape is document 05's (`05_API_Specification.md:1085-1091`). The\n**string** encoding is the approved money contract's — rule 8, \"API monetary\nvalues are base-10 integer strings\", and rule 9 forbids JavaScript Number for\nfinancial amounts. Document 05's example writes them as JSON numbers, which is\nDOC-CONFLICT-050; the contract wins because a JSON number is a float in most\nclients and loses precision above 2^53.\n\n`amount_irr` is **optional, and verified when present**. Requiring it would push\nthe conversion into the client, which `15_Agent_Implementation_Plan.md:802`\nforbids in as many words. Refusing it outright would waste M2's three-way check\nand would reject the exact payload document 05 documents. So the server always\ncomputes, and a client that offers a figure has it compared rather than trusted.",
+        "properties": {
+          "amount_irr": {
+            "anyOf": [
+              {
+                "pattern": "^[1-9][0-9]{0,18}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Irr"
+          },
+          "unit": {
+            "pattern": "^(IRR|TOMAN)$",
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "unit"
+        ],
+        "title": "AmountRequest",
+        "type": "object"
+      },
       "BackgroundProcessingResponse": {
         "additionalProperties": false,
         "properties": {
@@ -715,12 +749,29 @@
       },
       "CreateDraftRequest": {
         "additionalProperties": false,
-        "description": "Money crosses as a string integer, per `15_Agent_Implementation_Plan.md:800`.\n\nSlice 4 owns the conversion and the refusals; this accepts what it is given and\nthe database's `amount_irr > 0` CHECK is what refuses a nonsense value in the\nmeantime.",
+        "description": "Either the nested `amount` object or slice 3's flat fields. Exactly one.\n\n`amount` is **optional** for the same reason the response keeps its flat pair:\nmaking it required is a breaking request change, the oasdiff gate refuses one, and\nits waiver is an unresolved `TODO(governance)`. So the nested shape is added rather\nthan substituted.\n\n\"Exactly one\" is enforced in `_draft_amount` rather than left to precedence. Two\nways to state the amount is already one more than the money contract wants; two ways\nthat could *disagree*, with a rule about which wins, is how a request comes to mean\ntwo things. A caller that sends both is refused.",
         "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AmountRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "amount_irr": {
-            "pattern": "^[1-9][0-9]{0,18}$",
-            "title": "Amount Irr",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^[1-9][0-9]{0,18}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Irr"
           },
           "beneficiary_id": {
             "format": "uuid",
@@ -788,8 +839,7 @@
           }
         },
         "required": [
-          "beneficiary_id",
-          "amount_irr"
+          "beneficiary_id"
         ],
         "title": "CreateDraftRequest",
         "type": "object"
@@ -1001,6 +1051,7 @@
       },
       "DraftRevisionResponse": {
         "additionalProperties": false,
+        "description": "The nested shape document 05 specifies, **plus** the flat fields slice 3 emitted.\n\nThe flat pair is redundant and deliberately kept. Removing a required response\nproperty is a breaking change, the oasdiff gate refuses one, and its waiver process\nis an unresolved `TODO(governance)` in `.github/workflows/m1-verify.yml:182` — left\nopen through M2 and M3. The M2 plan records the strategy that follows: while no\nwaiver exists, changes stay **additive**.\n\nSo slice 4 adds `entered_amount` and keeps `entered_amount_value` and\n`entered_amount_unit` carrying the same values. Inventing a waiver would decide a\ngovernance question the owner has twice left open; carrying two spellings of one\nfact until they can be removed in a deliberate contract-version bump is the cost of\nnot deciding it here.",
         "properties": {
           "amount_irr": {
             "title": "Amount Irr",
@@ -1028,6 +1079,16 @@
               }
             ],
             "title": "Description"
+          },
+          "entered_amount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnteredAmountResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "entered_amount_unit": {
             "anyOf": [
@@ -1067,6 +1128,7 @@
           "beneficiary_name_snapshot",
           "beneficiary_iban_snapshot",
           "amount_irr",
+          "entered_amount",
           "entered_amount_value",
           "entered_amount_unit",
           "description",
@@ -1099,6 +1161,26 @@
           "full_name"
         ],
         "title": "DuplicateWarningResponse",
+        "type": "object"
+      },
+      "EnteredAmountResponse": {
+        "additionalProperties": false,
+        "description": "What the trader typed, nested as document 05 shows it (`:1113`).\n\nKept beside `amount_irr` rather than replaced by it. `500 TOMAN` and `5000 IRR`\nare the same money and different intents, and a dispute six months later is about\nthe second.",
+        "properties": {
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "unit"
+        ],
+        "title": "EnteredAmountResponse",
         "type": "object"
       },
       "ErrorBody": {
