@@ -135,8 +135,8 @@ class DraftRevisionResponse(BaseModel):
     The flat pair is redundant and deliberately kept. Removing a required response
     property is a breaking change, the oasdiff gate refuses one, and its waiver process
     is an unresolved `TODO(governance)` in `.github/workflows/m1-verify.yml:182` — left
-    open through M2 and M3. The M2 plan records the strategy that follows from that:
-    while no waiver exists, changes stay **additive**.
+    open through M2 and M3. The M2 plan records the strategy that follows: while no
+    waiver exists, changes stay **additive**.
 
     So slice 4 adds `entered_amount` and keeps `entered_amount_value` and
     `entered_amount_unit` carrying the same values. Inventing a waiver would decide a
@@ -583,7 +583,8 @@ def _draft_amount(payload: CreateDraftRequest) -> Money:
     The flat trio is slice 3's, kept accepted because removing it would be a breaking
     request change and the oasdiff waiver is an unresolved `TODO(governance)`. Both paths
     end in the same `_money`, so the server computes IRR either way and a client-supplied
-    figure is verified rather than trusted in both.
+    figure is verified rather than trusted in both. A compatibility path that skipped the
+    checks would be the shape an attacker uses.
 
     Sending both is refused rather than resolved by precedence. A rule about which wins
     is a rule somebody has to know, and a caller who sends `amount` and a contradicting
