@@ -39,21 +39,29 @@ TRADERS: dict[str, tuple[str, str, str]] = {
 }
 
 
-@pytest.fixture
-def migrated(provisioned_database: RuntimeIdentities) -> RuntimeIdentities:
+# Module-scoped, not function-scoped. Each case used to pay a bootstrap replay and a
+# full `alembic upgrade head`, and the CI job timed out at forty-five minutes with roughly
+# eighty-five such cases across these files.
+#
+# The trade is that these tests share a database and see each other's rows, so every
+# aggregate query here is scoped to the row under test. That is not a tax the sharing
+# imposes — an unscoped query claiming "submission wrote an audit row" was really claiming
+# "some submission somewhere wrote one", and per-test isolation was hiding the difference.
+@pytest.fixture(scope="module")
+def migrated(module_provisioned_database: RuntimeIdentities) -> RuntimeIdentities:
     result = run_alembic(
-        provisioned_database.migrator_url,
+        module_provisioned_database.migrator_url,
         "upgrade",
         "head",
-        app_role=provisioned_database.app_role,
-        worker_role=provisioned_database.worker_role,
+        app_role=module_provisioned_database.app_role,
+        worker_role=module_provisioned_database.worker_role,
     )
     assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    return provisioned_database
+    return module_provisioned_database
 
 
-@pytest.fixture
-def world(migrated: RuntimeIdentities, tmp_path: Any) -> Iterator[dict[str, Any]]:
+@pytest.fixture(scope="module")
+def world(migrated: RuntimeIdentities, tmp_path_factory: Any) -> Iterator[dict[str, Any]]:
     from app.core.config import Settings
     from app.core.runtime import RuntimeServices
     from app.main import create_app
@@ -65,7 +73,7 @@ def world(migrated: RuntimeIdentities, tmp_path: Any) -> Iterator[dict[str, Any]
         app_env="test",
         database_url=migrated.owner_url,
         redis_url="redis://127.0.0.1:6379/0",
-        local_storage_root=tmp_path / "storage",
+        local_storage_root=tmp_path_factory.mktemp("storage"),
         release_commit="abcdef1234567",
         log_level="CRITICAL",
         auth_csrf_key_secret="c" * 40,
@@ -506,14 +514,21 @@ def test_an_inactive_beneficiary_cannot_receive_a_new_request(world: dict[str, A
     client = world["client"]
     sign_in_trader(client, "ok")
 
+    # Its own beneficiary, inserted already retired. Deactivating the one the module
+    # shares would leave every later test in this file drafting against a retired
+    # recipient — a test leaking state into its neighbours, which is what the shared
+    # database surfaced and which would have been just as wrong before it.
+    retired = uuid.uuid4()
     with psycopg.connect(_psycopg(world["owner_url"])) as connection:
         connection.execute(
-            "UPDATE beneficiaries SET status = 'inactive' WHERE id = %s",
-            (world["beneficiaries"]["ok"],),
+            "INSERT INTO beneficiaries (id, trader_id, full_name, iban, normalized_iban, "
+            "status, verification_status) VALUES (%s, %s, 'Retired', %s, %s, 'inactive', "
+            "'not_checked')",
+            (retired, world["traders"]["ok"], IBAN, IBAN),
         )
         connection.commit()
 
-    refused = open_draft(client, world["beneficiaries"]["ok"])
+    refused = open_draft(client, retired)
     assert refused.status_code == 400, refused.text
 
 
@@ -556,7 +571,8 @@ def test_creation_writes_its_audit_row(world: dict[str, Any]) -> None:
     with psycopg.connect(_psycopg(world["owner_url"])) as connection:
         rows = connection.execute(
             "SELECT action, outcome FROM audit_logs WHERE entity_type = 'payment_request' "
-            "ORDER BY occurred_at"
+            "AND entity_id = %s ORDER BY occurred_at",
+            (created["id"],),
         ).fetchall()
 
     assert [row[0] for row in rows] == [

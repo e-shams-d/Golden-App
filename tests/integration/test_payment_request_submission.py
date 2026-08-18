@@ -42,21 +42,29 @@ TRADERS: dict[str, tuple[str, str, str]] = {
 IBAN = "IR060120000000000000000001"
 
 
-@pytest.fixture
-def migrated(provisioned_database: RuntimeIdentities) -> RuntimeIdentities:
+# Module-scoped, not function-scoped. Each case used to pay a bootstrap replay and a
+# full `alembic upgrade head`, and the CI job timed out at forty-five minutes with roughly
+# eighty-five such cases across these files.
+#
+# The trade is that these tests share a database and see each other's rows, so every
+# aggregate query here is scoped to the row under test. That is not a tax the sharing
+# imposes — an unscoped query claiming "submission wrote an audit row" was really claiming
+# "some submission somewhere wrote one", and per-test isolation was hiding the difference.
+@pytest.fixture(scope="module")
+def migrated(module_provisioned_database: RuntimeIdentities) -> RuntimeIdentities:
     result = run_alembic(
-        provisioned_database.migrator_url,
+        module_provisioned_database.migrator_url,
         "upgrade",
         "head",
-        app_role=provisioned_database.app_role,
-        worker_role=provisioned_database.worker_role,
+        app_role=module_provisioned_database.app_role,
+        worker_role=module_provisioned_database.worker_role,
     )
     assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    return provisioned_database
+    return module_provisioned_database
 
 
-@pytest.fixture
-def world(migrated: RuntimeIdentities, tmp_path: Any) -> Iterator[dict[str, Any]]:
+@pytest.fixture(scope="module")
+def world(migrated: RuntimeIdentities, tmp_path_factory: Any) -> Iterator[dict[str, Any]]:
     from app.core.config import Settings
     from app.core.runtime import RuntimeServices
     from app.main import create_app
@@ -68,7 +76,7 @@ def world(migrated: RuntimeIdentities, tmp_path: Any) -> Iterator[dict[str, Any]
         app_env="test",
         database_url=migrated.owner_url,
         redis_url="redis://127.0.0.1:6379/0",
-        local_storage_root=tmp_path / "storage",
+        local_storage_root=tmp_path_factory.mktemp("storage"),
         release_commit="abcdef1234567",
         log_level="CRITICAL",
         auth_csrf_key_secret="c" * 40,
@@ -174,10 +182,42 @@ def csrf(client: Any) -> dict[str, str]:
     return {CSRF_HEADER: token}
 
 
-def open_draft(world: dict[str, Any], trader: str = "ok", attachment: str | None = None) -> Any:
+def fresh_beneficiary(
+    world: dict[str, Any], trader: str = "ok", name: str = "Ali Original"
+) -> uuid.UUID:
+    """A beneficiary of this test's own, for the tests that edit one.
+
+    Three tests here rename a beneficiary to prove the submitted revision does not follow
+    the edit. Under a module-scoped world they were all renaming the *same* record and not
+    restoring it, so whichever ran second found it already renamed and its assertion about
+    the original name failed.
+
+    Sharing the database surfaced that; it was a latent leak either way. A test that
+    mutates a fixture's data and leaves it mutated is one whose neighbours pass or fail on
+    ordering.
+    """
+
+    beneficiary = uuid.uuid4()
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            "INSERT INTO beneficiaries (id, trader_id, full_name, iban, normalized_iban, "
+            "national_id, status, verification_status) VALUES (%s, %s, %s, %s, %s, "
+            "'1234567890', 'active', 'not_checked')",
+            (beneficiary, world["traders"][trader], name, IBAN, IBAN),
+        )
+        connection.commit()
+    return beneficiary
+
+
+def open_draft(
+    world: dict[str, Any],
+    trader: str = "ok",
+    attachment: str | None = None,
+    beneficiary: uuid.UUID | None = None,
+) -> Any:
     client = world["client"]
     body: dict[str, Any] = {
-        "beneficiary_id": str(world["beneficiaries"][trader]),
+        "beneficiary_id": str(beneficiary or world["beneficiaries"][trader]),
         "amount": {"value": "500", "unit": "TOMAN"},
     }
     if attachment is not None:
@@ -296,10 +336,10 @@ def test_editing_the_beneficiary_afterwards_does_not_change_the_submitted_revisi
 
     client = world["client"]
     sign_in(client, "ok")
-    created = open_draft(world)
+    beneficiary_id = fresh_beneficiary(world)
+    created = open_draft(world, beneficiary=beneficiary_id)
     submit(world, created["request"]["id"], created["request"]["record_version"])
 
-    beneficiary_id = world["beneficiaries"]["ok"]
     current = client.get(f"/api/v1/beneficiaries/{beneficiary_id}").json()
     edited = client.patch(
         f"/api/v1/beneficiaries/{beneficiary_id}",
@@ -344,9 +384,9 @@ def test_a_beneficiary_edited_between_drafting_and_submitting_does_not_reach_the
 
     client = world["client"]
     sign_in(client, "ok")
-    created = open_draft(world)
+    beneficiary_id = fresh_beneficiary(world)
+    created = open_draft(world, beneficiary=beneficiary_id)
 
-    beneficiary_id = world["beneficiaries"]["ok"]
     current = client.get(f"/api/v1/beneficiaries/{beneficiary_id}").json()
     edited = client.patch(
         f"/api/v1/beneficiaries/{beneficiary_id}",
@@ -386,11 +426,11 @@ def test_the_history_still_reads_as_submitted_after_a_beneficiary_edit(
 
     client = world["client"]
     sign_in(client, "ok")
-    created = open_draft(world)
+    beneficiary_id = fresh_beneficiary(world)
+    created = open_draft(world, beneficiary=beneficiary_id)
     request_id = created["request"]["id"]
     submit(world, request_id, created["request"]["record_version"])
 
-    beneficiary_id = world["beneficiaries"]["ok"]
     current = client.get(f"/api/v1/beneficiaries/{beneficiary_id}").json()
     client.patch(
         f"/api/v1/beneficiaries/{beneficiary_id}",
@@ -579,11 +619,13 @@ def test_submission_audits_and_publishes_in_one_transaction(world: dict[str, Any
     with psycopg.connect(_psycopg(world["owner_url"])) as connection:
         audit = connection.execute(
             "SELECT action, new_values FROM audit_logs "
-            "WHERE action = 'payment_request.submitted'"
+            "WHERE action = 'payment_request.submitted' AND entity_id = %s",
+            (created["request"]["id"],),
         ).fetchone()
         outbox = connection.execute(
             "SELECT event_type, aggregate_type, aggregate_id, payload FROM outbox_events "
-            "WHERE event_type = 'PaymentRequestSubmitted'"
+            "WHERE event_type = 'PaymentRequestSubmitted' AND aggregate_id = %s",
+            (created["request"]["id"],),
         ).fetchone()
 
     assert audit is not None, "submission wrote no audit row"
@@ -613,8 +655,10 @@ def test_a_refused_submission_publishes_nothing(world: dict[str, Any]) -> None:
     with psycopg.connect(_psycopg(world["owner_url"])) as connection:
         counts = connection.execute(
             "SELECT (SELECT count(*) FROM audit_logs WHERE action = "
-            "'payment_request.submitted'), (SELECT count(*) FROM outbox_events WHERE "
-            "event_type = 'PaymentRequestSubmitted')"
+            "'payment_request.submitted' AND entity_id = %(id)s), "
+            "(SELECT count(*) FROM outbox_events WHERE "
+            "event_type = 'PaymentRequestSubmitted' AND aggregate_id = %(id)s)",
+            {"id": created["request"]["id"]},
         ).fetchone()
 
     assert counts is not None

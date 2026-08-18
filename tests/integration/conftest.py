@@ -141,55 +141,46 @@ def _require_supported_server(url: str) -> None:
         )
 
 
-@pytest.fixture
-def disposable_database(admin_url: str) -> Iterator[str]:
-    """Create an empty database for one test and drop it afterwards.
+def _create_disposable(admin_url: str) -> tuple[str, str]:
+    """Create an empty database and return `(name, url)`.
 
-    Empty means empty: no extensions and no schema beyond a fresh `public`. A
-    migration that assumes something already provisioned has to fail here, which
-    is the point of testing against a database rather than a developer's own.
+    Shared by the function- and module-scoped fixtures below. Pytest fixes a fixture's
+    scope at definition and a module-scoped fixture cannot request a function-scoped one,
+    so the two scopes are separate fixtures — but not separate implementations.
     """
 
     name = f"itest_{uuid.uuid4().hex[:16]}"
-    admin = _psycopg_url(admin_url)
-
-    with psycopg.connect(admin, autocommit=True) as connection:
+    with psycopg.connect(_psycopg_url(admin_url), autocommit=True) as connection:
         connection.execute(f'CREATE DATABASE "{name}"')
-    try:
-        yield _with_database(admin_url, name)
-    finally:
-        with psycopg.connect(admin, autocommit=True) as connection:
-            # Terminate stragglers first; a lingering session makes DROP fail and
-            # would leak a database per failed test run.
-            connection.execute(
-                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                "WHERE datname = %s AND pid <> pg_backend_pid()",
-                (name,),
-            )
-            connection.execute(f'DROP DATABASE IF EXISTS "{name}"')
+    return name, _with_database(admin_url, name)
 
 
-@pytest.fixture
-def disposable_connection(disposable_database: str) -> Iterator[psycopg.Connection]:
-    with psycopg.connect(_psycopg_url(disposable_database), autocommit=True) as connection:
-        yield connection
+def _drop_disposable(admin_url: str, name: str) -> None:
+    with psycopg.connect(_psycopg_url(admin_url), autocommit=True) as connection:
+        # Terminate stragglers first; a lingering session makes DROP fail and would leak
+        # a database per failed test run.
+        connection.execute(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            "WHERE datname = %s AND pid <> pg_backend_pid()",
+            (name,),
+        )
+        connection.execute(f'DROP DATABASE IF EXISTS "{name}"')
 
 
-@pytest.fixture
-def provisioned_database(disposable_database: str, admin_url: str) -> Iterator[RuntimeIdentities]:
-    """A disposable database with the real bootstrap replayed against it.
+def _provision(database_url: str, admin_url: str) -> Iterator[RuntimeIdentities]:
+    """Replay the real bootstrap against a database and yield its identities.
 
     Replayed, not re-stated. A test that sets up its own approximation of the
-    provisioning proves only that the approximation behaves as written; it cannot
-    notice the real file changing.
+    provisioning proves only that the approximation behaves as written; it cannot notice
+    the real file changing.
     """
 
     suffix = uuid.uuid4().hex[:10]
     roles = _role_names(suffix)
     password = ROLE_PASSWORD
-    database = urlsplit(_psycopg_url(disposable_database)).path.lstrip("/")
+    database = urlsplit(_psycopg_url(database_url)).path.lstrip("/")
 
-    with psycopg.connect(_psycopg_url(disposable_database), autocommit=True) as connection:
+    with psycopg.connect(_psycopg_url(database_url), autocommit=True) as connection:
         replay_all(
             connection,
             database=database,
@@ -198,14 +189,14 @@ def provisioned_database(disposable_database: str, admin_url: str) -> Iterator[R
         )
 
     def as_role(role: str) -> str:
-        parts = urlsplit(_psycopg_url(disposable_database))
+        parts = urlsplit(_psycopg_url(database_url))
         host = parts.hostname or "127.0.0.1"
         port = f":{parts.port}" if parts.port else ""
         return f"postgresql://{role}:{password}@{host}{port}/{database}"
 
     try:
         yield RuntimeIdentities(
-            owner_url=_psycopg_url(disposable_database),
+            owner_url=_psycopg_url(database_url),
             migrator_url=as_role(roles["migration_role"]),
             app_url=as_role(roles["app_role"]),
             worker_url=as_role(roles["worker_role"]),
@@ -218,16 +209,88 @@ def provisioned_database(disposable_database: str, admin_url: str) -> Iterator[R
             backup_role=roles["backup_role"],
         )
     finally:
-        # Roles are cluster-wide and outlive the database, so dropping the
-        # database is not enough. They also cannot be dropped while grants or
-        # default ACLs still reference them, and this fixture tears down before
-        # the database does — so the dependencies go first, from inside it.
-        with psycopg.connect(_psycopg_url(disposable_database), autocommit=True) as connection:
+        # Roles are cluster-wide and outlive the database, so dropping the database is not
+        # enough. They also cannot be dropped while grants or default ACLs still reference
+        # them, and this tears down before the database does — so the dependencies go
+        # first, from inside it.
+        with psycopg.connect(_psycopg_url(database_url), autocommit=True) as connection:
             for role in roles.values():
                 connection.execute(f'DROP OWNED BY "{role}" CASCADE')
         with psycopg.connect(_psycopg_url(admin_url), autocommit=True) as connection:
             for role in roles.values():
                 connection.execute(f'DROP ROLE IF EXISTS "{role}"')
+
+
+@pytest.fixture
+def disposable_database(admin_url: str) -> Iterator[str]:
+    """Create an empty database for one test and drop it afterwards.
+
+    Empty means empty: no extensions and no schema beyond a fresh `public`. A
+    migration that assumes something already provisioned has to fail here, which
+    is the point of testing against a database rather than a developer's own.
+    """
+
+    name, url = _create_disposable(admin_url)
+    try:
+        yield url
+    finally:
+        _drop_disposable(admin_url, name)
+
+
+@pytest.fixture(scope="module")
+def module_disposable_database(admin_url: str) -> Iterator[str]:
+    """The same thing, once per module.
+
+    For suites whose per-test cost is dominated by provisioning and migrating rather than
+    by what the test asserts. `module_provisioned_database` is the one callers want.
+    """
+
+    name, url = _create_disposable(admin_url)
+    try:
+        yield url
+    finally:
+        _drop_disposable(admin_url, name)
+
+
+@pytest.fixture
+def disposable_connection(disposable_database: str) -> Iterator[psycopg.Connection]:
+    with psycopg.connect(_psycopg_url(disposable_database), autocommit=True) as connection:
+        yield connection
+
+
+@pytest.fixture
+def provisioned_database(disposable_database: str, admin_url: str) -> Iterator[RuntimeIdentities]:
+    """A disposable database with the real bootstrap replayed against it.
+
+    One per test. Use this where a test needs a pristine cluster — the runtime-privilege
+    suites, and anything asserting on a table's whole contents.
+    """
+
+    yield from _provision(disposable_database, admin_url)
+
+
+@pytest.fixture(scope="module")
+def module_provisioned_database(
+    module_disposable_database: str, admin_url: str
+) -> Iterator[RuntimeIdentities]:
+    """One provisioned database shared by a module's tests.
+
+    **The trade this makes, stated plainly.** Tests sharing a database see each other's
+    rows, so any assertion over a whole table becomes order-dependent — the worst kind of
+    flake, green today and red tomorrow with no code change. A suite using this fixture
+    must scope every aggregate query to the row under test.
+
+    That requirement is not a tax the fixture imposes; it is a defect it exposes. A test
+    claiming "submission wrote an audit row" whose query is not scoped to the request is
+    really claiming "some submission somewhere wrote one", and isolation was hiding the
+    difference.
+
+    Added when the CI job timed out at forty-five minutes: the payment-request suites had
+    roughly eighty-five cases each paying a bootstrap replay and a full Alembic run to
+    assert something about one request.
+    """
+
+    yield from _provision(module_disposable_database, admin_url)
 
 
 @pytest.fixture(scope="module")

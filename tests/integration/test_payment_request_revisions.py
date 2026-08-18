@@ -53,21 +53,29 @@ REVISION_COLUMNS = (
 )
 
 
-@pytest.fixture
-def migrated(provisioned_database: RuntimeIdentities) -> RuntimeIdentities:
+# Module-scoped, not function-scoped. Each case used to pay a bootstrap replay and a
+# full `alembic upgrade head`, and the CI job timed out at forty-five minutes with roughly
+# eighty-five such cases across these files.
+#
+# The trade is that these tests share a database and see each other's rows, so every
+# aggregate query here is scoped to the row under test. That is not a tax the sharing
+# imposes — an unscoped query claiming "submission wrote an audit row" was really claiming
+# "some submission somewhere wrote one", and per-test isolation was hiding the difference.
+@pytest.fixture(scope="module")
+def migrated(module_provisioned_database: RuntimeIdentities) -> RuntimeIdentities:
     result = run_alembic(
-        provisioned_database.migrator_url,
+        module_provisioned_database.migrator_url,
         "upgrade",
         "head",
-        app_role=provisioned_database.app_role,
-        worker_role=provisioned_database.worker_role,
+        app_role=module_provisioned_database.app_role,
+        worker_role=module_provisioned_database.worker_role,
     )
     assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    return provisioned_database
+    return module_provisioned_database
 
 
-@pytest.fixture
-def world(migrated: RuntimeIdentities, tmp_path: Any) -> Iterator[dict[str, Any]]:
+@pytest.fixture(scope="module")
+def world(migrated: RuntimeIdentities, tmp_path_factory: Any) -> Iterator[dict[str, Any]]:
     from app.core.config import Settings
     from app.core.runtime import RuntimeServices
     from app.main import create_app
@@ -79,7 +87,7 @@ def world(migrated: RuntimeIdentities, tmp_path: Any) -> Iterator[dict[str, Any]
         app_env="test",
         database_url=migrated.owner_url,
         redis_url="redis://127.0.0.1:6379/0",
-        local_storage_root=tmp_path / "storage",
+        local_storage_root=tmp_path_factory.mktemp("storage"),
         release_commit="abcdef1234567",
         log_level="CRITICAL",
         auth_csrf_key_secret="c" * 40,
@@ -702,7 +710,8 @@ def test_the_correction_writes_its_catalogued_audit_action(world: dict[str, Any]
     with psycopg.connect(_psycopg(world["owner_url"])) as connection:
         row = connection.execute(
             "SELECT action, previous_values, new_values FROM audit_logs "
-            "WHERE action = 'payment_request.revision_created'"
+            "WHERE action = 'payment_request.revision_created' AND entity_id = %s",
+            (created["request"]["id"],),
         ).fetchone()
 
     assert row is not None, "the correction wrote no audit row"
