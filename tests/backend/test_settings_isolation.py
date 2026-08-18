@@ -33,6 +33,30 @@ def test_introspection_finds_the_aliases_it_is_meant_to_hide() -> None:
     assert len(names) >= len(Settings.model_fields)
 
 
+@pytest.fixture(scope="module")
+def names_visible_at_module_scope() -> frozenset[str]:
+    """What the environment showed a fixture built above function scope.
+
+    The isolation used to be function-scoped, which covers a test but not a fixture
+    built before it. Nothing in this directory happened to build a Settings from a
+    module-scoped fixture, so nothing here failed — the integration suite did, and
+    lost a CI run to it. This pins the scope so the answer stops depending on that.
+    """
+
+    watched = settings_environment_names()
+    return frozenset(name.upper() for name in os.environ if name.upper() in watched)
+
+
+def test_no_settings_variable_is_visible_to_a_module_scoped_fixture(
+    names_visible_at_module_scope: frozenset[str],
+) -> None:
+    assert names_visible_at_module_scope == frozenset(), (
+        f"{sorted(names_visible_at_module_scope)} was visible while a module-scoped "
+        "fixture was being built. pytest sets higher scopes up first, so the "
+        "isolation has to sit above every scope a test can ask for."
+    )
+
+
 def test_no_settings_variable_is_visible_while_a_test_runs() -> None:
     leaked = sorted(name for name in os.environ if name.upper() in settings_environment_names())
 

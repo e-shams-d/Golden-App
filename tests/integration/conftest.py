@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "fixtures"))
 
 from alembic_runner import run_alembic
 from bootstrap_replay import RuntimeIdentities, replay_all
+from settings_environment import environment_without_settings_variables
 
 ADMIN_URL_VARIABLE = "INTEGRATION_ADMIN_DATABASE_URL"
 
@@ -77,6 +78,40 @@ def _running_in_ci() -> bool:
 # the default port — one wrong URL and the whole suite runs green on a major
 # version the platform has not approved.
 REQUIRED_POSTGRES_MAJOR = 16
+
+
+@pytest.fixture(scope="session", autouse=True)
+def isolated_settings_environment() -> Iterator[None]:
+    """Hide the ambient environment from every test in this directory.
+
+    These tests build a `Settings` by field name. Settings declares every field with
+    a `validation_alias`, `populate_by_name` and `extra="forbid"`, and that
+    combination has a trap: when the alias is exported, the environment source fills
+    the field through the alias, the value passed by field name is left unconsumed,
+    and pydantic rejects it as an extra input. The message names a field the model
+    plainly declares, which sends the reader looking in the wrong place entirely.
+
+    The native CI job exports `REDIS_URL` for the Redis service container, so this is
+    not hypothetical: without this fixture every test here that builds an app fails
+    with `redis_url  Extra inputs are not permitted`.
+
+    Session scope, not function scope, and that is the whole point. This directory
+    had no isolation of its own: the function-scoped fixture `tests/backend/conftest.py`
+    used to install was also reaching these tests, by an accident of pytest's conftest
+    handling — rootdir is `services/backend`, so no conftest above these directories is
+    collected — which left the suite green while depending on the unit suite being
+    collected in the same run. It could not reach a *module*-scoped fixture, because
+    higher scopes are set up before lower ones. The moment five payment-request files
+    moved their app fixture to module scope for speed, they fell outside it and CI
+    failed inside a fixture whose own line had not changed. Session scope is above
+    every scope a test can ask for, so there is no scope left to escape through.
+
+    `INTEGRATION_ADMIN_DATABASE_URL` is deliberately not a Settings alias and so
+    survives this: removing it would skip — or in CI fail — the entire suite.
+    """
+
+    with environment_without_settings_variables():
+        yield
 
 
 @pytest.fixture(scope="session")
