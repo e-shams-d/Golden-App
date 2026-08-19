@@ -175,6 +175,12 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # reaches their own requests by ownership and holds no permission at all,
     # while internal staff reach them by `payment_request.*` and own nothing.
     ("POST", "/api/v1/payment-requests"): DUAL,
+    # M5 slice 8. The two reads the screens need, and which nothing had built: eleven
+    # published operations and only the revision history read. Both are `DUAL` — a trader
+    # sees their own through `scoped()`, an accountant sees the queue through
+    # `payment_request.read`.
+    ("GET", "/api/v1/payment-requests"): DUAL,
+    ("GET", "/api/v1/payment-requests/{payment_request_id}"): DUAL,
     ("POST", "/api/v1/payment-requests/{payment_request_id}/cancel"): DUAL,
     # M5 slice 5. The correction path, DUAL for the same reason as the rest of
     # this family. The GET is here too: a revision history is where "Admin response
@@ -414,6 +420,22 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ),
     ("POST", "/api/v1/payment-requests/{payment_request_id}/cancel", "permission"): (
         "test_an_admin_without_the_request_permission_is_refused"
+    ),
+    # M5 slice 8. The two reads, four entries because both are `DUAL`. The ownership pair
+    # answers `404` and the permission pair `403`, and each is asserted in its own test
+    # rather than shared: the list's ownership case is about which rows come back, and the
+    # detail's is about two answers being byte-identical.
+    ("GET", "/api/v1/payment-requests", "ownership"): (
+        "test_a_traders_list_holds_only_its_own_requests"
+    ),
+    ("GET", "/api/v1/payment-requests", "permission"): (
+        "test_listing_needs_the_read_permission"
+    ),
+    ("GET", "/api/v1/payment-requests/{payment_request_id}", "ownership"): (
+        "test_another_traders_request_is_indistinguishable_from_a_missing_one"
+    ),
+    ("GET", "/api/v1/payment-requests/{payment_request_id}", "permission"): (
+        "test_reading_one_request_needs_the_read_permission"
     ),
     # M5 slice 7. Three entries, one each: `PERMISSION` routes owe the permission
     # negative only. All three answer `403` rather than `404` — an internal caller already

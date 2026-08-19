@@ -76,6 +76,11 @@ ELIGIBLE = "eligible_for_batching"
 # key reused across the two is a conflict rather than a replay of the wrong command.
 CREATE_REVISION_OPERATION = "payment_request.create_revision"
 
+# The other two catalogued command ids `allowed_actions` reports. Named here rather than
+# spelled at the call site so the projection and the catalogue share one spelling.
+SUBMIT_OPERATION = "payment_request.submit"
+CANCEL_OPERATION = "payment_request.cancel"
+
 # Which statuses accept a correction. `draft` because a trader may fix their own work
 # before submitting, and `needs_trader_correction` because that is what the accountant
 # asked for. Deliberately not `submitted_to_center` or `under_accountant_review`:
@@ -543,6 +548,46 @@ class MarkEligibleForBatching:
     review_note: str | None = None
 
 
+def allowed_actions(status: str, *, by_trader: bool) -> tuple[str, ...]:
+    """Which commands would be accepted on a request in this state, for this audience.
+
+    A projection of the tables the commands actually guard with — `CORRECTABLE`,
+    `REVIEW_TRANSITIONS` and `CANCELLABLE` — and not a second list beside them. A screen
+    that hides a button is then showing what the server said rather than guessing, and the
+    two cannot drift, because there is only one of them.
+
+    **Advisory, not a control.** `12_Security_RBAC_Audit.md:625-626` keeps the backend
+    authoritative. This tells a screen what to offer; the command still refuses, and the
+    refusal is what actually protects the request. A caller who ignores this field and posts
+    anyway gets the same `400` or `403` they would have got without it.
+
+    `by_trader` rather than a permission set, for the reason `app/security/actor.py:113-118`
+    records: a trader session resolves no permissions at all, so "what may this caller do"
+    splits on which audience they are, not on what they hold.
+    """
+
+    actions: list[str] = []
+
+    # Both audiences may correct and submit: the routes authorise a trader on ownership and
+    # staff on `payment_request.create_revision_internal` / `.create_internal`.
+    if status in CORRECTABLE:
+        actions.append(CREATE_REVISION_OPERATION)
+        actions.append(SUBMIT_OPERATION)
+
+    if not by_trader:
+        actions.extend(
+            transition.command_id
+            for transition in REVIEW_TRANSITIONS
+            if status in transition.origins
+        )
+
+    rule = CANCELLABLE.get(status)
+    if rule is not None and (not by_trader or rule.trader_may):
+        actions.append(CANCEL_OPERATION)
+
+    return tuple(sorted(actions))
+
+
 def _require_transition(request: PaymentRequest, transition: Transition) -> None:
     if request.status not in transition.origins:
         raise BusinessRuleViolationError(
@@ -636,6 +681,12 @@ def begin_review(
         actor=actor,
         context=context,
         now=now,
+        # Document 04 gives `payment_requests` three review columns at `:837-839` and slice 7
+        # wrote none of them. That was found by slice 8, when the trader's correction screen
+        # had no note to show: the accountant's message existed only in the audit trail,
+        # which no trader reads. Recording who and when here, and the note itself on the two
+        # commands that carry one.
+        extra_values={"reviewed_by_admin_user_id": actor.actor_id, "reviewed_at": now},
     )
 
 
@@ -669,6 +720,16 @@ def return_for_correction(
         context=context,
         now=now,
         reason=command.reason_code,
+        # `review_note` carries what the *trader* was told, which is the whole point of
+        # `UI-REQ-001`: a request returned without the reason visible is a request they
+        # resubmit unchanged. `internal_note` deliberately does not go here — it stays in
+        # the audit trail, and it is the internal-only datum document 05 `:1131` means when
+        # it says trader responses omit them.
+        extra_values={
+            "review_note": command.message_to_trader,
+            "reviewed_by_admin_user_id": actor.actor_id,
+            "reviewed_at": now,
+        },
         extra_audit={
             "reason_code": command.reason_code,
             # The trader-facing message, recorded so the trail holds what they were
@@ -720,6 +781,11 @@ def mark_eligible_for_batching(
         context=context,
         now=now,
         reason=command.review_note,
+        extra_values={
+            "review_note": command.review_note,
+            "reviewed_by_admin_user_id": actor.actor_id,
+            "reviewed_at": now,
+        },
         extra_audit={"revision_id": str(command.expected_revision_id)},
     )
 

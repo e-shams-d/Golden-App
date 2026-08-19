@@ -689,6 +689,73 @@ def test_the_correction_request_records_its_reason_and_message(world: dict[str, 
     assert row[0]["message_to_trader"] == "Fix the IBAN."
 
 
+def test_the_returned_request_carries_the_message_to_its_trader(world: dict[str, Any]) -> None:
+    """The precondition for showing it: the note has to reach the trader at all.
+
+    Slice 7 recorded `message_to_trader` in the audit trail and nowhere else, and no trader
+    reads audit rows — so a returned request arrived with no reason attached, and the
+    trader's rational move was to resubmit it unchanged. Document 04 `:839` has a column for
+    it, `review_note`, and slice 7 wrote none of the three review columns. Slice 8 found
+    this by trying to build the screen.
+
+    The correction screen's own obligation is named where that screen is tested, not here.
+    The traceability scanner counts any occurrence of an id as a citation, so naming it in
+    this docstring would have discharged a screen that does not exist — which it did, until
+    this sentence replaced it.
+    """
+
+    client = world["client"]
+    request_id, version, _revision_id = a_submitted_request(world)
+
+    sign_in_admin(client, "staff_granted")
+    returned = act(world, "request_correction", request_id, version)
+    assert returned.status_code == 200, returned.text
+
+    sign_in(client, "ok")
+    detail = client.get(f"/api/v1/payment-requests/{request_id}")
+
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["request"]["review_note"] == "Fix the IBAN."
+    assert detail.json()["request"]["reviewed_at"] is not None
+
+
+def test_the_internal_note_reaches_no_response(world: dict[str, Any]) -> None:
+    """The other half: `internal_note` is the accountant's own and stays in the audit trail.
+
+    Document 05 `:1131` says trader responses omit internal-only data, and this is that
+    data. Asserted against the whole response body rather than one field, because a leak
+    would arrive as a field nobody thought about.
+    """
+
+    client = world["client"]
+    request_id, version, _revision_id = a_submitted_request(world)
+    secret = "beneficiary looks like the one from the March dispute"
+
+    sign_in_admin(client, "staff_granted")
+    returned = _write(
+        client,
+        f"/api/v1/payment-requests/{request_id}/request-correction",
+        version,
+        {
+            "reason_code": "invalid_iban",
+            "message_to_trader": "Fix the IBAN.",
+            "internal_note": secret,
+        },
+    )
+    assert returned.status_code == 200, returned.text
+
+    sign_in(client, "ok")
+    detail = client.get(f"/api/v1/payment-requests/{request_id}")
+    listing = client.get("/api/v1/payment-requests")
+
+    assert secret not in detail.text
+    assert secret not in listing.text
+    # And not to the centre either: nothing renders it, so nothing can leak it later by
+    # being handed to a screen that shows everything it is given.
+    sign_in_admin(client, "staff_granted")
+    assert secret not in client.get(f"/api/v1/payment-requests/{request_id}").text
+
+
 def test_only_the_correction_request_publishes_an_outbox_event(world: dict[str, Any]) -> None:
     """`AUD-REQ-002`, read against the catalogue rather than against the obligation's first
     wording.

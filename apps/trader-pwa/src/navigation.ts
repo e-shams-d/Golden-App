@@ -20,6 +20,13 @@ import type { NavigationItem } from "@gold/ui";
  */
 export const traderNavigation = [
   { href: "/", label: t("trader.nav.home"), icon: "home" },
+  // M5 slice 8. `/requests` returns, this time with a page behind it — and with an API that
+  // can list them, which is what it lacked when it was removed. `/beneficiaries` arrives
+  // beside it because a request cannot be opened without one, and a trader who reached the
+  // draft form with no beneficiary would be sent looking for a screen that was not in the
+  // navigation.
+  { href: "/requests", label: t("trader.nav.requests"), icon: "requests" },
+  { href: "/beneficiaries", label: t("trader.nav.beneficiaries"), icon: "beneficiaries" },
   { href: "/evidence", label: t("trader.nav.evidence"), icon: "upload" },
   { href: "/profile", label: t("trader.nav.account"), icon: "account" },
 ] as const satisfies readonly NavigationItem[];

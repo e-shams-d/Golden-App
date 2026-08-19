@@ -399,10 +399,16 @@ PENDING: dict[str, str] = {
     # cancellation table rather than restating either. Their entries were removed from here
     # in the same commit, because this gate fails an obligation that is both pending and
     # covered — the ledger has to be honest in that direction too.
-    "UI-REQ-001": "M5 slice 8 — the trader's request screens",
-    "UI-REQ-002": "M5 slice 8 — the correction flow as the trader sees it",
-    "UI-REQ-003": "M5 slice 8 — the accountant's review queue",
-    "UI-REQ-004": "M5 slice 8 — a screen imports these, which no component test asks",
+    # UI-REQ-001, -002 and -003 are discharged by `apps/trader-pwa/test/request-view.test.ts`
+    # and `no-money-arithmetic.test.ts`; UI-REQ-004 by `screens-are-reachable.test.ts` in both
+    # apps. This repository has no jsdom, so the screens' judgements live in
+    # `src/request-view.ts` as functions and are tested there — asserting "the screen shows the
+    # note" by grepping JSX would test a string rather than a behaviour. That the note reaches
+    # the browser at all is proved server-side, in `test_payment_request_review.py`.
+    #
+    # API-REQ-002 and -003 arrived with them: the two reads the screens need did not exist, and
+    # an endpoint whose only consumer does not exist yet is the defect this repository has
+    # produced in every milestone.
     "TRACE-DOD-007": "M5 slice 9 — the six-step journey runs end to end in one test",
     "TRACE-DOD-008": "M5 slice 9 — no request-level route requires a manager-only permission",
     "TRACE-DOD-009": "M5 slice 9 — no request-scoped command consults one",

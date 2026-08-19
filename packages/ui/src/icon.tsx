@@ -34,7 +34,9 @@ export type IconName =
   | "plus"
   | "refresh"
   | "logout"
-  | "upload";
+  | "upload"
+  | "requests"
+  | "beneficiaries";
 
 /** The runtime list, so a test can iterate what exists rather than restate it. */
 export const ICON_NAMES = [
@@ -53,6 +55,8 @@ export const ICON_NAMES = [
   "refresh",
   "logout",
   "upload",
+  "requests",
+  "beneficiaries",
 ] as const satisfies readonly IconName[];
 
 // Stroked rather than filled, at a uniform 1.75 width: a mixed set reads as icons borrowed
@@ -75,6 +79,13 @@ const PATHS: Readonly<Record<IconName, string>> = {
   // An arrow into a tray: the file goes to the platform, not from it. Distinct from
   // , which adds a record somebody typed rather than bytes they had.
   upload: "M12 16V4M8 8l4-4 4 4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3",
+  // M5 slice 8. A sheet with lines and a currency mark: a payment request is a document
+  // somebody wrote, which is what distinguishes it from `upload`'s bytes and `dashboard`'s
+  // tiles.
+  requests: "M6.5 3h11a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1ZM9 8h6M9 12h6M9 16h3",
+  // A person beside a bank column: the destination of a payment is somebody with an account,
+  // and `account` already means "your own profile" in this set.
+  beneficiaries: "M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3.5 20a5.5 5.5 0 0 1 11 0M16 20V9.5M20 20V9.5M15 9.5h6L18 7l-3 2.5Z",
 };
 
 export type IconProps = Omit<SVGProps<SVGSVGElement>, "children"> &

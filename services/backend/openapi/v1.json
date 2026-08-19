@@ -1591,9 +1591,84 @@
         "title": "PasswordResetRequest",
         "type": "object"
       },
+      "PaymentRequestDetail": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1131` asks for seven things. Four exist in M5.\n\nPresent: the current revision, the aggregate state (on `request.status`), the record\nversion, and `allowed_actions`. Absent rather than empty: `attempts` arrive with M6 and\n`current_publication_summary` with M8, and a field that is always `[]` or `null` reads as\n\"there are none\" rather than \"this milestone does not have them\" — the first is a fact\nabout the request and the second is a fact about the software. `warnings` has no producer\nfor requests either; slice 2's duplicate warning belongs to beneficiary creation.",
+        "properties": {
+          "allowed_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
+          },
+          "current_revision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DraftRevisionResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "request": {
+            "$ref": "#/components/schemas/PaymentRequestResponse"
+          }
+        },
+        "required": [
+          "request",
+          "current_revision",
+          "allowed_actions"
+        ],
+        "title": "PaymentRequestDetail",
+        "type": "object"
+      },
+      "PaymentRequestList": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PaymentRequestListing"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PaymentRequestList",
+        "type": "object"
+      },
+      "PaymentRequestListing": {
+        "additionalProperties": false,
+        "description": "One row of the list. The current revision is included because a queue without the\namount and the beneficiary is a queue nobody can triage from — an accountant would have\nto open every row to find the one they are looking for.",
+        "properties": {
+          "current_revision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DraftRevisionResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "request": {
+            "$ref": "#/components/schemas/PaymentRequestResponse"
+          }
+        },
+        "required": [
+          "request",
+          "current_revision"
+        ],
+        "title": "PaymentRequestListing",
+        "type": "object"
+      },
       "PaymentRequestResponse": {
         "additionalProperties": false,
-        "description": "Deliberately not the whole row.\n\n`review_note` and the trader-result columns are absent because nothing in M5 sets\nthem, and listing fields explicitly is what keeps a column added later from\nbecoming visible by default.",
+        "description": "Deliberately not the whole row.\n\nThe trader-result columns are absent because nothing in M5 sets them, and listing\nfields explicitly is what keeps a column added later from becoming visible by default.\n\n`review_note` and `reviewed_at` are here from slice 8 because the accountant's message\nis the one thing the trader's correction screen must show — `UI-REQ-001`. Until then\nthe message lived only in the audit trail, which no trader reads, so a returned request\narrived with no reason attached and the trader's rational move was to resubmit it\nunchanged.\n\n**`reviewed_by_admin_user_id` is deliberately not here.** Who inside the centre made a\ndecision is internal-only, and this is the field document 05 `:1131` means by \"trader\nresponses omit internal-only data\". Omitting it for everyone rather than branching on\nthe audience is the cheaper guarantee: nothing in M5 needs it, and a per-audience\nprojection is a thing to get wrong later. The accountant's `internal_note` is likewise\naudit-only and never rendered.",
         "properties": {
           "beneficiary_id": {
             "format": "uuid",
@@ -1625,6 +1700,29 @@
             "title": "Request Number",
             "type": "string"
           },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -1642,6 +1740,8 @@
           "request_number",
           "status",
           "current_revision_id",
+          "review_note",
+          "reviewed_at",
           "record_version"
         ],
         "title": "PaymentRequestResponse",
@@ -5504,6 +5604,102 @@
       }
     },
     "/api/v1/payment-requests": {
+      "get": {
+        "description": "`05_API_Specification.md:1061-1075`. The accountant's queue and the trader's list.\n\n**\"Trader scope is always inferred\" (`:1075`) is stronger than \"validated\".** A trader's\nrows come from `scoped()`, which takes the actor and not an id — `app/security/ownership.py`\nputs it exactly: the defence against \"trader A submits `trader_id` belonging to B\" is not\nto validate that field, it is to never read it. For a trader the `trader_id` parameter is\nnot overridden, it is never consulted. My first version computed\n`scope if scope is not None else trader_id` and filtered on the result, which built the\none argument that module exists to remove; `test_ownership_scope.py` refused it.\n\nSo `trader_id` is an internal filter only, and it carries its own permission by being\nreachable only on the branch where the caller holds `payment_request.read`.\n\nOf document 05's eleven filters, `status` and `trader_id` are implemented. The rest name\nattempts, disputes and bank profiles, and M5 has nothing for them to filter on; a\nparameter that silently ignores what it is given is worse than one that is absent, so\nthey are absent.",
+        "operationId": "listPaymentRequests",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "trader_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trader Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentRequestList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, or not the caller's."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "The trader's own requests, or the centre's queue.",
+        "tags": [
+          "payment-requests"
+        ]
+      },
       "post": {
         "operationId": "createPaymentRequestDraft",
         "requestBody": {
@@ -5599,6 +5795,80 @@
           }
         },
         "summary": "Open a draft payment request and its first immutable revision.",
+        "tags": [
+          "payment-requests"
+        ]
+      }
+    },
+    "/api/v1/payment-requests/{payment_request_id}": {
+      "get": {
+        "description": "`05_API_Specification.md:1125-1131`.\n\nThe `ETag` matters more here than on most reads: this is where a screen gets the\n`If-Match` it will send back, and `app/api/v1/traders.py`'s note applies — a client that\ncomputed `rv-${record_version}` itself would be inventing a precondition.",
+        "operationId": "getPaymentRequest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payment_request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Payment Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentRequestDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, or not the caller's."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "One request, its current revision, and what may be done to it.",
         "tags": [
           "payment-requests"
         ]

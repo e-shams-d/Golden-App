@@ -166,6 +166,11 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "startPaymentRequestReview",
         "requestPaymentRequestCorrection",
         "markPaymentRequestEligibleForBatching",
+        # M5 slice 8. The two reads the screens need. `05_API_Specification.md:1061` and
+        # `:1125`. Until this slice the aggregate had eleven operations and one of them
+        # read — a trader could not list their own requests and an accountant had no queue.
+        "listPaymentRequests",
+        "getPaymentRequest",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

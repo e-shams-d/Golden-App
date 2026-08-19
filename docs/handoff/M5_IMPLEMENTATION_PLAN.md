@@ -583,11 +583,38 @@ creates and corrects; the accountant reviews and returns.
 
 ### What it changes
 
-- Trader: beneficiary list and form, request draft, correction screen with the reviewer's
-  note.
+**The two read endpoints, which this plan assumed existed and which nothing has built.**
+The published contract carries eleven `payment-requests` operations and exactly one of them
+reads: `GET /{request_id}/revisions`. Slices 3 to 7 built the writes. So a trader cannot
+list their own requests, and an accountant has no review queue at all — no way to learn what
+is waiting for them. Document 05 defines both:
+
+- `GET /api/v1/payment-requests` (`05_API_Specification.md:1061-1075`) — eleven filters, and
+  "Trader scope is always inferred". M5 implements `status` and the trader scope; the filters
+  that name attempts, disputes or bank profiles have nothing to filter on yet.
+- `GET /api/v1/payment-requests/{request_id}` (`:1125-1131`) — "current revision, aggregate
+  state, attempts, current publication summary, warnings, record version, and allowed
+  actions". Attempts arrive in M6 and publications in M8, so they are absent here rather
+  than empty; `allowed_actions` is the interesting one, below.
+
+They are built **in this slice rather than a slice of their own**, and that is the decision
+rather than a convenience. An endpoint whose only consumer does not exist yet is this
+repository's most repeated defect — five instances in M3, and `app/core/money.py` was the
+fifth. The screens are the consumers. Building the two together with them is what makes
+either provable.
+
+- Trader: beneficiary list and form, request list, request draft, correction screen with the
+  reviewer's note.
 - Admin: review queue, request detail with revision history, return-for-correction and
   mark-eligible actions.
 - Both wired into navigation, with pages that exist.
+
+**`allowed_actions` comes from the server, computed from the same tables the commands
+guard with.** Not a second list: `REVIEW_TRANSITIONS`, `CORRECTABLE` and `CANCELLABLE`
+already declare every transition and who may make it, so the field is derived from them and
+a screen that hides a button is showing what the server said rather than guessing. This is
+`test_navigation_is_not_a_control.py`'s rule applied to buttons — the backend stays
+authoritative, and the 403 remains the thing that actually refuses.
 
 ### What proves it
 
@@ -599,12 +626,24 @@ creates and corrects; the accountant reviews and returns.
   the browser. `15_Agent_Implementation_Plan.md:802`.
 - `UI-REQ-004` — every navigation item added has a page, and every screen has an importer
   that is a route. The M3 and M4 lesson, applied again because it has been needed in every
-  milestone so far.
+  milestone so far. The first half is already gated by each app's `navigation.test.ts`; the
+  second half is new, and it is the same defect from the other end — a screen nothing routes
+  to is a screen nobody can reach.
+- `API-REQ-002` — the list is scoped by the caller: a trader sees only their own requests,
+  whatever they ask for, and an internal caller with `payment_request.read` sees the centre's
+  queue. A trader who passes `trader_id` for somebody else gets their own rows, not a refusal
+  and not the other trader's — "Trader scope is always inferred" (`:1075`) means inferred, not
+  validated.
+- `API-REQ-003` — the detail carries the current revision, the record version, and
+  `allowed_actions` derived from the command tables rather than restated. An action the
+  tables permit and the response omits, or the reverse, fails: the field is a projection of
+  the guards, and a projection that disagrees with what it projects is worse than no field.
 
 ### Negative controls
 
 Convert TOMAN to IRR in the component: `UI-REQ-003` must fail. Add a navigation item with
-no page: `UI-REQ-004` must fail.
+no page: `UI-REQ-004` must fail. Drop the trader scope from the list query: `API-REQ-002`
+must fail. Add an action to `allowed_actions` that no table permits: `API-REQ-003` must fail.
 
 ## Slice 9 — The Definition of Done gate
 
