@@ -911,6 +911,61 @@
         "title": "CreateProfileRequest",
         "type": "object"
       },
+      "CreateRevisionRequest": {
+        "additionalProperties": false,
+        "description": "A complete statement of what is being submitted, not a patch.\n\nEvery content field is required. A partial shape would make revision 3's content\n\"revision 2 plus a diff\", so reading what was submitted the third time would mean\nreplaying the first two — and the whole point of an immutable revision is that it\nanswers that question on its own.",
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/AmountRequest"
+          },
+          "beneficiary_id": {
+            "format": "uuid",
+            "title": "Beneficiary Id",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "revision_reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision Reason"
+          },
+          "source_attachment_file_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Attachment File Id"
+          }
+        },
+        "required": [
+          "beneficiary_id",
+          "amount"
+        ],
+        "title": "CreateRevisionRequest",
+        "type": "object"
+      },
       "DeactivateBeneficiaryRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1909,6 +1964,58 @@
           "new_name"
         ],
         "title": "RenameCenterProfileRequest",
+        "type": "object"
+      },
+      "RevisionCreated": {
+        "additionalProperties": false,
+        "properties": {
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "request": {
+            "$ref": "#/components/schemas/PaymentRequestResponse"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/DraftRevisionResponse"
+          }
+        },
+        "required": [
+          "request",
+          "revision",
+          "replayed"
+        ],
+        "title": "RevisionCreated",
+        "type": "object"
+      },
+      "RevisionHistory": {
+        "additionalProperties": false,
+        "properties": {
+          "current_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Revision Id"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DraftRevisionResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "current_revision_id"
+        ],
+        "title": "RevisionHistory",
         "type": "object"
       },
       "RevocationResponse": {
@@ -5558,6 +5665,354 @@
           }
         },
         "summary": "Cancel a draft. Nothing is deleted; the status moves.",
+        "tags": [
+          "payment-requests"
+        ]
+      }
+    },
+    "/api/v1/payment-requests/{payment_request_id}/revisions": {
+      "get": {
+        "description": "`SVC-REV-002`: readable in order, and every revision reachable.\n\nOrdered by `revision_number` rather than `created_at`. Two revisions written in the\nsame transaction would share a timestamp to the microsecond, and the number is the\nthing that is guaranteed unique per request.",
+        "operationId": "listPaymentRequestRevisions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payment_request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Payment Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionHistory"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, or not the caller's."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Every revision of a request, oldest first.",
+        "tags": [
+          "payment-requests"
+        ]
+      },
+      "post": {
+        "description": "`If-Match` and `Idempotency-Key` are both required, and they answer different\nquestions.\n\n`If-Match` is \"is the request still in the state you read\", which is `CON-REQ-002`.\n`Idempotency-Key` is \"have I already sent this exact correction\", which is\n`SVC-REV-004`. A retry after a network timeout needs the second: the first attempt\nmay have committed, and without a key the retry would create revision 3 identical\nto revision 2 — except that `UNIQUE(payment_request_id, content_hash)` would refuse\nit, so the trader would be told their correction was a duplicate of their own\ncorrection.",
+        "operationId": "createPaymentRequestRevision",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payment_request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Payment Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRevisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A domain rule refused the command."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, or not the caller's."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The Idempotency-Key was reused."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The If-Match value is stale."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is required."
+          }
+        },
+        "summary": "Correct a request by adding an immutable revision.",
+        "tags": [
+          "payment-requests"
+        ]
+      }
+    },
+    "/api/v1/payment-requests/{payment_request_id}/submit": {
+      "post": {
+        "description": "`draft -> submitted_to_center`, under `If-Match`.\n\nNo request body: submission states nothing new. What is being submitted is already\non the current revision, and a body here would invite a caller to send content that\nthe revision does not carry — which is how a request comes to say two things.",
+        "operationId": "submitPaymentRequest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payment_request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Payment Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A domain rule refused the command."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, or not the caller's."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The If-Match value is stale."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is required."
+          }
+        },
+        "summary": "Hand a draft to the centre.",
         "tags": [
           "payment-requests"
         ]

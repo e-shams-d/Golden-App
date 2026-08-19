@@ -71,20 +71,28 @@ def revision_columns() -> list[str]:
     return sorted(Base.metadata.tables["payment_request_revisions"].columns.keys())
 
 
-@pytest.fixture
-def migrated_as_migrator(provisioned_database: RuntimeIdentities) -> RuntimeIdentities:
+# Module-scoped, not function-scoped. Each case used to pay a bootstrap replay and a
+# full `alembic upgrade head`, and the CI job timed out at forty-five minutes with roughly
+# eighty-five such cases across these files.
+#
+# The trade is that these tests share a database and see each other's rows, so every
+# aggregate query here is scoped to the row under test. That is not a tax the sharing
+# imposes — an unscoped query claiming "submission wrote an audit row" was really claiming
+# "some submission somewhere wrote one", and per-test isolation was hiding the difference.
+@pytest.fixture(scope="module")
+def migrated_as_migrator(module_provisioned_database: RuntimeIdentities) -> RuntimeIdentities:
     result = run_alembic(
-        provisioned_database.migrator_url,
+        module_provisioned_database.migrator_url,
         "upgrade",
         "head",
-        app_role=provisioned_database.app_role,
-        worker_role=provisioned_database.worker_role,
+        app_role=module_provisioned_database.app_role,
+        worker_role=module_provisioned_database.worker_role,
     )
     assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    return provisioned_database
+    return module_provisioned_database
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def seeded(migrated_as_migrator: RuntimeIdentities) -> Iterator[dict[str, Any]]:
     """One trader, one beneficiary, one request and its first revision.
 

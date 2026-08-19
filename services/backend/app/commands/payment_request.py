@@ -36,22 +36,47 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.audit.outbox import OutboxMessage, OutboxWriter
 from app.audit.redaction import RedactionPolicy
-from app.audit.registry import CANCEL_PAYMENT_REQUEST, CREATE_PAYMENT_REQUEST, CommandNames
+from app.audit.registry import (
+    CANCEL_PAYMENT_REQUEST,
+    CREATE_PAYMENT_REQUEST,
+    CREATE_REVISION,
+    SUBMIT_PAYMENT_REQUEST,
+    CommandNames,
+)
 from app.audit.writer import AuditActor, AuditContext, AuditEntry, AuditWriter
 from app.core.errors import BusinessRuleViolationError, NotFoundError
 from app.core.hashing import unversioned_digest
 from app.core.money import Money
 from app.db.concurrency import compare_and_swap
 from app.db.models.beneficiary import Beneficiary
+from app.db.models.file_object import FileObject
 from app.db.models.payment_request import PaymentRequest, PaymentRequestRevision
 from app.db.models.trader import Trader
+from app.db.unit_of_work import SqlAlchemyUnitOfWork
+from app.files.states import AVAILABLE
+from app.idempotency import IdempotencyResolver
 
+PAYLOAD_VERSION = 1
 METADATA_SCHEMA = "audit.payment_request.lifecycle"
 METADATA_VERSION = 1
 
 DRAFT = "draft"
 CANCELLED = "cancelled"
+SUBMITTED = "submitted_to_center"
+NEEDS_CORRECTION = "needs_trader_correction"
+
+# The operation name the idempotency record carries. Distinct from draft creation, so a
+# key reused across the two is a conflict rather than a replay of the wrong command.
+CREATE_REVISION_OPERATION = "payment_request.create_revision"
+
+# Which statuses accept a correction. `draft` because a trader may fix their own work
+# before submitting, and `needs_trader_correction` because that is what the accountant
+# asked for. Deliberately not `submitted_to_center` or `under_accountant_review`:
+# correcting a request while somebody is reading it would move the content under them,
+# and document 06 routes that through the review workflow instead.
+CORRECTABLE = (DRAFT, NEEDS_CORRECTION)
 
 # `traders`, per DOC-CONFLICT-024's two axes. Both must be right, and that is the
 # point of `SEC-REQ-001`: a business awaiting approval and a business barred today are
@@ -90,6 +115,39 @@ class CancelDraft:
     payment_request_id: uuid.UUID
     expected_record_version: int
     reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SubmitRequest:
+    payment_request_id: uuid.UUID
+    expected_record_version: int
+
+
+@dataclass(frozen=True, slots=True)
+class CreateRevision:
+    """A correction. Every content field is required, not patched.
+
+    Deliberately not a partial update. A revision is a complete statement of what is
+    being submitted — that is what makes it answerable later — and a patch shape would
+    mean the new revision's content is the old revision's plus a diff, so reading what
+    revision 3 said would require replaying revisions 1 and 2. The client sends the
+    whole intent and the server hashes it.
+    """
+
+    payment_request_id: uuid.UUID
+    expected_record_version: int
+    beneficiary_id: uuid.UUID
+    amount: Money
+    description: str | None = None
+    source_attachment_file_id: uuid.UUID | None = None
+    revision_reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RevisionResult:
+    request: PaymentRequest
+    revision: PaymentRequestRevision
+    replayed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,6 +307,319 @@ def cancel_draft(
     return request
 
 
+def submit(
+    command: SubmitRequest,
+    *,
+    session: Session,
+    policy: RedactionPolicy,
+    actor: AuditActor,
+    context: AuditContext,
+    now: datetime,
+) -> PaymentRequest:
+    """Hand a draft to the centre. `draft -> submitted_to_center`.
+
+    **Submission does not write the snapshot; it verifies one.** The plan originally said
+    the columns are filled here, and that is not implementable: a revision cannot be
+    updated, so there is nothing for submission to fill, and creating a revision at
+    submit would produce a byte-identical second row that
+    `UNIQUE(payment_request_id, content_hash)` refuses — a trader could not submit an
+    unmodified draft. The snapshot is taken where content is stated, by `create_draft`
+    and `create_revision`.
+
+    So what is left here is the check that the thing being handed over is complete, and
+    it is worth doing rather than assuming: a request that reaches a reviewer without a
+    beneficiary name is one nobody can act on, and the database's NOT NULL constraints
+    are the only other thing standing behind it.
+
+    The outbox event is the first in this aggregate. Draft creation and cancellation
+    publish nothing — nothing outside the platform acts on a trader opening or abandoning
+    a draft — but submission has a real audience: this is the moment the centre's queue
+    changes, and `05_API_Specification.md:878` requires an event for it.
+    """
+
+    request = session.get(PaymentRequest, command.payment_request_id)
+    if request is None:
+        raise NotFoundError()
+
+    if request.status != DRAFT:
+        raise BusinessRuleViolationError(
+            f"only a draft is submitted; this request is {request.status}. A request "
+            "returned for correction is resubmitted by filing the correction, which "
+            "moves it back to the centre in one step."
+        )
+
+    trader = session.get(Trader, request.trader_id)
+    if trader is None:  # pragma: no cover - the request's FK guarantees it
+        raise NotFoundError()
+    _require_operable(trader)
+
+    revision = session.get(PaymentRequestRevision, request.current_revision_id)
+    if revision is None:
+        raise BusinessRuleViolationError(
+            "this request has no current revision, so there is no content to submit"
+        )
+
+    _require_complete_snapshot(revision)
+    _require_attachment_is_available(session, revision)
+
+    outcome = compare_and_swap(
+        session,
+        PaymentRequest,
+        entity_id=request.id,
+        expected_version=command.expected_record_version,
+        values={"status": SUBMITTED, "submitted_at": now},
+    )
+    session.expire(request)
+
+    _audit(
+        session,
+        policy,
+        SUBMIT_PAYMENT_REQUEST,
+        outcome="success",
+        request_id=request.id,
+        record_version=outcome.new_version,
+        reason=None,
+        actor=actor,
+        context=context,
+        now=now,
+        previous_values={"status": DRAFT},
+        new_values={"status": SUBMITTED, "revision_number": revision.revision_number},
+    )
+    _publish(session, policy, SUBMIT_PAYMENT_REQUEST, request, context, outcome.new_version)
+
+    return request
+
+
+def _require_complete_snapshot(revision: PaymentRequestRevision) -> None:
+    """SVC-SUB-001. Every column document 04 marks required must be populated.
+
+    `beneficiary_national_id_snapshot` is deliberately absent from this list: document 04
+    marks it optional, because not every recipient has one on file, and requiring it here
+    would refuse legitimate requests.
+    """
+
+    missing = [
+        name
+        for name in (
+            "beneficiary_name_snapshot",
+            "beneficiary_iban_snapshot",
+            "amount_irr",
+            "content_hash",
+        )
+        if not getattr(revision, name, None)
+    ]
+    if missing:
+        raise BusinessRuleViolationError(
+            f"the current revision is missing {', '.join(missing)}, so it cannot be "
+            "submitted: a reviewer would receive a request they cannot act on"
+        )
+
+
+def _require_attachment_is_available(session: Session, revision: PaymentRequestRevision) -> None:
+    """SVC-SUB-003. M4's file states carry the meaning; this is the first consumer.
+
+    `available` is the only state that means hashed and scanned clean — M4's migration
+    encodes that in a CHECK. A `pending` attachment has not finished inspection and a
+    `quarantined` one failed it, and submitting either would put a request in front of a
+    reviewer whose evidence might be a malicious file nobody has cleared.
+
+    A missing attachment is fine: document 04 marks the column nullable and not every
+    request has a receipt.
+    """
+
+    if revision.source_attachment_file_id is None:
+        return
+
+    attachment = session.get(FileObject, revision.source_attachment_file_id)
+    if attachment is None:  # pragma: no cover - the FK guarantees it
+        raise NotFoundError()
+
+    if attachment.storage_status != AVAILABLE:
+        raise BusinessRuleViolationError(
+            f"the attached file is {attachment.storage_status}, not available. Only a "
+            "file that has been hashed and scanned clean can be submitted as evidence."
+        )
+
+
+def create_revision(
+    command: CreateRevision,
+    *,
+    uow: SqlAlchemyUnitOfWork,
+    policy: RedactionPolicy,
+    actor: AuditActor,
+    context: AuditContext,
+    idempotency_key: str,
+    now: datetime,
+) -> RevisionResult:
+    """Add revision *n+1* and move the pointer. Revision *n* is not touched.
+
+    Takes the unit of work rather than a session, because the idempotency resolver
+    needs a savepoint: it inserts the claim, flushes to force the unique violation
+    while it can still be turned into a replay, and rolls back to the savepoint if it
+    was already claimed.
+
+    **Nothing here updates a revision.** The pointer that moves is on the request. The
+    previous revision keeps its row, its `content_hash` and its `created_at` — the
+    migration grants no UPDATE on that table at all, so this is enforced by the absence
+    of a privilege rather than by the care of this function.
+
+    `superseded_at` is deliberately left NULL on the replaced revision. Document 04
+    defines the column and M5 does not write it: setting it would be an update to an
+    immutable row, and "which revision is current" is already answered by
+    `payment_requests.current_revision_id`. Recording the same fact twice, where one
+    copy requires widening a grant, is how the immutability guarantee gets traded away
+    for a denormalised convenience.
+    """
+
+    resolver = IdempotencyResolver(uow)
+    claim = resolver.claim(
+        actor_type=actor.actor_type,
+        actor_id=actor.idempotency_scope_id,
+        operation=CREATE_REVISION_OPERATION,
+        idempotency_key=idempotency_key,
+        # The content, not the record version. Two retries of the same correction are
+        # the same request even if the first one moved `record_version` — including it
+        # would make an honest retry look like a different body and raise a conflict
+        # where a replay is correct.
+        payload={
+            "payment_request_id": str(command.payment_request_id),
+            "beneficiary_id": str(command.beneficiary_id),
+            "amount_irr": command.amount.amount_irr,
+            "entered_amount": command.amount.entered_amount,
+            "entered_unit": command.amount.entered_unit.value,
+            "description": command.description,
+            "source_attachment_file_id": (
+                str(command.source_attachment_file_id)
+                if command.source_attachment_file_id
+                else None
+            ),
+        },
+    )
+
+    session = uow.session
+
+    if claim.is_replay:
+        stored = claim.record.response_body or {}
+        request = session.get(PaymentRequest, command.payment_request_id)
+        revision = session.get(PaymentRequestRevision, uuid.UUID(str(stored["revision_id"])))
+        if request is None or revision is None:  # pragma: no cover - the record made them
+            raise NotFoundError()
+        return RevisionResult(request=request, revision=revision, replayed=True)
+
+    request = session.get(PaymentRequest, command.payment_request_id)
+    if request is None:
+        raise NotFoundError()
+
+    if request.status not in CORRECTABLE:
+        raise BusinessRuleViolationError(
+            f"a {request.status} request does not take a correction; only "
+            f"{', '.join(CORRECTABLE)} does"
+        )
+
+    trader = session.get(Trader, request.trader_id)
+    if trader is None:  # pragma: no cover - the request's FK guarantees it
+        raise NotFoundError()
+    _require_operable(trader)
+
+    beneficiary = session.get(Beneficiary, command.beneficiary_id)
+    if beneficiary is None or beneficiary.trader_id != request.trader_id:
+        raise NotFoundError()
+    if beneficiary.status != "active":
+        raise BusinessRuleViolationError(
+            f"a {beneficiary.status} beneficiary cannot receive a corrected request"
+        )
+
+    previous = session.get(PaymentRequestRevision, request.current_revision_id)
+    if previous is None:  # pragma: no cover - a request always has revision 1
+        raise NotFoundError()
+
+    revision = PaymentRequestRevision(
+        payment_request_id=request.id,
+        revision_number=previous.revision_number + 1,
+        beneficiary_id=beneficiary.id,
+        # Re-snapshotted from the beneficiary as it stands *now*, not copied from the
+        # previous revision. A correction that changed the beneficiary must carry that
+        # beneficiary's details, and one that did not must still record today's values
+        # — the revision is a statement about this submission, not a delta.
+        beneficiary_name_snapshot=beneficiary.full_name,
+        beneficiary_iban_snapshot=beneficiary.normalized_iban,
+        beneficiary_national_id_snapshot=beneficiary.national_id,
+        amount_irr=command.amount.amount_irr,
+        entered_amount_value=command.amount.entered_amount,
+        entered_amount_unit=command.amount.entered_unit.value,
+        description=command.description,
+        source_attachment_file_id=command.source_attachment_file_id,
+        revision_reason=command.revision_reason,
+        created_by_actor_type=actor.actor_type,
+        created_by_actor_id=actor.actor_id,
+    )
+    revision.content_hash = revision_content_hash(revision)
+
+    if revision.content_hash == previous.content_hash:
+        # Refused here as well as by `UNIQUE(payment_request_id, content_hash)`, and
+        # the duplication is the point: the constraint is what makes the rule
+        # unbypassable, and this is what makes the refusal explicable. A caller who
+        # hits the constraint gets an integrity error naming an index; a caller who
+        # hits this gets told they changed nothing.
+        raise BusinessRuleViolationError(
+            "this correction is identical to the current revision, so there is nothing "
+            "to correct. Change what you are submitting, or leave the request as it is."
+        )
+
+    session.add(revision)
+    session.flush()
+
+    outcome = compare_and_swap(
+        session,
+        PaymentRequest,
+        entity_id=request.id,
+        expected_version=command.expected_record_version,
+        values={
+            "current_revision_id": revision.id,
+            # Back to the centre's queue. A correction the accountant asked for is not
+            # finished until it is resubmitted, and leaving it in
+            # `needs_trader_correction` would mean the trader corrected it and nobody
+            # was told.
+            "status": SUBMITTED,
+            "submitted_at": now,
+        },
+    )
+    session.expire(request)
+
+    _audit(
+        session,
+        policy,
+        CREATE_REVISION,
+        outcome="success",
+        request_id=request.id,
+        record_version=outcome.new_version,
+        reason=command.revision_reason,
+        actor=actor,
+        context=context,
+        now=now,
+        previous_values={
+            "current_revision_id": str(previous.id),
+            "revision_number": previous.revision_number,
+        },
+        new_values={
+            "current_revision_id": str(revision.id),
+            "revision_number": revision.revision_number,
+            "status": SUBMITTED,
+        },
+    )
+
+    resolver.complete(
+        claim,
+        response_code=201,
+        response_body={"revision_id": str(revision.id), "request_id": str(request.id)},
+        resource_type="payment_request",
+        resource_id=request.id,
+        now=now,
+    )
+
+    return RevisionResult(request=request, revision=revision)
+
+
 def revision_content_hash(revision: PaymentRequestRevision) -> str:
     """The digest `UNIQUE(payment_request_id, content_hash)` compares.
 
@@ -355,4 +726,41 @@ def _audit(
         ),
         actor=actor,
         context=context,
+    )
+
+
+def _publish(
+    session: Session,
+    policy: RedactionPolicy,
+    names: CommandNames,
+    request: PaymentRequest,
+    context: AuditContext,
+    version: int,
+) -> None:
+    """One event, in the same transaction as the audit row and the status change.
+
+    The payload carries identifiers and nothing else. A consumer that needs the amount
+    or the beneficiary reads the aggregate; putting them on a queue would widen where a
+    payment destination and a sum live, for no gain — the same reasoning
+    `trader_lifecycle._publish` applies to a phone number.
+    """
+
+    if names.outbox_event_type is None:  # pragma: no cover - only submit publishes
+        return
+
+    OutboxWriter(session, policy).enqueue(
+        OutboxMessage(
+            aggregate_type="payment_request",
+            aggregate_id=request.id,
+            aggregate_version=version,
+            event_type=names.outbox_event_type,
+            payload={
+                "payment_request_id": str(request.id),
+                "trader_id": str(request.trader_id),
+                "request_number": request.request_number,
+            },
+            payload_version=PAYLOAD_VERSION,
+            correlation_id=context.correlation_id,
+            causation_id=context.causation_id,
+        )
     )

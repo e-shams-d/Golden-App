@@ -10,6 +10,14 @@ complete mechanism turned out to have no caller.
 So these tests are as much about the wiring as the arithmetic. `500 TOMAN` and
 `5000 IRR` must both store `5000`, and both must still say which one the trader typed.
 
+**The validation matrix is not here.** Every invalid unit and malformed value moved to
+`tests/backend/test_payment_amount_wire.py`, which runs the same forty cases in half a
+second. Thirty-one cases here each provisioned a PostgreSQL and ran the whole Alembic
+chain to test a Pydantic pattern, which timed out the CI job — the cost was the symptom
+and the misplacement was the defect. What remains needs a database: that the conversion is
+*stored*, that a refusal writes nothing, that the wire really carries strings, and one
+representative refusal through the route so the wiring is still proved.
+
 Covers: SVC-REQ-001, SVC-REQ-002, SVC-REQ-003, API-REQ-001.
 """
 
@@ -34,21 +42,29 @@ TRADER_CSRF_COOKIE = "__Host-gp_trader_csrf"
 IBAN = "IR060120000000000000000001"
 
 
-@pytest.fixture
-def migrated(provisioned_database: RuntimeIdentities) -> RuntimeIdentities:
+# Module-scoped, not function-scoped. Each case used to pay a bootstrap replay and a
+# full `alembic upgrade head`, and the CI job timed out at forty-five minutes with roughly
+# eighty-five such cases across these files.
+#
+# The trade is that these tests share a database and see each other's rows, so every
+# aggregate query here is scoped to the row under test. That is not a tax the sharing
+# imposes — an unscoped query claiming "submission wrote an audit row" was really claiming
+# "some submission somewhere wrote one", and per-test isolation was hiding the difference.
+@pytest.fixture(scope="module")
+def migrated(module_provisioned_database: RuntimeIdentities) -> RuntimeIdentities:
     result = run_alembic(
-        provisioned_database.migrator_url,
+        module_provisioned_database.migrator_url,
         "upgrade",
         "head",
-        app_role=provisioned_database.app_role,
-        worker_role=provisioned_database.worker_role,
+        app_role=module_provisioned_database.app_role,
+        worker_role=module_provisioned_database.worker_role,
     )
     assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    return provisioned_database
+    return module_provisioned_database
 
 
-@pytest.fixture
-def world(migrated: RuntimeIdentities, tmp_path: Any) -> Iterator[dict[str, Any]]:
+@pytest.fixture(scope="module")
+def world(migrated: RuntimeIdentities, tmp_path_factory: Any) -> Iterator[dict[str, Any]]:
     from app.core.config import Settings
     from app.core.runtime import RuntimeServices
     from app.main import create_app
@@ -60,7 +76,7 @@ def world(migrated: RuntimeIdentities, tmp_path: Any) -> Iterator[dict[str, Any]
         app_env="test",
         database_url=migrated.owner_url,
         redis_url="redis://127.0.0.1:6379/0",
-        local_storage_root=tmp_path / "storage",
+        local_storage_root=tmp_path_factory.mktemp("storage"),
         release_commit="abcdef1234567",
         log_level="CRITICAL",
         auth_csrf_key_secret="c" * 40,
@@ -108,6 +124,21 @@ def world(migrated: RuntimeIdentities, tmp_path: Any) -> Iterator[dict[str, Any]
 
 def _psycopg(url: str) -> str:
     return url.replace("postgresql+psycopg://", "postgresql://", 1)
+
+
+def _request_count(world: dict[str, Any]) -> int:
+    """How many requests exist right now.
+
+    Compared before and after rather than against zero. The world is module-scoped, so
+    earlier tests in this file have legitimately created rows — and "the refusal wrote
+    nothing" was always the claim, where "the table is empty" was only ever true by
+    accident of isolation.
+    """
+
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        row = connection.execute("SELECT count(*) FROM payment_requests").fetchone()
+    assert row is not None
+    return int(row[0])
 
 
 def draft(world: dict[str, Any], amount: dict[str, Any], **extra: Any) -> Any:
@@ -209,69 +240,10 @@ def test_a_refused_amount_writes_nothing(world: dict[str, Any]) -> None:
     canonical figure nobody can justify.
     """
 
+    before = _request_count(world)
     draft(world, {"value": "500", "unit": "TOMAN", "amount_irr": "500"})
 
-    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
-        count = connection.execute("SELECT count(*) FROM payment_requests").fetchone()
-
-    assert count is not None and count[0] == 0
-
-
-@pytest.mark.parametrize(
-    "unit", ["IRR ", "irr", "RIAL", "USD", "TOMANS", "", "TOMAN\n"]
-)
-def test_an_invalid_unit_is_refused(world: dict[str, Any], unit: str) -> None:
-    """SVC-REQ-002.
-
-    `irr` lowercase is in the list deliberately. Phase 1A supports exactly two units
-    and accepting a case variant would mean the stored `entered_amount_unit` has more
-    than one spelling — which the column's CHECK would then refuse at the insert,
-    turning a client's typo into a 500 instead of a 400.
-    """
-
-    refused = draft(world, {"value": "500", "unit": unit})
-    assert refused.status_code in {400, 422}, refused.text
-
-
-@pytest.mark.parametrize(
-    "value", ["0", "-500", "5.5", "1e9", "1,000", " 500", "500 ", "abc", ""]
-)
-def test_a_value_that_is_not_a_plain_integer_is_refused(
-    world: dict[str, Any], value: str
-) -> None:
-    """SVC-REQ-002, and the reason `parse_integer_string` is strict.
-
-    `"1.25e9"` and `"1,250,000,000"` are both plausible typos for values that differ by
-    orders of magnitude, and `"0"` is not a payment. Refusing rather than coercing is
-    what keeps a formatting accident from becoming a different amount.
-    """
-
-    refused = draft(world, {"value": value, "unit": "TOMAN"})
-    assert refused.status_code in {400, 422}, refused.text
-
-
-def test_a_json_number_amount_is_refused(world: dict[str, Any]) -> None:
-    """API-REQ-001, from the client's side.
-
-    The money contract's rule 8 is that API monetary values are base-10 integer
-    strings, and rule 9 forbids JavaScript Number for financial amounts. A client that
-    sends `500` instead of `"500"` is using the type the contract forbids, and it is
-    refused rather than coerced — coercion would make the forbidden form work, and
-    then it would be used.
-    """
-
-    client = world["client"]
-    token = client.cookies.get(TRADER_CSRF_COOKIE)
-    refused = client.post(
-        "/api/v1/payment-requests",
-        json={
-            "beneficiary_id": str(world["beneficiary"]),
-            "amount": {"value": 500, "unit": "TOMAN"},
-        },
-        headers={CSRF_HEADER: token},
-    )
-
-    assert refused.status_code == 422, refused.text
+    assert _request_count(world) == before, "the refused amount wrote a row anyway"
 
 
 def test_every_amount_in_the_response_is_a_string(world: dict[str, Any]) -> None:
@@ -301,30 +273,20 @@ def test_every_amount_in_the_response_is_a_string(world: dict[str, Any]) -> None
     assert isinstance(revision["entered_amount"]["value"], str)
 
 
-def test_no_conversion_factor_is_accepted_from_the_client(world: dict[str, Any]) -> None:
-    """SVC-REQ-003.
+def test_the_route_refuses_an_invalid_unit(world: dict[str, Any]) -> None:
+    """One refusal through the real route, standing for the whole matrix.
 
-    `RIAL_PER_TOMAN` is a constant in one module and the API has no field through
-    which a caller could supply another. Asserted structurally — `extra="forbid"`
-    refuses the field rather than ignoring it — because a factor that could be
-    submitted is one that could be submitted as 1 and make a TOMAN amount ten times
-    too small.
+    `tests/backend/test_payment_amount_wire.py` owns the matrix — every invalid unit and
+    every malformed value — because those are claims about a Pydantic pattern and `_money`,
+    and a test that needs no database should not have one.
+
+    What a unit test cannot say is that the validator is *wired to the endpoint*. This is
+    that claim, and one case is enough for it: if the wiring were missing, no case would
+    refuse.
     """
 
-    client = world["client"]
-    token = client.cookies.get(TRADER_CSRF_COOKIE)
-
-    for field, payload in (
-        ("rial_per_toman", {"value": "500", "unit": "TOMAN", "rial_per_toman": "1"}),
-        ("factor", {"value": "500", "unit": "TOMAN", "factor": "1"}),
-        ("rate", {"value": "500", "unit": "TOMAN", "rate": "1"}),
-    ):
-        refused = client.post(
-            "/api/v1/payment-requests",
-            json={"beneficiary_id": str(world["beneficiary"]), "amount": payload},
-            headers={CSRF_HEADER: token},
-        )
-        assert refused.status_code == 422, f"{field} was accepted or ignored: {refused.text}"
+    refused = draft(world, {"value": "500", "unit": "RIAL"})
+    assert refused.status_code in {400, 422}, refused.text
 
 
 def test_slice_threes_flat_shape_still_works(world: dict[str, Any]) -> None:
@@ -361,82 +323,3 @@ def test_slice_threes_flat_shape_still_works(world: dict[str, Any]) -> None:
     assert revision["entered_amount_unit"] == "TOMAN"
 
 
-def test_the_flat_path_verifies_a_supplied_amount_irr_too(world: dict[str, Any]) -> None:
-    """The compatibility path is not a way around the three-way check."""
-
-    client = world["client"]
-    token = client.cookies.get(TRADER_CSRF_COOKIE)
-
-    refused = client.post(
-        "/api/v1/payment-requests",
-        json={
-            "beneficiary_id": str(world["beneficiary"]),
-            "entered_amount_value": "500",
-            "entered_amount_unit": "TOMAN",
-            "amount_irr": "500",
-        },
-        headers={CSRF_HEADER: token},
-    )
-    assert refused.status_code == 400, refused.text
-    assert refused.json()["error"]["code"] == "AMOUNT_UNIT_MISMATCH"
-
-
-def test_sending_both_shapes_is_refused(world: dict[str, Any]) -> None:
-    """Refused rather than resolved by precedence.
-
-    A rule about which shape wins is a rule somebody has to know, and a caller sending
-    `amount` alongside a contradicting `entered_amount_value` has already lost track of
-    what they are asking for. Answering with one of them would pick a number on their
-    behalf.
-    """
-
-    client = world["client"]
-    token = client.cookies.get(TRADER_CSRF_COOKIE)
-
-    refused = client.post(
-        "/api/v1/payment-requests",
-        json={
-            "beneficiary_id": str(world["beneficiary"]),
-            "amount": {"value": "500", "unit": "TOMAN"},
-            "entered_amount_value": "900",
-            "entered_amount_unit": "TOMAN",
-        },
-        headers={CSRF_HEADER: token},
-    )
-    assert refused.status_code == 400, refused.text
-    assert refused.json()["error"]["code"] == "AMOUNT_UNIT_MISMATCH"
-
-
-def test_an_amount_is_required_in_one_shape_or_the_other(world: dict[str, Any]) -> None:
-    """`amount` is optional in the schema and not optional in effect.
-
-    Making it schema-optional was forced by the additive rule; it must not become a way
-    to create a request with no amount at all.
-    """
-
-    client = world["client"]
-    token = client.cookies.get(TRADER_CSRF_COOKIE)
-
-    refused = client.post(
-        "/api/v1/payment-requests",
-        json={"beneficiary_id": str(world["beneficiary"])},
-        headers={CSRF_HEADER: token},
-    )
-    assert refused.status_code == 400, refused.text
-    assert refused.json()["error"]["code"] == "AMOUNT_UNIT_MISMATCH"
-
-
-def test_the_conversion_is_not_applied_twice(world: dict[str, Any]) -> None:
-    """SVC-REQ-001, the arithmetic error `to_rial`'s docstring names.
-
-    "A second implementation of this is how a factor of ten gets applied twice." An
-    `IRR` entry must be stored unchanged — if the unit branch were wrong, a rial
-    amount would be multiplied by ten and nothing about the response would look odd.
-    """
-
-    created = draft(world, {"value": "5000", "unit": "IRR"})
-    assert created.json()["revision"]["amount_irr"] == "5000"
-
-    doubled = draft(world, {"value": "500", "unit": "TOMAN"})
-    assert doubled.json()["revision"]["amount_irr"] == "5000"
-    assert doubled.json()["revision"]["amount_irr"] != "50000"

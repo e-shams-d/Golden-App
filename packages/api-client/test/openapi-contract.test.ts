@@ -43,23 +43,34 @@ describe("generated M1 OpenAPI contract", () => {
     expectTypeOf<HasRequestCollection>().toEqualTypeOf<true>();
     expectTypeOf<GeneratedApiOperations["createPaymentRequestDraft"]>().toBeObject();
     expectTypeOf<GeneratedApiOperations["cancelPaymentRequest"]>().toBeObject();
+    // M5 slice 6.
+    expectTypeOf<GeneratedApiOperations["submitPaymentRequest"]>().toBeObject();
   });
 
-  it("still does not publish the endpoints M5 has not built", () => {
-    // The other half of the original guard, kept explicit. Submission, revisions and
-    // review arrive in slices 5 to 7 and batching is M6; their request and response
-    // shapes are not settled, so a generated client must not be able to call them.
-    type HasSubmit =
-      "/api/v1/payment-requests/{payment_request_id}/submit" extends keyof GeneratedApiPaths
-        ? true
-        : false;
+  it("publishes the correction path now that slice 5 has built it", () => {
+    // Moved out of the "not built" list below rather than that list being trimmed.
+    // This is the third time the boundary has moved, which is the argument for
+    // keeping it as an assertion: each slice publishes what it has resolved, and the
+    // test records where the line currently is instead of where it once was.
     type HasRevisions =
       "/api/v1/payment-requests/{payment_request_id}/revisions" extends keyof GeneratedApiPaths
         ? true
         : false;
 
-    expectTypeOf<HasSubmit>().toEqualTypeOf<false>();
-    expectTypeOf<HasRevisions>().toEqualTypeOf<false>();
+    expectTypeOf<HasRevisions>().toEqualTypeOf<true>();
+    expectTypeOf<GeneratedApiOperations["createPaymentRequestRevision"]>().toBeObject();
+    expectTypeOf<GeneratedApiOperations["listPaymentRequestRevisions"]>().toBeObject();
+  });
+
+  it("still does not publish the endpoints M5 has not built", () => {
+    // Accountant review is slice 7 and batching is M6. Their request and response
+    // shapes are not settled, so a generated client must not be able to call them.
+    type HasReview =
+      "/api/v1/payment-requests/{payment_request_id}/review" extends keyof GeneratedApiPaths
+        ? true
+        : false;
+
+    expectTypeOf<HasReview>().toEqualTypeOf<false>();
   });
 
   it("infers a response and delegates through the hardened transport", async () => {

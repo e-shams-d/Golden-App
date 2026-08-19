@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -25,7 +24,7 @@ from app.observability.health import (  # noqa: E402
     ProbeResult,
     WorkerProbeResult,
 )
-from settings_environment import settings_environment_names  # noqa: E402
+from settings_environment import environment_without_settings_variables  # noqa: E402
 
 
 class StaticProbe:
@@ -74,8 +73,8 @@ class FakeRuntime:
         self.closed = True
 
 
-@pytest.fixture(autouse=True)
-def isolated_settings_environment(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+@pytest.fixture(scope="session", autouse=True)
+def isolated_settings_environment() -> Iterator[None]:
     """Hide the ambient environment from every test in this directory.
 
     These tests assert what Settings does with values they supply, so reading
@@ -89,12 +88,17 @@ def isolated_settings_environment(monkeypatch: pytest.MonkeyPatch) -> Iterator[N
 
     A shell with DATABASE_URL set is entirely ordinary, and the CI job that
     provisions PostgreSQL sets these too, so this is not a hypothetical.
+
+    Session scope, sharing one implementation with the integration suite. It was
+    function-scoped, which covers a test but not a fixture built before it: pytest
+    sets higher scopes up first, so any module- or session-scoped fixture that built
+    a Settings saw the unmodified environment. The integration suite lost a CI run
+    to exactly that, and nothing but the absence of such a fixture here kept this
+    directory from the same failure.
     """
 
-    for name in list(os.environ):
-        if name.upper() in settings_environment_names():
-            monkeypatch.delenv(name, raising=False)
-    yield
+    with environment_without_settings_variables():
+        yield
 
 
 @pytest.fixture
