@@ -49,4 +49,17 @@ export const adminNavigation = [
   // `role.manage` would hide the screen from `manager`, who holds the read and has a
   // legitimate reason to see why a colleague's menu differs from theirs.
   { href: "/roles", label: t("admin.nav.roles"), permission: "role.read", icon: "roles" },
+  // M5 slice 8. Payment requests return, and this is the one item where the docstring's
+  // action rule and its stated exception meet: the acting permissions are
+  // `payment_request.review`, `.request_correction` and `.mark_eligible`, and a
+  // `NavigationItem` carries one. `payment_request.read` is the gate because it is what the
+  // queue route itself is guarded on, and because the three actions are all held by the same
+  // role that holds the read — `accountant`. Gating on `.mark_eligible` would hide the queue
+  // from nobody and misdescribe the screen, which also lists what a reviewer returned.
+  {
+    href: "/requests",
+    label: t("admin.nav.requests"),
+    permission: "payment_request.read",
+    icon: "requests",
+  },
 ] as const satisfies readonly NavigationItem[];

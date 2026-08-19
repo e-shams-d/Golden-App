@@ -246,10 +246,138 @@ export const faMessages = {
   "trader.entry.signedInTitle": "شما وارد شده‌اید",
   "trader.entry.signedInBody": "وضعیت کسب‌وکار شما و نتیجهٔ بررسی مرکز در صفحهٔ حساب نمایش داده می‌شود.",
   "trader.entry.openAccount": "مشاهده حساب کسب‌وکار",
+  // M5 slice 8. Only the six statuses M5 can reach are here; document 06 defines seventeen,
+  // and `paymentRequestStatusLabel` returns the raw value for the rest rather than inventing
+  // a translation for a state this release cannot produce.
+  "money.unit.IRR": "ریال",
+  "money.unit.TOMAN": "تومان",
+  "trader.nav.beneficiaries": "ذی‌نفعان",
+  "requestStatus.draft": "پیش‌نویس",
+  "requestStatus.submitted_to_center": "ارسال‌شده به مرکز",
+  "requestStatus.under_accountant_review": "در حال بررسی حسابداری",
+  "requestStatus.needs_trader_correction": "نیازمند اصلاح شما",
+  "requestStatus.eligible_for_batching": "تأییدشده برای پرداخت",
+  "requestStatus.cancelled": "لغوشده",
+  "trader.requests.title": "درخواست‌های پرداخت",
+  "trader.requests.description":
+    "درخواست‌هایی که ثبت کرده‌اید و وضعیت بررسی آنها در مرکز. اگر مرکز درخواستی را برای اصلاح برگردانده باشد، دلیل آن همین‌جا نوشته شده است.",
+  "trader.requests.new": "درخواست جدید",
+  "trader.requests.loading": "در حال دریافت درخواست‌ها…",
+  "trader.requests.failedTitle": "درخواست‌ها دریافت نشد",
+  "trader.requests.failed": "ارتباط با سامانه برقرار نشد. لطفاً کمی بعد دوباره تلاش کنید.",
+  "trader.requests.emptyTitle": "هنوز درخواستی ثبت نکرده‌اید",
+  "trader.requests.empty": "برای شروع، یک درخواست پرداخت جدید ثبت کنید.",
+  "trader.requests.beneficiary": "ذی‌نفع",
+  "trader.requests.amount": "مبلغ",
+  "trader.requests.reviewNote": "پیام مرکز",
+  "trader.requests.correct": "اصلاح این درخواست",
+  "trader.requests.open": "مشاهده جزئیات",
+  "trader.newRequest.title": "درخواست پرداخت جدید",
+  "trader.newRequest.description":
+    "ذی‌نفع را انتخاب کنید و مبلغ را با واحد آن وارد کنید. تبدیل تومان به ریال در مرکز انجام می‌شود، نه در مرورگر.",
+  "trader.newRequest.beneficiary": "ذی‌نفع",
+  "trader.newRequest.beneficiaryHint": "فقط ذی‌نفعان فعال شما در این فهرست هستند.",
+  "trader.newRequest.amount": "مبلغ",
+  "trader.newRequest.unit": "واحد",
+  "trader.newRequest.note": "توضیح (اختیاری)",
+  "trader.newRequest.submit": "ثبت پیش‌نویس",
+  "trader.newRequest.working": "در حال ثبت…",
+  "trader.newRequest.needsBeneficiary": "برای ثبت درخواست، اول باید یک ذی‌نفع فعال داشته باشید.",
+  "trader.newRequest.addBeneficiary": "افزودن ذی‌نفع",
+  "trader.newRequest.amountRequired": "مبلغ را وارد کنید.",
+  "trader.newRequest.failed": "درخواست ثبت نشد. مقادیر را بررسی کنید و دوباره تلاش کنید.",
+  "trader.request.title": "جزئیات درخواست",
+  "trader.request.loading": "در حال دریافت درخواست…",
+  "trader.request.failedTitle": "این درخواست دریافت نشد",
+  "trader.request.failed": "ممکن است این درخواست وجود نداشته باشد یا متعلق به شما نباشد.",
+  "trader.request.status": "وضعیت",
+  "trader.request.history": "تاریخچهٔ نسخه‌ها",
+  "trader.request.revision": "نسخه",
+  "trader.request.current": "نسخهٔ جاری",
+  "trader.request.submit": "ارسال به مرکز",
+  "trader.request.correctTitle": "اصلاح و ارسال دوباره",
+  "trader.request.correctBody":
+    "هر اصلاح یک نسخهٔ تازه می‌سازد و نسخه‌های قبلی دست‌نخورده می‌مانند. پس از اصلاح، خودتان آن را به مرکز ارسال می‌کنید.",
+  "trader.request.reason": "دلیل اصلاح (اختیاری)",
+  "trader.request.saveRevision": "ثبت نسخهٔ جدید",
+  "trader.request.stale":
+    "این درخواست در فاصلهٔ باز بودن صفحه تغییر کرده است. اطلاعات تازه نمایش داده شد؛ دوباره بررسی کنید.",
+  "trader.request.actionFailed": "این عملیات انجام نشد.",
+  "trader.request.nothingAllowed": "در وضعیت فعلی، کاری از سمت شما روی این درخواست ممکن نیست.",
+  "trader.beneficiaries.title": "ذی‌نفعان",
+  "trader.beneficiaries.description":
+    "حساب‌هایی که پرداخت به آنها انجام می‌شود. شبای تکراری رد نمی‌شود، اما هشدار داده می‌شود.",
+  "trader.beneficiaries.loading": "در حال دریافت ذی‌نفعان…",
+  "trader.beneficiaries.failedTitle": "فهرست ذی‌نفعان دریافت نشد",
+  "trader.beneficiaries.failed": "ارتباط با سامانه برقرار نشد. کمی بعد دوباره تلاش کنید.",
+  "trader.beneficiaries.emptyTitle": "هنوز ذی‌نفعی ثبت نکرده‌اید",
+  "trader.beneficiaries.empty": "برای ثبت درخواست پرداخت، اول یک ذی‌نفع اضافه کنید.",
+  "trader.beneficiaries.name": "نام",
+  "trader.beneficiaries.iban": "شبا",
+  "trader.beneficiaries.status": "وضعیت",
+  "trader.beneficiaries.addTitle": "افزودن ذی‌نفع",
+  "trader.beneficiaries.fullName": "نام کامل",
+  "trader.beneficiaries.nationalId": "کد ملی (اختیاری)",
+  "trader.beneficiaries.add": "افزودن",
+  "trader.beneficiaries.working": "در حال افزودن…",
+  "trader.beneficiaries.addFailed": "ذی‌نفع اضافه نشد. نام و شبا را بررسی کنید.",
+  "trader.beneficiaries.duplicateTitle": "ذی‌نفع مشابه پیدا شد",
+  "trader.beneficiaries.duplicateBody":
+    "این ذی‌نفع ثبت شد، اما مشابه موارد زیر است. اگر اشتباه بوده، آن را غیرفعال کنید.",
+  "trader.beneficiaries.matchedOn": "شباهت در",
+  "admin.requests.title": "درخواست‌های پرداخت",
+  "admin.requests.description":
+    "صف بررسی حسابداری. تأیید برای پرداخت، تأیید مدیر نیست؛ در این مرحله فقط درستی درخواست بررسی می‌شود.",
+  "admin.requests.loading": "در حال دریافت صف…",
+  "admin.requests.forbiddenTitle": "دسترسی به این صف ندارید",
+  "admin.requests.forbidden":
+    "برای دیدن درخواست‌های پرداخت، دسترسی لازم به حساب شما داده نشده است.",
+  "admin.requests.failedTitle": "صف دریافت نشد",
+  "admin.requests.failed": "ارتباط با سامانه برقرار نشد. کمی بعد دوباره تلاش کنید.",
+  "admin.requests.emptyTitle": "چیزی در صف نیست",
+  "admin.requests.empty": "درخواستی برای بررسی وجود ندارد.",
+  "admin.requests.filterAll": "همه",
+  "admin.requests.open": "بررسی",
+  "admin.request.title": "بررسی درخواست",
+  "admin.request.loading": "در حال دریافت درخواست…",
+  "admin.request.failedTitle": "این درخواست دریافت نشد",
+  "admin.request.failed": "ممکن است این شناسه وجود نداشته باشد.",
+  "admin.request.startReview": "شروع بررسی",
+  "admin.request.requestCorrection": "برگرداندن برای اصلاح",
+  "admin.request.markEligible": "تأیید برای پرداخت",
+  "admin.request.reasonCode": "کد دلیل",
+  "admin.request.messageToTrader": "پیام به طلافروش",
+  "admin.request.internalNote": "یادداشت داخلی (اختیاری)",
+  "admin.request.reviewNote": "یادداشت بررسی (اختیاری)",
+  "admin.request.correctionNeedsBoth": "کد دلیل و پیام به طلافروش هر دو لازم است.",
+  "admin.request.working": "در حال انجام…",
+  "admin.request.stale":
+    "این درخواست در فاصلهٔ باز بودن صفحه تغییر کرده است. اطلاعات تازه نمایش داده شد.",
+  "admin.request.actionFailed": "این عملیات انجام نشد.",
+  "admin.request.notManagerApproval": "این مرحله تأیید مدیر نیست.",
+  "admin.request.history": "تاریخچهٔ نسخه‌ها",
 } as const;
 
 export type MessageKey = keyof typeof faMessages;
 
 export function t(key: MessageKey): string {
   return faMessages[key];
+}
+
+/**
+ * A payment-request status as a person reads it, or the raw value if it is one this release
+ * cannot produce.
+ *
+ * Here rather than in each app because both need it and a duplicated label map drifts: the
+ * trader would read "نیازمند اصلاح شما" while the accountant read something else for the same
+ * row. `UI-ISO-001` is about neither bundle naming the other's endpoints, and a shared word
+ * is not an endpoint.
+ *
+ * The fallback is the raw value on purpose. Document 06 defines seventeen statuses and M5
+ * reaches six; returning the code for `batched` is honest about a state this release cannot
+ * reach, where a plausible invented translation would be a claim the software cannot support.
+ */
+export function paymentRequestStatusLabel(status: string): string {
+  const key = `requestStatus.${status}`;
+  return key in faMessages ? faMessages[key as MessageKey] : status;
 }

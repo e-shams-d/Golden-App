@@ -18,7 +18,11 @@ here twice before a route existed.
   draft filed it. The arrows into `submitted_to_center` are parsed here too, which is what
   makes that a failing test rather than a behaviour nobody wrote down.
 
-Covers: SVC-REVIEW-001, SVC-REVIEW-003.
+Slice 8 adds the `allowed_actions` half. That field is what a screen renders buttons from,
+so its content is checked against the parsed document too — comparing a projection to the
+tables it is derived from would prove only that Python works.
+
+Covers: SVC-REVIEW-001, SVC-REVIEW-003, API-REQ-003.
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ import re
 from pathlib import Path
 
 from app.commands.payment_request import (
+    CANCEL_OPERATION,
     CANCELLABLE,
     CORRECTABLE,
     ELIGIBLE,
@@ -34,6 +39,7 @@ from app.commands.payment_request import (
     REVIEW_TRANSITIONS,
     SUBMITTED,
     UNDER_REVIEW,
+    allowed_actions,
 )
 from app.db.models.payment_request import M5_REACHABLE_STATUSES
 
@@ -161,6 +167,62 @@ def test_cancellation_is_permitted_from_exactly_the_documented_states() -> None:
         f"the code permits cancellation from {sorted(CANCELLABLE)} and §29.1 permits it "
         f"from {sorted(reachable)} among the states M5 reaches"
     )
+
+
+def test_allowed_actions_offers_exactly_the_transitions_the_document_draws() -> None:
+    """`API-REQ-003`, the half that matters.
+
+    `allowed_actions` is what a screen decides which buttons to render from, so its content
+    is compared against the parsed document rather than against the tables it is derived
+    from — comparing a projection to its own source proves only that Python works.
+
+    The internal audience, because the three review commands are internal-only.
+    """
+
+    origins = documented_origins()
+    review_commands = {transition.command_id for transition in REVIEW_TRANSITIONS}
+    by_destination = {
+        transition.destination: transition.command_id for transition in REVIEW_TRANSITIONS
+    }
+
+    for status in M5_REACHABLE_STATUSES:
+        offered = set(allowed_actions(status, by_trader=False)) & review_commands
+        documented = {
+            command
+            for destination, command in by_destination.items()
+            if status in origins.get(destination, set())
+        }
+        assert offered == documented, (
+            f"from {status} the response offers {sorted(offered)} and document 06 draws "
+            f"{sorted(documented)}"
+        )
+
+
+def test_allowed_actions_offers_cancellation_exactly_where_29_1_does() -> None:
+    """`API-REQ-003`. Both audiences, because §29.1's whole point is that they differ."""
+
+    documented = documented_cancellation()
+
+    for status in M5_REACHABLE_STATUSES:
+        trader_may, _reason = documented.get(status, (False, False))
+        permitted_here = status in documented and status in CANCELLABLE
+
+        assert (CANCEL_OPERATION in allowed_actions(status, by_trader=False)) is permitted_here
+        assert (CANCEL_OPERATION in allowed_actions(status, by_trader=True)) is (
+            permitted_here and trader_may
+        ), f"§29.1 on {status}: a trader {'may' if trader_may else 'may not'} cancel"
+
+
+def test_a_trader_is_never_offered_an_accountant_action() -> None:
+    """`API-REQ-003`, and `SEC-REQ-003` from the read side.
+
+    A trader session resolves no permissions, so every review action would be refused. A
+    field that offered one would put a button on their screen that answers `403`.
+    """
+
+    for status in M5_REACHABLE_STATUSES:
+        offered = set(allowed_actions(status, by_trader=True))
+        assert offered.isdisjoint({t.command_id for t in REVIEW_TRANSITIONS}), status
 
 
 def test_the_cancellation_actor_and_reason_rules_match_the_document() -> None:

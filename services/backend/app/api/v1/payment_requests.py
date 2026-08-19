@@ -19,9 +19,10 @@ Covers: SEC-REQ-001, CON-REQ-001.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header, Response
+from fastapi import APIRouter, Depends, Header, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
@@ -49,7 +50,7 @@ from app.core.runtime import RuntimeServices
 from app.core.time import utc_now
 from app.db.models.payment_request import PaymentRequest, PaymentRequestRevision
 from app.security.actor import ActorContext
-from app.security.ownership import require_owned
+from app.security.ownership import require_owned, scoped
 from app.security.permissions import declare
 
 router = APIRouter(prefix="/payment-requests", tags=["payment-requests"])
@@ -164,9 +165,21 @@ class DraftRevisionResponse(BaseModel):
 class PaymentRequestResponse(BaseModel):
     """Deliberately not the whole row.
 
-    `review_note` and the trader-result columns are absent because nothing in M5 sets
-    them, and listing fields explicitly is what keeps a column added later from
-    becoming visible by default.
+    The trader-result columns are absent because nothing in M5 sets them, and listing
+    fields explicitly is what keeps a column added later from becoming visible by default.
+
+    `review_note` and `reviewed_at` are here from slice 8 because the accountant's message
+    is the one thing the trader's correction screen must show — `UI-REQ-001`. Until then
+    the message lived only in the audit trail, which no trader reads, so a returned request
+    arrived with no reason attached and the trader's rational move was to resubmit it
+    unchanged.
+
+    **`reviewed_by_admin_user_id` is deliberately not here.** Who inside the centre made a
+    decision is internal-only, and this is the field document 05 `:1131` means by "trader
+    responses omit internal-only data". Omitting it for everyone rather than branching on
+    the audience is the cheaper guarantee: nothing in M5 needs it, and a per-audience
+    projection is a thing to get wrong later. The accountant's `internal_note` is likewise
+    audit-only and never rendered.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -177,6 +190,8 @@ class PaymentRequestResponse(BaseModel):
     request_number: str
     status: str
     current_revision_id: uuid.UUID | None
+    review_note: str | None
+    reviewed_at: datetime | None
     record_version: int
 
 
@@ -185,6 +200,41 @@ class DraftCreated(BaseModel):
 
     request: PaymentRequestResponse
     revision: DraftRevisionResponse
+
+
+class PaymentRequestListing(BaseModel):
+    """One row of the list. The current revision is included because a queue without the
+    amount and the beneficiary is a queue nobody can triage from — an accountant would have
+    to open every row to find the one they are looking for."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    request: PaymentRequestResponse
+    current_revision: DraftRevisionResponse | None
+
+
+class PaymentRequestList(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[PaymentRequestListing]
+
+
+class PaymentRequestDetail(BaseModel):
+    """`05_API_Specification.md:1131` asks for seven things. Four exist in M5.
+
+    Present: the current revision, the aggregate state (on `request.status`), the record
+    version, and `allowed_actions`. Absent rather than empty: `attempts` arrive with M6 and
+    `current_publication_summary` with M8, and a field that is always `[]` or `null` reads as
+    "there are none" rather than "this milestone does not have them" — the first is a fact
+    about the request and the second is a fact about the software. `warnings` has no producer
+    for requests either; slice 2's duplicate warning belongs to beneficiary creation.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    request: PaymentRequestResponse
+    current_revision: DraftRevisionResponse | None
+    allowed_actions: list[str]
 
 
 class AmountRequest(BaseModel):
@@ -290,6 +340,140 @@ def create_draft(
         )
         uow.commit()
     return rendered
+
+
+@router.get(
+    "",
+    response_model=PaymentRequestList,
+    operation_id="listPaymentRequests",
+    summary="The trader's own requests, or the centre's queue.",
+    responses=COMMON_RESPONSES,
+)
+def list_requests(
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    scope: Annotated[
+        uuid.UUID | None,
+        owned_or_permitted("payment_request.read_own", "payment_request.read"),
+    ],
+    status: Annotated[str | None, Query(max_length=64)] = None,
+    trader_id: Annotated[uuid.UUID | None, Query()] = None,
+) -> PaymentRequestList:
+    """`05_API_Specification.md:1061-1075`. The accountant's queue and the trader's list.
+
+    **"Trader scope is always inferred" (`:1075`) is stronger than "validated".** A trader's
+    rows come from `scoped()`, which takes the actor and not an id — `app/security/ownership.py`
+    puts it exactly: the defence against "trader A submits `trader_id` belonging to B" is not
+    to validate that field, it is to never read it. For a trader the `trader_id` parameter is
+    not overridden, it is never consulted. My first version computed
+    `scope if scope is not None else trader_id` and filtered on the result, which built the
+    one argument that module exists to remove; `test_ownership_scope.py` refused it.
+
+    So `trader_id` is an internal filter only, and it carries its own permission by being
+    reachable only on the branch where the caller holds `payment_request.read`.
+
+    Of document 05's eleven filters, `status` and `trader_id` are implemented. The rest name
+    attempts, disputes and bank profiles, and M5 has nothing for them to filter on; a
+    parameter that silently ignores what it is given is worse than one that is absent, so
+    they are absent.
+    """
+
+    with runtime.uow_factory() as uow:
+        query = select(PaymentRequest)
+        if scope is not None:
+            # A trader. The predicate comes from the session, not from this signature.
+            query = scoped(query, PaymentRequest.trader_id, actor)
+        elif trader_id is not None:
+            query = query.where(PaymentRequest.trader_id == trader_id)
+        if status is not None:
+            query = query.where(PaymentRequest.status == status)
+
+        # Newest first: a queue is read from the top, and `request_number` carries the month,
+        # so ordering by creation keeps the sequence a person recognises.
+        records = list(uow.session.scalars(query.order_by(PaymentRequest.created_at.desc())))
+
+        # One query for every current revision rather than one per row. The first version
+        # built a dict of `session.get` calls in a comprehension, which was an N+1 inside an
+        # open transaction — and `test_no_io_under_lock.py` flagged the `.get()` that came
+        # next, reading a dict lookup as a session read. It could not tell them apart, and
+        # the fix for the false positive happened to be the fix for the real N+1.
+        wanted = [
+            record.current_revision_id
+            for record in records
+            if record.current_revision_id is not None
+        ]
+        current: dict[uuid.UUID, PaymentRequestRevision] = {}
+        if wanted:
+            for revision in uow.session.scalars(
+                select(PaymentRequestRevision).where(PaymentRequestRevision.id.in_(wanted))
+            ):
+                current[revision.id] = revision
+
+        return PaymentRequestList(
+            items=[
+                PaymentRequestListing(
+                    request=_render(record),
+                    current_revision=(
+                        _render_revision(current[record.current_revision_id])
+                        if record.current_revision_id in current
+                        else None
+                    ),
+                )
+                for record in records
+            ]
+        )
+
+
+@router.get(
+    "/{payment_request_id}",
+    response_model=PaymentRequestDetail,
+    operation_id="getPaymentRequest",
+    summary="One request, its current revision, and what may be done to it.",
+    responses=COMMON_RESPONSES,
+)
+def get_request(
+    payment_request_id: uuid.UUID,
+    response: Response,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    scope: Annotated[
+        uuid.UUID | None,
+        owned_or_permitted("payment_request.read_own", "payment_request.read"),
+    ],
+) -> PaymentRequestDetail:
+    """`05_API_Specification.md:1125-1131`.
+
+    The `ETag` matters more here than on most reads: this is where a screen gets the
+    `If-Match` it will send back, and `app/api/v1/traders.py`'s note applies — a client that
+    computed `rv-${record_version}` itself would be inventing a precondition.
+    """
+
+    with runtime.uow_factory() as uow:
+        record = uow.session.get(PaymentRequest, payment_request_id)
+        if scope is None:
+            if record is None:
+                raise NotFoundError()
+        else:
+            owner = record.trader_id if record is not None else None
+            require_owned(record, owner, actor)
+        # Both branches above raise when it is None; this narrows the type for what follows.
+        assert record is not None
+
+        revision = (
+            uow.session.get(PaymentRequestRevision, record.current_revision_id)
+            if record.current_revision_id is not None
+            else None
+        )
+        detail = PaymentRequestDetail(
+            request=_render(record),
+            current_revision=_render_revision(revision) if revision is not None else None,
+            allowed_actions=list(
+                commands.allowed_actions(record.status, by_trader=actor.is_trader)
+            ),
+        )
+
+    response.headers["ETag"] = f'"rv-{detail.request.record_version}"'
+    return detail
 
 
 @router.post(
@@ -877,6 +1061,8 @@ def _render(record: PaymentRequest) -> PaymentRequestResponse:
         request_number=record.request_number,
         status=record.status,
         current_revision_id=record.current_revision_id,
+        review_note=record.review_note,
+        reviewed_at=record.reviewed_at,
         record_version=record.record_version,
     )
 

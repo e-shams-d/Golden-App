@@ -28,6 +28,10 @@ const paths = [
   // is the one an operator meets on the worst day.
   "/admin-users",
   "/roles",
+  // M5 slice 8. The accountant's queue, added with it for the reason stated twice above — and
+  // the reason is not theoretical here: `pnpm check` passed on this branch before this line
+  // existed, over a screen the sweep had never opened.
+  "/requests",
 ] as const;
 
 for (const path of paths) {

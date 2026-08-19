@@ -1,2 +1,2 @@
 export { normalizeDigits, toPersianDigits } from "./digits";
-export { faMessages, t, type MessageKey } from "./messages";
+export { faMessages, paymentRequestStatusLabel, t, type MessageKey } from "./messages";

@@ -23,6 +23,17 @@ const paths = [
   // platform, on whatever phone they own. Six labelled fields, their hints and their
   // objections is also the largest amount of form this app has anywhere.
   "/register",
+  // M5 slice 8's screens. Added with them, because the note above `/profile` describes exactly
+  // what would otherwise have happened: `pnpm check` went green over three new screens this
+  // sweep never visited, and the `/states/[kind]` page's own comment predicts the shape of it —
+  // a surface outside this fixed list is a surface nobody checks.
+  //
+  // Against no backend each renders its failure or empty state, which is the state worth
+  // holding to the standard: it is the one a person meets when something is wrong, and the one
+  // most likely to be built without a heading or a live region.
+  "/requests",
+  "/requests/new",
+  "/beneficiaries",
 ] as const;
 
 for (const path of paths) {
