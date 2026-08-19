@@ -8,7 +8,7 @@ transaction and each references the other, which is why the composite pointer is
 `DEFERRABLE INITIALLY DEFERRED`. A request with no revision has no content and would
 sit in a queue as an empty row nobody can act on.
 
-**Why `cancel_draft` is here when the plan listed only `create_draft`.** `CON-REQ-001`
+**Why cancellation is here when the plan listed only `create_draft`.** `CON-REQ-001`
 is "`payment_requests.record_version` supports `If-Match`, and a stale value returns
 `412` rather than overwriting" — and a slice whose only route creates a resource has
 nothing for `If-Match` to be stale *against*. The obligation was unprovable as the
@@ -39,9 +39,12 @@ from sqlalchemy.orm import Session
 from app.audit.outbox import OutboxMessage, OutboxWriter
 from app.audit.redaction import RedactionPolicy
 from app.audit.registry import (
+    BEGIN_REVIEW,
     CANCEL_PAYMENT_REQUEST,
     CREATE_PAYMENT_REQUEST,
     CREATE_REVISION,
+    MARK_ELIGIBLE_FOR_BATCHING,
+    RETURN_FOR_CORRECTION,
     SUBMIT_PAYMENT_REQUEST,
     CommandNames,
 )
@@ -66,6 +69,8 @@ DRAFT = "draft"
 CANCELLED = "cancelled"
 SUBMITTED = "submitted_to_center"
 NEEDS_CORRECTION = "needs_trader_correction"
+UNDER_REVIEW = "under_accountant_review"
+ELIGIBLE = "eligible_for_batching"
 
 # The operation name the idempotency record carries. Distinct from draft creation, so a
 # key reused across the two is a conflict rather than a replay of the wrong command.
@@ -85,11 +90,47 @@ CORRECTABLE = (DRAFT, NEEDS_CORRECTION)
 OPERATIONAL_OK = "active"
 APPROVAL_OK = "approved"
 
-# Which statuses may still be cancelled. `draft` only, in this slice: document 06
-# permits cancellation from later states through the review workflow, and slice 7 is
-# where those transitions and their authority live. Narrow here rather than permissive,
-# because a cancel that reached a batched request would invalidate work downstream.
-CANCELLABLE = (DRAFT,)
+@dataclass(frozen=True, slots=True)
+class CancelRule:
+    trader_may: bool
+    reason_required: bool
+
+
+# `06_Workflows_and_State_Machines.md:1367-1375` — §29.1, "Cancellation and Void Rules",
+# which is the authority for this and not the §13.2 diagram. The diagram declares
+# `cancelled` as a state and draws no arrow into it, so a rule built from it would prove
+# that cancellation is never permitted at all. Slice 3 wrote `CANCELLABLE = (DRAFT,)` and
+# deferred the rest to this slice, citing the review workflow for it — the deferral was
+# right and the citation was wrong.
+#
+# Restricted to the states M5 reaches: §29.1 also covers `batched` ("only by
+# replacement/removal") and `sent_to_bank` and later ("no normal cancellation"), and M6
+# owns both. Absent from this table means refused, which is what makes adding a state to
+# the milestone a decision rather than an omission.
+#
+# The trader column is where the document is specific, and `under_accountant_review` is
+# the row that matters: it says "Internal with reason" where its neighbours say
+# "Trader/internal", so the exclusion is deliberate — a trader cannot pull a request out
+# from under the accountant reading it. `draft` says only "Trader may cancel"; internal is
+# permitted here too, because that row names who normally does it rather than forbidding
+# anyone, and an internal actor who created a draft under
+# `payment_request.create_internal` would otherwise be unable to cancel what they made.
+CANCELLABLE: dict[str, CancelRule] = {
+    DRAFT: CancelRule(trader_may=True, reason_required=False),
+    SUBMITTED: CancelRule(trader_may=True, reason_required=True),
+    UNDER_REVIEW: CancelRule(trader_may=False, reason_required=True),
+    NEEDS_CORRECTION: CancelRule(trader_may=True, reason_required=True),
+    # No reason required, which is not what I wrote first. §29.1's cell reads
+    # "Internal/trader if no active allocation" — a guard, and no mention of a reason —
+    # while its three predecessors all say "reason". The parser in
+    # `tests/backend/test_review_transitions.py` caught the difference.
+    #
+    # Requiring one anyway would be an unmandated refusal, which is the same error as the
+    # unmandated side effect this slice removed from `create_revision`, only pointing the
+    # other way. The allocation guard is real and arrives with M6, which is what creates
+    # allocations; until then there is never an active one.
+    ELIGIBLE: CancelRule(trader_may=True, reason_required=False),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,9 +152,17 @@ class CreateDraft:
 
 
 @dataclass(frozen=True, slots=True)
-class CancelDraft:
+class CancelPaymentRequest:
+    """`by_trader` has no default on purpose.
+
+    It selects between the two actor columns of §29.1, and the internal one is the more
+    permissive. A default would mean a caller who forgot to pass it got the wider
+    authority, which is the wrong direction for a field that decides an authority.
+    """
+
     payment_request_id: uuid.UUID
     expected_record_version: int
+    by_trader: bool
     reason: str | None = None
 
 
@@ -245,8 +294,8 @@ def create_draft(
     return DraftResult(request=request, revision=revision)
 
 
-def cancel_draft(
-    command: CancelDraft,
+def cancel_request(
+    command: CancelPaymentRequest,
     *,
     session: Session,
     policy: RedactionPolicy,
@@ -254,7 +303,10 @@ def cancel_draft(
     context: AuditContext,
     now: datetime,
 ) -> PaymentRequest:
-    """Cancel a draft, under optimistic concurrency.
+    """Cancel a request, under optimistic concurrency.
+
+    Named `cancel_draft` until this slice, when §29.1's other four states arrived and the
+    name stopped being true.
 
     Through `compare_and_swap` rather than a read-then-write: the comparison belongs
     in the statement that writes, because a check in Python loses the race under READ
@@ -269,10 +321,23 @@ def cancel_draft(
     if request is None:
         raise NotFoundError()
 
-    if request.status not in CANCELLABLE:
+    rule = CANCELLABLE.get(request.status)
+    if rule is None:
         raise BusinessRuleViolationError(
-            f"a {request.status} request is not cancelled here; only {', '.join(CANCELLABLE)} "
-            "is, and later states are cancelled through the review workflow"
+            f"a {request.status} request is not cancelled; §29.1 permits cancellation from "
+            f"{', '.join(CANCELLABLE)}, and a request that has reached batching is "
+            "withdrawn by replacing the batch version instead"
+        )
+    if command.by_trader and not rule.trader_may:
+        raise BusinessRuleViolationError(
+            f"a {request.status} request is cancelled by the centre, not by its trader; "
+            "it is with an accountant, and withdrawing it from under them is what a "
+            "correction request is for"
+        )
+    if rule.reason_required and not (command.reason or "").strip():
+        raise BusinessRuleViolationError(
+            f"cancelling a {request.status} request requires a reason; only a draft, "
+            "which nobody else has seen, may be abandoned without one"
         )
 
     previous = {"status": request.status}
@@ -316,7 +381,12 @@ def submit(
     context: AuditContext,
     now: datetime,
 ) -> PaymentRequest:
-    """Hand a draft to the centre. `draft -> submitted_to_center`.
+    """Hand a request to the centre. `draft | needs_trader_correction -> submitted_to_center`.
+
+    Both origins, per document 06's transition table at `:641`. The correction case is
+    what makes the milestone's Definition of Done read "resubmit": a returned request goes
+    back to the centre because its owner says so, in a command that can be refused for the
+    same reasons a first submission can, not as a side effect of editing.
 
     **Submission does not write the snapshot; it verifies one.** The plan originally said
     the columns are filled here, and that is not implementable: a revision cannot be
@@ -341,11 +411,10 @@ def submit(
     if request is None:
         raise NotFoundError()
 
-    if request.status != DRAFT:
+    if request.status not in CORRECTABLE:
         raise BusinessRuleViolationError(
-            f"only a draft is submitted; this request is {request.status}. A request "
-            "returned for correction is resubmitted by filing the correction, which "
-            "moves it back to the centre in one step."
+            f"only {' or '.join(CORRECTABLE)} is submitted; this request is "
+            f"{request.status}"
         )
 
     trader = session.get(Trader, request.trader_id)
@@ -361,6 +430,10 @@ def submit(
 
     _require_complete_snapshot(revision)
     _require_attachment_is_available(session, revision)
+
+    # Read before the swap: the audit row must name the state this actually left, and
+    # after the correction origin was added that is no longer always `draft`.
+    previous_status = request.status
 
     outcome = compare_and_swap(
         session,
@@ -382,12 +455,273 @@ def submit(
         actor=actor,
         context=context,
         now=now,
-        previous_values={"status": DRAFT},
+        previous_values={"status": previous_status},
         new_values={"status": SUBMITTED, "revision_number": revision.revision_number},
     )
     _publish(session, policy, SUBMIT_PAYMENT_REQUEST, request, context, outcome.new_version)
 
     return request
+
+
+@dataclass(frozen=True, slots=True)
+class Transition:
+    """One row of document 06's transition table, as the code enforces it.
+
+    A declaration the guard itself reads, rather than a description beside a hand-written
+    `if`. `SVC-REVIEW-001` enumerates the documented transitions and compares them against
+    this tuple, so a row the document gains and the code does not is a failure rather than
+    a silence — and a guard that drifts from its own declaration cannot happen, because
+    there is only one of them.
+    """
+
+    command_id: str
+    origins: tuple[str, ...]
+    destination: str
+
+
+# `06_Workflows_and_State_Machines.md:585-589` and its table at `:642-644`. Command ids are
+# the catalogued ones from `command_catalog.yaml`, which is what the audit rows and
+# idempotency records carry.
+START_REVIEW = Transition(
+    command_id="payment_request.start_review",
+    origins=(SUBMITTED,),
+    destination=UNDER_REVIEW,
+)
+REQUEST_CORRECTION = Transition(
+    command_id="payment_request.request_correction",
+    # Both origins. `:586` draws the arrow from `submitted_to_center` and `:643` writes the
+    # origin as "submitted/review": an accountant who can see at a glance that the IBAN is
+    # wrong should not have to open a review first in order to hand it back.
+    origins=(SUBMITTED, UNDER_REVIEW),
+    destination=NEEDS_CORRECTION,
+)
+MARK_ELIGIBLE = Transition(
+    command_id="payment_request.mark_eligible",
+    origins=(UNDER_REVIEW,),
+    destination=ELIGIBLE,
+)
+
+REVIEW_TRANSITIONS: tuple[Transition, ...] = (START_REVIEW, REQUEST_CORRECTION, MARK_ELIGIBLE)
+
+
+@dataclass(frozen=True, slots=True)
+class BeginReview:
+    payment_request_id: uuid.UUID
+    expected_record_version: int
+
+
+@dataclass(frozen=True, slots=True)
+class ReturnForCorrection:
+    """`05_API_Specification.md:1203-1211`. Reason and trader message are both required.
+
+    Required in the type, not checked in the body: a return with no reason is a request a
+    trader cannot act on, and "Reason and trader notification are required" is the
+    document's sentence rather than an inference. `internal_note` is the accountant's own
+    and is not sent to the trader.
+    """
+
+    payment_request_id: uuid.UUID
+    expected_record_version: int
+    reason_code: str
+    message_to_trader: str
+    internal_note: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class MarkEligibleForBatching:
+    """`05_API_Specification.md:1223-1227`.
+
+    `expected_revision_id` is the guard document 06 `:644` calls "current revision valid":
+    the accountant states which revision they validated, and a correction that landed
+    while they were reading makes the command fail rather than mark a superseded revision
+    eligible.
+    """
+
+    payment_request_id: uuid.UUID
+    expected_record_version: int
+    expected_revision_id: uuid.UUID
+    review_note: str | None = None
+
+
+def _require_transition(request: PaymentRequest, transition: Transition) -> None:
+    if request.status not in transition.origins:
+        raise BusinessRuleViolationError(
+            f"{transition.command_id} moves a request to {transition.destination} from "
+            f"{' or '.join(transition.origins)}; this request is {request.status}"
+        )
+
+
+def _move(
+    *,
+    names: CommandNames,
+    transition: Transition,
+    request_id: uuid.UUID,
+    expected_record_version: int,
+    session: Session,
+    policy: RedactionPolicy,
+    actor: AuditActor,
+    context: AuditContext,
+    now: datetime,
+    extra_values: dict[str, Any] | None = None,
+    reason: str | None = None,
+    extra_audit: dict[str, Any] | None = None,
+) -> PaymentRequest:
+    """The shared body of the three accountant transitions.
+
+    They differ in their guards, their reason, and whether they publish; they do not
+    differ in how they move a status, and writing that three times is how the third one
+    ends up without a `compare_and_swap`.
+    """
+
+    request = session.get(PaymentRequest, request_id)
+    if request is None:
+        raise NotFoundError()
+
+    _require_transition(request, transition)
+
+    previous_status = request.status
+    outcome = compare_and_swap(
+        session,
+        PaymentRequest,
+        entity_id=request_id,
+        expected_version=expected_record_version,
+        values={"status": transition.destination, **(extra_values or {})},
+    )
+    session.expire(request)
+
+    _audit(
+        session,
+        policy,
+        names,
+        outcome="success",
+        request_id=request_id,
+        record_version=outcome.new_version,
+        reason=reason,
+        actor=actor,
+        context=context,
+        now=now,
+        previous_values={"status": previous_status},
+        new_values={"status": transition.destination, **(extra_audit or {})},
+    )
+
+    if names.outbox_event_type is not None:
+        _publish(session, policy, names, request, context, outcome.new_version)
+
+    return request
+
+
+def begin_review(
+    command: BeginReview,
+    *,
+    session: Session,
+    policy: RedactionPolicy,
+    actor: AuditActor,
+    context: AuditContext,
+    now: datetime,
+) -> PaymentRequest:
+    """`submitted_to_center -> under_accountant_review`.
+
+    No body and no reason: starting to read something is not a decision about it. The
+    request's status is the only thing that changes, and it changes so that a second
+    accountant opening the same queue can see somebody already has it.
+    """
+
+    return _move(
+        names=BEGIN_REVIEW,
+        transition=START_REVIEW,
+        request_id=command.payment_request_id,
+        expected_record_version=command.expected_record_version,
+        session=session,
+        policy=policy,
+        actor=actor,
+        context=context,
+        now=now,
+    )
+
+
+def return_for_correction(
+    command: ReturnForCorrection,
+    *,
+    session: Session,
+    policy: RedactionPolicy,
+    actor: AuditActor,
+    context: AuditContext,
+    now: datetime,
+) -> PaymentRequest:
+    """`submitted_to_center | under_accountant_review -> needs_trader_correction`.
+
+    The one accountant action with an audience outside the centre, so the one that
+    publishes: `PaymentRequestCorrectionRequested` is in the outbox catalogue precisely
+    because a trader has to be told their request is waiting on them.
+
+    The reason is audited. A request handed back without a recorded reason is one nobody
+    can answer for later, and this is the transition a dispute is most likely to turn on.
+    """
+
+    return _move(
+        names=RETURN_FOR_CORRECTION,
+        transition=REQUEST_CORRECTION,
+        request_id=command.payment_request_id,
+        expected_record_version=command.expected_record_version,
+        session=session,
+        policy=policy,
+        actor=actor,
+        context=context,
+        now=now,
+        reason=command.reason_code,
+        extra_audit={
+            "reason_code": command.reason_code,
+            # The trader-facing message, recorded so the trail holds what they were
+            # actually told. The internal note is deliberately not audited here: it is the
+            # accountant's working note, and `12_Security_RBAC_Audit.md` keeps the audit
+            # trail to what was decided rather than what was thought.
+            "message_to_trader": command.message_to_trader,
+        },
+    )
+
+
+def mark_eligible_for_batching(
+    command: MarkEligibleForBatching,
+    *,
+    session: Session,
+    policy: RedactionPolicy,
+    actor: AuditActor,
+    context: AuditContext,
+    now: datetime,
+) -> PaymentRequest:
+    """`under_accountant_review -> eligible_for_batching`. Where M5 stops.
+
+    This is accountant review completion and **not** manager approval —
+    `12_Security_RBAC_Audit.md:904` says so in one sentence, and slice 9 gates it. The
+    permission is `payment_request.mark_eligible`, which the role matrix gives an
+    accountant; nothing manager-only is consulted here.
+    """
+
+    request = session.get(PaymentRequest, command.payment_request_id)
+    if request is None:
+        raise NotFoundError()
+
+    # Before the transition guard, because "you validated a revision that is no longer
+    # current" is the more useful refusal of the two when both are true.
+    if request.current_revision_id != command.expected_revision_id:
+        raise BusinessRuleViolationError(
+            "the revision named here is not the current one, so marking it eligible "
+            "would send a superseded revision for batching; re-read the request"
+        )
+
+    return _move(
+        names=MARK_ELIGIBLE_FOR_BATCHING,
+        transition=MARK_ELIGIBLE,
+        request_id=command.payment_request_id,
+        expected_record_version=command.expected_record_version,
+        session=session,
+        policy=policy,
+        actor=actor,
+        context=context,
+        now=now,
+        reason=command.review_note,
+        extra_audit={"revision_id": str(command.expected_revision_id)},
+    )
 
 
 def _require_complete_snapshot(revision: PaymentRequestRevision) -> None:
@@ -574,15 +908,18 @@ def create_revision(
         PaymentRequest,
         entity_id=request.id,
         expected_version=command.expected_record_version,
-        values={
-            "current_revision_id": revision.id,
-            # Back to the centre's queue. A correction the accountant asked for is not
-            # finished until it is resubmitted, and leaving it in
-            # `needs_trader_correction` would mean the trader corrected it and nobody
-            # was told.
-            "status": SUBMITTED,
-            "submitted_at": now,
-        },
+        # The pointer moves and the status does not. Document 06's transition table at
+        # `:640` says a revision leaves the request in the "same aggregate state", and
+        # `:641` gives submit both `draft` and `needs_trader_correction` as origins — so
+        # resubmission is a command the trader issues, not a side effect of correcting.
+        #
+        # This used to set `status: SUBMITTED` unconditionally, reasoning that a
+        # correction the accountant asked for is not finished until the centre is told.
+        # True, and still the wrong place: the same line also submitted a *draft* the
+        # moment its owner edited it, so a trader who fixed a typo had filed the request,
+        # and `submit` — which then only accepted `draft` — could never be called on it.
+        # Nothing in slice 5's obligations asked for the status to move here.
+        values={"current_revision_id": revision.id},
     )
     session.expire(request)
 
@@ -604,7 +941,6 @@ def create_revision(
         new_values={
             "current_revision_id": str(revision.id),
             "revision_number": revision.revision_number,
-            "status": SUBMITTED,
         },
     )
 

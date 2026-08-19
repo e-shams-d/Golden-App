@@ -394,11 +394,11 @@ PENDING: dict[str, str] = {
     # changes. The payload carries identifiers only: a consumer that needs the amount or
     # the beneficiary reads the aggregate rather than having a payment destination put
     # on a queue.
-    "SVC-REVIEW-001": "M5 slice 7 — accountant review moves the request through its states",
-    "SVC-REVIEW-002": "M5 slice 7 — return for correction, and what the trader may then do",
-    "SVC-REVIEW-003": "M5 slice 7 — marking eligible for batching is an accountant action",
-    "SEC-REQ-003": "M5 slice 7 — a trader cannot perform a review action",
-    "AUD-REQ-002": "M5 slice 7 — the accountant's action is audited and emitted through outbox",
+    # SVC-REVIEW-001 and SVC-REVIEW-003 are discharged by
+    # `test_review_transitions.py`, which parses document 06's own state machine and §29.1
+    # cancellation table rather than restating either. Their entries were removed from here
+    # in the same commit, because this gate fails an obligation that is both pending and
+    # covered — the ledger has to be honest in that direction too.
     "UI-REQ-001": "M5 slice 8 — the trader's request screens",
     "UI-REQ-002": "M5 slice 8 — the correction flow as the trader sees it",
     "UI-REQ-003": "M5 slice 8 — the accountant's review queue",

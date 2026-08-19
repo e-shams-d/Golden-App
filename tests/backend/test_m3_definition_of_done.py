@@ -184,6 +184,20 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     ("GET", "/api/v1/payment-requests/{payment_request_id}/revisions"): DUAL,
     # M5 slice 6. Submission.
     ("POST", "/api/v1/payment-requests/{payment_request_id}/submit"): DUAL,
+    # M5 slice 7. `PERMISSION`, not `DUAL`: the accountant's three have no trader
+    # audience at all, so there is no ownership scope to filter and no ownership negative
+    # to owe. Classifying them `DUAL` would demand a test proving a trader is refused by
+    # ownership, and the truth is that a trader is refused by never holding the
+    # permission — which is the permission negative, not the ownership one.
+    ("POST", "/api/v1/payment-requests/{payment_request_id}/start-review"): PERMISSION,
+    (
+        "POST",
+        "/api/v1/payment-requests/{payment_request_id}/request-correction",
+    ): PERMISSION,
+    (
+        "POST",
+        "/api/v1/payment-requests/{payment_request_id}/mark-eligible-for-batching",
+    ): PERMISSION,
     # PUBLIC by necessity rather than by choice, which is why it is not SESSION: an
     # account in `recovery_required` is refused every action except recovery, so it holds
     # no session to classify. The temporary credential an administrator set is what stands
@@ -401,6 +415,25 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ("POST", "/api/v1/payment-requests/{payment_request_id}/cancel", "permission"): (
         "test_an_admin_without_the_request_permission_is_refused"
     ),
+    # M5 slice 7. Three entries, one each: `PERMISSION` routes owe the permission
+    # negative only. All three answer `403` rather than `404` — an internal caller already
+    # knows requests exist and is being told they lack a grant, which is the distinction
+    # the beneficiary note above draws.
+    (
+        "POST",
+        "/api/v1/payment-requests/{payment_request_id}/start-review",
+        "permission",
+    ): "test_starting_a_review_needs_the_review_permission",
+    (
+        "POST",
+        "/api/v1/payment-requests/{payment_request_id}/request-correction",
+        "permission",
+    ): "test_returning_a_request_needs_the_correction_permission",
+    (
+        "POST",
+        "/api/v1/payment-requests/{payment_request_id}/mark-eligible-for-batching",
+        "permission",
+    ): "test_marking_eligible_needs_the_mark_eligible_permission",
     # M5 slice 5. Four more, because two DUAL routes each owe both kinds.
     ("POST", "/api/v1/payment-requests/{payment_request_id}/revisions", "ownership"): (
         "test_a_trader_cannot_correct_another_traders_request"

@@ -27,7 +27,7 @@ from sqlalchemy import select
 
 from app.api.contract import VALIDATION_ERROR_RESPONSE
 from app.api.dependencies import get_runtime
-from app.api.v1.auth import authenticated_actor
+from app.api.v1.auth import authenticated_actor, requires
 from app.audit.redaction import RedactionPolicy
 from app.audit.writer import AuditActor, AuditContext
 from app.commands import payment_request as commands
@@ -334,10 +334,14 @@ def cancel(
             owner = record.trader_id if record is not None else None
             require_owned(record, owner, actor)
 
-        updated = commands.cancel_draft(
-            commands.CancelDraft(
+        updated = commands.cancel_request(
+            commands.CancelPaymentRequest(
                 payment_request_id=payment_request_id,
                 expected_record_version=expected,
+                # Which column of §29.1 applies. `is_trader` is the same fact the
+                # ownership branch above turns on, so the authority the command checks and
+                # the authority the route checked cannot disagree about who is asking.
+                by_trader=actor.is_trader,
                 reason=payload.reason,
             ),
             session=uow.session,
@@ -432,6 +436,181 @@ def submit(
             commands.SubmitRequest(
                 payment_request_id=payment_request_id,
                 expected_record_version=expected,
+            ),
+            session=uow.session,
+            policy=REQUEST_REDACTION,
+            actor=_audit_actor(actor),
+            context=AuditContext(request_id=get_request_id()),
+            now=now,
+        )
+        rendered = _render(updated)
+        uow.commit()
+
+    response.headers["ETag"] = f'"rv-{rendered.record_version}"'
+    return rendered
+
+
+class ReturnForCorrectionRequest(BaseModel):
+    """`05_API_Specification.md:1203-1211`.
+
+    `reason_code` and `message_to_trader` are required because the document says "Reason
+    and trader notification are required" — so they are required in the schema, where a
+    caller finds out before the command runs, rather than checked in the handler.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason_code: str = Field(min_length=1, max_length=64)
+    message_to_trader: str = Field(min_length=1, max_length=1000)
+    internal_note: str | None = Field(default=None, max_length=1000)
+
+
+class MarkEligibleRequest(BaseModel):
+    """`05_API_Specification.md:1223-1227`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision_id: uuid.UUID
+    review_note: str | None = Field(default=None, max_length=1000)
+
+
+# The three accountant routes. Their bodies are near-identical and deliberately written
+# out rather than shared through a helper that takes the command as a callable. The first
+# draft did share one, and `test_no_io_under_lock.py` caught it: that gate reads the source
+# for calls made inside an open write transaction, and a bare `run()` is opaque to it, so
+# the abstraction bought three fewer repetitions by making a real guarantee unenforceable
+# on all three. The rest of this module is written out longhand for the same reason.
+#
+# Internal-only, so `requires(declare(...))` rather than
+# `owned_or_permitted`: there is no trader audience for any of them, and a trader session
+# carries no permissions at all, so routing them through the dual-audience helper would
+# declare an authority no trader can hold and read as though one might.
+@router.post(
+    "/{payment_request_id}/start-review",
+    response_model=PaymentRequestResponse,
+    operation_id="startPaymentRequestReview",
+    summary="Take a submitted request into accountant review.",
+    responses=WRITE_RESPONSES,
+    dependencies=[requires(declare("payment_request.review"))],
+)
+def start_review(
+    payment_request_id: uuid.UUID,
+    response: Response,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> PaymentRequestResponse:
+    """`submitted_to_center -> under_accountant_review`, under `If-Match`.
+
+    No body, and `If-Match` for the reason document 06 `:642` gives it: two accountants
+    opening the same queue is the ordinary race, and the second one should be told the
+    request already moved rather than quietly take it over.
+    """
+
+    if if_match is None:
+        raise PreconditionRequiredError("If-Match")
+    expected = _parse_record_version(if_match)
+
+    now = utc_now()
+    with runtime.uow_factory() as uow:
+        updated = commands.begin_review(
+            commands.BeginReview(
+                payment_request_id=payment_request_id,
+                expected_record_version=expected,
+            ),
+            session=uow.session,
+            policy=REQUEST_REDACTION,
+            actor=_audit_actor(actor),
+            context=AuditContext(request_id=get_request_id()),
+            now=now,
+        )
+        rendered = _render(updated)
+        uow.commit()
+
+    response.headers["ETag"] = f'"rv-{rendered.record_version}"'
+    return rendered
+
+
+@router.post(
+    "/{payment_request_id}/request-correction",
+    response_model=PaymentRequestResponse,
+    operation_id="requestPaymentRequestCorrection",
+    summary="Hand a request back to its trader, with a reason.",
+    responses=WRITE_RESPONSES,
+    dependencies=[requires(declare("payment_request.request_correction"))],
+)
+def request_correction(
+    payment_request_id: uuid.UUID,
+    payload: ReturnForCorrectionRequest,
+    response: Response,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> PaymentRequestResponse:
+    """`submitted_to_center | under_accountant_review -> needs_trader_correction`."""
+
+    if if_match is None:
+        raise PreconditionRequiredError("If-Match")
+    expected = _parse_record_version(if_match)
+
+    now = utc_now()
+    with runtime.uow_factory() as uow:
+        updated = commands.return_for_correction(
+            commands.ReturnForCorrection(
+                payment_request_id=payment_request_id,
+                expected_record_version=expected,
+                reason_code=payload.reason_code,
+                message_to_trader=payload.message_to_trader,
+                internal_note=payload.internal_note,
+            ),
+            session=uow.session,
+            policy=REQUEST_REDACTION,
+            actor=_audit_actor(actor),
+            context=AuditContext(request_id=get_request_id()),
+            now=now,
+        )
+        rendered = _render(updated)
+        uow.commit()
+
+    response.headers["ETag"] = f'"rv-{rendered.record_version}"'
+    return rendered
+
+
+@router.post(
+    "/{payment_request_id}/mark-eligible-for-batching",
+    response_model=PaymentRequestResponse,
+    operation_id="markPaymentRequestEligibleForBatching",
+    summary="Complete accountant review. This is not manager approval.",
+    responses=WRITE_RESPONSES,
+    dependencies=[requires(declare("payment_request.mark_eligible"))],
+)
+def mark_eligible_for_batching(
+    payment_request_id: uuid.UUID,
+    payload: MarkEligibleRequest,
+    response: Response,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> PaymentRequestResponse:
+    """`under_accountant_review -> eligible_for_batching`. Where M5 stops.
+
+    `12_Security_RBAC_Audit.md:904`: "Accountant eligibility is not manager approval." The
+    permission is the accountant's, and no manager-only permission is consulted here —
+    slice 9 gates that over the whole route table rather than trusting this sentence.
+    """
+
+    if if_match is None:
+        raise PreconditionRequiredError("If-Match")
+    expected = _parse_record_version(if_match)
+
+    now = utc_now()
+    with runtime.uow_factory() as uow:
+        updated = commands.mark_eligible_for_batching(
+            commands.MarkEligibleForBatching(
+                payment_request_id=payment_request_id,
+                expected_record_version=expected,
+                expected_revision_id=payload.expected_revision_id,
+                review_note=payload.review_note,
             ),
             session=uow.session,
             policy=REQUEST_REDACTION,

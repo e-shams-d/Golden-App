@@ -243,7 +243,40 @@ CREATE_REVISION = CommandNames(
 CANCEL_PAYMENT_REQUEST = CommandNames(
     audit_action="payment_request.cancelled",
     outbox_event_type=None,
-    catalogued=True,)
+    catalogued=True,
+)
+
+# The accountant's three. Every audit action here is catalogued, and the outbox column is
+# where they differ — deliberately, not for want of writing three events.
+# `audit_outbox_catalog.yaml`'s `outbox_events` lists exactly one accountant event,
+# `PaymentRequestCorrectionRequested`, and `command_catalog.yaml` carries
+# `outbox_event: null` for start review and mark eligible to match. That is not an
+# omission: the same catalogue's open items say the mapping is "every catalogued critical
+# command to exactly one audit action and **zero or more** outbox events", so a command
+# with no event is anticipated, and another open item asks the owner to decide whether
+# event names stay PascalCase or move to a versioned dotted convention. Adding
+# `PaymentRequestReviewStarted` here would answer that question on the owner's behalf.
+#
+# It also happens to be the right shape. A returned request needs the trader told, and
+# that is what the event is for. Starting a review and marking eligible change the
+# centre's own queue, and M5 has no consumer outside it.
+BEGIN_REVIEW = CommandNames(
+    audit_action="payment_request.review_started",
+    outbox_event_type=None,
+    catalogued=True,
+)
+
+RETURN_FOR_CORRECTION = CommandNames(
+    audit_action="payment_request.correction_requested",
+    outbox_event_type="PaymentRequestCorrectionRequested",
+    catalogued=True,
+)
+
+MARK_ELIGIBLE_FOR_BATCHING = CommandNames(
+    audit_action="payment_request.marked_eligible",
+    outbox_event_type=None,
+    catalogued=True,
+)
 
 # Credential changes. Deliberately audited as well as recorded in `auth_events`:
 # a security event explains a refusal, while an administrator resetting somebody

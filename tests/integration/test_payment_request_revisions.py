@@ -220,23 +220,24 @@ def correct(
     )
 
 
-def _return_for_correction(world: dict[str, Any], request_id: str) -> int:
-    """Stand in for the accountant's `return_for_correction`, which slice 7 builds.
+def submit(world: dict[str, Any], request_id: str, version: int) -> Any:
+    """Hand the request to the centre, the way a trader does.
 
-    Bumps `record_version` as the real command would, and returns the new value so a
-    caller's next `If-Match` is current. Writing status by hand is only acceptable while
-    no command can do it; see the note on the test that uses this.
+    Needed because a correction no longer submits as a side effect. Tests that wanted a
+    `submitted_to_center` request used to get one by correcting a draft, which is exactly
+    the behaviour that turned out to be wrong.
     """
 
-    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
-        row = connection.execute(
-            "UPDATE payment_requests SET status = 'needs_trader_correction', "
-            "record_version = record_version + 1 WHERE id = %s RETURNING record_version",
-            (request_id,),
-        ).fetchone()
-        connection.commit()
-    assert row is not None
-    return int(row[0])
+    client = world["client"]
+    return client.post(
+        f"/api/v1/payment-requests/{request_id}/submit",
+        json={},
+        headers={
+            **csrf(client),
+            "If-Match": f'"rv-{version}"',
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
+    )
 
 
 def revision_row(world: dict[str, Any], revision_id: str) -> dict[str, Any]:
@@ -266,9 +267,11 @@ def test_a_correction_creates_revision_two_and_moves_the_pointer(
     assert body["revision"]["id"] != created["revision"]["id"]
     assert body["request"]["current_revision_id"] == body["revision"]["id"]
     assert body["replayed"] is False
-    # Back to the centre: a correction the accountant asked for is not finished until it
-    # is resubmitted, and leaving it in the trader's queue would mean nobody was told.
-    assert body["request"]["status"] == "submitted_to_center"
+    # The state does not move. Document 06's transition table at `:640` gives a revision
+    # the "same aggregate state", and this once asserted `submitted_to_center` because the
+    # command set it unconditionally — which filed a draft the moment its owner edited it.
+    # Resubmission is `submit`, from either origin (`:641`), and slice 7 proves that.
+    assert body["request"]["status"] == "draft"
 
 
 def test_the_previous_revision_is_byte_identical_afterwards(world: dict[str, Any]) -> None:
@@ -320,16 +323,16 @@ def test_the_history_is_readable_in_order_and_complete(world: dict[str, Any]) ->
     submit the first time. Every revision must be present and the order must be the
     revision number's, not the timestamp's.
 
-    **The status is reset between corrections with direct SQL, and that is a recorded
-    gap rather than a shortcut.** A correction moves the request to
-    `submitted_to_center`, which deliberately refuses further corrections —
-    `test_a_submitted_request_does_not_take_a_correction` asserts exactly that. Sending
-    it back to the trader is the accountant's `return_for_correction`, which slice 7
-    builds. Until that exists there is no route to revision 3 at all, so the reset
-    stands in for the missing command.
+    **This used to reset the status between corrections with direct SQL, and the reset is
+    now gone.** It existed because `create_revision` moved the request to
+    `submitted_to_center` on every correction, which then refused the next one — so there
+    was no route to revision 3 and a hand-written status stood in for the accountant's
+    return. Slice 7 found that side effect had no mandate: document 06 `:640` leaves a
+    revision in the "same aggregate state". A draft now stays a draft and takes as many
+    corrections as its owner wants, which is what `:622` means by "freely in `draft`".
 
-    When slice 7 lands this should drive the real transition: a test that keeps writing
-    status by hand after the command exists is a test that has stopped exercising it.
+    The return path is a real transition and is driven as one, by the accountant who owns
+    it, in `test_payment_request_review.py`'s journey test.
     """
 
     client = world["client"]
@@ -341,7 +344,7 @@ def test_the_history_is_readable_in_order_and_complete(world: dict[str, Any]) ->
     for value in ("200", "300", "400"):
         response = correct(world, request_id, version, value=value)
         assert response.status_code == 201, response.text
-        version = _return_for_correction(world, request_id)
+        version = response.json()["request"]["record_version"]
 
     history = client.get(f"/api/v1/payment-requests/{request_id}/revisions")
     assert history.status_code == 200, history.text
@@ -680,19 +683,19 @@ def test_a_submitted_request_does_not_take_a_correction(world: dict[str, Any]) -
     client = world["client"]
     sign_in(client, "ok")
     created = open_draft(world)
-    first = correct(world, created["request"]["id"], created["request"]["record_version"])
-    assert first.status_code == 201
-    assert first.json()["request"]["status"] == "submitted_to_center"
+    handed_over = submit(world, created["request"]["id"], created["request"]["record_version"])
+    assert handed_over.status_code == 200, handed_over.text
+    assert handed_over.json()["status"] == "submitted_to_center"
 
-    # It is now submitted, so a second correction has nothing to correct yet.
-    second = correct(
+    # It is with the centre now, so its content may not move under the reader.
+    refused = correct(
         world,
         created["request"]["id"],
-        first.json()["request"]["record_version"],
+        handed_over.json()["record_version"],
         value="700",
     )
-    assert second.status_code == 400, second.text
-    assert second.json()["error"]["code"] == "BUSINESS_RULE_VIOLATION"
+    assert refused.status_code == 400, refused.text
+    assert refused.json()["error"]["code"] == "BUSINESS_RULE_VIOLATION"
 
 
 def test_the_correction_writes_its_catalogued_audit_action(world: dict[str, Any]) -> None:
