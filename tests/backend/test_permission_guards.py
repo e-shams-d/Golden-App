@@ -95,7 +95,21 @@ UNGUARDED_ROUTES: dict[tuple[str, str], str] = {
         "authorise against. Rate-limited on both axes, one refusal for every reason"
     ),
     ("POST", "/api/v1/center-profile/rename"): (
-        "M2's exemplar command, written before guards existed; slice 8 gives it settings.manage"
+        "M2's exemplar command. Guarded, but by an operations token rather than a session "
+        "permission — `Depends(require_operations_access)`, the same mechanism the "
+        "/operations routes use. It belongs in this allowlist, which is about permission "
+        "guarding, and it is not an open route. "
+        "The reason here used to read 'slice 8 gives it settings.manage'. That was written "
+        "in M3 (commit b8b30a3) and meant M3's slice 8; M5's slice 8 has since merged, and "
+        "reading it as a kept promise would be wrong twice over, because settings.manage is "
+        "not a permission the approved catalogue contains — it holds settings.bank.read, "
+        "settings.bank.manage and settings.feature_flags.manage, and the RBAC seed grants "
+        "none of them to any role, so declare() would have raised UnknownPermission at "
+        "import and the promise was never implementable as written. "
+        "Recorded rather than fixed: choosing which settings permission a rename requires, "
+        "for a route no seeded role could then reach, is an owner decision about the "
+        "operations surface and not M5's to make. test_the_allowlist_names_only_routes_that_"
+        "exist cannot catch a stale reason, which is why the reason is now the truth."
     ),
 }
 

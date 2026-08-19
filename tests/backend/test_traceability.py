@@ -409,10 +409,36 @@ PENDING: dict[str, str] = {
     # API-REQ-002 and -003 arrived with them: the two reads the screens need did not exist, and
     # an endpoint whose only consumer does not exist yet is the defect this repository has
     # produced in every milestone.
-    "TRACE-DOD-007": "M5 slice 9 — the six-step journey runs end to end in one test",
-    "TRACE-DOD-008": "M5 slice 9 — no request-level route requires a manager-only permission",
-    "TRACE-DOD-009": "M5 slice 9 — no request-scoped command consults one",
-    "TRACE-M5-001": "M5 slice 9 — nothing is owed for M5; it reads this dictionary",
+    # TRACE-DOD-007 is discharged by `tests/integration/test_m5_journey.py` — one test, six
+    # steps, two actors, through the API. Six steps proved separately can all pass while the
+    # sequence is impossible, and slice 5's unmandated resubmission was exactly that: step 4
+    # and step 5 were the same call and both had passing tests.
+    # These two notes described the wrong obligations, and the mistake was the kind that
+    # produces a green gate over unwritten work. The plan at
+    # `M5_IMPLEMENTATION_PLAN.md:669-671` defines TRACE-DOD-009 as status-catalogue and
+    # transition conformance — "every status the request aggregate can reach in M5 is one the
+    # approved catalogue lists, and every M5 transition is one document 06 states". This
+    # dictionary said "no request-scoped command consults one", which is the second half of
+    # TRACE-DOD-008's sentence, not -009 at all.
+    #
+    # An implementer working from here would have written both halves of -008, never written
+    # the status gate, and `test_nothing_is_owed_for_m5` would have passed regardless: the
+    # obligation's *identity* comes from the plan, and only its description lived here. The
+    # plan is the contract, so the plan's text stands and these notes now follow it.
+    # TRACE-DOD-008 is discharged by `test_m5_definition_of_done.py`, which calls nothing:
+    # it walks the live route table for declarations and ASTs the two request modules for the
+    # enforcement a closure walk cannot see. It sits in `tests/backend` on purpose — in
+    # `tests/integration` a missing PostgreSQL would turn the milestone's one prohibition
+    # into a skip, and a skipped gate is a green gate.
+    # TRACE-DOD-009 is discharged in the same file, against three authorities rather than
+    # one: the approved status catalogue, document 06's diagram, and the code's own tables.
+    # Cancellation is compared against §29.1 instead of the diagram, because the diagram
+    # declares `cancelled` and draws no arrow into it — a comparison built on it would prove
+    # that cancelling is never permitted.
+    # TRACE-M5-001 was the last entry to go, and it had to be: it is the obligation that reads
+    # this dictionary and asserts no M5 obligation remains in it. While its own line was here
+    # it failed, which is the gate working rather than a bootstrap problem — and removing it is
+    # the edit that ends M5.
 }
 
 
