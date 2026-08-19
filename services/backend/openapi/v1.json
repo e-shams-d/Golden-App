@@ -1506,6 +1506,34 @@
         "title": "LoginResponse",
         "type": "object"
       },
+      "MarkEligibleRequest": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1223-1227`.",
+        "properties": {
+          "expected_revision_id": {
+            "format": "uuid",
+            "title": "Expected Revision Id",
+            "type": "string"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          }
+        },
+        "required": [
+          "expected_revision_id"
+        ],
+        "title": "MarkEligibleRequest",
+        "type": "object"
+      },
       "OutboxHealth": {
         "additionalProperties": false,
         "properties": {
@@ -1964,6 +1992,42 @@
           "new_name"
         ],
         "title": "RenameCenterProfileRequest",
+        "type": "object"
+      },
+      "ReturnForCorrectionRequest": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1203-1211`.\n\n`reason_code` and `message_to_trader` are required because the document says \"Reason\nand trader notification are required\" — so they are required in the schema, where a\ncaller finds out before the command runs, rather than checked in the handler.",
+        "properties": {
+          "internal_note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Internal Note"
+          },
+          "message_to_trader": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Message To Trader",
+            "type": "string"
+          },
+          "reason_code": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Reason Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason_code",
+          "message_to_trader"
+        ],
+        "title": "ReturnForCorrectionRequest",
         "type": "object"
       },
       "RevisionCreated": {
@@ -5670,6 +5734,266 @@
         ]
       }
     },
+    "/api/v1/payment-requests/{payment_request_id}/mark-eligible-for-batching": {
+      "post": {
+        "description": "`under_accountant_review -> eligible_for_batching`. Where M5 stops.\n\n`12_Security_RBAC_Audit.md:904`: \"Accountant eligibility is not manager approval.\" The\npermission is the accountant's, and no manager-only permission is consulted here —\nslice 9 gates that over the whole route table rather than trusting this sentence.",
+        "operationId": "markPaymentRequestEligibleForBatching",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payment_request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Payment Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkEligibleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A domain rule refused the command."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, or not the caller's."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The If-Match value is stale."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is required."
+          }
+        },
+        "summary": "Complete accountant review. This is not manager approval.",
+        "tags": [
+          "payment-requests"
+        ]
+      }
+    },
+    "/api/v1/payment-requests/{payment_request_id}/request-correction": {
+      "post": {
+        "description": "`submitted_to_center | under_accountant_review -> needs_trader_correction`.",
+        "operationId": "requestPaymentRequestCorrection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payment_request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Payment Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnForCorrectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A domain rule refused the command."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, or not the caller's."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The If-Match value is stale."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is required."
+          }
+        },
+        "summary": "Hand a request back to its trader, with a reason.",
+        "tags": [
+          "payment-requests"
+        ]
+      }
+    },
     "/api/v1/payment-requests/{payment_request_id}/revisions": {
       "get": {
         "description": "`SVC-REV-002`: readable in order, and every revision reachable.\n\nOrdered by `revision_number` rather than `created_at`. Two revisions written in the\nsame transaction would share a timestamp to the microsecond, and the number is the\nthing that is guaranteed unique per request.",
@@ -5893,6 +6217,126 @@
           }
         },
         "summary": "Correct a request by adding an immutable revision.",
+        "tags": [
+          "payment-requests"
+        ]
+      }
+    },
+    "/api/v1/payment-requests/{payment_request_id}/start-review": {
+      "post": {
+        "description": "`submitted_to_center -> under_accountant_review`, under `If-Match`.\n\nNo body, and `If-Match` for the reason document 06 `:642` gives it: two accountants\nopening the same queue is the ordinary race, and the second one should be told the\nrequest already moved rather than quietly take it over.",
+        "operationId": "startPaymentRequestReview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payment_request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Payment Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A domain rule refused the command."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, or not the caller's."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The If-Match value is stale."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is required."
+          }
+        },
+        "summary": "Take a submitted request into accountant review.",
         "tags": [
           "payment-requests"
         ]

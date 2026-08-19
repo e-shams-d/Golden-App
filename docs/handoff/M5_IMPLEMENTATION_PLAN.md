@@ -487,10 +487,31 @@ The centre's half of the journey: review, return, and mark eligible.
 ### What it changes
 
 - `app/commands/payment_request.py`: `begin_review`, `return_for_correction`,
-  `mark_eligible_for_batching`.
-- Transitions per `06_Workflows_and_State_Machines.md:553-655`, and **only** those:
-  `submitted_to_center → under_accountant_review → needs_trader_correction |
-  eligible_for_batching`.
+  `mark_eligible_for_batching`. The catalogued command ids are
+  `payment_request.start_review`, `.request_correction` and `.mark_eligible`
+  (`command_catalog.yaml`), and those are what the idempotency records and audit rows
+  carry; the function names are internal.
+- Transitions per `06_Workflows_and_State_Machines.md:579-607` and its transition table
+  at `:635-652`, and **only** those:
+  - `submitted_to_center → under_accountant_review` (start review)
+  - `submitted_to_center → needs_trader_correction` **and**
+    `under_accountant_review → needs_trader_correction` (request correction). The arrow
+    from `submitted_to_center` was missing from this plan's first draft; `:586` and the
+    table row at `:643` ("submitted/review") both state it, and `SVC-REVIEW-001`
+    enumerates from the document, so omitting it here would have failed the gate rather
+    than shipped quietly.
+  - `under_accountant_review → eligible_for_batching` (mark eligible)
+- Cancellation widens per `06_Workflows_and_State_Machines.md:1363-1375` (§29.1), which is
+  the authority the §13.2 diagram is silent about — it declares `cancelled` as a state and
+  draws no arrow into it. Within the states M5 reaches: `draft` (trader, no reason
+  required), `submitted_to_center` and `needs_trader_correction` (trader or internal, reason
+  required), `under_accountant_review` (**internal only**, reason required),
+  `eligible_for_batching` (internal or trader, reason required). Slice 3 wrote
+  `CANCELLABLE = (DRAFT,)` and said slice 7 owned the rest; it also cited the review
+  workflow for that, which is wrong — §29.1 is where the rule lives.
+- Request bodies per `05_API_Specification.md:1189-1226`: start review takes none;
+  request correction takes `reason_code`, `message_to_trader`, `internal_note`, with the
+  first two required; mark eligible takes `review_note` and `expected_revision_id`.
 
 ### What proves it
 
@@ -502,10 +523,51 @@ The centre's half of the journey: review, return, and mark eligible.
   both revisions.
 - `SEC-REQ-003` — a trader cannot perform any accountant action, and an accountant cannot
   act on a request outside their scope.
-- `AUD-REQ-002` — every accountant action is audited **and** emitted through the outbox.
-  `15_Agent_Implementation_Plan.md:814`.
-- `SVC-REVIEW-003` — cancellation is permitted only where the state machine permits it, and
-  a cancelled request accepts no further transition.
+- `AUD-REQ-002` — every accountant action writes its catalogued audit row in the same
+  transaction as the state change, and the correction request also publishes
+  `PaymentRequestCorrectionRequested` to the outbox in that transaction.
+  `15_Agent_Implementation_Plan.md:814` reads "accountant action is audited and emitted
+  through outbox", and this obligation first said *every* accountant action is emitted.
+  That is more than the governance artifacts allow me to build.
+  `audit_outbox_catalog.yaml` enumerates the outbox events, and the only accountant one is
+  `PaymentRequestCorrectionRequested`; `command_catalog.yaml` accordingly carries
+  `outbox_event: null` for start review and mark eligible. Those nulls are not an
+  oversight: the same catalogue's `m0_open_items` says the mapping is "every catalogued
+  critical command to exactly one audit action and **zero or more** outbox events", so a
+  command with no event is anticipated, and a separate open item asks the owner to approve
+  whether event names stay PascalCase or move to a versioned dotted convention. Inventing
+  `PaymentRequestReviewStarted` and `PaymentRequestMarkedEligible` would decide that naming
+  question on the owner's behalf and add two names to an enumeration whose approval is
+  pending. So the narrow reading is implemented and the tension is recorded here rather
+  than in `CONFLICT_REGISTER.md`: "zero or more" reconciles the two documents, which is
+  what keeps this a note and not a conflict.
+- `SVC-REVIEW-003` — cancellation is permitted from exactly the states
+  `06_Workflows_and_State_Machines.md:1367-1375` (§29.1) lists, with its actor and reason
+  rules, restricted to the states M5 reaches; every other state is refused, and a cancelled
+  request accepts no further transition. Enumerated from §29.1 rather than listed, for the
+  same reason as `SVC-REVIEW-001`. Not from the §13.2 diagram: it declares `cancelled` and
+  draws no arrow into it, so a test built from the diagram would prove cancellation is
+  never permitted at all.
+
+### Recorded gap — command idempotency on the transition routes
+
+`command_catalog.yaml` marks `payment_request.submit`, `.cancel`, `.start_review`,
+`.request_correction` and `.mark_eligible` all `idempotency: required`, and none of the five
+implements it. Only `POST /revisions` takes an `Idempotency-Key`. This is stated here
+because I checked rather than assumed: there is no entry for it in `RECORDED_GAPS`, and
+nothing in slice 6 recorded it when `submit` shipped the same way.
+
+Why it is a gap and not a defect, and why it is nevertheless the owner's call: each of the
+five is a state transition guarded by its origin, so a replay is already refused — a second
+`submit` on a `submitted_to_center` request answers `400`, not a second submission. The
+commands that genuinely need a key are the ones that *create* — a draft and a revision — and
+both have one. So the catalogue's blanket "required" reads as over-broad for transitions
+rather than as five missing implementations.
+
+What a key would still buy is the *answer*: a client whose connection dropped mid-submit
+cannot tell "my request went through" from "the request was already submitted by someone
+else", because both are `400`. That is a real scenario on a mobile network and the reason
+not to close this silently.
 
 ### Negative controls
 

@@ -161,6 +161,11 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "listPaymentRequestRevisions",
         # M5 slice 6.
         "submitPaymentRequest",
+        # M5 slice 7. The centre's half of the journey.
+        # `05_API_Specification.md:1189`, `:1197`, `:1213`.
+        "startPaymentRequestReview",
+        "requestPaymentRequestCorrection",
+        "markPaymentRequestEligibleForBatching",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas
