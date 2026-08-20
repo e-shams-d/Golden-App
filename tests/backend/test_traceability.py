@@ -444,20 +444,14 @@ PENDING: dict[str, str] = {
     # pure, and the route in tests/integration/test_batch_preview.py. Its eight entries
     # left here in the same commit, because this gate fails an obligation that is both
     # pending and covered.
-    # M6 — attempts, splitting and the immutable batch version. Thirty-six obligations across
-    # five slices; `docs/handoff/M6_IMPLEMENTATION_PLAN.md` §4 records the nine questions the
-    # owner must settle, of which only G-2 blocks slice 1.
-    "DB-BATCH-001": "M6 slice 2 — the four tables match document 04, parsed not transcribed",
-    "DB-ATTEMPT-001": "M6 slice 2 — the lineage columns exist, nullable and unwritten in M6",
-    "DB-ATTEMPT-002": "M6 slice 2 — every frozen bank field is read back from the frozen row",
-    "DB-ALLOC-001": "M6 slice 2 — one active allocation per attempt, at the database boundary",
-    "CON-BATCH-002": "M6 slice 2 — the two-transaction allocation race the baseline requires",
-    "CON-BATCH-003": "M6 slice 2 — the derived `batched` projection cannot disagree with it",
-    "SVC-BATCH-001": "M6 slice 2 — batch, version, attempts, items and allocation in one commit",
-    "SVC-BATCH-002": "M6 slice 2 — only an eligible request may be allocated",
-    "SEC-BATCH-002": "M6 slice 2 — create and read carry their own grants",
-    "AUD-BATCH-001": "M6 slice 2 — creation is audited, and publishes what the catalogue defines",
-    "TRACE-BATCH-001": "M6 slice 2 — no batch route declares a payment_request permission",
+    # M6 — attempts, splitting and the immutable batch version. Thirty-nine obligations across
+    # five slices: the plan shipped with thirty-six and slice 2 added three it had missed.
+    # `docs/handoff/M6_IMPLEMENTATION_PLAN.md` §4 records the ten questions the owner must
+    # settle, of which only G-2 blocked slice 1.
+    # Added while writing slice 2, so the plan and this ledger stay one document. Each names
+    # something the plan's original slice-2 list did not: a projection that can drift from what
+    # it projects, a catalogued idempotency requirement with nothing calling the resolver, and
+    # a number format M5 invented rather than read.
     "SVC-FINAL-001": "M6 slice 3 — the content hash is deterministic and order-stable",
     "SVC-FINAL-002": "M6 slice 3 — no finalization unless every item owns its allocation",
     "SVC-FINAL-003": "M6 slice 3 — item sums equal the version total exactly",

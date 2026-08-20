@@ -29,18 +29,34 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header, Response
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.contract import VALIDATION_ERROR_RESPONSE
 from app.api.dependencies import get_runtime
 from app.api.v1.auth import authenticated_actor, requires
+from app.audit.redaction import RedactionPolicy
+from app.audit.writer import AuditActor, AuditContext
 from app.batching.splitting import SplittingRules, split
-from app.core.errors import ConflictError, ErrorEnvelope, NotFoundError
+from app.commands import payment_batch as commands
+from app.core.errors import (
+    ConflictError,
+    ErrorEnvelope,
+    NotFoundError,
+    PreconditionRequiredError,
+)
+from app.core.request_context import get_request_id
 from app.core.runtime import RuntimeServices
 from app.core.time import utc_now
 from app.db.models.bank import BankProfileVersion
+from app.db.models.payment_batch import (
+    PaymentAttemptAllocation,
+    PaymentBatch,
+    PaymentBatchItem,
+    PaymentBatchVersion,
+)
 from app.db.models.payment_request import PaymentRequest, PaymentRequestRevision
 from app.security.actor import ActorContext
 from app.security.permissions import declare
@@ -200,6 +216,411 @@ def preview_batch(
         row_count=len(rows),
         total_amount_irr=str(sum(int(row.amount_irr) for row in rows)),
         validation=PreviewValidation(errors=[], warnings=[]),
+    )
+
+
+class CreateBatchRequest(BaseModel):
+    """`05_API_Specification.md:1318-1322`: "the same selection/configuration contract as preview".
+
+    Same shape as `PreviewRequest` with two differences, both narrowings. `bank_account_id` and
+    `bank_mapping_id` become **required**, because `payment_batch_versions` makes both NOT NULL:
+    `FINANCIAL_INTEGRITY_BASELINE.md` §1 requires a final artifact to name what produced it, and
+    a version that cannot say which mapping rendered it cannot be re-rendered. A preview writes
+    nothing, so it can afford to omit them.
+
+    Not expressed as a subclass of `PreviewRequest`. Inheriting would put the two routes' request
+    bodies in one inheritance chain in the generated OpenAPI, so widening the preview later would
+    silently widen the command too.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[PreviewItem] = Field(min_length=1)
+    bank_profile_version_id: uuid.UUID
+    bank_account_id: uuid.UUID
+    bank_mapping_id: uuid.UUID
+    apply_split_rules: bool = True
+
+
+class BatchSummary(BaseModel):
+    """`05_API_Specification.md:1327-1332`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    batch_number: str
+    status: str
+    record_version: int
+
+
+class VersionSummary(BaseModel):
+    """`:1333-1341`, with `total_amount_irr` a string.
+
+    Document 05 shows `4500000000` unquoted at `:1338`. `MONEY_TIME_CONTRACT.md:17-18` requires
+    base-10 integer strings and forbids `Number`; the contract wins, as it did in M5 slice 4 and
+    on the preview surface. DOC-CONFLICT-050, third surface.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    version_number: int
+    status: str
+    row_count: int
+    total_amount_irr: str
+    content_hash: str
+    validation_summary: dict[str, list[str]]
+
+
+class BatchCreated(BaseModel):
+    """`:1325-1343`. `replayed` is not in document 05 and is added deliberately.
+
+    A caller retrying after a timeout has no other way to tell "your batch was created" from
+    "your batch was created twice" — and the second is the thing an accountant would go looking
+    for in the bank file. The same field is on M5's revision response for the same reason.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    batch: BatchSummary
+    current_version: VersionSummary
+    replayed: bool
+
+
+class BatchItemResponse(BaseModel):
+    """One row of a version, as `04_Database_Schema.md` §11.6 stores it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    row_order: int
+    payment_attempt_id: uuid.UUID
+    amount_irr: str
+    beneficiary_name: str
+    beneficiary_iban: str
+    description: str | None
+    row_hash: str
+
+
+class BatchDetail(BaseModel):
+    """`05_API_Specification.md:1347-1353`, restricted to what M6 can answer.
+
+    Document 05 asks the detail read to include "current version, historical versions, approval
+    summary, exports, result progress, record version, and allowed actions". Three of those
+    describe things M6 cannot reach: there is no approval (M7), no export (M7), and no result
+    (M8). They are **omitted rather than returned empty**, because an empty `exports: []` reads
+    as "this batch has no exports" when the truth is "this deployment cannot have any", and a
+    screen would render the first as a fact.
+
+    `historical_versions` is present and will be non-empty from slice 4, which is the first
+    thing that supersedes one.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    batch: BatchSummary
+    current_version: VersionSummary
+    historical_versions: list[VersionSummary]
+    items: list[BatchItemResponse]
+    active_allocation_count: int
+
+
+class BatchListEntry(BaseModel):
+    """One line of the list. Enough to choose a batch, not enough to be a detail read."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    batch_number: str
+    status: str
+    record_version: int
+    row_count: int
+    total_amount_irr: str
+
+
+class BatchList(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    batches: list[BatchListEntry]
+
+
+CREATE_RESPONSES: dict[int | str, dict[str, object]] = {
+    401: {"model": ErrorEnvelope, "description": "No valid session."},
+    403: {"model": ErrorEnvelope, "description": "The caller lacks payment_batch.create."},
+    404: {"model": ErrorEnvelope, "description": "A named request or configuration is missing."},
+    409: {
+        "model": ErrorEnvelope,
+        "description": (
+            "A named revision or record version is stale, an attempt is already allocated, "
+            "or the Idempotency-Key was reused with a different body."
+        ),
+    },
+    # 400 and not 422: `api_error_catalog.yaml:16` gives `BUSINESS_RULE_VIOLATION` http 400,
+    # "Domain rule failed". 422 is the validation-envelope code and belongs to a malformed body,
+    # which is a different thing a client handles differently.
+    400: {
+        "model": ErrorEnvelope,
+        "description": "A named request is not at eligible_for_batching.",
+    },
+    428: {"model": ErrorEnvelope, "description": "Idempotency-Key is required."},
+    **VALIDATION_ERROR_RESPONSE,
+}
+
+# Redaction for the batch surface. `mask_iban=True` for the same reason the request surface
+# uses it: an audit row that carries a full IBAN widens where a payment destination lives, and
+# the row already names the attempt that holds it.
+BATCH_REDACTION = RedactionPolicy(mask_iban=True)
+
+
+@router.post(
+    "",
+    response_model=BatchCreated,
+    status_code=201,
+    operation_id="createPaymentBatch",
+    summary="Create a batch and its first draft version, with every attempt allocated.",
+    responses=CREATE_RESPONSES,
+    dependencies=[requires(declare("payment_batch.create"))],
+)
+def create_batch(
+    payload: CreateBatchRequest,
+    response: Response,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> BatchCreated:
+    """`POST /api/v1/payment-batches`.
+
+    **`Idempotency-Key` is required and `If-Match` is not.** `command_catalog.yaml:111` says
+    `"idempotency": "required"`, and the reason is specific: a create that runs twice on a
+    network retry would allocate the same attempts to two batches. There is no `If-Match`
+    because there is no resource to be stale against — the expectations are per-item and live in
+    the body, which is what `:1274-1280` specifies and why 409 rather than 412 is the refusal.
+
+    The command owns every read and every refusal. This function exists to turn a header into a
+    precondition, a payload into a command, and a result into JSON.
+    """
+
+    if idempotency_key is None:
+        raise PreconditionRequiredError("Idempotency-Key")
+
+    now = utc_now()
+    with runtime.uow_factory() as uow:
+        result = commands.create_batch(
+            commands.CreateBatch(
+                items=tuple(
+                    commands.BatchSelection(
+                        payment_request_id=item.payment_request_id,
+                        expected_revision_id=item.expected_revision_id,
+                        expected_record_version=item.expected_record_version,
+                    )
+                    for item in payload.items
+                ),
+                bank_profile_version_id=payload.bank_profile_version_id,
+                bank_account_id=payload.bank_account_id,
+                bank_mapping_id=payload.bank_mapping_id,
+                apply_split_rules=payload.apply_split_rules,
+            ),
+            uow=uow,
+            policy=BATCH_REDACTION,
+            actor=_audit_actor(actor),
+            context=AuditContext(request_id=get_request_id()),
+            idempotency_key=idempotency_key,
+            now=now,
+        )
+        rendered = BatchCreated(
+            batch=_batch_summary(result.batch),
+            current_version=_version_summary(result.version),
+            replayed=result.replayed,
+        )
+        uow.commit()
+
+    response.headers["ETag"] = f'"rv-{rendered.batch.record_version}"'
+    return rendered
+
+
+@router.get(
+    "",
+    response_model=BatchList,
+    operation_id="listPaymentBatches",
+    summary="Every batch, newest first.",
+    responses=RESPONSES,
+    dependencies=[requires(declare("payment_batch.read"))],
+)
+def list_batches(
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+) -> BatchList:
+    """`GET /api/v1/payment-batches`.
+
+    **No ownership scope, and that is not an omission.** A batch has no trader: it is a file the
+    centre sends to a bank, and its rows belong to many traders at once. `owned_or_permitted`
+    would have nothing to scope on, and `app/security/ownership.py`'s `scoped()` takes an actor
+    precisely so a route cannot invent a filter. The guard is the permission, and
+    `permission_catalog.yaml:459` gives `payment_batch.read` to no trader role.
+
+    A container nothing can read is a container nobody can act on, which is why this ships in the
+    same slice as the create rather than waiting for a screen to need it.
+    """
+
+    del actor  # The guard consumed it; there is no per-actor filtering to do.
+
+    with runtime.uow_factory() as uow:
+        rows = (
+            uow.session.execute(
+                select(PaymentBatch, PaymentBatchVersion)
+                # An outer join: a batch whose version row is missing would vanish from a list
+                # built on an inner join, and vanishing is the one behaviour an operator cannot
+                # debug. The composite deferred key makes it impossible, so this is belt to that
+                # brace — and the `None` branch below says what it would mean.
+                .outerjoin(
+                    PaymentBatchVersion,
+                    PaymentBatch.current_version_id == PaymentBatchVersion.id,
+                )
+                .order_by(PaymentBatch.created_at.desc())
+            )
+            .tuples()
+            .all()
+        )
+
+        # Rendered inside the unit of work. Built outside it, every attribute access on these
+        # rows raises `DetachedInstanceError` — which is what the first version of this route
+        # did, and what `test_the_list_holds_every_batch_newest_first` caught. The detail read
+        # below has always done it this way; the two now agree.
+        listed = BatchList(
+            batches=[
+                BatchListEntry(
+                    id=batch.id,
+                    batch_number=batch.batch_number,
+                    status=batch.status,
+                    record_version=batch.record_version,
+                    row_count=version.row_count if version else 0,
+                    total_amount_irr=str(version.total_amount_irr) if version else "0",
+                )
+                for batch, version in rows
+            ]
+        )
+
+    return listed
+
+
+@router.get(
+    "/{batch_id}",
+    response_model=BatchDetail,
+    operation_id="getPaymentBatch",
+    summary="One batch, its current version, its history and its rows.",
+    responses=RESPONSES,
+    dependencies=[requires(declare("payment_batch.read"))],
+)
+def get_batch(
+    batch_id: uuid.UUID,
+    response: Response,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+) -> BatchDetail:
+    """`GET /api/v1/payment-batches/{batch_id}`, per `05_API_Specification.md:1347-1353`.
+
+    `active_allocation_count` is here because it is the only way a reader can see the invariant
+    holding: it must equal `row_count` for a draft version whose every row owns its allocation,
+    and slice 3's finalization refuses to proceed when it does not. Returning the number rather
+    than a boolean means a screen can say *how many* rows are unallocated instead of only that
+    something is wrong.
+    """
+
+    del actor
+
+    with runtime.uow_factory() as uow:
+        batch = uow.session.get(PaymentBatch, batch_id)
+        if batch is None:
+            raise NotFoundError()
+
+        versions = (
+            uow.session.execute(
+                select(PaymentBatchVersion)
+                .where(PaymentBatchVersion.payment_batch_id == batch.id)
+                .order_by(PaymentBatchVersion.version_number.desc())
+            )
+            .scalars()
+            .all()
+        )
+        current = next(
+            (version for version in versions if version.id == batch.current_version_id), None
+        )
+        if current is None:  # pragma: no cover - the deferred composite key guarantees it
+            raise NotFoundError()
+
+        items = (
+            uow.session.execute(
+                select(PaymentBatchItem)
+                .where(PaymentBatchItem.payment_batch_version_id == current.id)
+                .order_by(PaymentBatchItem.row_order)
+            )
+            .scalars()
+            .all()
+        )
+        allocated = uow.session.scalars(
+            select(PaymentAttemptAllocation.id).where(
+                PaymentAttemptAllocation.payment_batch_version_id == current.id,
+                PaymentAttemptAllocation.released_at.is_(None),
+            )
+        ).all()
+
+        detail = BatchDetail(
+            batch=_batch_summary(batch),
+            current_version=_version_summary(current),
+            historical_versions=[
+                _version_summary(version) for version in versions if version.id != current.id
+            ],
+            items=[
+                BatchItemResponse(
+                    id=item.id,
+                    row_order=item.row_order,
+                    payment_attempt_id=item.payment_attempt_id,
+                    amount_irr=str(item.amount_irr),
+                    beneficiary_name=item.beneficiary_name_snapshot,
+                    beneficiary_iban=item.beneficiary_iban_snapshot,
+                    description=item.description_snapshot,
+                    row_hash=item.row_hash,
+                )
+                for item in items
+            ],
+            active_allocation_count=len(allocated),
+        )
+
+    response.headers["ETag"] = f'"rv-{detail.batch.record_version}"'
+    return detail
+
+
+def _batch_summary(batch: PaymentBatch) -> BatchSummary:
+    return BatchSummary(
+        id=batch.id,
+        batch_number=batch.batch_number,
+        status=batch.status,
+        record_version=batch.record_version,
+    )
+
+
+def _version_summary(version: PaymentBatchVersion) -> VersionSummary:
+    return VersionSummary(
+        id=version.id,
+        version_number=version.version_number,
+        status=version.status,
+        row_count=version.row_count,
+        total_amount_irr=str(version.total_amount_irr),
+        content_hash=version.content_hash,
+        validation_summary={
+            "errors": list(version.validation_summary.get("errors", [])),
+            "warnings": list(version.validation_summary.get("warnings", [])),
+        },
+    )
+
+
+def _audit_actor(actor: ActorContext) -> AuditActor:
+    return AuditActor(
+        actor_type=actor.actor_type.value,
+        actor_id=actor.actor_id,
+        role_snapshot=tuple(sorted(actor.roles)),
+        session_id=actor.session_id,
+        authentication_assurance=actor.auth_level,
     )
 
 

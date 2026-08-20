@@ -1,0 +1,269 @@
+"""The four batching tables match document 04, parsed rather than transcribed.
+
+M6 slice 2. `DB-BATCH-001` says "column for column, compared by **parsing** the document's
+tables rather than transcribing them", and the reason is M5 slice 1: it transcribed one type
+wrong and the test passed, because a transcription can be wrong in the same direction as the
+code it checks.
+
+**Three of the four sections are markdown tables and one is a sentence.** `04_Database_Schema.md`
+§11.4 gives `payment_batches` as prose — "Fields: `id`, `batch_number`, `status`, …" — with no
+types and no nullability at all. A parser that looked for table rows would find none there and,
+if it returned an empty mapping, would assert *nothing* about the container while reporting
+success. So the prose form is parsed on purpose, its coverage is explicitly narrower than the
+others', and `test_the_prose_section_is_still_prose` fails if the document gains a real table —
+because on that day this file can check types for it and should.
+
+That is the same shape as a skipped gate reading as a green gate, one level down: an empty
+expectation and a satisfied expectation are indistinguishable from the exit code.
+
+`payment_attempt_allocations` is deliberately absent. No document describes it — it is the
+relation `FINANCIAL_INTEGRITY_BASELINE.md:34-49` approves without naming, recorded as G-1 — so
+there is nothing to parse and a test here would be checking the code against itself. Its shape
+is asserted behaviourally instead, in `tests/integration/test_batch_creation.py`.
+
+Covers: DB-BATCH-001, DB-ATTEMPT-001.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import app.db.models  # noqa: F401  # registers every mapped table on Base.metadata
+import pytest
+from app.db.base import Base
+from sqlalchemy.dialects import postgresql
+from test_payment_request_schema import (
+    expected_render,
+    rendered,
+    specification_columns,
+)
+
+SPECIFICATION = (
+    Path(__file__).resolve().parents[2]
+    / "Implementation Docs"
+    / "02_Architecture_and_Contracts"
+    / "04_Database_Schema.md"
+)
+
+POSTGRES = postgresql.dialect()
+
+# The three sections that are real tables. `payment_batches` is handled separately below.
+TABLE_SECTIONS: tuple[tuple[str, str], ...] = (
+    ("payment_attempts", "## 11.3 `payment_attempts`"),
+    ("payment_batch_versions", "## 11.5 `payment_batch_versions`"),
+    ("payment_batch_items", "## 11.6 `payment_batch_items`"),
+)
+
+PROSE_SECTION = "## 11.4 `payment_batches`"
+
+# The same recorded deviation M5 shipped: document 04 declares `CHAR(n)` and this repository
+# stores `VARCHAR(n)`. PostgreSQL's own documentation advises against `char(n)` — it blank-pads
+# to the declared width and ignores trailing spaces when comparing — and for a value whose
+# length a CHECK already fixes, the two cannot behave differently.
+#
+# Extended rather than re-argued, because the convention is now the majority: every IBAN column
+# in the tree is `VARCHAR(26)` and every digest column but one is `VARCHAR(64)`. Introducing the
+# first `CHAR(26)` here would make the batch rows compare differently from the request rows they
+# were copied from, which is worse than a documented deviation.
+CHAR_AS_VARCHAR: dict[tuple[str, str], str] = {
+    ("payment_attempts", "beneficiary_iban_snapshot"): "CHAR(26) → VARCHAR(26), the convention",
+    ("payment_batch_items", "beneficiary_iban_snapshot"): "CHAR(26) → VARCHAR(26)",
+    ("payment_batch_versions", "content_hash"): "CHAR(64) → VARCHAR(64)",
+    ("payment_batch_items", "row_hash"): "CHAR(64) → VARCHAR(64)",
+}
+
+
+@pytest.mark.parametrize(("table", "heading"), TABLE_SECTIONS)
+def test_the_columns_match_document_04(table: str, heading: str) -> None:
+    """Both directions, for the same reason M5's version gives.
+
+    A missing column is a fact document 04 requires and the table cannot hold. An extra one is a
+    fact no document defines — and that is the more dangerous of the two, because nothing else
+    in the system would ever ask about it.
+    """
+
+    specified = specification_columns(heading)
+    actual = set(Base.metadata.tables[table].columns.keys())
+
+    assert actual == set(specified), (
+        f"{table} does not match document 04.\n"
+        f"  missing: {sorted(set(specified) - actual)}\n"
+        f"  extra:   {sorted(actual - set(specified))}"
+    )
+
+
+@pytest.mark.parametrize(("table", "heading"), TABLE_SECTIONS)
+def test_every_column_has_the_type_and_nullability_document_04_states(
+    table: str, heading: str
+) -> None:
+    """Type and nullability together, because either alone is half the claim.
+
+    Nullability is not the lesser half. `beneficiary_name_snapshot` being NOT NULL is what makes
+    an item answer "who was paid" from its own row; nullable, it would be a column that is
+    usually filled, and a bank file with a blank payee name is a row somebody has to explain by
+    hand.
+    """
+
+    specified = specification_columns(heading)
+
+    problems: list[str] = []
+    for column, (declared, nullable) in sorted(specified.items()):
+        actual_type, actual_nullable = rendered(table, column)
+        deviation = CHAR_AS_VARCHAR.get((table, column))
+
+        if deviation is not None:
+            match = re.fullmatch(r"CHAR\((\d+)\)", declared)
+            assert match, (
+                f"{table}.{column} has a recorded CHAR→VARCHAR deviation but document 04 now "
+                f"declares {declared!r}. Re-read the deviation before keeping it."
+            )
+            wanted = f"VARCHAR({match.group(1)})"
+        else:
+            wanted = expected_render(declared)
+
+        if actual_type != wanted:
+            problems.append(
+                f"{table}.{column}: document 04 says {declared} (expects {wanted}), "
+                f"the model renders {actual_type}"
+            )
+        if actual_nullable != nullable:
+            problems.append(
+                f"{table}.{column}: document 04 says "
+                f"{'nullable' if nullable else 'NOT NULL'}, the model is "
+                f"{'nullable' if actual_nullable else 'NOT NULL'}"
+            )
+
+    assert problems == [], "\n".join(problems)
+
+
+def _prose_fields() -> set[str]:
+    """The backticked names in §11.4's `Fields:` sentence.
+
+    `timestamps` is expanded: the sentence ends "…`record_version`, timestamps", which is
+    document 04's shorthand for the pair every mutable table carries (`:106-223` sets that
+    convention). Expanded here rather than excluded, because excluding it would stop this test
+    checking that the container has them at all.
+    """
+
+    text = SPECIFICATION.read_text(encoding="utf-8")
+    start = text.index(PROSE_SECTION)
+    section = text[start : text.index("\n## ", start + len(PROSE_SECTION))]
+
+    line = next(
+        (candidate for candidate in section.splitlines() if candidate.startswith("Fields:")),
+        None,
+    )
+    assert line is not None, (
+        f"{PROSE_SECTION} no longer has a `Fields:` sentence. If it gained a column table, "
+        "parse it with the others and delete this function."
+    )
+
+    fields = set(re.findall(r"`([a-z_]+)`", line))
+    assert "timestamps" not in fields, "the shorthand is unbackticked prose, not a field"
+    assert line.rstrip().endswith("timestamps."), (
+        "§11.4 no longer ends with the `timestamps` shorthand; read what replaced it before "
+        "assuming the pair is still implied"
+    )
+    return fields | {"created_at", "updated_at"}
+
+
+def test_the_container_holds_exactly_the_fields_the_prose_names() -> None:
+    """`payment_batches`, checked against a sentence rather than a table.
+
+    Names only. §11.4 gives no types and no nullability, so this is the whole of what the
+    document supports — and saying so is the point: the coverage here is narrower than for the
+    other three, and a reader should be able to see that from the test rather than infer it from
+    a passing run.
+    """
+
+    specified = _prose_fields()
+    actual = set(Base.metadata.tables["payment_batches"].columns.keys())
+
+    assert actual == specified, (
+        "payment_batches does not match §11.4's field list.\n"
+        f"  missing: {sorted(specified - actual)}\n"
+        f"  extra:   {sorted(actual - specified)}"
+    )
+
+
+def test_the_prose_section_is_still_prose() -> None:
+    """Fails on the day §11.4 gains a real column table, which is when this file can do more.
+
+    Without this, the document could grow types and nullability for the container and the test
+    above would go on checking names only — passing, and quietly under-checking the one table
+    whose status column is a projection nine of eleven states derive.
+    """
+
+    text = SPECIFICATION.read_text(encoding="utf-8")
+    start = text.index(PROSE_SECTION)
+    section = text[start : text.index("\n## ", start + len(PROSE_SECTION))]
+
+    assert "| Column | Type |" not in section, (
+        f"{PROSE_SECTION} now has a column table. Move `payment_batches` into TABLE_SECTIONS "
+        "and delete the two prose tests: the document can now say more than names."
+    )
+
+
+# `:849-859` requires the lineage columns so a retry can be attributed later. M6 writes none of
+# them, and the obligation is that they are nullable and unwritten rather than absent.
+LINEAGE_COLUMNS: tuple[str, ...] = (
+    "retry_of_attempt_id",
+    "supersedes_attempt_id",
+    "bank_tracking_number",
+    "bank_result_at",
+    "failure_code",
+    "failure_reason",
+    "confirmed_by_admin_user_id",
+    "confirmed_at",
+)
+
+
+def test_every_lineage_column_exists_and_is_nullable() -> None:
+    """`DB-ATTEMPT-001`, the half that is a property of the schema.
+
+    Nullable **and** present. Present because a retry in M8 must be able to say what it retries,
+    and a column added later cannot be backfilled for attempts that already failed. Nullable
+    because M6 knows none of these facts, and NOT NULL would force this milestone to invent a
+    value — which is exactly the placeholder `FINANCIAL_INTEGRITY_BASELINE.md:22-23` forbids.
+    """
+
+    columns = Base.metadata.tables["payment_attempts"].columns
+    for name in LINEAGE_COLUMNS:
+        assert name in columns, f"payment_attempts has no {name}; `:849-859` requires it"
+        assert columns[name].nullable, (
+            f"payment_attempts.{name} is NOT NULL, so this milestone would have to invent a "
+            "value for a fact only a bank can supply"
+        )
+
+
+def test_nothing_in_the_application_writes_a_lineage_column() -> None:
+    """`DB-ATTEMPT-001`, the half that is a property of the code.
+
+    The columns above exist for M7 and M8. Asserted by scanning the application source rather
+    than by observing a created attempt, because "the one path I tested did not write it" is a
+    much weaker claim than "no path can".
+
+    A future milestone that legitimately writes one of these will fail here, which is the
+    intent: widening the set is a decision, and it should be made by editing this list.
+    """
+
+    application = Path(__file__).resolve().parents[2] / "services" / "backend" / "app"
+    offenders: list[str] = []
+
+    for source in sorted(application.rglob("*.py")):
+        text = source.read_text(encoding="utf-8")
+        for name in LINEAGE_COLUMNS:
+            # An assignment or a keyword argument. A mention in a comment or a docstring is not
+            # a write, and the migration and the model both have to name the columns to create
+            # them — the ninth false positive of this shape this session, avoided by pattern
+            # rather than by an exclusion list.
+            if re.search(rf"^\s*{name}\s*=|[(,]\s*{name}\s*=", text, re.M):
+                if source.name in {"payment_batch.py"} and "models" in str(source):
+                    continue  # the model declares the column; declaring is not writing
+                offenders.append(f"{source.relative_to(application)} assigns {name}")
+
+    assert offenders == [], (
+        "a lineage column is written somewhere in M6, and `DB-ATTEMPT-001` claims none is:\n"
+        + "\n".join(f"  {offender}" for offender in offenders)
+    )

@@ -348,6 +348,216 @@
         "title": "BankProfileSummary",
         "type": "object"
       },
+      "BatchCreated": {
+        "additionalProperties": false,
+        "description": "`:1325-1343`. `replayed` is not in document 05 and is added deliberately.\n\nA caller retrying after a timeout has no other way to tell \"your batch was created\" from\n\"your batch was created twice\" — and the second is the thing an accountant would go looking\nfor in the bank file. The same field is on M5's revision response for the same reason.",
+        "properties": {
+          "batch": {
+            "$ref": "#/components/schemas/BatchSummary"
+          },
+          "current_version": {
+            "$ref": "#/components/schemas/VersionSummary"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "batch",
+          "current_version",
+          "replayed"
+        ],
+        "title": "BatchCreated",
+        "type": "object"
+      },
+      "BatchDetail": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1347-1353`, restricted to what M6 can answer.\n\nDocument 05 asks the detail read to include \"current version, historical versions, approval\nsummary, exports, result progress, record version, and allowed actions\". Three of those\ndescribe things M6 cannot reach: there is no approval (M7), no export (M7), and no result\n(M8). They are **omitted rather than returned empty**, because an empty `exports: []` reads\nas \"this batch has no exports\" when the truth is \"this deployment cannot have any\", and a\nscreen would render the first as a fact.\n\n`historical_versions` is present and will be non-empty from slice 4, which is the first\nthing that supersedes one.",
+        "properties": {
+          "active_allocation_count": {
+            "title": "Active Allocation Count",
+            "type": "integer"
+          },
+          "batch": {
+            "$ref": "#/components/schemas/BatchSummary"
+          },
+          "current_version": {
+            "$ref": "#/components/schemas/VersionSummary"
+          },
+          "historical_versions": {
+            "items": {
+              "$ref": "#/components/schemas/VersionSummary"
+            },
+            "title": "Historical Versions",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BatchItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "batch",
+          "current_version",
+          "historical_versions",
+          "items",
+          "active_allocation_count"
+        ],
+        "title": "BatchDetail",
+        "type": "object"
+      },
+      "BatchItemResponse": {
+        "additionalProperties": false,
+        "description": "One row of a version, as `04_Database_Schema.md` §11.6 stores it.",
+        "properties": {
+          "amount_irr": {
+            "title": "Amount Irr",
+            "type": "string"
+          },
+          "beneficiary_iban": {
+            "title": "Beneficiary Iban",
+            "type": "string"
+          },
+          "beneficiary_name": {
+            "title": "Beneficiary Name",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "payment_attempt_id": {
+            "format": "uuid",
+            "title": "Payment Attempt Id",
+            "type": "string"
+          },
+          "row_hash": {
+            "title": "Row Hash",
+            "type": "string"
+          },
+          "row_order": {
+            "title": "Row Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "row_order",
+          "payment_attempt_id",
+          "amount_irr",
+          "beneficiary_name",
+          "beneficiary_iban",
+          "description",
+          "row_hash"
+        ],
+        "title": "BatchItemResponse",
+        "type": "object"
+      },
+      "BatchList": {
+        "additionalProperties": false,
+        "properties": {
+          "batches": {
+            "items": {
+              "$ref": "#/components/schemas/BatchListEntry"
+            },
+            "title": "Batches",
+            "type": "array"
+          }
+        },
+        "required": [
+          "batches"
+        ],
+        "title": "BatchList",
+        "type": "object"
+      },
+      "BatchListEntry": {
+        "additionalProperties": false,
+        "description": "One line of the list. Enough to choose a batch, not enough to be a detail read.",
+        "properties": {
+          "batch_number": {
+            "title": "Batch Number",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "record_version": {
+            "title": "Record Version",
+            "type": "integer"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "total_amount_irr": {
+            "title": "Total Amount Irr",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "batch_number",
+          "status",
+          "record_version",
+          "row_count",
+          "total_amount_irr"
+        ],
+        "title": "BatchListEntry",
+        "type": "object"
+      },
+      "BatchSummary": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1327-1332`.",
+        "properties": {
+          "batch_number": {
+            "title": "Batch Number",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "record_version": {
+            "title": "Record Version",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "batch_number",
+          "status",
+          "record_version"
+        ],
+        "title": "BatchSummary",
+        "type": "object"
+      },
       "BeneficiaryCreated": {
         "additionalProperties": false,
         "properties": {
@@ -675,6 +885,48 @@
           "role_codes"
         ],
         "title": "CreateAdminUserRequest",
+        "type": "object"
+      },
+      "CreateBatchRequest": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1318-1322`: \"the same selection/configuration contract as preview\".\n\nSame shape as `PreviewRequest` with two differences, both narrowings. `bank_account_id` and\n`bank_mapping_id` become **required**, because `payment_batch_versions` makes both NOT NULL:\n`FINANCIAL_INTEGRITY_BASELINE.md` §1 requires a final artifact to name what produced it, and\na version that cannot say which mapping rendered it cannot be re-rendered. A preview writes\nnothing, so it can afford to omit them.\n\nNot expressed as a subclass of `PreviewRequest`. Inheriting would put the two routes' request\nbodies in one inheritance chain in the generated OpenAPI, so widening the preview later would\nsilently widen the command too.",
+        "properties": {
+          "apply_split_rules": {
+            "default": true,
+            "title": "Apply Split Rules",
+            "type": "boolean"
+          },
+          "bank_account_id": {
+            "format": "uuid",
+            "title": "Bank Account Id",
+            "type": "string"
+          },
+          "bank_mapping_id": {
+            "format": "uuid",
+            "title": "Bank Mapping Id",
+            "type": "string"
+          },
+          "bank_profile_version_id": {
+            "format": "uuid",
+            "title": "Bank Profile Version Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewItem"
+            },
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "bank_profile_version_id",
+          "bank_account_id",
+          "bank_mapping_id"
+        ],
+        "title": "CreateBatchRequest",
         "type": "object"
       },
       "CreateBeneficiaryRequest": {
@@ -2914,6 +3166,58 @@
           "processing_job_id"
         ],
         "title": "UploadedFileResponse",
+        "type": "object"
+      },
+      "VersionSummary": {
+        "additionalProperties": false,
+        "description": "`:1333-1341`, with `total_amount_irr` a string.\n\nDocument 05 shows `4500000000` unquoted at `:1338`. `MONEY_TIME_CONTRACT.md:17-18` requires\nbase-10 integer strings and forbids `Number`; the contract wins, as it did in M5 slice 4 and\non the preview surface. DOC-CONFLICT-050, third surface.",
+        "properties": {
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "total_amount_irr": {
+            "title": "Total Amount Irr",
+            "type": "string"
+          },
+          "validation_summary": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Validation Summary",
+            "type": "object"
+          },
+          "version_number": {
+            "title": "Version Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version_number",
+          "status",
+          "row_count",
+          "total_amount_irr",
+          "content_hash",
+          "validation_summary"
+        ],
+        "title": "VersionSummary",
         "type": "object"
       },
       "WorkerStatus": {
@@ -5790,6 +6094,196 @@
         ]
       }
     },
+    "/api/v1/payment-batches": {
+      "get": {
+        "description": "`GET /api/v1/payment-batches`.\n\n**No ownership scope, and that is not an omission.** A batch has no trader: it is a file the\ncentre sends to a bank, and its rows belong to many traders at once. `owned_or_permitted`\nwould have nothing to scope on, and `app/security/ownership.py`'s `scoped()` takes an actor\nprecisely so a route cannot invent a filter. The guard is the permission, and\n`permission_catalog.yaml:459` gives `payment_batch.read` to no trader role.\n\nA container nothing can read is a container nobody can act on, which is why this ships in the\nsame slice as the create rather than waiting for a screen to need it.",
+        "operationId": "listPaymentBatches",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks payment_batch.read."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A named request or bank version is missing."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A named revision or record version is no longer current."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Every batch, newest first.",
+        "tags": [
+          "payment-batches"
+        ]
+      },
+      "post": {
+        "description": "`POST /api/v1/payment-batches`.\n\n**`Idempotency-Key` is required and `If-Match` is not.** `command_catalog.yaml:111` says\n`\"idempotency\": \"required\"`, and the reason is specific: a create that runs twice on a\nnetwork retry would allocate the same attempts to two batches. There is no `If-Match`\nbecause there is no resource to be stale against — the expectations are per-item and live in\nthe body, which is what `:1274-1280` specifies and why 409 rather than 412 is the refusal.\n\nThe command owns every read and every refusal. This function exists to turn a header into a\nprecondition, a payload into a command, and a result into JSON.",
+        "operationId": "createPaymentBatch",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A named request is not at eligible_for_batching."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks payment_batch.create."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A named request or configuration is missing."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A named revision or record version is stale, an attempt is already allocated, or the Idempotency-Key was reused with a different body."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Idempotency-Key is required."
+          }
+        },
+        "summary": "Create a batch and its first draft version, with every attempt allocated.",
+        "tags": [
+          "payment-batches"
+        ]
+      }
+    },
     "/api/v1/payment-batches/preview": {
       "post": {
         "description": "`POST /api/v1/payment-batches/preview`.\n\nInternal-only: there is no trader audience for a proposed bank file, so the guard is a\npermission rather than `owned_or_permitted`, and no ownership scope is filtered.\n\nThe evaluation instant is taken once and passed to every split, so a preview that straddles\na bank's cutoff second does not apply two different limits to two of its own rows.",
@@ -5867,6 +6361,90 @@
           }
         },
         "summary": "What a batch would be. Advisory, and writes nothing.",
+        "tags": [
+          "payment-batches"
+        ]
+      }
+    },
+    "/api/v1/payment-batches/{batch_id}": {
+      "get": {
+        "description": "`GET /api/v1/payment-batches/{batch_id}`, per `05_API_Specification.md:1347-1353`.\n\n`active_allocation_count` is here because it is the only way a reader can see the invariant\nholding: it must equal `row_count` for a draft version whose every row owns its allocation,\nand slice 3's finalization refuses to proceed when it does not. Returning the number rather\nthan a boolean means a screen can say *how many* rows are unallocated instead of only that\nsomething is wrong.",
+        "operationId": "getPaymentBatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks payment_batch.read."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A named request or bank version is missing."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A named revision or record version is no longer current."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "One batch, its current version, its history and its rows.",
         "tags": [
           "payment-batches"
         ]
