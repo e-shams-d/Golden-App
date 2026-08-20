@@ -37,6 +37,21 @@ EXPECTED_TABLES = frozenset(
         # revision points back at its request.
         "payment_requests",
         "payment_request_revisions",
+        # M6 slice 2. Five at once, and they cannot arrive separately: three of their
+        # foreign keys are composite, and a composite key needs both of its tables to
+        # exist. They form the tree's **third** cycle — a batch points at its current
+        # version and every version points back at its batch — plus the relation
+        # `FINANCIAL_INTEGRITY_BASELINE.md:34-49` approves and no document names.
+        #
+        # `payment_attempts` has no `payment_batch_id` (`04_Database_Schema.md:909`):
+        # membership *is* `payment_attempt_allocations`, whose uniqueness is a partial
+        # unique index rather than a column, so two active versions cannot both claim
+        # one attempt and the refusal comes from the database rather than a service.
+        "payment_attempt_allocations",
+        "payment_attempts",
+        "payment_batch_items",
+        "payment_batch_versions",
+        "payment_batches",
         "permissions",
         "processing_jobs",
         "role_permissions",

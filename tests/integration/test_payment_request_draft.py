@@ -11,6 +11,7 @@ Covers: SEC-REQ-001, CON-REQ-001.
 
 from __future__ import annotations
 
+import re
 import uuid
 from collections.abc import Iterator
 from typing import Any
@@ -547,8 +548,12 @@ def test_each_draft_gets_its_own_request_number(world: dict[str, Any]) -> None:
     second = open_draft(client, world["beneficiaries"]["ok"]).json()["request"]
 
     assert first["request_number"] != second["request_number"]
-    assert first["request_number"].startswith("GP-")
-    assert len(first["request_number"].split("-")) == 3
+    # `PR-`, not the `GP-` this asserted until DOC-CONFLICT-054 was written: the prefix is
+    # `05_API_Specification.md:304`'s and the day/six-digit shape is
+    # `07_UI_UX_Specification.md:630-640`'s. The widths are checked against the parsed
+    # documents in `tests/backend/test_human_readable_numbers.py`; here the point is only
+    # that two drafts get two numbers, which is what "human-readable" is for.
+    assert re.fullmatch(r"PR-\d{8}-\d{6}", first["request_number"]), first["request_number"]
 
 
 def test_creation_writes_its_audit_row(world: dict[str, Any]) -> None:

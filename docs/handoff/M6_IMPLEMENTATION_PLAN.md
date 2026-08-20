@@ -99,6 +99,22 @@ no `batched` status. The request's membership of a batch **is** its active alloc
 
 Owner confirmation is cheap here and worth having: see G-5.
 
+**The same thing is true of the batch container, and document 04 stores it anyway.** Found while
+writing slice 2. `status_catalog.yaml:359-370` marks **nine of the batch's eleven states**
+`derived: true` — `draft`, `ready_for_approval`, `approved`, `approval_invalidated`, `exported`,
+`sent_to_bank`, `result_received`, `partially_resolved`, `resolved` — with only `rejected` and
+`cancelled` stored facts. `04_Database_Schema.md:971` nonetheless gives `payment_batches` a
+`status` column and calls it "operational status".
+
+Both are right, and the resolution is that the column is a **materialised projection**, not an
+independent fact. The status drift gate settles the vocabulary without being asked: a
+`status IN (...)` CHECK must equal its catalogue aggregate exactly, and the catalogue records a
+canonical set here, so the CHECK carries all eleven or the gate fails. What it cannot settle is
+whether the stored value and the derivation agree, so `CON-BATCH-004` asserts that they cannot
+disagree — `draft` stored exactly when the current version is `draft` — rather than asserting
+that the command wrote `draft`. A test that asserts the write would pass on a projection that
+had drifted from the thing it projects, which is the whole failure mode.
+
 ## 2.3 The allocation relation is approved in design and unspecified in shape
 
 `FINANCIAL_INTEGRITY_BASELINE.md:34-49` is a resolved, approved decision. But no document gives
@@ -229,14 +245,32 @@ database-enforced allocation — or nothing at all.
 ### What it changes
 
 - One migration creating `payment_attempts`, `payment_batches`, `payment_batch_versions`,
-  `payment_batch_version_items` and the active-allocation relation of §2.3.
+  `payment_batch_items` and the active-allocation relation of §2.3.
 - `app/commands/payment_batch.py`: `create_batch`.
 - `GET /api/v1/payment-batches/{batch_id}` and its list, because a container nothing can read is
   a container nobody can act on.
 
-The tables cannot be split across pull requests: the version-to-container pointer is a composite
-deferrable foreign key of the kind `20260817_0016` already established for the request and its
-current revision, and half of it is a broken migration head.
+**Corrected before the migration was written.** This section said
+`payment_batch_version_items`; `04_Database_Schema.md` §11.6 calls the table
+`payment_batch_items`, and `:262` and `:1036` say the same. The document wins, and the
+correction had to happen here rather than in review: a migration is where a name stops being
+cheap, and the plan is what the traceability gate reads. Written from memory once already this
+milestone — see the `request_number` finding, fixed in the same session for the same reason.
+
+The tables cannot be split across pull requests, and there are **three** composite deferrable
+foreign keys rather than the one this section originally named:
+
+1. `payment_batches.current_version_id` → `payment_batch_versions(id, payment_batch_id)`, which
+   `:1551-1562` specifies in the same shape `20260817_0016` used for the request and its current
+   revision. Deferrable because the batch and its first version are inserted in one transaction
+   and each points at the other.
+2. `payment_attempts.payment_request_revision_id` → `payment_request_revisions(id,
+   payment_request_id)`, which `:1564-1566` requires in as many words: "An attempt's revision
+   must belong to the same payment request." A plain single-column key would let an attempt cite
+   a revision of somebody else's request, and every snapshot on it would then be evidence for
+   the wrong trader.
+3. The allocation relation's target, so an allocation cannot name an item from a version of a
+   different batch — the same argument one level down.
 
 ### What proves it
 
@@ -254,6 +288,19 @@ current revision, and half of it is a broken migration head.
   fails, and the failure is the database's. The baseline's required two-transaction race test.
 - `CON-BATCH-003` — the derived `batched` projection and the allocation cannot disagree: a
   request is reported batched exactly when it owns an active allocation. §2.2.
+- `CON-BATCH-004` — the container's stored `status` and the derivation from its current version
+  cannot disagree. Nine of the batch's eleven catalogue states are `derived: true` and document
+  04 stores the column anyway, so what needs asserting is the agreement, not the write. §2.2.
+- `SVC-BATCH-003` — `create_batch` is idempotent under a repeated `Idempotency-Key`, because
+  `command_catalog.yaml:111` says `"idempotency": "required"` and a create that runs twice on a
+  network retry allocates the same attempts to two batches. The second call returns the first
+  batch rather than a second one, and the audit row is written once.
+- `DB-BATCH-002` — `batch_number` follows the human-readable family the documents specify —
+  `05_API_Specification.md:304` for the prefix, `07_UI_UX_Specification.md:630-640` for the
+  day precision and the six-digit width — with a Gregorian business-day date, because ADR-006
+  forbids Jalali in stored and transported values. `DOC-CONFLICT-054`. Written as an obligation
+  because M5 invented this format instead of reading it, and the only assertion it had was
+  against its own choice.
 - `SVC-BATCH-001` — `create_batch` allocates and inserts items in **one** transaction; a failure
   anywhere leaves no batch, no version, no attempt and no allocation.
 - `SVC-BATCH-002` — only a request at `eligible_for_batching` may be allocated, and the

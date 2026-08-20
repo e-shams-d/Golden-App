@@ -22,7 +22,7 @@ function request(overrides: Partial<PaymentRequest> = {}): PaymentRequest {
     id: "11111111-1111-1111-1111-111111111111",
     trader_id: "22222222-2222-2222-2222-222222222222",
     beneficiary_id: "33333333-3333-3333-3333-333333333333",
-    request_number: "GP-202608-0001",
+    request_number: "PR-20260820-000001",
     status: "needs_trader_correction",
     current_revision_id: "44444444-4444-4444-4444-444444444444",
     review_note: null,

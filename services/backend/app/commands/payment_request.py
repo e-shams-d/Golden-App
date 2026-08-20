@@ -52,6 +52,7 @@ from app.audit.writer import AuditActor, AuditContext, AuditEntry, AuditWriter
 from app.core.errors import BusinessRuleViolationError, NotFoundError
 from app.core.hashing import unversioned_digest
 from app.core.money import Money
+from app.core.time import to_business_time
 from app.db.concurrency import compare_and_swap
 from app.db.models.beneficiary import Beneficiary
 from app.db.models.file_object import FileObject
@@ -1074,11 +1075,30 @@ def _require_operable(trader: Trader) -> None:
 
 
 def _next_request_number(session: Session, now: datetime) -> str:
-    """A human-readable unique number, per `04_Database_Schema.md:833`.
+    """A human-readable unique number: `PR-YYYYMMDD-NNNNNN`, counted within the day.
 
-    `GP-YYYYMM-NNNN`, counted within the month. Not a global sequence: an operator
-    reading a number should be able to tell roughly when it was raised, and a number
-    that encodes nothing is one nobody can use on the phone.
+    **The shape is documented and this function used to invent it.** M5 shipped
+    `GP-YYYYMM-NNNN` citing `04_Database_Schema.md:833`, which says only "Human-readable
+    unique" and gives no format at all. The format is in two other places:
+    `05_API_Specification.md:304` enumerates the prefixes as `PR-...`, `PB-...` and
+    `EXP-...`, and `07_UI_UX_Specification.md:630-640` shows the whole family with a
+    day-precision date and a six-digit sequence. `GP-` is in neither, and it is in no
+    plan, ADR or conflict row either — it was written from memory and attributed to a
+    line that could not support it.
+
+    **The date is Gregorian and that is a decision, not an oversight.** The UI spec's
+    examples are Jalali (`PR-14050427-000123`). ADR-006 is Approved and its consequences
+    say "Jalali presentation does not leak into database or transport contracts"; this
+    value is stored in `payment_requests.request_number` and emitted by the API, so a
+    Jalali date here is exactly that leak. ADR-006 also states that screen-level UX copy
+    "cannot override this ADR". So the prefix, the day precision and the width come from
+    the documents, and the calendar comes from the ADR. `DOC-CONFLICT-054` records the
+    disagreement rather than resolving it, and a frontend that wants to show a Jalali
+    form may convert one — which is what ADR-006 point 4 asks for.
+
+    Counted within the **day**, not the month, because that is the precision the
+    documented family carries: a number whose date part is `20260820` and whose sequence
+    restarts monthly would collide in a way the reader could not predict.
 
     The count is taken inside the same transaction, so two concurrent creations can
     compute the same number — and `UNIQUE(request_number)` is what refuses the second.
@@ -1087,13 +1107,13 @@ def _next_request_number(session: Session, now: datetime) -> str:
     collides.
     """
 
-    prefix = f"GP-{now.strftime('%Y%m')}-"
+    prefix = f"PR-{to_business_time(now).strftime('%Y%m%d')}-"
     used = session.scalar(
         select(func.count())
         .select_from(PaymentRequest)
         .where(PaymentRequest.request_number.startswith(prefix))
     )
-    return f"{prefix}{(used or 0) + 1:04d}"
+    return f"{prefix}{(used or 0) + 1:06d}"
 
 
 def _audit(
