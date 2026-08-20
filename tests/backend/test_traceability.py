@@ -440,17 +440,13 @@ PENDING: dict[str, str] = {
     # it failed, which is the gate working rather than a bootstrap problem — and removing it is
     # the edit that ends M5.
     #
+    # Slice 1 is discharged: the engine in tests/backend/test_splitting.py, where it is
+    # pure, and the route in tests/integration/test_batch_preview.py. Its eight entries
+    # left here in the same commit, because this gate fails an obligation that is both
+    # pending and covered.
     # M6 — attempts, splitting and the immutable batch version. Thirty-six obligations across
     # five slices; `docs/handoff/M6_IMPLEMENTATION_PLAN.md` §4 records the nine questions the
     # owner must settle, of which only G-2 blocks slice 1.
-    "SVC-SPLIT-001": "M6 slice 1 — splitting is a pure function of the amount and the version",
-    "SVC-SPLIT-002": "M6 slice 1 — the split sums to the request amount exactly",
-    "SVC-SPLIT-003": "M6 slice 1 — null limits, and the after-cutoff limit at the boundary",
-    "SVC-SPLIT-004": "M6 slice 1 — splitting disabled yields one row and reads no limit",
-    "API-BATCH-001": "M6 slice 1 — the preview's published response shape",
-    "API-BATCH-002": "M6 slice 1 — every amount is a base-10 integer string in the raw body",
-    "CON-BATCH-001": "M6 slice 1 — a stale expected revision is refused, not previewed",
-    "SEC-BATCH-001": "M6 slice 1 — the preview requires the read grant, not the create grant",
     "DB-BATCH-001": "M6 slice 2 — the four tables match document 04, parsed not transcribed",
     "DB-ATTEMPT-001": "M6 slice 2 — the lineage columns exist, nullable and unwritten in M6",
     "DB-ATTEMPT-002": "M6 slice 2 — every frozen bank field is read back from the frozen row",

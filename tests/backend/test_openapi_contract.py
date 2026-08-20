@@ -171,6 +171,9 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # read — a trader could not list their own requests and an accountant had no queue.
         "listPaymentRequests",
         "getPaymentRequest",
+        # M6 slice 1. `05_API_Specification.md:1268`. Advisory and non-mutating: the first
+        # batching operation, and the only one that writes nothing.
+        "previewPaymentBatch",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

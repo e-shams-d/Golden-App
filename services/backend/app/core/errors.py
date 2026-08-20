@@ -96,6 +96,25 @@ class VersionConflictError(AppError):
         super().__init__("VERSION_CONFLICT", message, 412)
 
 
+class ConflictError(AppError):
+    """The caller's stated expectation is incompatible with the current state.
+
+    Distinct from `VersionConflictError` on purpose, and the distinction is the catalogue's
+    rather than a preference. `api_error_catalog.yaml` gives 412 the meaning "If-Match value is
+    stale" — the mechanism, not just the semantics — and gives 409 `CONFLICT` the meaning
+    "Duplicate or incompatible command". A route whose precondition travels in the **body**
+    because document 05 put it there has no If-Match to be stale, so answering 412 would make
+    the catalogue's own description of that code untrue.
+
+    Added in M6 slice 1 for the batch preview, whose request names an expected revision and
+    record version per `05_API_Specification.md:1274-1280`. The 409 code was catalogued and
+    nothing in the application raised it, which is a code no caller could ever receive.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__("CONFLICT", message, 409)
+
+
 class PreconditionRequiredError(AppError):
     """A required If-Match or Idempotency-Key was absent.
 
