@@ -439,6 +439,46 @@ PENDING: dict[str, str] = {
     # this dictionary and asserts no M5 obligation remains in it. While its own line was here
     # it failed, which is the gate working rather than a bootstrap problem — and removing it is
     # the edit that ends M5.
+    #
+    # M6 — attempts, splitting and the immutable batch version. Thirty-six obligations across
+    # five slices; `docs/handoff/M6_IMPLEMENTATION_PLAN.md` §4 records the nine questions the
+    # owner must settle, of which only G-2 blocks slice 1.
+    "SVC-SPLIT-001": "M6 slice 1 — splitting is a pure function of the amount and the version",
+    "SVC-SPLIT-002": "M6 slice 1 — the split sums to the request amount exactly",
+    "SVC-SPLIT-003": "M6 slice 1 — null limits, and the after-cutoff limit at the boundary",
+    "SVC-SPLIT-004": "M6 slice 1 — splitting disabled yields one row and reads no limit",
+    "API-BATCH-001": "M6 slice 1 — the preview's published response shape",
+    "API-BATCH-002": "M6 slice 1 — every amount is a base-10 integer string in the raw body",
+    "CON-BATCH-001": "M6 slice 1 — a stale expected revision is refused, not previewed",
+    "SEC-BATCH-001": "M6 slice 1 — the preview requires the read grant, not the create grant",
+    "DB-BATCH-001": "M6 slice 2 — the four tables match document 04, parsed not transcribed",
+    "DB-ATTEMPT-001": "M6 slice 2 — the lineage columns exist, nullable and unwritten in M6",
+    "DB-ATTEMPT-002": "M6 slice 2 — every frozen bank field is read back from the frozen row",
+    "DB-ALLOC-001": "M6 slice 2 — one active allocation per attempt, at the database boundary",
+    "CON-BATCH-002": "M6 slice 2 — the two-transaction allocation race the baseline requires",
+    "CON-BATCH-003": "M6 slice 2 — the derived `batched` projection cannot disagree with it",
+    "SVC-BATCH-001": "M6 slice 2 — batch, version, attempts, items and allocation in one commit",
+    "SVC-BATCH-002": "M6 slice 2 — only an eligible request may be allocated",
+    "SEC-BATCH-002": "M6 slice 2 — create and read carry their own grants",
+    "AUD-BATCH-001": "M6 slice 2 — creation is audited, and publishes what the catalogue defines",
+    "TRACE-BATCH-001": "M6 slice 2 — no batch route declares a payment_request permission",
+    "SVC-FINAL-001": "M6 slice 3 — the content hash is deterministic and order-stable",
+    "SVC-FINAL-002": "M6 slice 3 — no finalization unless every item owns its allocation",
+    "SVC-FINAL-003": "M6 slice 3 — item sums equal the version total exactly",
+    "DB-FINAL-001": "M6 slice 3 — a finalized version cannot be updated, by grant not trigger",
+    "SEC-FINAL-001": "M6 slice 3 — the finalizer identity comes from the session and is kept",
+    "AUD-BATCH-002": "M6 slice 3 — finalization is audited in the same transaction",
+    "CON-FINAL-001": "M6 slice 3 — the lock scopes are taken in the order the module defines",
+    "SVC-BATCH-005": "M6 slice 4 — a replacement supersedes and the superseded rows do not move",
+    "SVC-BATCH-006": "M6 slice 4 — cancellation from exactly the states §29.2 permits",
+    "SVC-BATCH-007": "M6 slice 4 — release leaves queryable evidence and keeps the history",
+    "SVC-BATCH-008": "M6 slice 4 — the baseline's double-payment negative test",
+    "AUD-BATCH-003": "M6 slice 4 — supersession is audited; blocked on G-8's missing action",
+    "TRACE-DOD-010": "M6 slice 5 — the journey to a finalized version, in one test",
+    "TRACE-DOD-011": "M6 slice 5 — the frozen snapshot is sufficient without a live profile",
+    "TRACE-DOD-012": "M6 slice 5 — no manager-only permission reaches a finalized version",
+    "SEC-BATCH-004": "M6 slice 5 — and no request-level route gained one while M6 was built",
+    "TRACE-M6-001": "M6 slice 5 — nothing is owed for M6; it reads this dictionary",
 }
 
 
