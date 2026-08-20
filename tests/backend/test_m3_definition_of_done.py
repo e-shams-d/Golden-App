@@ -175,6 +175,11 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # reaches their own requests by ownership and holds no permission at all,
     # while internal staff reach them by `payment_request.*` and own nothing.
     ("POST", "/api/v1/payment-requests"): DUAL,
+    # M6 slice 1. `PERMISSION`: a proposed bank file has no trader audience, so there is no
+    # ownership scope to filter and no ownership negative to owe. Guarded by
+    # `payment_batch.read` rather than `.create`, because a route that writes nothing must not
+    # require the grant that authorises writing — G-2 in the M6 plan.
+    ("POST", "/api/v1/payment-batches/preview"): PERMISSION,
     # M5 slice 8. The two reads the screens need, and which nothing had built: eleven
     # published operations and only the revision history read. Both are `DUAL` — a trader
     # sees their own through `scoped()`, an accountant sees the queue through
@@ -420,6 +425,12 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ),
     ("POST", "/api/v1/payment-requests/{payment_request_id}/cancel", "permission"): (
         "test_an_admin_without_the_request_permission_is_refused"
+    ),
+    # M6 slice 1. One entry: a `PERMISSION` route owes the permission negative only. Two tests
+    # cover it — an internal caller without the grant, and a trader, who holds no permissions
+    # at all — and the named one is the internal case, which is what this class is about.
+    ("POST", "/api/v1/payment-batches/preview", "permission"): (
+        "test_the_preview_needs_the_read_permission"
     ),
     # M5 slice 8. The two reads, four entries because both are `DUAL`. The ownership pair
     # answers `404` and the permission pair `403`, and each is asserted in its own test
