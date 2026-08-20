@@ -43,16 +43,16 @@
       "DOC-CONFLICT-041",
       "DOC-CONFLICT-042"
     ],
-    "total_conflicts": 53,
-    "open_conflicts": 32,
+    "total_conflicts": 54,
+    "open_conflicts": 33,
     "open_critical_conflicts": 0,
     "m0_exit_gate_complete": false,
     "owner_reapproval_of_this_baseline": "pending"
   },
   "summary": {
     "file_count": 17,
-    "total_bytes": 328371,
-    "total_lines": 3743
+    "total_bytes": 331498,
+    "total_lines": 3744
   },
   "validation": {
     "utf8": true,
@@ -114,9 +114,9 @@
     },
     {
       "path": "docs/governance/CONFLICT_REGISTER.md",
-      "bytes": 69486,
-      "lines": 147,
-      "sha256": "0e87d2f44d168614819d6fba284024ed468e4e08d0bf2ce97c2404906a1376f0"
+      "bytes": 72613,
+      "lines": 148,
+      "sha256": "bbac213b52994d0b075ebbaea965884d332d3ecf3b28ddc0db560a91138bf7fd"
     },
     {
       "path": "docs/governance/DOCUMENT_APPROVAL_REGISTER.md",
@@ -152,7 +152,7 @@
       "path": "docs/governance/README.md",
       "bytes": 4107,
       "lines": 74,
-      "sha256": "720ecb89781aa5dfce7deefe0da6513e4d6c415f2c9270d3d76397502cf01ab5"
+      "sha256": "2ae51d7690b427a4ec09117479e6b1d815997cf12fcac06044305f2cc99110ee"
     },
     {
       "path": "docs/governance/REPOSITORY_BASELINE.md",
@@ -170,7 +170,7 @@
       "path": "docs/governance/TRACEABILITY_MATRIX.md",
       "bytes": 37573,
       "lines": 58,
-      "sha256": "bee61e9e9375b5933dbc77449f80363fa818ef7adc8b248373f5dabbed178035"
+      "sha256": "29a8026741490aa2d31fb42f0f9fd9f2cfaf5b6e1c0cca9cf309a184075e3568"
     }
   ]
 }
