@@ -180,6 +180,20 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # `payment_batch.read` rather than `.create`, because a route that writes nothing must not
     # require the grant that authorises writing — G-2 in the M6 plan.
     ("POST", "/api/v1/payment-batches/preview"): PERMISSION,
+    # M6 slice 2, `PERMISSION` for the same reason and one more. A batch has no trader at all:
+    # it is a file the centre sends to a bank and its rows belong to many traders at once, so
+    # `owned_or_permitted` would have nothing to scope on and `scoped()` — which takes the actor
+    # precisely so a route cannot invent a filter — has no column to take. The guard is the
+    # permission, and `permission_catalog.yaml:459-462` gives neither `payment_batch.read` nor
+    # `.create` to any trader role.
+    #
+    # The create declares `payment_batch.create` and the two reads declare `payment_batch.read`.
+    # That split is `SEC-BATCH-002`, and it is asserted on the declarations rather than through
+    # a caller — the M6 slice 1 negative control proved a behavioural test cannot tell the two
+    # apart, because the seed grants `accountant` both.
+    ("POST", "/api/v1/payment-batches"): PERMISSION,
+    ("GET", "/api/v1/payment-batches"): PERMISSION,
+    ("GET", "/api/v1/payment-batches/{batch_id}"): PERMISSION,
     # M5 slice 8. The two reads the screens need, and which nothing had built: eleven
     # published operations and only the revision history read. Both are `DUAL` — a trader
     # sees their own through `scoped()`, an accountant sees the queue through
@@ -431,6 +445,20 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     # at all — and the named one is the internal case, which is what this class is about.
     ("POST", "/api/v1/payment-batches/preview", "permission"): (
         "test_the_preview_needs_the_read_permission"
+    ),
+    # M6 slice 2. One entry each, for the same reason. The create's negative signs in as a role
+    # holding `payment_batch.read` and not `.create` — `business_admin`, per
+    # `20260801_0008_seed_rbac_catalogue.py:276` — which is stronger than a role holding
+    # nothing: it proves the route wants *this* grant rather than merely some grant, and it is
+    # the exact distinction the slice 1 negative control found a behavioural test cannot make.
+    ("POST", "/api/v1/payment-batches", "permission"): (
+        "test_creating_needs_the_create_permission_and_not_merely_the_read"
+    ),
+    ("GET", "/api/v1/payment-batches", "permission"): (
+        "test_listing_batches_needs_the_read_permission"
+    ),
+    ("GET", "/api/v1/payment-batches/{batch_id}", "permission"): (
+        "test_reading_one_batch_needs_the_read_permission"
     ),
     # M5 slice 8. The two reads, four entries because both are `DUAL`. The ownership pair
     # answers `404` and the permission pair `403`, and each is asserted in its own test

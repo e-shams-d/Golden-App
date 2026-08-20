@@ -65,6 +65,21 @@ STATUS_COLUMN_TO_AGGREGATE: dict[tuple[str, str], str] = {
     # listed in APPROVED_OMISSIONS below.
     ("admin_users", "status"): "identity_account",
     ("trader_users", "status"): "identity_account",
+    # M6. All three carry a canonical catalogue set, so the first shape below applies and the
+    # CHECK must equal the catalogue exactly.
+    #
+    # `payment_batches.status` is the interesting one: `status_catalog.yaml:359-370` marks nine
+    # of its eleven states `derived: true`, and `04_Database_Schema.md:971` stores the column
+    # anyway. It is mapped here rather than parked in DELIBERATELY_UNCONSTRAINED because the
+    # catalogue *does* record a canonical set — derived is a statement about where the value
+    # comes from, not about whether it is enumerated. What the derivation costs is a second
+    # obligation, discharged by the container-projection test in this slice: the stored value
+    # cannot disagree with the current version's state, which this gate cannot see. Its id is
+    # deliberately not written here — the traceability scanner counts any occurrence in a test
+    # file as a discharge, so naming it would let this comment stand in for the assertion.
+    ("payment_attempts", "status"): "payment_attempt",
+    ("payment_batches", "status"): "payment_batch",
+    ("payment_batch_versions", "status"): "payment_batch_version",
 }
 
 # Columns whose aggregate the catalogue records with `canonical: null`, and which

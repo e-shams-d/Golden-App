@@ -154,6 +154,24 @@ CYCLE_FOREIGN_KEYS: tuple[tuple[str, str], ...] = (
         "payment_request_revisions",
         "fk_request_revisions_request",
     ),
+    # M6 slice 2 creates a **third** cycle on the same pattern — a batch points at its
+    # current version and every version points back at its batch — and the reason to
+    # list it is the reason above, applied again. Covering M2's and M5's and not this
+    # one would leave the newest composite pointer unchecked, and that pointer is what
+    # stops a batch from naming a version belonging to another batch: an approval over
+    # the wrong rows, or an export rendered from rows nobody approved.
+    ("payment_batches", "fk_batch_current_version"),
+    ("payment_batch_versions", "fk_batch_versions_batch"),
+    # The two composite keys that are not part of a cycle but carry the same kind of
+    # weight. `fk_allocation_item_belongs_to_version` is what stops an allocation
+    # naming an item from another version, and
+    # `fk_payment_attempts_revision_belongs_to_request` is `04_Database_Schema.md:1566`
+    # in one constraint — an attempt citing another trader's revision would freeze that
+    # trader's beneficiary onto this trader's payment. Listed because this is the test
+    # that proves a dropped key is *reported*, and a key nothing reports is a key a
+    # hand-written revision can quietly omit.
+    ("payment_attempt_allocations", "fk_allocation_item_belongs_to_version"),
+    ("payment_attempts", "fk_payment_attempts_revision_belongs_to_request"),
 )
 
 

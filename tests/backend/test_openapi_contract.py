@@ -174,6 +174,12 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # M6 slice 1. `05_API_Specification.md:1268`. Advisory and non-mutating: the first
         # batching operation, and the only one that writes nothing.
         "previewPaymentBatch",
+        # M6 slice 2. `:1318`, `:1347`. The create and the two reads, shipped together
+        # because a container nothing can read is a container nobody can act on — the shape
+        # of the five mechanisms-with-no-caller M3 shipped and M5 shipped once more.
+        "createPaymentBatch",
+        "listPaymentBatches",
+        "getPaymentBatch",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas
