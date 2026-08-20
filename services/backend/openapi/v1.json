@@ -1747,6 +1747,146 @@
         "title": "PaymentRequestResponse",
         "type": "object"
       },
+      "PreviewItem": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1274-1280`.\n\nAll three fields are required, and the two expectations are the point: a preview computed\nagainst a revision that has since been corrected is not a stale answer, it is a *wrong*\none, and it looks exactly like a right one.",
+        "properties": {
+          "expected_record_version": {
+            "minimum": 1.0,
+            "title": "Expected Record Version",
+            "type": "integer"
+          },
+          "expected_revision_id": {
+            "format": "uuid",
+            "title": "Expected Revision Id",
+            "type": "string"
+          },
+          "payment_request_id": {
+            "format": "uuid",
+            "title": "Payment Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "payment_request_id",
+          "expected_revision_id",
+          "expected_record_version"
+        ],
+        "title": "PreviewItem",
+        "type": "object"
+      },
+      "PreviewRequest": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1272-1288`.\n\n`bank_account_id` and `bank_mapping_id` are accepted and not consulted in this slice: the\nsplit depends on the profile version's limits, and the account and mapping shape the export\nM7 builds. They are declared because the document declares them and refusing them would\nreject the documented payload — and they are named here rather than silently ignored.",
+        "properties": {
+          "apply_split_rules": {
+            "default": true,
+            "title": "Apply Split Rules",
+            "type": "boolean"
+          },
+          "bank_account_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Account Id"
+          },
+          "bank_mapping_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Mapping Id"
+          },
+          "bank_profile_version_id": {
+            "format": "uuid",
+            "title": "Bank Profile Version Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewItem"
+            },
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "bank_profile_version_id"
+        ],
+        "title": "PreviewRequest",
+        "type": "object"
+      },
+      "PreviewResponse": {
+        "additionalProperties": false,
+        "description": "`:1291-1313`, with every monetary field a base-10 integer string.",
+        "properties": {
+          "proposed_rows": {
+            "items": {
+              "$ref": "#/components/schemas/ProposedRowResponse"
+            },
+            "title": "Proposed Rows",
+            "type": "array"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "total_amount_irr": {
+            "title": "Total Amount Irr",
+            "type": "string"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/PreviewValidation"
+          }
+        },
+        "required": [
+          "proposed_rows",
+          "row_count",
+          "total_amount_irr",
+          "validation"
+        ],
+        "title": "PreviewResponse",
+        "type": "object"
+      },
+      "PreviewValidation": {
+        "additionalProperties": false,
+        "description": "`:1309-1312`. Advisory, and both lists are always present.\n\nPresent even when empty, because a client that has to distinguish \"no warnings\" from \"the\nfield was omitted\" will get it wrong in one direction, and the safer direction is not the\none it will guess.",
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "errors",
+          "warnings"
+        ],
+        "title": "PreviewValidation",
+        "type": "object"
+      },
       "ProfileCreatedResponse": {
         "additionalProperties": false,
         "properties": {
@@ -1766,6 +1906,53 @@
           "version_id"
         ],
         "title": "ProfileCreatedResponse",
+        "type": "object"
+      },
+      "ProposedRowResponse": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1293-1308`, with the amount as a string.",
+        "properties": {
+          "amount_irr": {
+            "title": "Amount Irr",
+            "type": "string"
+          },
+          "beneficiary_iban": {
+            "title": "Beneficiary Iban",
+            "type": "string"
+          },
+          "beneficiary_name": {
+            "title": "Beneficiary Name",
+            "type": "string"
+          },
+          "row_order": {
+            "title": "Row Order",
+            "type": "integer"
+          },
+          "source_request_id": {
+            "format": "uuid",
+            "title": "Source Request Id",
+            "type": "string"
+          },
+          "source_revision_id": {
+            "format": "uuid",
+            "title": "Source Revision Id",
+            "type": "string"
+          },
+          "split_reason": {
+            "title": "Split Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_request_id",
+          "source_revision_id",
+          "row_order",
+          "amount_irr",
+          "beneficiary_name",
+          "beneficiary_iban",
+          "split_reason"
+        ],
+        "title": "ProposedRowResponse",
         "type": "object"
       },
       "ReadinessResponse": {
@@ -5600,6 +5787,88 @@
         "summary": "Release identity, applied schema revision and flag snapshot",
         "tags": [
           "operations"
+        ]
+      }
+    },
+    "/api/v1/payment-batches/preview": {
+      "post": {
+        "description": "`POST /api/v1/payment-batches/preview`.\n\nInternal-only: there is no trader audience for a proposed bank file, so the guard is a\npermission rather than `owned_or_permitted`, and no ownership scope is filtered.\n\nThe evaluation instant is taken once and passed to every split, so a preview that straddles\na bank's cutoff second does not apply two different limits to two of its own rows.",
+        "operationId": "previewPaymentBatch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks payment_batch.read."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A named request or bank version is missing."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A named revision or record version is no longer current."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "What a batch would be. Advisory, and writes nothing.",
+        "tags": [
+          "payment-batches"
         ]
       }
     },
