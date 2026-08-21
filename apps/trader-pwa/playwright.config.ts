@@ -1,8 +1,8 @@
+import { a11yLaunchOptions } from "@gold/config/playwright-a11y-launch";
 import { defineConfig, devices } from "@playwright/test";
 
 const externalServer = process.env.PLAYWRIGHT_EXTERNAL_SERVER === "1";
 const outputDirectory = process.env.PLAYWRIGHT_OUTPUT_DIR;
-const chromiumExecutablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
 
 export default defineConfig({
   ...(outputDirectory ? { outputDir: outputDirectory } : {}),
@@ -15,9 +15,9 @@ export default defineConfig({
     baseURL: "http://127.0.0.1:3100",
     locale: "fa-IR",
     trace: "on-first-retry",
-    ...(chromiumExecutablePath
-      ? { launchOptions: { executablePath: chromiumExecutablePath } }
-      : {}),
+    // Both the executable override and the one canvas flag live in @gold/config, next to the
+    // measurement that produced the flag.
+    launchOptions: a11yLaunchOptions(),
   },
   projects: [
     {

@@ -6,6 +6,10 @@
   "exports": {
     "./eslint/base": "./eslint/base.mjs",
     "./eslint/next": "./eslint/next.mjs",
+    "./playwright-a11y-launch": {
+      "types": "./src/playwright-a11y-launch.d.mts",
+      "default": "./src/playwright-a11y-launch.mjs"
+    },
     "./security-headers": {
       "types": "./src/security-headers.d.mts",
       "default": "./src/security-headers.mjs"
