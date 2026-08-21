@@ -487,7 +487,7 @@ PENDING: dict[str, str] = {
     "SVC-INVALIDATE-002": "M7 slice 5 — the replacement needs a new approval, same separation rule",
     "SVC-INVALIDATE-003": "M7 slice 5 — a superseded version's approval exports nothing",
     "AUD-INVALIDATE-001": "M7 slice 5 — payment_batch_approval.invalidated, catalogued",
-    "TRACE-INVALIDATE-001": "M7 slice 5 — the chain from the sent file to *its* approval is unambiguous",
+    "TRACE-INVALIDATE-001": "M7 slice 5 — a sent file names its own approval, not the other one",
     "TRACE-DOD-013": "M7 slice 6 — the whole chain, recoverable from the sent export alone",
     "TRACE-DOD-014": "M7 slice 6 — break-glass is absent, asserted structurally",
     "TRACE-DOD-015": "M7 slice 6 — no path lets one actor finalize and approve",
