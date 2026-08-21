@@ -452,6 +452,46 @@ PENDING: dict[str, str] = {
     # something the plan's original slice-2 list did not: a projection that can drift from what
     # it projects, a catalogued idempotency requirement with nothing calling the resolver, and
     # a number format M5 invented rather than read.
+    # M7 — exact manager approval, the final export, and mark sent. Thirty-five obligations
+    # across six slices; `docs/handoff/M7_IMPLEMENTATION_PLAN.md` §4 records eleven owner
+    # questions, of which **G-1 blocks slice 2** — no Excel writer is pinned, and that is a
+    # dependency decision on a deployment that cannot reach a registry. Slice 1 touches no file
+    # and is independent of it.
+    "DB-APPROVAL-001": "M7 slice 1 — batch_approvals matches document 04, parsed not transcribed",
+    "SEC-APPROVAL-001": "M7 slice 1 — the approver is not the finalizer, at both boundaries",
+    "SEC-APPROVAL-002": "M7 slice 1 — nor the preparer; the stricter reading of `:1111`, see G-2",
+    "SEC-APPROVAL-003": "M7 slice 1 — recent-auth bound to this action and consumed in the txn",
+    "CON-APPROVAL-001": "M7 slice 1 — two concurrent approvals produce one decision",
+    "SVC-APPROVAL-001": "M7 slice 1 — the expected hash is required; a replacement makes it stale",
+    "AUD-APPROVAL-001": "M7 slice 1 — approved and rejected, with the one catalogued event",
+    "TRACE-APPROVAL-001": "M7 slice 1 — the approval names the exact hash it approved",
+    "DB-EXPORT-001": "M7 slice 2 — bank_excel_exports matches document 04, parsed",
+    "SVC-EXPORT-001": "M7 slice 2 — the record exists only after the file verifies",
+    "SVC-EXPORT-002": "M7 slice 2 — a preview is permanently non-sendable and cannot be promoted",
+    "SVC-EXPORT-003": "M7 slice 2 — amounts are integers in the file, never floats",
+    "SVC-EXPORT-004": "M7 slice 2 — Persian and English round-trip; row order is the version's",
+    "SEC-EXPORT-001": "M7 slice 2 — formula-like untrusted text is inert in the written cell",
+    "AUD-EXPORT-001": "M7 slice 2 — preview_generated, from the registry not a literal",
+    "SVC-EXPORT-005": "M7 slice 3 — a final export needs an approval for the exact version",
+    "SVC-INTEGRITY-001": "M7 slice 3 — all eight of §15.5, eight assertions with eight cases",
+    "SVC-INTEGRITY-002": "M7 slice 3 — a mismatch quarantines and raises the security event",
+    "CON-EXPORT-001": "M7 slice 3 — two concurrent final exports produce one logical result",
+    "AUD-EXPORT-002": "M7 slice 3 — final_generated and integrity_failed, both catalogued",
+    "SEC-DOWNLOAD-001": "M7 slice 4 — download is guarded and refused for a quarantined export",
+    "SVC-INTEGRITY-003": "M7 slice 4 — revalidated before *every* download, not once",
+    "SVC-SENT-001": "M7 slice 4 — mark-sent acts on an exact export; a preview cannot be sent",
+    "SVC-SENT-002": "M7 slice 4 — a downloaded, unsent export is visibly unsent",
+    "CON-SENT-001": "M7 slice 4 — mark-sent is idempotent and does not move the timestamp",
+    "AUD-SENT-001": "M7 slice 4 — sent_marked with BankExportSent, both catalogued",
+    "SVC-INVALIDATE-001": "M7 slice 5 — a replacement makes a prior approval non-operational",
+    "SVC-INVALIDATE-002": "M7 slice 5 — the replacement needs a new approval, same separation rule",
+    "SVC-INVALIDATE-003": "M7 slice 5 — a superseded version's approval exports nothing",
+    "AUD-INVALIDATE-001": "M7 slice 5 — payment_batch_approval.invalidated, catalogued",
+    "TRACE-INVALIDATE-001": "M7 slice 5 — a sent file names its own approval, not the other one",
+    "TRACE-DOD-013": "M7 slice 6 — the whole chain, recoverable from the sent export alone",
+    "TRACE-DOD-014": "M7 slice 6 — break-glass is absent, asserted structurally",
+    "TRACE-DOD-015": "M7 slice 6 — no path lets one actor finalize and approve",
+    "TRACE-M7-001": "M7 slice 6 — nothing is owed for M7; it reads this dictionary",
 }
 
 
