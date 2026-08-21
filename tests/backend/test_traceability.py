@@ -452,11 +452,6 @@ PENDING: dict[str, str] = {
     # something the plan's original slice-2 list did not: a projection that can drift from what
     # it projects, a catalogued idempotency requirement with nothing calling the resolver, and
     # a number format M5 invented rather than read.
-    "SVC-BATCH-005": "M6 slice 4 — a replacement supersedes and the superseded rows do not move",
-    "SVC-BATCH-006": "M6 slice 4 — cancellation from exactly the states §29.2 permits",
-    "SVC-BATCH-007": "M6 slice 4 — release leaves queryable evidence and keeps the history",
-    "SVC-BATCH-008": "M6 slice 4 — the baseline's double-payment negative test",
-    "AUD-BATCH-003": "M6 slice 4 — supersession is audited; blocked on G-8's missing action",
     "TRACE-DOD-010": "M6 slice 5 — the journey to a finalized version, in one test",
     "TRACE-DOD-011": "M6 slice 5 — the frozen snapshot is sufficient without a live profile",
     "TRACE-DOD-012": "M6 slice 5 — no manager-only permission reaches a finalized version",

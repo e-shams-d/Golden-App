@@ -39,6 +39,8 @@ LIST = ("GET", "/api/v1/payment-batches")
 DETAIL = ("GET", "/api/v1/payment-batches/{batch_id}")
 PREVIEW = ("POST", "/api/v1/payment-batches/preview")
 FINALIZE = ("POST", "/api/v1/payment-batches/{batch_id}/versions/{version_id}/finalize")
+REPLACE = ("POST", "/api/v1/payment-batches/{batch_id}/versions")
+CANCEL = ("POST", "/api/v1/payment-batches/{batch_id}/cancel")
 
 # What each route must declare, and nothing else. The create is the only one that writes.
 EXPECTED: dict[tuple[str, str], set[str]] = {
@@ -51,6 +53,13 @@ EXPECTED: dict[tuple[str, str], set[str]] = {
     # any other batch permission would blur the identity
     # `FINANCIAL_INTEGRITY_BASELINE.md` §5 compares.
     FINALIZE: {"payment_batch_version.finalize"},
+    # M6 slice 4. Each its own grant, and the version-level one is separate from the
+    # container's for the reason `FINANCIAL_INTEGRITY_BASELINE.md` §5 gives: the
+    # version-level actors are the ones a manager's approval is checked against.
+    REPLACE: {"payment_batch_version.create"},
+    # `cancel_draft` is the only batch cancellation permission that exists, which is
+    # why cancellation is draft-only. DOC-CONFLICT-056.
+    CANCEL: {"payment_batch.cancel_draft"},
 }
 
 SEED = (

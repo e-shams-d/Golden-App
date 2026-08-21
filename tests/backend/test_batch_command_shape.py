@@ -51,9 +51,15 @@ def test_the_attempt_is_inserted_at_created_and_moved_afterwards() -> None:
     inserted at `created` and left there — an attempt in a batch that says it is not in one. If
     only the assignment appeared, the insert could already carry the final value and the
     assignment would be a no-op.
+
+    **Asserted over the module, not over `create_batch`.** Slice 4 extracted `_attempts_for` and
+    `_insert_items_and_allocate` so the replacement command shares one splitting path rather than
+    copying it, and this gate failed — correctly about the property, wrongly about where to look.
+    A gate that has to be edited whenever a helper is extracted is a gate somebody eventually
+    edits by deleting.
     """
 
-    function = _function("create_batch")
+    function = TREE
 
     constructed_at_created = [
         keyword
@@ -93,10 +99,15 @@ def test_a_flush_separates_the_insert_from_the_transition() -> None:
     carries the final status and the row never holds `created`. That is exactly the state of
     affairs this file exists to distinguish, so the flush is part of the claim rather than an
     implementation detail.
+
+    Also module-scoped since slice 4: the insert is in `_attempts_for`, the flush is in its
+    caller and again inside `_insert_items_and_allocate`, and the transition is in that second
+    helper. Positions in the file rather than in one function, which is what the property was
+    always about — the database has to see the INSERT before the UPDATE, and it does not care
+    which function issued either.
     """
 
-    function = _function("create_batch")
-    body = function.body
+    function = TREE
 
     def line_of(predicate: object) -> int:
         for node in ast.walk(function):
@@ -127,7 +138,6 @@ def test_a_flush_separates_the_insert_from_the_transition() -> None:
         f"(line {transition_line}); flushes are at {flushes}. Without one the INSERT carries "
         "the final status and the row never holds `created`."
     )
-    del body
 
 
 def test_nothing_selects_an_existing_allocation_before_inserting_one() -> None:

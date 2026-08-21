@@ -46,6 +46,12 @@ from sqlalchemy.orm import Session
 
 from app.audit.outbox import OutboxMessage, OutboxWriter
 from app.audit.redaction import RedactionPolicy
+from app.audit.registry import (
+    CANCEL_PAYMENT_BATCH,
+    CREATE_PAYMENT_BATCH,
+    CREATE_PAYMENT_BATCH_VERSION,
+    FINALIZE_PAYMENT_BATCH_VERSION,
+)
 from app.audit.writer import AuditActor, AuditContext, AuditEntry, AuditWriter
 from app.batching.splitting import SplittingRules, split
 from app.core.errors import BusinessRuleViolationError, ConflictError, NotFoundError
@@ -88,7 +94,12 @@ ATTEMPT_TYPE_SPLIT = "split"
 # approval, and neither has happened. `payment_batch_version.created` exists in the audit
 # catalogue and belongs to the *separate* `payment_batch_version.create` command — writing it
 # here would claim that command ran.
-AUDIT_ACTION = "payment_batch.created"
+#
+# **From the registry, not a literal.** `app/audit/registry.py` exists because these names are
+# `provisional_pending_m0_approval` and will be renamed; a literal here would make that rename a
+# call-site sweep, and one that had reached a database column would need a migration on top. Two
+# M6 slices shipped with literals before anything noticed, which is what
+# `tests/backend/test_audit_names_come_from_the_registry.py` is for.
 CREATE_BATCH_OPERATION = "payment_batch.create"
 
 METADATA_SCHEMA = "payment_batch_command"
@@ -203,47 +214,14 @@ def create_batch(
     # generation out of the database for one caller's convenience.
     uow.flush()
 
-    attempts: list[PaymentAttempt] = []
-    rows: list[tuple[PaymentAttempt, int, PaymentRequestRevision]] = []
-
-    for selection in command.items:
-        request, revision = _current(session, selection)
-        proposed = split(int(revision.amount_irr), rules, now)
-        # The kind is decided once, by whether this request produced more than one row. A
-        # single row is `original` even when splitting was enabled and simply did not bite.
-        kind = ATTEMPT_TYPE_SPLIT if len(proposed) > 1 else ATTEMPT_TYPE_ORIGINAL
-        first_number = _next_attempt_number(session, request.id)
-
-        for offset, row in enumerate(proposed):
-            attempt = PaymentAttempt(
-                payment_request_id=request.id,
-                payment_request_revision_id=revision.id,
-                attempt_number=first_number + offset,
-                attempt_type=kind,
-                amount_irr=row.amount_irr,
-                # Frozen from the revision, not from the live beneficiary record. The file a
-                # bank receives has to be explainable from rows alone months later.
-                beneficiary_name_snapshot=revision.beneficiary_name_snapshot,
-                beneficiary_iban_snapshot=revision.beneficiary_iban_snapshot,
-                beneficiary_national_id_snapshot=revision.beneficiary_national_id_snapshot,
-                bank_profile_version_id=command.bank_profile_version_id,
-                bank_account_id=command.bank_account_id,
-                # The rules as they read at this instant, and the reason this row's amount is
-                # what it is. `DB-ATTEMPT-002`: an export rendered next month must be
-                # reproducible without consulting a profile that may have been superseded.
-                split_rule_snapshot={
-                    "default_transfer_limit_irr": rules.default_transfer_limit_irr,
-                    "after_cutoff_transfer_limit_irr": rules.after_cutoff_transfer_limit_irr,
-                    "cutoff_time": (rules.cutoff_time.isoformat() if rules.cutoff_time else None),
-                    "splitting_enabled": rules.splitting_enabled,
-                    "split_reason": row.split_reason,
-                    "evaluated_at": now.isoformat(),
-                },
-                status=ATTEMPT_CREATED,
-            )
-            session.add(attempt)
-            attempts.append(attempt)
-            rows.append((attempt, row.amount_irr, revision))
+    attempts, rows = _attempts_for(
+        session,
+        command.items,
+        rules,
+        bank_profile_version_id=command.bank_profile_version_id,
+        bank_account_id=command.bank_account_id,
+        now=now,
+    )
 
     # Forces the attempt inserts, so the items below have ids to reference and the `created`
     # status is a row the database held rather than a value that never reached it.
@@ -257,28 +235,7 @@ def create_batch(
     # Nothing here needs the version's id: `row_hash` is a digest over what the row instructs a
     # bank to do, and the item's `payment_batch_version_id` is assigned below once the version
     # exists. So the ordering costs nothing and removes the placeholder entirely.
-    prepared: list[dict[str, Any]] = []
-    for order, (attempt, amount, revision) in enumerate(rows, start=1):
-        prepared.append(
-            {
-                "payment_attempt_id": attempt.id,
-                "row_order": order,
-                "amount_irr": amount,
-                "beneficiary_name_snapshot": attempt.beneficiary_name_snapshot,
-                "beneficiary_iban_snapshot": attempt.beneficiary_iban_snapshot,
-                "description_snapshot": revision.description,
-                "attempt_snapshot": {
-                    "payment_request_id": str(attempt.payment_request_id),
-                    "payment_request_revision_id": str(attempt.payment_request_revision_id),
-                    "attempt_number": attempt.attempt_number,
-                    "attempt_type": attempt.attempt_type,
-                    "bank_profile_version_id": str(attempt.bank_profile_version_id),
-                    "bank_account_id": str(attempt.bank_account_id),
-                    "split_rule_snapshot": attempt.split_rule_snapshot,
-                },
-                "row_hash": _row_hash(attempt, amount, order, revision.description),
-            }
-        )
+    prepared = _prepare_items(rows)
 
     version = PaymentBatchVersion(
         payment_batch_id=batch.id,
@@ -299,35 +256,10 @@ def create_batch(
     session.add(version)
     uow.flush()
 
-    items: list[PaymentBatchItem] = []
-    # `prepared_row`, not `row`: the split loop above binds `row` to a `ProposedRow`, and reusing
-    # the name here gave one variable two types in one function. mypy refused it, which is the
-    # cheap version — the expensive version is a later edit that reads the wrong `row`.
-    for prepared_row in prepared:
-        # `row_order` is continuous across the whole version, not restarted per request: the
-        # order is the order of the lines a bank reads, and
-        # `UNIQUE(payment_batch_version_id, row_order)` refuses a file with two row ones.
-        item = PaymentBatchItem(payment_batch_version_id=version.id, **prepared_row)
-        session.add(item)
-        items.append(item)
-
+    items = _insert_items_and_allocate(
+        session, version, prepared, attempts, actor=actor, now=now
+    )
     uow.flush()
-
-    for item, attempt in zip(items, attempts, strict=True):
-        # Nothing checks first. The partial unique index decides, and its `IntegrityError` is
-        # the refusal — `FINANCIAL_INTEGRITY_BASELINE.md:39-40` calls a service-layer check
-        # insufficient, and two concurrent transactions would both pass one.
-        session.add(
-            PaymentAttemptAllocation(
-                payment_attempt_id=attempt.id,
-                payment_batch_version_id=version.id,
-                payment_batch_item_id=item.id,
-                allocated_at=now,
-                allocated_by_admin_user_id=actor.actor_id,
-            )
-        )
-        # The transition document 06 draws. The attempt held `created` between the two flushes.
-        attempt.status = ATTEMPT_INCLUDED
 
     # The container's pointer, last. The composite key is `DEFERRABLE INITIALLY DEFERRED`, so
     # the pair only has to agree at commit — but assigning it here rather than earlier means
@@ -606,7 +538,7 @@ def _audit(
 
     AuditWriter(session, policy).record(
         AuditEntry(
-            action=AUDIT_ACTION,
+            action=CREATE_PAYMENT_BATCH.audit_action,
             outcome="success",
             metadata_schema=METADATA_SCHEMA,
             metadata_version=METADATA_VERSION,
@@ -626,7 +558,7 @@ def _audit(
             },
             reason=None,
             occurred_at=now,
-            metadata={"operation": AUDIT_ACTION},
+            metadata={"operation": CREATE_PAYMENT_BATCH.audit_action},
         ),
         actor=actor,
         context=context,
@@ -640,9 +572,7 @@ def _audit(
 # `command_catalog.yaml:132-141`. This command is the first in M6 that publishes: the catalogue
 # gives it `"outbox_event": "PaymentBatchVersionReadyForApproval"`, because finalization is the
 # moment a manager has something to look at. Creation published nothing for the same reason —
-# the catalogue said so.
-FINALIZE_AUDIT_ACTION = "payment_batch_version.finalized"
-FINALIZE_OUTBOX_EVENT = "PaymentBatchVersionReadyForApproval"
+# the catalogue said so. Both names come from the registry; see the note above.
 FINALIZE_OPERATION = "payment_batch_version.finalize"
 PAYLOAD_VERSION = 1
 
@@ -1095,7 +1025,7 @@ def _audit_finalization(
 
     AuditWriter(session, policy).record(
         AuditEntry(
-            action=FINALIZE_AUDIT_ACTION,
+            action=FINALIZE_PAYMENT_BATCH_VERSION.audit_action,
             outcome="success",
             metadata_schema=METADATA_SCHEMA,
             metadata_version=METADATA_VERSION,
@@ -1116,7 +1046,7 @@ def _audit_finalization(
             },
             reason=note,
             occurred_at=now,
-            metadata={"operation": FINALIZE_AUDIT_ACTION},
+            metadata={"operation": FINALIZE_PAYMENT_BATCH_VERSION.audit_action},
         ),
         actor=actor,
         context=context,
@@ -1149,7 +1079,7 @@ def _publish_ready_for_approval(
             aggregate_type="payment_batch_version",
             aggregate_id=version.id,
             aggregate_version=aggregate_version,
-            event_type=FINALIZE_OUTBOX_EVENT,
+            event_type=_finalize_event(),
             payload={
                 "payment_batch_id": str(batch.id),
                 "payment_batch_version_id": str(version.id),
@@ -1164,3 +1094,635 @@ def _publish_ready_for_approval(
             causation_id=context.causation_id,
         )
     )
+
+
+def _finalize_event() -> str:
+    """The finalization outbox event type, narrowed from `str | None`.
+
+    `CommandNames.outbox_event_type` is optional because most commands publish nothing. This one
+    must: `command_catalog.yaml:140` names the event, and a registry edit that removed it would
+    otherwise reach `OutboxMessage` as `None` and fail at the database. Failing here says which
+    registry entry is wrong.
+    """
+
+    event = FINALIZE_PAYMENT_BATCH_VERSION.outbox_event_type
+    if event is None:  # pragma: no cover - the registry entry names one
+        raise RuntimeError(
+            "FINALIZE_PAYMENT_BATCH_VERSION has no outbox event type, and "
+            "command_catalog.yaml:140 requires PaymentBatchVersionReadyForApproval"
+        )
+    return event
+
+
+# ---------------------------------------------------------------------------------------------
+# Slice 4: replacement, release, and draft cancellation.
+# ---------------------------------------------------------------------------------------------
+
+VERSION_SUPERSEDED = "superseded"
+BATCH_CANCELLED = "cancelled"
+
+CREATE_VERSION_OPERATION = "payment_batch_version.create"
+CANCEL_BATCH_OPERATION = "payment_batch.cancel_draft"
+
+# `06_Workflows_and_State_Machines.md` §29.2 lists three cancellation origins for a batch:
+# "Draft/rejected batch may be cancelled" and "Ready-for-approval may be cancelled with reason".
+#
+# **M6 implements one of them, and the reason is a permission rather than a preference.**
+# `permission_catalog.yaml` holds exactly one batch cancellation permission — `cancel_draft` at
+# `:466` — and no second entry. `rejected` needs M7's rejection to reach, so it is out of scope
+# either way. `ready_for_approval` M6 *does* reach as of slice 3, and §29.2 permits cancelling it
+# with a reason, and nothing authorises that: inventing a permission is not an implementer's
+# decision, because a permission is a grant and grants are seeded and audited.
+#
+# `DOC-CONFLICT-056` records it, including the consequence — a finalized batch has no exit until
+# the owner settles whether `cancel_draft` covers it or a second permission is needed.
+CANCELLABLE_BATCH_STATUSES: tuple[str, ...] = (BATCH_DRAFT,)
+
+# The states §29.2 permits and M6 does not implement, kept beside the tuple above so the
+# difference is visible rather than discovered. `SVC-BATCH-006` asserts both: that the permitted
+# set is exactly the first, and that the second is absent *for a recorded reason*.
+CANCELLABLE_BUT_UNAUTHORISED: tuple[str, ...] = (BATCH_READY,)
+
+
+@dataclass(frozen=True, slots=True)
+class CreateReplacementVersion:
+    """`05_API_Specification.md:1360-1368`. A new draft version for an existing batch."""
+
+    payment_batch_id: uuid.UUID
+    expected_batch_record_version: int
+    items: tuple[BatchSelection, ...]
+    bank_profile_version_id: uuid.UUID
+    bank_account_id: uuid.UUID
+    bank_mapping_id: uuid.UUID
+    apply_split_rules: bool = True
+    reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CancelBatch:
+    """`06_Workflows_and_State_Machines.md` §29.2, restricted to what a permission authorises."""
+
+    payment_batch_id: uuid.UUID
+    expected_batch_record_version: int
+    reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CancelResult:
+    batch: PaymentBatch
+    replayed: bool = False
+
+
+def create_replacement_version(
+    command: CreateReplacementVersion,
+    *,
+    uow: SqlAlchemyUnitOfWork,
+    policy: RedactionPolicy,
+    actor: AuditActor,
+    context: AuditContext,
+    idempotency_key: str,
+    now: datetime,
+) -> BatchResult:
+    """A new draft version, and the old one becomes `superseded`.
+
+    `06_Workflows_and_State_Machines.md` §16.3: "Any material change creates a new draft version.
+    The old version becomes `superseded` when no longer operational. A prior approval remains
+    historical but is invalid for the replacement version."
+
+    **The superseded version's rows are not touched.** Not its items, not its hash, not its
+    `finalized_by_admin_user_id`. `SVC-BATCH-005` reads every column before and after with
+    `row_to_json` — the M5 pattern, because "the amount is unchanged" would pass while a status or
+    a timestamp moved. Only `status` and `superseded_at` change, and those are the two columns
+    `20260820_0017` granted for exactly this.
+
+    **The old version's allocations are released, and that is what makes the new one possible.**
+    An attempt already allocated to version 1 cannot be allocated to version 2 — the partial
+    unique index refuses it, which is the whole point of `DB-ALLOC-001`. So supersession without
+    release would produce a replacement that could hold no rows. Releasing here rather than
+    asking the caller to do it first is deliberate: two commands where one atomic step is required
+    is a window in which a batch has no allocations and no replacement.
+
+    **G-8, answered by using a catalogued name instead of inventing one.** The audit action is
+    `payment_batch_version.created` — the replacement's own creation, which the catalogue defines
+    — and its `previous_values` name the version that was superseded. So "which version replaced
+    which" is answerable from one row. The alternative was a `payment_batch_version.superseded`
+    action the catalogue does not have.
+    """
+
+    resolver = IdempotencyResolver(uow)
+    claim = resolver.claim(
+        actor_type=actor.actor_type,
+        actor_id=actor.idempotency_scope_id,
+        operation=CREATE_VERSION_OPERATION,
+        idempotency_key=idempotency_key,
+        payload={
+            "payment_batch_id": str(command.payment_batch_id),
+            "items": [
+                {
+                    "payment_request_id": str(item.payment_request_id),
+                    "expected_revision_id": str(item.expected_revision_id),
+                    "expected_record_version": item.expected_record_version,
+                }
+                for item in command.items
+            ],
+            "bank_profile_version_id": str(command.bank_profile_version_id),
+            "bank_account_id": str(command.bank_account_id),
+            "bank_mapping_id": str(command.bank_mapping_id),
+            "apply_split_rules": command.apply_split_rules,
+            "reason": command.reason,
+        },
+    )
+
+    session = uow.session
+
+    if claim.is_replay:
+        stored = claim.record.response_body or {}
+        return _replayed_batch(session, stored)
+
+    lock_rows(
+        session,
+        [
+            LockTarget.of(
+                LockScope.BATCH_VERSION_FINALISE, PaymentBatch, command.payment_batch_id
+            )
+        ],
+        models={PaymentBatch.__tablename__: PaymentBatch},
+    )
+
+    batch = session.get(PaymentBatch, command.payment_batch_id)
+    if batch is None:
+        raise NotFoundError()
+    if batch.status == BATCH_CANCELLED:
+        raise BusinessRuleViolationError(
+            f"batch {batch.batch_number} is cancelled; a cancelled batch takes no new version"
+        )
+
+    superseded = session.get(PaymentBatchVersion, batch.current_version_id)
+    if superseded is None:  # pragma: no cover - the deferred composite key guarantees it
+        raise NotFoundError()
+    previous_status = superseded.status
+
+    profile_version, _account, _mapping = _configuration(session, _as_create(command))
+    rules = SplittingRules(
+        default_transfer_limit_irr=profile_version.default_transfer_limit_irr,
+        after_cutoff_transfer_limit_irr=profile_version.after_cutoff_transfer_limit_irr,
+        cutoff_time=profile_version.cutoff_time,
+        splitting_enabled=profile_version.splitting_enabled and command.apply_split_rules,
+    )
+
+    # Release before allocating. The index would refuse the new allocation otherwise, and the
+    # refusal would be correct — an attempt cannot be active in two versions.
+    released = _release_every_allocation_of(
+        session, superseded, reason="superseded by a replacement version", actor=actor, now=now
+    )
+
+    attempts, rows = _attempts_for(
+        session,
+        command.items,
+        rules,
+        bank_profile_version_id=command.bank_profile_version_id,
+        bank_account_id=command.bank_account_id,
+        now=now,
+    )
+    uow.flush()
+
+    prepared = _prepare_items(rows)
+    version = PaymentBatchVersion(
+        payment_batch_id=batch.id,
+        version_number=superseded.version_number + 1,
+        bank_profile_version_id=command.bank_profile_version_id,
+        bank_account_id=command.bank_account_id,
+        bank_mapping_id=command.bank_mapping_id,
+        status=VERSION_DRAFT,
+        row_count=len(prepared),
+        total_amount_irr=sum(int(row["amount_irr"]) for row in prepared),
+        content_hash=_content_hash(_as_create(command), prepared),
+        validation_summary={"errors": [], "warnings": []},
+        created_by_admin_user_id=actor.actor_id,
+    )
+    session.add(version)
+    uow.flush()
+
+    items = _insert_items_and_allocate(
+        session, version, prepared, attempts, actor=actor, now=now
+    )
+
+    superseded.status = VERSION_SUPERSEDED
+    superseded.superseded_at = now
+
+    swap = compare_and_swap(
+        session,
+        PaymentBatch,
+        entity_id=batch.id,
+        expected_version=command.expected_batch_record_version,
+        # Back to `draft`, because the current version is a draft again. §15.4 draws
+        # `rejected --> draft: replacement version created` and
+        # `approval_invalidated --> draft: current replacement version editable`; the container's
+        # status is a projection of its current version's, so a replacement moves it back.
+        values={"status": BATCH_DRAFT, "current_version_id": version.id},
+    )
+    uow.flush()
+    session.refresh(batch)
+
+    AuditWriter(session, policy).record(
+        AuditEntry(
+            action=CREATE_PAYMENT_BATCH_VERSION.audit_action,
+            outcome="success",
+            metadata_schema=METADATA_SCHEMA,
+            metadata_version=METADATA_VERSION,
+            entity_type="payment_batch_version",
+            entity_id=version.id,
+            entity_record_version=batch.record_version,
+            # The supersession record, in the replacement's own row. G-8's second option, taken
+            # because the catalogue has no supersession action and inventing one is the owner's
+            # call rather than a side effect of writing this command.
+            previous_values={
+                "superseded_version_id": str(superseded.id),
+                "superseded_version_number": superseded.version_number,
+                "superseded_from_status": previous_status,
+                "released_allocations": released,
+            },
+            new_values={
+                "version_number": version.version_number,
+                "status": version.status,
+                "row_count": version.row_count,
+                "total_amount_irr": str(version.total_amount_irr),
+                "content_hash": version.content_hash,
+                "batch_status": batch.status,
+            },
+            reason=command.reason,
+            occurred_at=now,
+            metadata={"operation": CREATE_PAYMENT_BATCH_VERSION.audit_action},
+        ),
+        actor=actor,
+        context=context,
+    )
+
+    resolver.complete(
+        claim,
+        response_code=201,
+        response_body={"batch_id": str(batch.id), "version_id": str(version.id)},
+        resource_type="payment_batch_version",
+        resource_id=version.id,
+        now=now,
+    )
+    del swap
+
+    return BatchResult(batch=batch, version=version, items=tuple(items))
+
+
+def cancel_batch(
+    command: CancelBatch,
+    *,
+    uow: SqlAlchemyUnitOfWork,
+    policy: RedactionPolicy,
+    actor: AuditActor,
+    context: AuditContext,
+    idempotency_key: str,
+    now: datetime,
+) -> CancelResult:
+    """`draft --> cancelled`, and only that, for the reason `CANCELLABLE_BATCH_STATUSES` gives.
+
+    §29.2 permits cancelling a ready-for-approval batch with a reason and no permission authorises
+    it — `DOC-CONFLICT-056`. So this refuses anything but a draft, and the refusal names the
+    conflict rather than pretending the state machine forbids it: an implementer reading the error
+    should learn that the rule exists and the grant does not.
+
+    **No reason is required.** §29.2 attaches "with reason" to the ready-for-approval case and not
+    to the draft case, so requiring one here would be a stricter refusal than any document states.
+    One is recorded if given.
+
+    **Every allocation is released.** A cancelled batch that kept its allocations would hold its
+    attempts hostage: the partial unique index would refuse to allocate them anywhere else, so a
+    trader's eligible request would be permanently unbatchable with nothing saying why.
+    """
+
+    resolver = IdempotencyResolver(uow)
+    claim = resolver.claim(
+        actor_type=actor.actor_type,
+        actor_id=actor.idempotency_scope_id,
+        operation=CANCEL_BATCH_OPERATION,
+        idempotency_key=idempotency_key,
+        payload={
+            "payment_batch_id": str(command.payment_batch_id),
+            "reason": command.reason,
+        },
+    )
+
+    session = uow.session
+
+    if claim.is_replay:
+        stored = claim.record.response_body or {}
+        batch = session.get(PaymentBatch, uuid.UUID(str(stored["batch_id"])))
+        if batch is None:  # pragma: no cover - the record made it
+            raise NotFoundError()
+        return CancelResult(batch=batch, replayed=True)
+
+    lock_rows(
+        session,
+        [
+            LockTarget.of(
+                LockScope.BATCH_VERSION_FINALISE, PaymentBatch, command.payment_batch_id
+            )
+        ],
+        models={PaymentBatch.__tablename__: PaymentBatch},
+    )
+
+    batch = session.get(PaymentBatch, command.payment_batch_id)
+    if batch is None:
+        raise NotFoundError()
+
+    if batch.status not in CANCELLABLE_BATCH_STATUSES:
+        if batch.status in CANCELLABLE_BUT_UNAUTHORISED:
+            raise BusinessRuleViolationError(
+                f"batch {batch.batch_number} is {batch.status}. §29.2 permits cancelling it with "
+                "a reason and no permission authorises that — the only batch cancellation "
+                "permission is payment_batch.cancel_draft. See DOC-CONFLICT-056."
+            )
+        raise BusinessRuleViolationError(
+            f"batch {batch.batch_number} is {batch.status}; only "
+            f"{', '.join(CANCELLABLE_BATCH_STATUSES)} may be cancelled"
+        )
+
+    version = session.get(PaymentBatchVersion, batch.current_version_id)
+    if version is None:  # pragma: no cover - the composite key guarantees it
+        raise NotFoundError()
+
+    released = _release_every_allocation_of(
+        session, version, reason="the batch was cancelled", actor=actor, now=now
+    )
+
+    compare_and_swap(
+        session,
+        PaymentBatch,
+        entity_id=batch.id,
+        expected_version=command.expected_batch_record_version,
+        values={
+            "status": BATCH_CANCELLED,
+            "cancelled_at": now,
+            "cancelled_reason": command.reason,
+        },
+    )
+    uow.flush()
+    session.refresh(batch)
+
+    AuditWriter(session, policy).record(
+        AuditEntry(
+            action=CANCEL_PAYMENT_BATCH.audit_action,
+            outcome="success",
+            metadata_schema=METADATA_SCHEMA,
+            metadata_version=METADATA_VERSION,
+            entity_type="payment_batch",
+            entity_id=batch.id,
+            entity_record_version=batch.record_version,
+            previous_values={"status": BATCH_DRAFT},
+            new_values={
+                "status": batch.status,
+                "released_allocations": released,
+                "current_version_id": str(version.id),
+            },
+            reason=command.reason,
+            occurred_at=now,
+            metadata={"operation": CANCEL_PAYMENT_BATCH.audit_action},
+        ),
+        actor=actor,
+        context=context,
+    )
+
+    resolver.complete(
+        claim,
+        response_code=200,
+        response_body={"batch_id": str(batch.id)},
+        resource_type="payment_batch",
+        resource_id=batch.id,
+        now=now,
+    )
+
+    return CancelResult(batch=batch)
+
+
+def _release_every_allocation_of(
+    session: Session,
+    version: PaymentBatchVersion,
+    *,
+    reason: str,
+    actor: AuditActor,
+    now: datetime,
+) -> int:
+    """Release every active allocation of one version, and return how many.
+
+    **This is the only release path, and there is deliberately no standalone command.**
+    `FINANCIAL_INTEGRITY_BASELINE.md:41-43` requires release to be "an explicit guarded transition
+    for cancellation, supersession, or another approved lifecycle exit" — it names the occasions,
+    and both that M6 reaches call this. A public `release_allocation` was written and removed the
+    same day: `05_API_Specification.md` defines no release endpoint, `permission_catalog.yaml` has
+    no permission for one, and `05_API_Specification.md` §17 says in terms that clients do not
+    manipulate attempts directly. It would have been the eighth mechanism-with-no-caller, in the
+    slice that found the seventh.
+
+    One query for the set rather than one per item: the rows are already locked through the
+    batch, and a per-item loop under a lock is the N+1 `test_no_io_under_lock.py` objects to.
+
+    The count is returned because it goes in the audit row. "Six allocations were released" is
+    the difference between a reader being able to reconcile the batch and having to count rows
+    themselves — and if it is ever zero on a version that had items, something is wrong in a way
+    worth seeing in the log.
+    """
+
+    active = (
+        session.execute(
+            select(PaymentAttemptAllocation).where(
+                PaymentAttemptAllocation.payment_batch_version_id == version.id,
+                PaymentAttemptAllocation.released_at.is_(None),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for allocation in active:
+        allocation.released_at = now
+        allocation.release_reason = reason
+    del actor
+    return len(active)
+
+
+def _as_create(command: CreateReplacementVersion) -> CreateBatch:
+    """The replacement's configuration in the shape `_configuration` and `_content_hash` take.
+
+    A conversion rather than a shared base class: the two commands are not variants of one thing —
+    one creates a batch and one replaces a version inside an existing batch — and a base class
+    would put their request bodies in one inheritance chain in the generated OpenAPI, so widening
+    one would silently widen the other.
+    """
+
+    return CreateBatch(
+        items=command.items,
+        bank_profile_version_id=command.bank_profile_version_id,
+        bank_account_id=command.bank_account_id,
+        bank_mapping_id=command.bank_mapping_id,
+        apply_split_rules=command.apply_split_rules,
+    )
+
+
+def _replayed_batch(session: Session, stored: dict[str, Any]) -> BatchResult:
+    batch = session.get(PaymentBatch, uuid.UUID(str(stored["batch_id"])))
+    version = session.get(PaymentBatchVersion, uuid.UUID(str(stored["version_id"])))
+    if batch is None or version is None:  # pragma: no cover - the record made them
+        raise NotFoundError()
+    items = (
+        session.execute(
+            select(PaymentBatchItem)
+            .where(PaymentBatchItem.payment_batch_version_id == version.id)
+            .order_by(PaymentBatchItem.row_order)
+        )
+        .scalars()
+        .all()
+    )
+    return BatchResult(batch=batch, version=version, items=tuple(items), replayed=True)
+
+
+def _attempts_for(
+    session: Session,
+    selections: tuple[BatchSelection, ...],
+    rules: SplittingRules,
+    *,
+    bank_profile_version_id: uuid.UUID,
+    bank_account_id: uuid.UUID,
+    now: datetime,
+) -> tuple[list[PaymentAttempt], list[tuple[PaymentAttempt, int, PaymentRequestRevision]]]:
+    """Split every selected request and build its attempts, revalidating as it goes.
+
+    Extracted from `create_batch` in slice 4 so `create_replacement_version` shares it. The
+    alternative was two copies of the path that decides **how much money leaves the account and
+    which attempt is allocated where** — and a fix applied to one copy would not reach the other,
+    with nothing to say so.
+
+    Each selection is revalidated through `_current`, so a replacement built from a stale screen
+    is refused for the same three reasons a creation is.
+    """
+
+    attempts: list[PaymentAttempt] = []
+    rows: list[tuple[PaymentAttempt, int, PaymentRequestRevision]] = []
+
+    for selection in selections:
+        request, revision = _current(session, selection)
+        proposed = split(int(revision.amount_irr), rules, now)
+        # The kind is decided once, by whether this request produced more than one row. A
+        # single row is `original` even when splitting was enabled and simply did not bite.
+        kind = ATTEMPT_TYPE_SPLIT if len(proposed) > 1 else ATTEMPT_TYPE_ORIGINAL
+        # Counted, not `max() + 1`, and it matters more here than at creation: a request whose
+        # first batch was cancelled already has attempts, and a replacement must not collide
+        # with their numbers. `UNIQUE(payment_request_id, attempt_number)` is the guarantee.
+        first_number = _next_attempt_number(session, request.id)
+
+        for offset, row in enumerate(proposed):
+            attempt = PaymentAttempt(
+                payment_request_id=request.id,
+                payment_request_revision_id=revision.id,
+                attempt_number=first_number + offset,
+                attempt_type=kind,
+                amount_irr=row.amount_irr,
+                # Frozen from the revision, not from the live beneficiary record. The file a
+                # bank receives has to be explainable from rows alone months later.
+                beneficiary_name_snapshot=revision.beneficiary_name_snapshot,
+                beneficiary_iban_snapshot=revision.beneficiary_iban_snapshot,
+                beneficiary_national_id_snapshot=revision.beneficiary_national_id_snapshot,
+                bank_profile_version_id=bank_profile_version_id,
+                bank_account_id=bank_account_id,
+                # The rules as they read at this instant, and the reason this row's amount is
+                # what it is. `DB-ATTEMPT-002`: an export rendered next month must be
+                # reproducible without consulting a profile that may have been superseded.
+                split_rule_snapshot={
+                    "default_transfer_limit_irr": rules.default_transfer_limit_irr,
+                    "after_cutoff_transfer_limit_irr": rules.after_cutoff_transfer_limit_irr,
+                    "cutoff_time": (rules.cutoff_time.isoformat() if rules.cutoff_time else None),
+                    "splitting_enabled": rules.splitting_enabled,
+                    "split_reason": row.split_reason,
+                    "evaluated_at": now.isoformat(),
+                },
+                status=ATTEMPT_CREATED,
+            )
+            session.add(attempt)
+            attempts.append(attempt)
+            rows.append((attempt, row.amount_irr, revision))
+
+    return attempts, rows
+
+
+def _prepare_items(
+    rows: list[tuple[PaymentAttempt, int, PaymentRequestRevision]],
+) -> list[dict[str, Any]]:
+    """The item rows, built before the version so its counts and hash are real in the INSERT.
+
+    `FINANCIAL_INTEGRITY_BASELINE.md:22-23` forbids a placeholder hash, and a row that briefly
+    holds one is a row a crash can leave holding one. Nothing here needs the version's id.
+    """
+
+    return [
+        {
+            "payment_attempt_id": attempt.id,
+            # Continuous across the whole version, not restarted per request: the order is the
+            # order of the lines a bank reads, and `UNIQUE(payment_batch_version_id, row_order)`
+            # refuses a file with two row ones.
+            "row_order": order,
+            "amount_irr": amount,
+            "beneficiary_name_snapshot": attempt.beneficiary_name_snapshot,
+            "beneficiary_iban_snapshot": attempt.beneficiary_iban_snapshot,
+            "description_snapshot": revision.description,
+            "attempt_snapshot": {
+                "payment_request_id": str(attempt.payment_request_id),
+                "payment_request_revision_id": str(attempt.payment_request_revision_id),
+                "attempt_number": attempt.attempt_number,
+                "attempt_type": attempt.attempt_type,
+                "bank_profile_version_id": str(attempt.bank_profile_version_id),
+                "bank_account_id": str(attempt.bank_account_id),
+                "split_rule_snapshot": attempt.split_rule_snapshot,
+            },
+            "row_hash": _row_hash(attempt, amount, order, revision.description),
+        }
+        for order, (attempt, amount, revision) in enumerate(rows, start=1)
+    ]
+
+
+def _insert_items_and_allocate(
+    session: Session,
+    version: PaymentBatchVersion,
+    prepared: list[dict[str, Any]],
+    attempts: list[PaymentAttempt],
+    *,
+    actor: AuditActor,
+    now: datetime,
+) -> list[PaymentBatchItem]:
+    """Insert the items, allocate each attempt to its item, and move the attempt's status.
+
+    **Nothing checks whether an attempt is already allocated.** The partial unique index decides,
+    and its `IntegrityError` is the refusal — `FINANCIAL_INTEGRITY_BASELINE.md:39-40` calls a
+    service-layer check insufficient, and two concurrent transactions would both pass one.
+
+    A flush separates the item inserts from the allocations, because an allocation needs the
+    item's id — and the same flush is what makes the attempt's `created` status a row the
+    database held rather than a value that never reached it.
+    """
+
+    items: list[PaymentBatchItem] = []
+    for prepared_row in prepared:
+        item = PaymentBatchItem(payment_batch_version_id=version.id, **prepared_row)
+        session.add(item)
+        items.append(item)
+
+    session.flush()
+
+    for item, attempt in zip(items, attempts, strict=True):
+        session.add(
+            PaymentAttemptAllocation(
+                payment_attempt_id=attempt.id,
+                payment_batch_version_id=version.id,
+                payment_batch_item_id=item.id,
+                allocated_at=now,
+                allocated_by_admin_user_id=actor.actor_id,
+            )
+        )
+        # The transition document 06 draws at `:676-677`. The attempt held `created` until here.
+        attempt.status = ATTEMPT_INCLUDED
+
+    return items

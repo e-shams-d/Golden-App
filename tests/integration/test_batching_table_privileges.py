@@ -50,7 +50,11 @@ EXPECTED: dict[str, tuple[bool, bool, bool, bool]] = {
     "payment_batches": (True, True, True, False),
     "payment_batch_versions": (True, True, True, False),
     "payment_batch_items": (True, True, False, False),
-    "payment_attempt_allocations": (True, True, False, False),
+    # `20260821_0019` grants `(released_at, release_reason)` — slice 4's release path.
+    # Slice 2 withheld it on purpose so that release provably did not exist yet, and
+    # the test that proved it is deleted in the same commit rather than left passing
+    # against a narrower claim.
+    "payment_attempt_allocations": (True, True, True, False),
 }
 
 # The column-level UPDATE grants, for the tables whose `UPDATE` bit is True above. A table-level
@@ -71,6 +75,10 @@ EXPECTED_UPDATABLE_COLUMNS: dict[str, set[str]] = {
     # `finalized_by_admin_user_id` was added by `20260821_0018`; DOC-CONFLICT-055 explains why
     # the column exists at all.
     "payment_batch_versions": {"status", "superseded_at", "finalized_by_admin_user_id"},
+    # Exactly two, so a release can never rewrite *which* allocation the row is —
+    # a table-level grant would permit retargeting it at another attempt after the
+    # fact, which is the one edit that could turn evidence into a fiction.
+    "payment_attempt_allocations": {"released_at", "release_reason"},
 }
 
 

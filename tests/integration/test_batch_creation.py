@@ -732,33 +732,19 @@ def test_two_transactions_racing_for_one_attempt(world: dict[str, Any]) -> None:
     assert survivors[0][0] == 1, "the race left two active allocations for one attempt"
 
 
-def test_release_is_not_possible_yet(
-    world: dict[str, Any], migrated: RuntimeIdentities
-) -> None:
-    """The absence of a grant, proved through the runtime role rather than promised in a comment.
-
-    Release is slice 4's. `20260820_0017` grants no UPDATE on `payment_attempt_allocations` at
-    all, so today the runtime role cannot write `released_at` — and that is what makes "release
-    does not exist yet" a property of the database instead of a claim about the code.
-
-    Asserted through the **app role**, not the owner: the owner can do anything, so a test that
-    used the owner connection would pass whatever the grants said. The role name comes from the
-    provisioned identities rather than from `load_settings()`, which needs an environment this
-    test does not have — the first version reached for the settings object and failed on a
-    validation error, which is the `Settings` alias trap wearing a different hat.
-    """
-
-    app_role = migrated.app_role
-    assert app_role, "the provisioned database has no app role, so this would prove nothing"
-
-    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
-        connection.execute(f'SET ROLE "{app_role}"')
-        with pytest.raises(psycopg.errors.InsufficientPrivilege):
-            connection.execute(
-                "UPDATE payment_attempt_allocations SET released_at = now(), "
-                "release_reason = 'not yet'"
-            )
-        connection.rollback()
+# `test_release_is_not_possible_yet` was here, and slice 4 deletes it rather than weakening it.
+#
+# It asserted, through the app role, that no runtime role could write `released_at` — which was
+# true and was the point: slice 2 created the release columns and granted nothing, so "release
+# does not exist yet" was a property of the database rather than a promise about the code.
+# `20260821_0019` grants `(released_at, release_reason)` because slice 4's supersession and
+# cancellation need them, so the assertion is now simply wrong.
+#
+# Deleted, not adjusted. A test edited to keep passing against a narrower claim is worse than no
+# test: it still reads as coverage. What replaces it is
+# `tests/integration/test_batching_table_privileges.py`, which states the whole grant matrix
+# including the *shape* of this one — two columns and not the table, so a release can never
+# rewrite which allocation the row is.
 
 
 def test_creating_needs_the_create_permission_and_not_merely_the_read(

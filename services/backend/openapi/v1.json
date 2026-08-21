@@ -697,6 +697,26 @@
         "title": "Body_uploadFile",
         "type": "object"
       },
+      "CancelBatchRequest": {
+        "additionalProperties": false,
+        "description": "`06_Workflows_and_State_Machines.md` §29.2, draft half.\n\n**No required reason.** §29.2 attaches \"with reason\" to the *ready-for-approval* case and not\nto the draft case, so demanding one here would be an unmandated refusal — the mirror of the\nunmandated side effect this milestone has been avoiding, and the mistake M5 slice 7 made by\nrequiring a cancellation reason §29.1 does not ask for.",
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "CancelBatchRequest",
+        "type": "object"
+      },
       "CancelRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1161,6 +1181,60 @@
           "display_name"
         ],
         "title": "CreateProfileRequest",
+        "type": "object"
+      },
+      "CreateReplacementVersionRequest": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1361-1368`. The selection contract again, plus a reason.\n\nThe reason is optional and lands in the audit row. §16.5 says a replacement \"never edits an\napproved/finalized version\" and gives no required field, so requiring one would be a stricter\nrefusal than the document states.",
+        "properties": {
+          "apply_split_rules": {
+            "default": true,
+            "title": "Apply Split Rules",
+            "type": "boolean"
+          },
+          "bank_account_id": {
+            "format": "uuid",
+            "title": "Bank Account Id",
+            "type": "string"
+          },
+          "bank_mapping_id": {
+            "format": "uuid",
+            "title": "Bank Mapping Id",
+            "type": "string"
+          },
+          "bank_profile_version_id": {
+            "format": "uuid",
+            "title": "Bank Profile Version Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewItem"
+            },
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "items",
+          "bank_profile_version_id",
+          "bank_account_id",
+          "bank_mapping_id"
+        ],
+        "title": "CreateReplacementVersionRequest",
         "type": "object"
       },
       "CreateRevisionRequest": {
@@ -6488,6 +6562,318 @@
           }
         },
         "summary": "One batch, its current version, its history and its rows.",
+        "tags": [
+          "payment-batches"
+        ]
+      }
+    },
+    "/api/v1/payment-batches/{batch_id}/cancel": {
+      "post": {
+        "description": "`POST /api/v1/payment-batches/{batch_id}/cancel`, per `05_API_Specification.md:1539`.\n\n**Draft only, and the reason is a missing permission rather than a missing arrow.** §29.2\npermits cancelling a ready-for-approval batch with a reason;\n`permission_catalog.yaml` holds one batch cancellation permission and it is\n`payment_batch.cancel_draft`. Inventing a second is not an implementer's decision, so the\ncommand refuses that state and its message names `DOC-CONFLICT-056` — an implementer who hits\nit should learn that the rule exists and the grant does not.\n\n**`command_catalog.yaml` has no row for this command at all** (G-4), so its concurrency and\nidempotency contract is inferred from its neighbours: every other batch command in that file\ncarries `\"idempotency\": \"required\"`, and cancelling twice on a retry would release\nallocations a second time and overwrite the first reason. Both headers are required for that\nreason rather than by citation, and G-4 is where the citation is owed.",
+        "operationId": "cancelPaymentBatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The batch is not a draft. §29.2 also permits cancelling a ready-for-approval batch with a reason and no permission authorises that — see DOC-CONFLICT-056."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks payment_batch.cancel_draft."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such batch."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The Idempotency-Key was reused."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The If-Match value is stale or malformed."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are both required."
+          }
+        },
+        "summary": "Cancel a draft batch and release every allocation it holds.",
+        "tags": [
+          "payment-batches"
+        ]
+      }
+    },
+    "/api/v1/payment-batches/{batch_id}/versions": {
+      "post": {
+        "description": "`POST /api/v1/payment-batches/{batch_id}/versions`, per `05_API_Specification.md:1361`.\n\n**Its own permission, `payment_batch_version.create`, and not the batch's create grant.**\n`permission_catalog.yaml:469` gives it separately, and the separation matters for the reason\n`FINANCIAL_INTEGRITY_BASELINE.md` §5 gives: the version-level acts are the ones whose actors a\nmanager's approval must be checked against, so conflating them with the container-level grant\nwould blur an identity the separation rule compares.\n\nThe response is `BatchCreated` — the same shape the create returns, because the caller needs\nthe same two things: the batch as it now stands and the version it now points at. `replayed`\nis what tells a retried caller they did not make a third version.",
+        "operationId": "createReplacementPaymentBatchVersion",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReplacementVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The batch is cancelled, or a named request is not eligible for batching."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks payment_batch_version.create."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such batch, or a named row is missing."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A named revision is stale, or the Idempotency-Key was reused."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The If-Match value is stale or malformed."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are both required."
+          }
+        },
+        "summary": "A new draft version. The previous one becomes superseded.",
         "tags": [
           "payment-batches"
         ]
