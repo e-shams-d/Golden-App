@@ -40,6 +40,11 @@ from typing import Any, Final
 
 from app.audit import AuditActor, AuditContext, AuditEntry, AuditWriter
 from app.audit.redaction import RedactionPolicy
+from app.audit.registry import (
+    CREATE_BANK_MAPPING_VERSION,
+    CREATE_BANK_PROFILE_VERSION,
+    CREATE_SOURCE_BANK_ACCOUNT,
+)
 from app.core.errors import BusinessRuleViolationError, NotFoundError
 from app.core.hashing import unversioned_digest
 from app.db.models.bank import MAPPING_TYPES as _MODEL_MAPPING_TYPES
@@ -190,7 +195,7 @@ def create_profile(
 
     AuditWriter(uow.session, policy).record(
         AuditEntry(
-            action="bank_profile.version_created",
+            action=CREATE_BANK_PROFILE_VERSION.audit_action,
             outcome="success",
             metadata_schema="audit.bank_profile.created",
             metadata_version=1,
@@ -253,7 +258,7 @@ def create_version(
 
     AuditWriter(uow.session, policy).record(
         AuditEntry(
-            action="bank_profile.version_created",
+            action=CREATE_BANK_PROFILE_VERSION.audit_action,
             outcome="success",
             metadata_schema="audit.bank_profile.version_created",
             metadata_version=1,
@@ -325,7 +330,7 @@ def create_mapping(
 
     AuditWriter(uow.session, policy).record(
         AuditEntry(
-            action="bank_mapping.version_created",
+            action=CREATE_BANK_MAPPING_VERSION.audit_action,
             outcome="success",
             metadata_schema="audit.bank_mapping.created",
             metadata_version=1,
@@ -376,7 +381,7 @@ def create_source_account(
 
     AuditWriter(uow.session, policy).record(
         AuditEntry(
-            action="source_bank_account.created",
+            action=CREATE_SOURCE_BANK_ACCOUNT.audit_action,
             outcome="success",
             metadata_schema="audit.source_bank_account.created",
             metadata_version=1,

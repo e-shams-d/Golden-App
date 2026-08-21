@@ -715,6 +715,220 @@ def finalize_version(
     return rendered
 
 
+class CreateReplacementVersionRequest(BaseModel):
+    """`05_API_Specification.md:1361-1368`. The selection contract again, plus a reason.
+
+    The reason is optional and lands in the audit row. §16.5 says a replacement "never edits an
+    approved/finalized version" and gives no required field, so requiring one would be a stricter
+    refusal than the document states.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[PreviewItem] = Field(min_length=1)
+    bank_profile_version_id: uuid.UUID
+    bank_account_id: uuid.UUID
+    bank_mapping_id: uuid.UUID
+    apply_split_rules: bool = True
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class CancelBatchRequest(BaseModel):
+    """`06_Workflows_and_State_Machines.md` §29.2, draft half.
+
+    **No required reason.** §29.2 attaches "with reason" to the *ready-for-approval* case and not
+    to the draft case, so demanding one here would be an unmandated refusal — the mirror of the
+    unmandated side effect this milestone has been avoiding, and the mistake M5 slice 7 made by
+    requiring a cancellation reason §29.1 does not ask for.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+REPLACEMENT_RESPONSES: dict[int | str, dict[str, object]] = {
+    400: {
+        "model": ErrorEnvelope,
+        "description": (
+            "The batch is cancelled, or a named request is not eligible for batching."
+        ),
+    },
+    401: {"model": ErrorEnvelope, "description": "No valid session."},
+    403: {
+        "model": ErrorEnvelope,
+        "description": "The caller lacks payment_batch_version.create.",
+    },
+    404: {"model": ErrorEnvelope, "description": "No such batch, or a named row is missing."},
+    409: {
+        "model": ErrorEnvelope,
+        "description": "A named revision is stale, or the Idempotency-Key was reused.",
+    },
+    412: {"model": ErrorEnvelope, "description": "The If-Match value is stale or malformed."},
+    428: {
+        "model": ErrorEnvelope,
+        "description": "If-Match and Idempotency-Key are both required.",
+    },
+    **VALIDATION_ERROR_RESPONSE,
+}
+
+CANCEL_RESPONSES: dict[int | str, dict[str, object]] = {
+    400: {
+        "model": ErrorEnvelope,
+        "description": (
+            "The batch is not a draft. §29.2 also permits cancelling a ready-for-approval "
+            "batch with a reason and no permission authorises that — see DOC-CONFLICT-056."
+        ),
+    },
+    401: {"model": ErrorEnvelope, "description": "No valid session."},
+    403: {"model": ErrorEnvelope, "description": "The caller lacks payment_batch.cancel_draft."},
+    404: {"model": ErrorEnvelope, "description": "No such batch."},
+    409: {"model": ErrorEnvelope, "description": "The Idempotency-Key was reused."},
+    412: {"model": ErrorEnvelope, "description": "The If-Match value is stale or malformed."},
+    428: {
+        "model": ErrorEnvelope,
+        "description": "If-Match and Idempotency-Key are both required.",
+    },
+    **VALIDATION_ERROR_RESPONSE,
+}
+
+
+@router.post(
+    "/{batch_id}/versions",
+    response_model=BatchCreated,
+    status_code=201,
+    operation_id="createReplacementPaymentBatchVersion",
+    summary="A new draft version. The previous one becomes superseded.",
+    responses=REPLACEMENT_RESPONSES,
+    dependencies=[requires(declare("payment_batch_version.create"))],
+)
+def create_replacement_version(
+    batch_id: uuid.UUID,
+    payload: CreateReplacementVersionRequest,
+    response: Response,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> BatchCreated:
+    """`POST /api/v1/payment-batches/{batch_id}/versions`, per `05_API_Specification.md:1361`.
+
+    **Its own permission, `payment_batch_version.create`, and not the batch's create grant.**
+    `permission_catalog.yaml:469` gives it separately, and the separation matters for the reason
+    `FINANCIAL_INTEGRITY_BASELINE.md` §5 gives: the version-level acts are the ones whose actors a
+    manager's approval must be checked against, so conflating them with the container-level grant
+    would blur an identity the separation rule compares.
+
+    The response is `BatchCreated` — the same shape the create returns, because the caller needs
+    the same two things: the batch as it now stands and the version it now points at. `replayed`
+    is what tells a retried caller they did not make a third version.
+    """
+
+    if if_match is None:
+        raise PreconditionRequiredError("If-Match")
+    if idempotency_key is None:
+        raise PreconditionRequiredError("Idempotency-Key")
+    expected = _parse_record_version(if_match)
+
+    now = utc_now()
+    with runtime.uow_factory() as uow:
+        result = commands.create_replacement_version(
+            commands.CreateReplacementVersion(
+                payment_batch_id=batch_id,
+                expected_batch_record_version=expected,
+                items=tuple(
+                    commands.BatchSelection(
+                        payment_request_id=item.payment_request_id,
+                        expected_revision_id=item.expected_revision_id,
+                        expected_record_version=item.expected_record_version,
+                    )
+                    for item in payload.items
+                ),
+                bank_profile_version_id=payload.bank_profile_version_id,
+                bank_account_id=payload.bank_account_id,
+                bank_mapping_id=payload.bank_mapping_id,
+                apply_split_rules=payload.apply_split_rules,
+                reason=payload.reason,
+            ),
+            uow=uow,
+            policy=BATCH_REDACTION,
+            actor=_audit_actor(actor),
+            context=AuditContext(request_id=get_request_id()),
+            idempotency_key=idempotency_key,
+            now=now,
+        )
+        rendered = BatchCreated(
+            batch=_batch_summary(result.batch),
+            current_version=_version_summary(result.version),
+            replayed=result.replayed,
+        )
+        uow.commit()
+
+    response.headers["ETag"] = f'"rv-{rendered.batch.record_version}"'
+    return rendered
+
+
+@router.post(
+    "/{batch_id}/cancel",
+    response_model=BatchSummary,
+    operation_id="cancelPaymentBatch",
+    summary="Cancel a draft batch and release every allocation it holds.",
+    responses=CANCEL_RESPONSES,
+    dependencies=[requires(declare("payment_batch.cancel_draft"))],
+)
+def cancel_batch(
+    batch_id: uuid.UUID,
+    payload: CancelBatchRequest,
+    response: Response,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> BatchSummary:
+    """`POST /api/v1/payment-batches/{batch_id}/cancel`, per `05_API_Specification.md:1539`.
+
+    **Draft only, and the reason is a missing permission rather than a missing arrow.** §29.2
+    permits cancelling a ready-for-approval batch with a reason;
+    `permission_catalog.yaml` holds one batch cancellation permission and it is
+    `payment_batch.cancel_draft`. Inventing a second is not an implementer's decision, so the
+    command refuses that state and its message names `DOC-CONFLICT-056` — an implementer who hits
+    it should learn that the rule exists and the grant does not.
+
+    **`command_catalog.yaml` has no row for this command at all** (G-4), so its concurrency and
+    idempotency contract is inferred from its neighbours: every other batch command in that file
+    carries `"idempotency": "required"`, and cancelling twice on a retry would release
+    allocations a second time and overwrite the first reason. Both headers are required for that
+    reason rather than by citation, and G-4 is where the citation is owed.
+    """
+
+    if if_match is None:
+        raise PreconditionRequiredError("If-Match")
+    if idempotency_key is None:
+        raise PreconditionRequiredError("Idempotency-Key")
+    expected = _parse_record_version(if_match)
+
+    now = utc_now()
+    with runtime.uow_factory() as uow:
+        result = commands.cancel_batch(
+            commands.CancelBatch(
+                payment_batch_id=batch_id,
+                expected_batch_record_version=expected,
+                reason=payload.reason,
+            ),
+            uow=uow,
+            policy=BATCH_REDACTION,
+            actor=_audit_actor(actor),
+            context=AuditContext(request_id=get_request_id()),
+            idempotency_key=idempotency_key,
+            now=now,
+        )
+        rendered = _batch_summary(result.batch)
+        uow.commit()
+
+    response.headers["ETag"] = f'"rv-{rendered.record_version}"'
+    return rendered
+
+
 def _parse_record_version(if_match: str) -> int:
     """`"rv-3"` -> `3`, and a refusal for anything else.
 

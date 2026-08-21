@@ -111,11 +111,28 @@ UPLOAD_FILE = CommandNames(
     # no consumer at all — emitting one would be a message with no reader, which is the
     # shape this milestone is deliberately not repeating.
     outbox_event_type=None,
-    # Catalogued as of M4 slice 1, which added `file.upload` to `command_catalog.yaml`
-    # under DOC-CONFLICT-046: document 05 defines `POST /api/v1/files` and the catalogue
-    # had no entry for it, so the mutation every other upload builds on carried no
-    # idempotency or audit contract at all.
-    catalogued=True,
+    # **This said `catalogued=True` and was wrong**, for two milestones, because nothing checked
+    # it: `UPLOAD_FILE` was defined in this module and left out of `ALL_COMMAND_NAMES`, the only
+    # tuple `tests/backend/test_name_registry_and_errors.py` reads. M6 slice 4 added the missing
+    # exports and the claim failed on the next run.
+    #
+    # The error is a conflation of two catalogues. M4 slice 1 added `file.upload` to
+    # **`command_catalog.yaml`** under DOC-CONFLICT-046 — document 05 defines
+    # `POST /api/v1/files` and that catalogue had no entry, so the mutation every other upload
+    # builds on carried no idempotency or audit contract. `catalogued` on this dataclass means
+    # something different: that the **audit action** is in `audit_outbox_catalog.yaml`. It is
+    # not. That file's `audit_actions` holds one file name — `file.quarantine_reviewed` at `:65`
+    # — and its own `m0_open_items` at `:107` records the file lifecycle as incomplete, so the
+    # gap is acknowledged upstream rather than being ours.
+    catalogued=False,
+    provisional_reason=(
+        "`audit_outbox_catalog.yaml` names no upload action — `file.quarantine_reviewed` at "
+        "`:65` is its only file entry — and `:107` lists the file lifecycle among its own open "
+        "items, so the name may be implemented under `provisional_pending_m0_approval` and must "
+        "be renamed to whatever M0 approves. `file.upload` in `command_catalog.yaml` is a "
+        "different catalogue answering a different question, and reading it as this one is the "
+        "mistake this entry used to make."
+    ),
 )
 
 REQUEST_FILE_PREVIEW = CommandNames(
@@ -411,6 +428,122 @@ RECOVER_ADMIN_PASSWORD = CommandNames(
 )
 
 
+# --- M6: batching ---------------------------------------------------------------
+#
+# These four were module-level string literals in `app/commands/payment_batch.py` for two
+# slices, which defeats the whole point of this module: the names are
+# `provisional_pending_m0_approval` and **will be renamed**, and a literal makes a rename a
+# call-site sweep. Nothing caught it, because no gate required a command's audit action to come
+# from here — `tests/backend/test_audit_names_come_from_the_registry.py` now does.
+
+CREATE_PAYMENT_BATCH = CommandNames(
+    audit_action="payment_batch.created",
+    # `command_catalog.yaml:114` says `"outbox_event": null`, and the catalogue is right: at
+    # creation nobody outside the platform has anything to act on. `payment_batch_version.created`
+    # is a *separate* catalogued action belonging to the separate version-create command, so
+    # emitting it here would put a row in the log claiming a command ran that nobody invoked.
+    outbox_event_type=None,
+    catalogued=True,
+)
+
+FINALIZE_PAYMENT_BATCH_VERSION = CommandNames(
+    audit_action="payment_batch_version.finalized",
+    # The first M6 command that publishes, and the catalogue says so: `command_catalog.yaml:140`
+    # names this event because finalization is the moment a manager has something to decide
+    # about. Both names are in `audit_outbox_catalog.yaml` — the action at `:28`, the event at
+    # `:70`.
+    outbox_event_type="PaymentBatchVersionReadyForApproval",
+    catalogued=True,
+)
+
+CREATE_PAYMENT_BATCH_VERSION = CommandNames(
+    audit_action="payment_batch_version.created",
+    # `command_catalog.yaml:124` carries `outbox_event: null` for the replacement command. A
+    # replacement is not ready for approval — it is a fresh draft — so publishing the
+    # ready-for-approval event here would tell a manager to look at something nobody has
+    # finalized.
+    outbox_event_type=None,
+    catalogued=True,
+)
+
+# G-8, answered without inventing a name. The plan offered two options: catalogue a supersession
+# action, or let the replacement's own creation action carry the record. The second needs no
+# invention and is what `CREATE_PAYMENT_BATCH_VERSION` above does — the audit row for the
+# replacement names the version it superseded in its `previous_values`, so "which version did
+# this replace" is answerable from one row rather than from two that must be correlated.
+#
+# The first option stays open for the owner: if M0 catalogues
+# `payment_batch_version.superseded`, this comment is where the decision lands.
+
+# There is deliberately **no** release entry. A `RELEASE_ATTEMPT_ALLOCATION` name was written and
+# removed in the same slice: `05_API_Specification.md` defines no release endpoint,
+# `permission_catalog.yaml` no permission, and `§17` says clients do not manipulate attempts
+# directly — so a standalone release command would have had no caller, and its name no writer.
+#
+# Release is audited by the command that causes it. `create_replacement_version` and
+# `cancel_batch` each record `released_allocations` in their own audit row, and every allocation
+# row carries `released_at` and `release_reason`. That satisfies
+# `FINANCIAL_INTEGRITY_BASELINE.md:41-43`, which names release's *occasions* rather than treating
+# it as a command.
+
+CANCEL_PAYMENT_BATCH = CommandNames(
+    audit_action="payment_batch.cancelled",
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=(
+        "`audit_outbox_catalog.yaml` catalogues `payment_request.cancelled` at `:25` and no "
+        "cancellation action for the batch aggregate at all — an asymmetry rather than a "
+        "decision, and the catalogue's own `m0_open_items` records that its event set is "
+        "incomplete. Cancelling a batch is a governed financial state change and cannot go "
+        "unaudited, so the name follows the aggregate's existing dotted convention and must be "
+        "renamed to whatever M0 approves. No outbox event: nothing outside the platform acts on "
+        "an accountant abandoning a draft, which is the same reasoning "
+        "`CANCEL_PAYMENT_REQUEST` applies one aggregate down."
+    ),
+)
+
+# --- M4: bank configuration -----------------------------------------------------
+#
+# Four names that were literals at their call sites in `app/commands/bank_configuration.py`
+# until M6 slice 4's registry gate found them. All four are in the approved catalogue, so
+# nothing about the names changes — what changes is that a rename is now one edit here rather
+# than four call-site edits in a module nobody is currently reading.
+#
+# None publishes. `audit_outbox_catalog.yaml`'s `outbox_events` has no bank-configuration event,
+# and `05_API_Specification.md` asks for none: activating a bank profile version changes what the
+# centre will send *next*, and nothing outside the platform acts on it until an export exists.
+
+CREATE_BANK_PROFILE_VERSION = CommandNames(
+    audit_action="bank_profile.version_created",
+    outbox_event_type=None,
+    catalogued=True,
+)
+
+ACTIVATE_BANK_PROFILE_VERSION = CommandNames(
+    audit_action="bank_profile.version_activated",
+    outbox_event_type=None,
+    catalogued=True,
+)
+
+CREATE_BANK_MAPPING_VERSION = CommandNames(
+    audit_action="bank_mapping.version_created",
+    outbox_event_type=None,
+    catalogued=True,
+)
+
+CREATE_SOURCE_BANK_ACCOUNT = CommandNames(
+    audit_action="source_bank_account.created",
+    outbox_event_type=None,
+    catalogued=True,
+)
+
+
+# Every `CommandNames` defined above, and the gate that reads this tuple is the only thing
+# checking any of them against the catalogue. Three M5 entries — `BEGIN_REVIEW`,
+# `RETURN_FOR_CORRECTION` and `MARK_ELIGIBLE_FOR_BATCHING` — were defined and **left out of this
+# tuple**, so `test_name_registry_and_errors.py` never saw them: a gate whose input was
+# incomplete, which is the same shape as a mechanism with no caller.
+# `test_audit_names_come_from_the_registry.py` now fails if a definition is missing from here.
 ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     RENAME_CENTER_PROFILE,
     REGISTER_TRADER,
@@ -434,4 +567,20 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     CANCEL_PAYMENT_REQUEST,
     CREATE_REVISION,
     SUBMIT_PAYMENT_REQUEST,
+    BEGIN_REVIEW,
+    RETURN_FOR_CORRECTION,
+    MARK_ELIGIBLE_FOR_BATCHING,
+    CREATE_PAYMENT_BATCH,
+    FINALIZE_PAYMENT_BATCH_VERSION,
+    CREATE_PAYMENT_BATCH_VERSION,
+    CANCEL_PAYMENT_BATCH,
+    CREATE_BANK_PROFILE_VERSION,
+    ACTIVATE_BANK_PROFILE_VERSION,
+    CREATE_BANK_MAPPING_VERSION,
+    CREATE_SOURCE_BANK_ACCOUNT,
+    # M4's file lifecycle. Defined since M4 and **left out of this tuple**, so their catalogue
+    # position went unverified for two milestones — the same gap as M5's accountant three, found
+    # by the same gate on the same run.
+    UPLOAD_FILE,
+    REQUEST_FILE_PREVIEW,
 )

@@ -40,6 +40,7 @@ from sqlalchemy import select
 
 from app.audit import AuditActor, AuditContext, AuditEntry, AuditWriter
 from app.audit.redaction import RedactionPolicy
+from app.audit.registry import ACTIVATE_BANK_PROFILE_VERSION
 from app.core.errors import BusinessRuleViolationError, NotFoundError
 from app.db.models.bank import BankProfile, BankProfileVersion
 from app.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -202,7 +203,7 @@ def activate_version(
 
     AuditWriter(uow.session, policy).record(
         AuditEntry(
-            action="bank_profile.version_activated",
+            action=ACTIVATE_BANK_PROFILE_VERSION.audit_action,
             outcome="success",
             metadata_schema="audit.bank_profile.version_activated",
             metadata_version=1,

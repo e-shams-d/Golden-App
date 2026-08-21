@@ -197,6 +197,10 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # M6 slice 3. `PERMISSION` for the same reason, and with its own grant:
     # `payment_batch_version.finalize`, which no trader role holds.
     ("POST", "/api/v1/payment-batches/{batch_id}/versions/{version_id}/finalize"): PERMISSION,
+    # M6 slice 4. `PERMISSION` for the same reason as the rest of the family: a batch
+    # has no trader, so there is no ownership scope to filter.
+    ("POST", "/api/v1/payment-batches/{batch_id}/versions"): PERMISSION,
+    ("POST", "/api/v1/payment-batches/{batch_id}/cancel"): PERMISSION,
     # M5 slice 8. The two reads the screens need, and which nothing had built: eleven
     # published operations and only the revision history read. Both are `DUAL` — a trader
     # sees their own through `scoped()`, an accountant sees the queue through
@@ -468,6 +472,12 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     # than merely some grant.
     ("POST", "/api/v1/payment-batches/{batch_id}/versions/{version_id}/finalize", "permission"): (
         "test_finalizing_needs_the_finalize_permission"
+    ),
+    ("POST", "/api/v1/payment-batches/{batch_id}/versions", "permission"): (
+        "test_replacing_needs_the_version_create_permission"
+    ),
+    ("POST", "/api/v1/payment-batches/{batch_id}/cancel", "permission"): (
+        "test_cancelling_needs_the_cancel_draft_permission"
     ),
     # M5 slice 8. The two reads, four entries because both are `DUAL`. The ownership pair
     # answers `404` and the permission pair `403`, and each is asserted in its own test

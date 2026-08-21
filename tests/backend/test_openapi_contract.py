@@ -184,6 +184,11 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # publishes an outbox event, because it is the first that gives a manager
         # something to decide about.
         "finalizePaymentBatchVersion",
+        # M6 slice 4. `05_API_Specification.md:1361` and `:1539`. The replacement is
+        # the only way a finalized version leaves the lifecycle in M6; the
+        # cancellation is draft-only, because §29.2's second origin has no permission.
+        "createReplacementPaymentBatchVersion",
+        "cancelPaymentBatch",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas
