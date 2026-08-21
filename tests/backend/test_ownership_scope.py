@@ -46,6 +46,21 @@ SCOPE_EXEMPT: dict[str, str] = {
         "for. It is scoped by the unique login identifier instead, and returns at "
         "most one row."
     ),
+    "commands/payment_batch.py::_verify_sources_are_still_current": (
+        "M6 slice 3's finalization guard. A batch version deliberately carries rows belonging "
+        "to **many** traders — it is one file the centre sends to a bank — and this query "
+        "re-reads exactly the requests that version already contains, to check that their "
+        "revisions are still current and their statuses still eligible before a manager is "
+        "shown the version. Scoping it to one trader would make the guard read a subset of the "
+        "rows it is guarding, which is the failure mode inverted: it would silently pass a "
+        "version whose *other* traders' requests had moved.\n"
+        "\n"
+        "It is not unbounded. The id set comes from `payment_batch_items` for one version, so "
+        "the query returns only rows already in the batch, and the route above it is guarded by "
+        "`payment_batch_version.finalize`, which `permission_catalog.yaml:472` gives to no "
+        "trader role. `tests/integration/test_batch_finalization.py` asserts that no trader can "
+        "reach the route at all, which is the ownership question answered where it belongs."
+    ),
 }
 
 

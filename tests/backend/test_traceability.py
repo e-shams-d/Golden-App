@@ -452,13 +452,6 @@ PENDING: dict[str, str] = {
     # something the plan's original slice-2 list did not: a projection that can drift from what
     # it projects, a catalogued idempotency requirement with nothing calling the resolver, and
     # a number format M5 invented rather than read.
-    "SVC-FINAL-001": "M6 slice 3 — the content hash is deterministic and order-stable",
-    "SVC-FINAL-002": "M6 slice 3 — no finalization unless every item owns its allocation",
-    "SVC-FINAL-003": "M6 slice 3 — item sums equal the version total exactly",
-    "DB-FINAL-001": "M6 slice 3 — a finalized version cannot be updated, by grant not trigger",
-    "SEC-FINAL-001": "M6 slice 3 — the finalizer identity comes from the session and is kept",
-    "AUD-BATCH-002": "M6 slice 3 — finalization is audited in the same transaction",
-    "CON-FINAL-001": "M6 slice 3 — the lock scopes are taken in the order the module defines",
     "SVC-BATCH-005": "M6 slice 4 — a replacement supersedes and the superseded rows do not move",
     "SVC-BATCH-006": "M6 slice 4 — cancellation from exactly the states §29.2 permits",
     "SVC-BATCH-007": "M6 slice 4 — release leaves queryable evidence and keeps the history",

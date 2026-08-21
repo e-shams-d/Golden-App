@@ -46,6 +46,7 @@ from app.core.errors import (
     ErrorEnvelope,
     NotFoundError,
     PreconditionRequiredError,
+    VersionConflictError,
 )
 from app.core.request_context import get_request_id
 from app.core.runtime import RuntimeServices
@@ -588,6 +589,149 @@ def get_batch(
 
     response.headers["ETag"] = f'"rv-{detail.batch.record_version}"'
     return detail
+
+
+class FinalizeVersionRequest(BaseModel):
+    """`05_API_Specification.md:1376-1380`. One optional field.
+
+    The note is the accountant's own sentence about what they checked, and it becomes the audit
+    row's `reason`. Optional because document 05's example shows one and nothing requires it —
+    making it mandatory would be an unmandated refusal, which is the mirror of the unmandated
+    side effect this milestone has been avoiding.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class VersionFinalized(BaseModel):
+    """The batch and the version it just froze, plus whether this call was the one that did it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    batch: BatchSummary
+    version: VersionSummary
+    replayed: bool
+
+
+FINALIZE_RESPONSES: dict[int | str, dict[str, object]] = {
+    400: {
+        "model": ErrorEnvelope,
+        "description": (
+            "A guard document 06 §16.2 lists refused: the version is not current or not a "
+            "draft, a validation error exists, the counts or hashes do not recompute, a row "
+            "does not own its allocation, a source revision moved, or the bank configuration "
+            "is no longer active."
+        ),
+    },
+    401: {"model": ErrorEnvelope, "description": "No valid session."},
+    403: {
+        "model": ErrorEnvelope,
+        "description": "The caller lacks payment_batch_version.finalize.",
+    },
+    404: {"model": ErrorEnvelope, "description": "No such batch, or no such version in it."},
+    409: {
+        "model": ErrorEnvelope,
+        "description": "The batch moved since it was read, or the Idempotency-Key was reused.",
+    },
+    412: {"model": ErrorEnvelope, "description": "The If-Match value is not a record version."},
+    428: {
+        "model": ErrorEnvelope,
+        "description": "If-Match and Idempotency-Key are both required.",
+    },
+    **VALIDATION_ERROR_RESPONSE,
+}
+
+
+@router.post(
+    "/{batch_id}/versions/{version_id}/finalize",
+    response_model=VersionFinalized,
+    operation_id="finalizePaymentBatchVersion",
+    summary="Freeze a draft version as the exact thing a manager will approve.",
+    responses=FINALIZE_RESPONSES,
+    dependencies=[requires(declare("payment_batch_version.finalize"))],
+)
+def finalize_version(
+    batch_id: uuid.UUID,
+    version_id: uuid.UUID,
+    payload: FinalizeVersionRequest,
+    response: Response,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> VersionFinalized:
+    """`POST /api/v1/payment-batches/{batch_id}/versions/{version_id}/finalize`.
+
+    **Both headers are required, and they answer different questions.**
+    `command_catalog.yaml:139-140` says `if_match_batch_and_lock_current_version` and
+    `"idempotency": "required"`. `If-Match` is "is the batch still in the state you read", which
+    refuses an accountant acting on a stale screen. `Idempotency-Key` is "have I already
+    finalized this", which makes a retry after a timeout return the first answer instead of
+    meeting a `draft`-only guard and reporting a failure for work that succeeded.
+
+    **`If-Match` targets the batch, not the version.** A version is an immutable snapshot and has
+    no `record_version` — giving it one would invite a compare-and-swap against a record nobody
+    may modify, which `app/db/base.py:record_version_column` warns about in as many words.
+
+    **The guard is `payment_batch_version.finalize`, which is not `payment_batch.create`.**
+    `permission_catalog.yaml:472` gives it to `accountant` with the `batch_finalize` constraint,
+    and `FINANCIAL_INTEGRITY_BASELINE.md` §5 is why it is separate: the actor recorded here is
+    the one M7 must refuse as an approver, so conflating it with any other grant would blur the
+    identity the separation rule compares.
+    """
+
+    if if_match is None:
+        raise PreconditionRequiredError("If-Match")
+    if idempotency_key is None:
+        raise PreconditionRequiredError("Idempotency-Key")
+    expected = _parse_record_version(if_match)
+
+    now = utc_now()
+    with runtime.uow_factory() as uow:
+        result = commands.finalize_version(
+            commands.FinalizeVersion(
+                payment_batch_id=batch_id,
+                payment_batch_version_id=version_id,
+                expected_batch_record_version=expected,
+                note=payload.note,
+            ),
+            uow=uow,
+            policy=BATCH_REDACTION,
+            actor=_audit_actor(actor),
+            context=AuditContext(request_id=get_request_id()),
+            idempotency_key=idempotency_key,
+            now=now,
+        )
+        rendered = VersionFinalized(
+            batch=_batch_summary(result.batch),
+            version=_version_summary(result.version),
+            replayed=result.replayed,
+        )
+        uow.commit()
+
+    response.headers["ETag"] = f'"rv-{rendered.batch.record_version}"'
+    return rendered
+
+
+def _parse_record_version(if_match: str) -> int:
+    """`"rv-3"` -> `3`, and a refusal for anything else.
+
+    `VersionConflictError` (412) rather than a 400: `api_error_catalog.yaml` gives 412 the
+    meaning "If-Match value is stale", and a value this parser cannot read is a caller who
+    cannot be told their precondition held. The same shape M5 uses at
+    `payment_requests.py:1070`.
+
+    Kept local rather than imported from that module: a cross-module helper between two route
+    files for four lines is a dependency for nothing, and M5 slice 7 found that a shared route
+    helper made `run()` opaque to `test_no_io_under_lock.py`.
+    """
+
+    cleaned = if_match.strip().strip('"')
+    if not cleaned.startswith("rv-") or not cleaned[3:].isdigit():
+        raise VersionConflictError()
+    return int(cleaned[3:])
 
 
 def _batch_summary(batch: PaymentBatch) -> BatchSummary:

@@ -74,23 +74,73 @@ CHAR_AS_VARCHAR: dict[tuple[str, str], str] = {
 }
 
 
+# Columns this repository holds that document 04 does not list, each with the approved authority
+# that requires it. Keyed by `(table, column)` so an entry covers exactly one column and cannot
+# spread — the same shape as `CHAR_AS_VARCHAR` above, and for the same reason: "we deviate" is a
+# justification only while each deviation names what authorises it.
+#
+# An extra column is the more dangerous direction, because nothing else in the system would ever
+# ask about it. So the test below reports one only if it is *not* listed here, and a second test
+# fails if an entry here stops being an extra column — a stale exemption is a licence nobody is
+# using, and it would absorb the next real extra column silently.
+APPROVED_ADDITIONS: dict[tuple[str, str], str] = {
+    ("payment_batch_versions", "finalized_by_admin_user_id"): (
+        "DOC-CONFLICT-055 / G-11. `FINANCIAL_INTEGRITY_BASELINE.md` §5 is Resolved — Approved "
+        "and requires a *recorded* finalizer actor plus a database-enforceable guard that the "
+        "approver is not that actor. The word 'finalizer' appears in neither document 04 nor "
+        "document 05, so §11.5 can name the preparer and §11.7 the approver and nothing can "
+        "name the finalizer — and a guard cannot reference a column that does not exist. Added "
+        "by 20260821_0018 on the baseline's authority, which is the same authority slice 2 "
+        "created the whole of `payment_attempt_allocations` under."
+    ),
+}
+
+
 @pytest.mark.parametrize(("table", "heading"), TABLE_SECTIONS)
 def test_the_columns_match_document_04(table: str, heading: str) -> None:
     """Both directions, for the same reason M5's version gives.
 
     A missing column is a fact document 04 requires and the table cannot hold. An extra one is a
     fact no document defines — and that is the more dangerous of the two, because nothing else
-    in the system would ever ask about it.
+    in the system would ever ask about it. Extras are permitted only when `APPROVED_ADDITIONS`
+    names the authority.
     """
 
     specified = specification_columns(heading)
     actual = set(Base.metadata.tables[table].columns.keys())
+    permitted = {column for (name, column) in APPROVED_ADDITIONS if name == table}
 
-    assert actual == set(specified), (
-        f"{table} does not match document 04.\n"
-        f"  missing: {sorted(set(specified) - actual)}\n"
-        f"  extra:   {sorted(actual - set(specified))}"
+    assert not (set(specified) - actual), (
+        f"{table} is missing columns document 04 requires: "
+        f"{sorted(set(specified) - actual)}"
     )
+    unexplained = actual - set(specified) - permitted
+    assert not unexplained, (
+        f"{table} has columns no document defines and no approved baseline authorises: "
+        f"{sorted(unexplained)}. Add an APPROVED_ADDITIONS entry naming the authority, or "
+        "remove the column."
+    )
+
+
+def test_every_approved_addition_is_still_an_addition() -> None:
+    """An exemption for a column document 04 now lists is a licence nobody is using.
+
+    The same shape as the status-drift gate's `test_every_approved_omission_is_still_an_omission`:
+    on the day G-11 is settled and §11.5 gains the column, this fails and asks for the entry to
+    go — otherwise the exemption sits there and absorbs the next genuinely undocumented column
+    without anybody noticing.
+    """
+
+    stale: list[str] = []
+    for (table, column), reason in sorted(APPROVED_ADDITIONS.items()):
+        heading = next(
+            (head for name, head in TABLE_SECTIONS if name == table), None
+        )
+        assert heading is not None, f"{table} has an addition but no parsed section"
+        if column in specification_columns(heading):
+            stale.append(f"{table}.{column} is now in document 04; drop its entry ({reason[:60]}…)")
+
+    assert stale == [], "\n".join(stale)
 
 
 @pytest.mark.parametrize(("table", "heading"), TABLE_SECTIONS)
