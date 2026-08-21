@@ -44,12 +44,15 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.audit.outbox import OutboxMessage, OutboxWriter
 from app.audit.redaction import RedactionPolicy
 from app.audit.writer import AuditActor, AuditContext, AuditEntry, AuditWriter
 from app.batching.splitting import SplittingRules, split
 from app.core.errors import BusinessRuleViolationError, ConflictError, NotFoundError
 from app.core.hashing import unversioned_digest
 from app.core.time import to_business_time
+from app.db.concurrency import compare_and_swap
+from app.db.locking import LockScope, LockTarget, lock_rows
 from app.db.models.bank import BankAccount, BankMapping, BankProfileVersion
 from app.db.models.payment_batch import (
     PaymentAttempt,
@@ -627,4 +630,537 @@ def _audit(
         ),
         actor=actor,
         context=context,
+    )
+
+
+# ---------------------------------------------------------------------------------------------
+# Finalization. M6 slice 3.
+# ---------------------------------------------------------------------------------------------
+
+# `command_catalog.yaml:132-141`. This command is the first in M6 that publishes: the catalogue
+# gives it `"outbox_event": "PaymentBatchVersionReadyForApproval"`, because finalization is the
+# moment a manager has something to look at. Creation published nothing for the same reason —
+# the catalogue said so.
+FINALIZE_AUDIT_ACTION = "payment_batch_version.finalized"
+FINALIZE_OUTBOX_EVENT = "PaymentBatchVersionReadyForApproval"
+FINALIZE_OPERATION = "payment_batch_version.finalize"
+PAYLOAD_VERSION = 1
+
+VERSION_READY = "ready_for_approval"
+BATCH_READY = "ready_for_approval"
+
+# The statuses a bank configuration row must still hold. `06_Workflows_and_State_Machines.md`
+# §16.2 requires "bank profile/mapping/account remain valid", and `active` is what M4's tables
+# call valid.
+CONFIGURATION_ACTIVE = "active"
+
+
+@dataclass(frozen=True, slots=True)
+class FinalizeVersion:
+    """`05_API_Specification.md:1369-1392`.
+
+    `expected_batch_record_version` is the `If-Match` value, parsed by the route. It targets the
+    **batch**, not the version, because `command_catalog.yaml:139` says
+    `if_match_batch_and_lock_current_version` — and because a version has no `record_version`:
+    it is an immutable snapshot, and giving it a concurrency token would invite a
+    compare-and-swap against a record nobody may modify.
+    """
+
+    payment_batch_id: uuid.UUID
+    payment_batch_version_id: uuid.UUID
+    expected_batch_record_version: int
+    note: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FinalizeResult:
+    batch: PaymentBatch
+    version: PaymentBatchVersion
+    replayed: bool = False
+
+
+def finalize_version(
+    command: FinalizeVersion,
+    *,
+    uow: SqlAlchemyUnitOfWork,
+    policy: RedactionPolicy,
+    actor: AuditActor,
+    context: AuditContext,
+    idempotency_key: str,
+    now: datetime,
+) -> FinalizeResult:
+    """`draft -> ready_for_approval`, with every guard document 06 §16.2 lists.
+
+    **Nine guards, and none of them is defensive duplication.** `06_Workflows_and_State_Machines.md`
+    §16.2 and `05_API_Specification.md:1381-1388` between them require: the version is current
+    for its batch, at least one row exists, no validation error exists, totals equal the ordered
+    item sums, the row hashes and content hash recompute, the selected revisions are still
+    current and eligible, no conflicting active allocation exists, and the bank configuration is
+    still valid. Time passes between creating a batch and finalizing it, and every one of those
+    facts can change in that window — a trader can file a correction, an accountant can release
+    an allocation, an administrator can supersede a bank profile version.
+
+    **The recompute is the point of `SVC-FINAL-001`.** The stored `content_hash` is compared
+    against one computed here from the rows as they are now. Equality means the version a manager
+    is about to be shown is the version that was built; inequality means something edited rows
+    that no grant should have permitted, and finalizing anyway would bind an approval to content
+    nobody reviewed.
+
+    **This is the first caller of `app/db/locking.py`.** `lock_rows` and `LockScope` were built
+    in M2 for "M5 through M9" and had no caller in the application and no test two milestones
+    later — the seventh mechanism-with-no-caller this project has found.
+    `LockScope.BATCH_VERSION_FINALISE` exists for exactly this command, and the ordering rule
+    matters here for a concrete reason: `command_catalog.yaml:139` says
+    `if_match_batch_and_lock_current_version`, so this command locks the batch and the version,
+    and M9's evidence replacement will lock overlapping rows in the order its own logic
+    suggests. `lock_rows` sorts by `(scope.order, table, primary key)` so neither author has to
+    be right about the other.
+    """
+
+    resolver = IdempotencyResolver(uow)
+    claim = resolver.claim(
+        actor_type=actor.actor_type,
+        actor_id=actor.idempotency_scope_id,
+        operation=FINALIZE_OPERATION,
+        idempotency_key=idempotency_key,
+        # The target and the note. Not the expected record version: a retry after a timeout is
+        # the same request even if the first attempt moved the batch, and including it would
+        # make an honest retry look like different content and raise a conflict where a replay
+        # is correct. The `If-Match` check below is what refuses a genuinely stale caller.
+        payload={
+            "payment_batch_id": str(command.payment_batch_id),
+            "payment_batch_version_id": str(command.payment_batch_version_id),
+            "note": command.note,
+        },
+    )
+
+    session = uow.session
+
+    if claim.is_replay:
+        return _replayed_finalization(session, claim.record.response_body or {})
+
+    # Locks first, in the global order, before any decision is read. Reading and then locking
+    # leaves a window in which what was read stops being true.
+    lock_rows(
+        session,
+        [
+            LockTarget.of(
+                LockScope.BATCH_VERSION_FINALISE, PaymentBatch, command.payment_batch_id
+            ),
+            LockTarget.of(
+                LockScope.BATCH_VERSION_FINALISE,
+                PaymentBatchVersion,
+                command.payment_batch_version_id,
+            ),
+        ],
+        models={
+            PaymentBatch.__tablename__: PaymentBatch,
+            PaymentBatchVersion.__tablename__: PaymentBatchVersion,
+        },
+    )
+
+    batch = session.get(PaymentBatch, command.payment_batch_id)
+    if batch is None:
+        raise NotFoundError()
+
+    version = session.get(PaymentBatchVersion, command.payment_batch_version_id)
+    if version is None or version.payment_batch_id != batch.id:
+        # Indistinguishable from a missing version on purpose: whether a version id exists under
+        # some *other* batch is not something this route should teach a caller.
+        raise NotFoundError()
+
+    if batch.current_version_id != version.id:
+        raise BusinessRuleViolationError(
+            f"version {version.version_number} is not the current version of batch "
+            f"{batch.batch_number}; only the current version may be finalized"
+        )
+    if version.status != VERSION_DRAFT:
+        raise BusinessRuleViolationError(
+            f"version {version.version_number} is {version.status}; only a draft may be "
+            "finalized"
+        )
+
+    errors = list(version.validation_summary.get("errors", []))
+    if errors:
+        raise BusinessRuleViolationError(
+            f"version {version.version_number} carries {len(errors)} validation error(s) and "
+            "cannot be finalized: " + "; ".join(str(error) for error in errors)
+        )
+
+    items = list(
+        session.execute(
+            select(PaymentBatchItem)
+            .where(PaymentBatchItem.payment_batch_version_id == version.id)
+            .order_by(PaymentBatchItem.row_order)
+        )
+        .scalars()
+        .all()
+    )
+    _verify_internally_consistent(version, items)
+    _verify_every_item_owns_its_allocation(session, version, items)
+    _verify_sources_are_still_current(session, items)
+    _verify_configuration_is_still_valid(session, version)
+
+    # `compare_and_swap` **raises** on failure — `VersionConflictError` (412) when the row is
+    # there and the version moved, `NotFoundError` when it is gone — so there is no
+    # `rows_affected == 0` branch to write. The first version of this function had one, and it
+    # was unreachable code shaped like a guard: it read as though a stale If-Match produced a
+    # 409, which sent a test looking for the wrong status. 412 is also the catalogued meaning —
+    # `api_error_catalog.yaml` gives it "If-Match value is stale" — so the helper's answer is the
+    # right one and the extra branch was both dead and wrong.
+    swap = compare_and_swap(
+        session,
+        PaymentBatch,
+        entity_id=batch.id,
+        expected_version=command.expected_batch_record_version,
+        # The container's status is a projection of its current version's — nine of eleven
+        # container states are `derived: true` — so moving the version without moving this would
+        # make `CON-BATCH-004` false the instant this command committed.
+        #
+        # `updated_at` is deliberately absent: `compare_and_swap` sets it itself, alongside the
+        # version bump, and passing it here duplicated the keyword. The helper owning both means
+        # a caller cannot bump a version without stamping the row, which is the point.
+        values={"status": BATCH_READY},
+    )
+
+    version.status = VERSION_READY
+    # `SEC-FINAL-001`: from the session actor, never from the payload. A caller-supplied
+    # finalizer would let one accountant record another as having done the work, which is the
+    # separation rule defeated by its own evidence.
+    version.finalized_by_admin_user_id = actor.actor_id
+
+    uow.flush()
+    session.refresh(batch)
+
+    _audit_finalization(
+        session, policy, batch=batch, version=version, note=command.note, actor=actor,
+        context=context, now=now,
+    )
+    _publish_ready_for_approval(session, policy, batch, version, context, swap.new_version)
+
+    resolver.complete(
+        claim,
+        response_code=200,
+        response_body={
+            "batch_id": str(batch.id),
+            "version_id": str(version.id),
+        },
+        resource_type="payment_batch_version",
+        resource_id=version.id,
+        now=now,
+    )
+
+    return FinalizeResult(batch=batch, version=version)
+
+
+def _replayed_finalization(session: Session, stored: dict[str, Any]) -> FinalizeResult:
+    batch = session.get(PaymentBatch, uuid.UUID(str(stored["batch_id"])))
+    version = session.get(PaymentBatchVersion, uuid.UUID(str(stored["version_id"])))
+    if batch is None or version is None:  # pragma: no cover - the record made them
+        raise NotFoundError()
+    return FinalizeResult(batch=batch, version=version, replayed=True)
+
+
+def _verify_internally_consistent(
+    version: PaymentBatchVersion, items: list[PaymentBatchItem]
+) -> None:
+    """`SVC-FINAL-001` and `SVC-FINAL-003`. Counts, totals, and both hash levels.
+
+    `04_Database_Schema.md:171` forbids a tolerance — "Exact equality is required" — so these are
+    integer comparisons with no epsilon anywhere. And both hash levels are recomputed, not one:
+    a row hash could match while the content hash did not if the ordering changed, and the
+    content hash could match while a row hash did not if the digest were computed over the wrong
+    fields. Checking one and trusting the other is how a hash stops being evidence.
+    """
+
+    if not items:
+        raise BusinessRuleViolationError(
+            f"version {version.version_number} has no rows; document 06 §16.2 requires at least "
+            "one, and an empty bank file is a file nobody can explain"
+        )
+
+    if version.row_count != len(items):
+        raise BusinessRuleViolationError(
+            f"version {version.version_number} claims {version.row_count} rows and holds "
+            f"{len(items)}"
+        )
+
+    total = sum(int(item.amount_irr) for item in items)
+    if int(version.total_amount_irr) != total:
+        raise BusinessRuleViolationError(
+            f"version {version.version_number} claims a total of {version.total_amount_irr} and "
+            f"its rows sum to {total}. `04_Database_Schema.md:171` requires exact equality."
+        )
+
+    orders = sorted(item.row_order for item in items)
+    if orders != list(range(1, len(items) + 1)):
+        raise BusinessRuleViolationError(
+            f"version {version.version_number} has row orders {orders}, which is not 1..n; a "
+            "gap or a duplicate means the file a bank reads is not the file that was built"
+        )
+
+    prepared = [
+        {
+            "payment_attempt_id": item.payment_attempt_id,
+            "row_order": item.row_order,
+            "amount_irr": item.amount_irr,
+            "beneficiary_name_snapshot": item.beneficiary_name_snapshot,
+            "beneficiary_iban_snapshot": item.beneficiary_iban_snapshot,
+            "description_snapshot": item.description_snapshot,
+            "row_hash": item.row_hash,
+        }
+        for item in items
+    ]
+    recomputed = _content_hash_from_stored(version, prepared)
+    if recomputed != version.content_hash:
+        raise BusinessRuleViolationError(
+            f"version {version.version_number}'s stored content hash does not match one "
+            "recomputed from its rows. Something changed rows that no grant should permit, and "
+            "finalizing would bind a manager's approval to content nobody reviewed."
+        )
+
+
+def _content_hash_from_stored(
+    version: PaymentBatchVersion, prepared: list[dict[str, Any]]
+) -> str:
+    """The same digest `_content_hash` produces, computed from persisted rows.
+
+    Deliberately **not** a call to `_content_hash`: that function takes a `CreateBatch`, and
+    routing this through it would mean the recomputation and the original computation shared a
+    code path. A recomputation that cannot disagree is not a check. What they share is the
+    canonical serialiser, which is the part that must agree.
+    """
+
+    return unversioned_digest(
+        {
+            "bank_profile_version_id": str(version.bank_profile_version_id),
+            "bank_account_id": str(version.bank_account_id),
+            "bank_mapping_id": str(version.bank_mapping_id),
+            "rows": [
+                {
+                    "row_order": row["row_order"],
+                    "payment_attempt_id": str(row["payment_attempt_id"]),
+                    "amount_irr": int(row["amount_irr"]),
+                    "beneficiary_name": row["beneficiary_name_snapshot"],
+                    "beneficiary_iban": row["beneficiary_iban_snapshot"],
+                    "description": row["description_snapshot"],
+                    "row_hash": row["row_hash"],
+                }
+                for row in sorted(prepared, key=lambda row: int(row["row_order"]))
+            ],
+        }
+    )
+
+
+def _verify_every_item_owns_its_allocation(
+    session: Session, version: PaymentBatchVersion, items: list[PaymentBatchItem]
+) -> None:
+    """`SVC-FINAL-002`. `FINANCIAL_INTEGRITY_BASELINE.md:44-45`, in one query.
+
+    "A version cannot finalize unless each item owns the matching active allocation." Three ways
+    that can fail and all three are checked: the allocation was released, it was never created,
+    or it points at a different item than the one this version holds.
+
+    One query for the whole version rather than one per item, because the rows are already
+    locked and a per-item loop would be an N+1 under a lock — and `test_no_io_under_lock.py`
+    would be right to object.
+    """
+
+    active = {
+        (row.payment_attempt_id, row.payment_batch_item_id)
+        for row in session.execute(
+            select(PaymentAttemptAllocation).where(
+                PaymentAttemptAllocation.payment_batch_version_id == version.id,
+                PaymentAttemptAllocation.released_at.is_(None),
+            )
+        )
+        .scalars()
+        .all()
+    }
+
+    unallocated = [
+        item.row_order for item in items if (item.payment_attempt_id, item.id) not in active
+    ]
+    if unallocated:
+        raise BusinessRuleViolationError(
+            f"rows {unallocated} of version {version.version_number} do not own an active "
+            "allocation, so another version could claim the same attempts. "
+            "`FINANCIAL_INTEGRITY_BASELINE.md:44-45` refuses finalization."
+        )
+
+
+def _verify_sources_are_still_current(session: Session, items: list[PaymentBatchItem]) -> None:
+    """Document 06 §16.2: "selected request revisions are still current and eligible".
+
+    Both halves. A revision that stopped being current means a trader filed a correction after
+    the batch was built, so the row would pay an amount nobody approved most recently. A request
+    that stopped being `eligible_for_batching` — cancelled, say — means the row should not be in
+    a file at all.
+
+    Read through the attempts rather than through the items, because the attempt is what carries
+    the revision the amount was frozen from. Two queries for the whole version, not two per row.
+    """
+
+    attempt_ids = [item.payment_attempt_id for item in items]
+    attempts = (
+        session.execute(select(PaymentAttempt).where(PaymentAttempt.id.in_(attempt_ids)))
+        .scalars()
+        .all()
+    )
+
+    request_ids = {attempt.payment_request_id for attempt in attempts}
+    requests = {
+        request.id: request
+        for request in session.execute(
+            select(PaymentRequest).where(PaymentRequest.id.in_(request_ids))
+        )
+        .scalars()
+        .all()
+    }
+
+    problems: list[str] = []
+    for attempt in attempts:
+        request = requests.get(attempt.payment_request_id)
+        if request is None:  # pragma: no cover - the attempt's FK guarantees it
+            problems.append(f"attempt {attempt.attempt_number} names a request that is gone")
+            continue
+        if request.current_revision_id != attempt.payment_request_revision_id:
+            problems.append(
+                f"request {request.request_number} has a newer revision than the one attempt "
+                f"{attempt.attempt_number} was frozen from"
+            )
+        if request.status != ELIGIBLE_FOR_BATCHING:
+            problems.append(
+                f"request {request.request_number} is {request.status} and no longer eligible "
+                "for batching"
+            )
+
+    if problems:
+        raise BusinessRuleViolationError(
+            "the sources this version was built from have moved: " + "; ".join(sorted(problems))
+        )
+
+
+def _verify_configuration_is_still_valid(
+    session: Session, version: PaymentBatchVersion
+) -> None:
+    """Document 06 §16.2: "bank profile/mapping/account remain valid".
+
+    A superseded profile version, a retired mapping or a closed source account each mean the
+    export M7 renders would use configuration the centre has since replaced — and the manager
+    approving this version would be approving a file that cannot be produced.
+    """
+
+    profile_version = session.get(BankProfileVersion, version.bank_profile_version_id)
+    account = session.get(BankAccount, version.bank_account_id)
+    mapping = session.get(BankMapping, version.bank_mapping_id)
+
+    stale = [
+        name
+        for name, row in (
+            ("bank profile version", profile_version),
+            ("source account", account),
+            ("mapping", mapping),
+        )
+        if row is None or getattr(row, "status", None) != CONFIGURATION_ACTIVE
+    ]
+    if stale:
+        raise BusinessRuleViolationError(
+            f"the {', '.join(stale)} this version names is no longer active, so the export it "
+            "describes could not be produced"
+        )
+
+
+def _audit_finalization(
+    session: Session,
+    policy: RedactionPolicy,
+    *,
+    batch: PaymentBatch,
+    version: PaymentBatchVersion,
+    note: str | None,
+    actor: AuditActor,
+    context: AuditContext,
+    now: datetime,
+) -> None:
+    """`AUD-BATCH-002`. The catalogued action, in this transaction, with the hash it froze.
+
+    `entity_type` is `payment_batch_version` rather than `payment_batch`: the thing that became
+    immutable is the version, and an audit trail that recorded only the container would not say
+    *which* version a manager was later shown.
+
+    `content_hash` is in the new values because it is the value an approval will be bound to.
+    `FINANCIAL_INTEGRITY_BASELINE.md` §1 wants an approval comparable against what was approved;
+    the audit row is where that comparison starts.
+    """
+
+    AuditWriter(session, policy).record(
+        AuditEntry(
+            action=FINALIZE_AUDIT_ACTION,
+            outcome="success",
+            metadata_schema=METADATA_SCHEMA,
+            metadata_version=METADATA_VERSION,
+            entity_type="payment_batch_version",
+            entity_id=version.id,
+            # The batch's version, because the version has none — it is immutable, so it has
+            # nothing to version. This is the record version a reader would use to find the
+            # container state this row describes.
+            entity_record_version=batch.record_version,
+            previous_values={"status": VERSION_DRAFT},
+            new_values={
+                "status": version.status,
+                "batch_status": batch.status,
+                "content_hash": version.content_hash,
+                "row_count": version.row_count,
+                "total_amount_irr": str(version.total_amount_irr),
+                "finalized_by_admin_user_id": str(version.finalized_by_admin_user_id),
+            },
+            reason=note,
+            occurred_at=now,
+            metadata={"operation": FINALIZE_AUDIT_ACTION},
+        ),
+        actor=actor,
+        context=context,
+    )
+
+
+def _publish_ready_for_approval(
+    session: Session,
+    policy: RedactionPolicy,
+    batch: PaymentBatch,
+    version: PaymentBatchVersion,
+    context: AuditContext,
+    aggregate_version: int,
+) -> None:
+    """The one outbox event M6 publishes, in the same transaction as the change.
+
+    `command_catalog.yaml:140` names it, and it is the only one M6 emits: creation's row said
+    `"outbox_event": null` and this one says `PaymentBatchVersionReadyForApproval`, because
+    finalization is the moment a manager has something to decide about.
+
+    **Identifiers and counts only.** No beneficiary, no IBAN, no per-row amount. A consumer that
+    needs the rows reads the version through an authorised route; putting them on a queue would
+    widen where a payment destination lives, which is the reasoning `payment_request._publish`
+    applies to a phone number. The total is included because a notification saying "a batch of
+    47 transfers is waiting" is useful and says nothing about who is paid.
+    """
+
+    OutboxWriter(session, policy).enqueue(
+        OutboxMessage(
+            aggregate_type="payment_batch_version",
+            aggregate_id=version.id,
+            aggregate_version=aggregate_version,
+            event_type=FINALIZE_OUTBOX_EVENT,
+            payload={
+                "payment_batch_id": str(batch.id),
+                "payment_batch_version_id": str(version.id),
+                "batch_number": batch.batch_number,
+                "version_number": version.version_number,
+                "row_count": version.row_count,
+                "total_amount_irr": str(version.total_amount_irr),
+                "content_hash": version.content_hash,
+            },
+            payload_version=PAYLOAD_VERSION,
+            correlation_id=context.correlation_id,
+            causation_id=context.causation_id,
+        )
     )

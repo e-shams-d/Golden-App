@@ -1640,6 +1640,26 @@
         "title": "FileMetadataResponse",
         "type": "object"
       },
+      "FinalizeVersionRequest": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1376-1380`. One optional field.\n\nThe note is the accountant's own sentence about what they checked, and it becomes the audit\nrow's `reason`. Optional because document 05's example shows one and nothing requires it —\nmaking it mandatory would be an unmandated refusal, which is the mirror of the unmandated\nside effect this milestone has been avoiding.",
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "title": "FinalizeVersionRequest",
+        "type": "object"
+      },
       "JobHealth": {
         "additionalProperties": false,
         "properties": {
@@ -3166,6 +3186,29 @@
           "processing_job_id"
         ],
         "title": "UploadedFileResponse",
+        "type": "object"
+      },
+      "VersionFinalized": {
+        "additionalProperties": false,
+        "description": "The batch and the version it just froze, plus whether this call was the one that did it.",
+        "properties": {
+          "batch": {
+            "$ref": "#/components/schemas/BatchSummary"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "version": {
+            "$ref": "#/components/schemas/VersionSummary"
+          }
+        },
+        "required": [
+          "batch",
+          "version",
+          "replayed"
+        ],
+        "title": "VersionFinalized",
         "type": "object"
       },
       "VersionSummary": {
@@ -6445,6 +6488,172 @@
           }
         },
         "summary": "One batch, its current version, its history and its rows.",
+        "tags": [
+          "payment-batches"
+        ]
+      }
+    },
+    "/api/v1/payment-batches/{batch_id}/versions/{version_id}/finalize": {
+      "post": {
+        "description": "`POST /api/v1/payment-batches/{batch_id}/versions/{version_id}/finalize`.\n\n**Both headers are required, and they answer different questions.**\n`command_catalog.yaml:139-140` says `if_match_batch_and_lock_current_version` and\n`\"idempotency\": \"required\"`. `If-Match` is \"is the batch still in the state you read\", which\nrefuses an accountant acting on a stale screen. `Idempotency-Key` is \"have I already\nfinalized this\", which makes a retry after a timeout return the first answer instead of\nmeeting a `draft`-only guard and reporting a failure for work that succeeded.\n\n**`If-Match` targets the batch, not the version.** A version is an immutable snapshot and has\nno `record_version` — giving it one would invite a compare-and-swap against a record nobody\nmay modify, which `app/db/base.py:record_version_column` warns about in as many words.\n\n**The guard is `payment_batch_version.finalize`, which is not `payment_batch.create`.**\n`permission_catalog.yaml:472` gives it to `accountant` with the `batch_finalize` constraint,\nand `FINANCIAL_INTEGRITY_BASELINE.md` §5 is why it is separate: the actor recorded here is\nthe one M7 must refuse as an approver, so conflating it with any other grant would blur the\nidentity the separation rule compares.",
+        "operationId": "finalizePaymentBatchVersion",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinalizeVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionFinalized"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A guard document 06 §16.2 lists refused: the version is not current or not a draft, a validation error exists, the counts or hashes do not recompute, a row does not own its allocation, a source revision moved, or the bank configuration is no longer active."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks payment_batch_version.finalize."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such batch, or no such version in it."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The batch moved since it was read, or the Idempotency-Key was reused."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The If-Match value is not a record version."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are both required."
+          }
+        },
+        "summary": "Freeze a draft version as the exact thing a manager will approve.",
         "tags": [
           "payment-batches"
         ]

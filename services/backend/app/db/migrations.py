@@ -60,4 +60,4 @@ from __future__ import annotations
 # revision. `payment_request_revisions` receives **no UPDATE grant of any kind** — the
 # bootstrap default is SELECT+INSERT, so its immutability is an absence rather than a
 # rule, which is stricter than `bank_profile_versions`, where `status` moves.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260820_0017"})
+EXPECTED_MIGRATION_HEADS = frozenset({"20260821_0018"})

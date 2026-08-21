@@ -380,6 +380,23 @@ class PaymentBatchVersion(Base):
     created_at: Mapped[datetime] = created_at_column()
     superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Added by `20260821_0018` on the authority of `FINANCIAL_INTEGRITY_BASELINE.md` §5, which
+    # requires a **recorded** finalizer actor and a database-enforceable guard against the
+    # approver being that same actor. Document 04 §11.5 gives no such column — the word
+    # "finalizer" appears in neither document 04 nor 05 — and a guard cannot reference a column
+    # that does not exist. `created_by_admin_user_id` is the *preparer*, and because
+    # `payment_batch_version.create` and `.finalize` are separately permissioned the two actors
+    # can differ. `DOC-CONFLICT-055`, G-11.
+    #
+    # Nullable because a draft has no finalizer. NOT NULL would force `create_batch` to invent
+    # one, and the only plausible invention is the creator — the exact conflation this column
+    # exists to prevent.
+    finalized_by_admin_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("admin_users.id", name="fk_batch_versions_finalized_by"),
+        nullable=True,
+    )
+
     __table_args__ = (
         named_check("row_count > 0", name="row_count"),
         named_check("total_amount_irr > 0", name="total_positive"),

@@ -38,6 +38,7 @@ CREATE = ("POST", "/api/v1/payment-batches")
 LIST = ("GET", "/api/v1/payment-batches")
 DETAIL = ("GET", "/api/v1/payment-batches/{batch_id}")
 PREVIEW = ("POST", "/api/v1/payment-batches/preview")
+FINALIZE = ("POST", "/api/v1/payment-batches/{batch_id}/versions/{version_id}/finalize")
 
 # What each route must declare, and nothing else. The create is the only one that writes.
 EXPECTED: dict[tuple[str, str], set[str]] = {
@@ -45,6 +46,11 @@ EXPECTED: dict[tuple[str, str], set[str]] = {
     LIST: {"payment_batch.read"},
     DETAIL: {"payment_batch.read"},
     PREVIEW: {"payment_batch.read"},
+    # M6 slice 3, and its own grant is the whole point: the actor recorded by this
+    # command is the one M7 must refuse as an approver, so conflating finalize with
+    # any other batch permission would blur the identity
+    # `FINANCIAL_INTEGRITY_BASELINE.md` §5 compares.
+    FINALIZE: {"payment_batch_version.finalize"},
 }
 
 SEED = (

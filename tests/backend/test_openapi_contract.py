@@ -180,6 +180,10 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "createPaymentBatch",
         "listPaymentBatches",
         "getPaymentBatch",
+        # M6 slice 3. `05_API_Specification.md:1369`. The first M6 operation that
+        # publishes an outbox event, because it is the first that gives a manager
+        # something to decide about.
+        "finalizePaymentBatchVersion",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

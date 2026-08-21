@@ -338,6 +338,21 @@ A draft version becomes the exact thing a manager will approve, and stops being 
   `payment_batch_version.finalize` (`permission_catalog.yaml:472`).
 - The content hash over the version's canonical serialisation, and the persisted finalizer
   identity M7's separation-of-duties rule will read.
+- **A migration adding `payment_batch_versions.finalized_by_admin_user_id`**, because there is
+  nowhere else to persist it. Found while writing this slice: the word "finalizer" appears in
+  neither document 04 nor document 05, so the schema as documented can name the *preparer*
+  (`created_by_admin_user_id`) and the *approver* (`batch_approvals.decided_by_admin_user_id`)
+  and not the finalizer — while `FINANCIAL_INTEGRITY_BASELINE.md` §5, which is
+  Resolved — Approved, requires the "recorded finalizer actor" to differ from the approver and
+  requires the guard to be *database-enforceable*. A guard cannot reference a column that does
+  not exist. Registered as `DOC-CONFLICT-055` with G-11; the precedent is slice 2's
+  `payment_attempt_allocations`, an entire table document 04 never mentions, created because the
+  same baseline approves it.
+- **The first caller of `app/db/locking.py`.** `lock_rows()` — the function that issues
+  `SELECT … FOR UPDATE` in the global scope order — has no caller in the application and no
+  test, two milestones after M2 built it for "M5 through M9". `LockScope.BATCH_VERSION_FINALISE`
+  exists for exactly this command. That makes it the seventh mechanism-with-no-caller this
+  project has found, and `CON-FINAL-001` is what stops it being the eighth.
 
 ### What proves it
 
@@ -446,6 +461,8 @@ Read a bank field from the live profile in the export path: `TRACE-DOD-011` must
 | **G-8** | **No audit action exists for version supersession** (`audit_outbox_catalog.yaml`). Catalogue one, or accept the replacement's creation action as the record. | Slice 4's `AUD-BATCH-003` |
 | **G-9** | **The approved-batch cancellation conflict** (§2.4): §29.2 permits it and the diagram draws no arrow. M6 does not reach `approved`, so this is recorded for M7 rather than resolved here. Registered as DOC-CONFLICT-053. | M7 |
 | **G-10** | **What applies after the cutoff when the bank publishes no after-cutoff limit?** Found while writing slice 1, and named by neither document: `04_Database_Schema.md` and `05_API_Specification.md` are both silent on the combination of a `cutoff_time` with a null `after_cutoff_transfer_limit_irr`. The two readings differ in the direction that matters — continuing the ordinary limit produces more, smaller transfers, while reading the null as "no limit after the cutoff" would send one large transfer the bank had said it would refuse an hour earlier. Slice 1 implements the conservative reading, `applicable_limit` says so in its docstring, and `test_a_null_after_cutoff_limit_leaves_the_default_in_force` pins it. Recorded because it is an assumption and not a citation. | Nothing — slice 1 ships the conservative reading |
+
+| **G-11** | **Where the finalizer is recorded, and whether the preparer disqualifies an approver.** `FINANCIAL_INTEGRITY_BASELINE.md` §5 is Approved and requires a *recorded* finalizer plus a **database-enforceable** separation guard; the word "finalizer" is in neither document 04 nor document 05, so no column exists to enforce against. Slice 3 adds `payment_batch_versions.finalized_by_admin_user_id` on the baseline's authority and records the deviation. Two things for the owner: confirm the column belongs in document 04 §11.5, and decide whether `12_Security_RBAC_Audit.md:1111`'s "finalizer/**preparer**" means the preparer also disqualifies an approver — which would make M7's guard two comparisons rather than one, and would change nothing in M6. `DOC-CONFLICT-055`. | **Slice 3** ships the column; M7's guard needs the second answer |
 
 None of G-1 through G-9 is a reason to delay slice 1, which touches no schema and needs only
 G-2 — and G-2's proposal is the narrower of the two candidates, so building on it and being
