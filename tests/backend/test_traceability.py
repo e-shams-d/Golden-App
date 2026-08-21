@@ -452,11 +452,6 @@ PENDING: dict[str, str] = {
     # something the plan's original slice-2 list did not: a projection that can drift from what
     # it projects, a catalogued idempotency requirement with nothing calling the resolver, and
     # a number format M5 invented rather than read.
-    "TRACE-DOD-010": "M6 slice 5 — the journey to a finalized version, in one test",
-    "TRACE-DOD-011": "M6 slice 5 — the frozen snapshot is sufficient without a live profile",
-    "TRACE-DOD-012": "M6 slice 5 — no manager-only permission reaches a finalized version",
-    "SEC-BATCH-004": "M6 slice 5 — and no request-level route gained one while M6 was built",
-    "TRACE-M6-001": "M6 slice 5 — nothing is owed for M6; it reads this dictionary",
 }
 
 
