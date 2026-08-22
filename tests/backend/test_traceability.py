@@ -473,12 +473,12 @@ PENDING: dict[str, str] = {
     # neither — `auth_events.event_class` admits only doc 12's six identity-and-access classes,
     # and an integrity mismatch is none of them. The audit row carries the record; G-10 now
     # covers both halves of the missing channel.
-    "SEC-DOWNLOAD-001": "M7 slice 4 — download is guarded and refused for a quarantined export",
-    "SVC-INTEGRITY-003": "M7 slice 4 — revalidated before *every* download, not once",
-    "SVC-SENT-001": "M7 slice 4 — mark-sent acts on an exact export; a preview cannot be sent",
-    "SVC-SENT-002": "M7 slice 4 — a downloaded, unsent export is visibly unsent",
-    "CON-SENT-001": "M7 slice 4 — mark-sent is idempotent and does not move the timestamp",
-    "AUD-SENT-001": "M7 slice 4 — sent_marked with BankExportSent, both catalogued",
+    #
+    # Slice 4's six are gone, discharged by `tests/integration/test_export_download_and_sent.py`
+    # and `tests/integration/test_export_table_privileges.py`. Two of the seven fields §15.7 says
+    # mark-sent records — the submission channel and the note — live only in the audit row,
+    # because §11.8 gives the table no column for either and inventing two would be schema drift
+    # in the milestone where the schema is the evidence.
     # Slice 5 split into 5A and 5B when slice 1 landed and G-1 still had no answer: three of its
     # five obligations are about the approval and two are about the export. 5A discharged the
     # three; these two are the export half and wait on slices 2 to 4.
