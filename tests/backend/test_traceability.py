@@ -125,6 +125,34 @@ RECORDED_GAPS: dict[str, str] = {
 # An entry here is a commitment, not an exemption: two tests below fail on an entry
 # whose obligation no plan states, and on an entry for something already covered.
 PENDING: dict[str, str] = {
+    # M7's screens — `docs/handoff/M7_SCREENS_IMPLEMENTATION_PLAN.md`. Four slices, nineteen
+    # obligations, implementing `21_UI_Design_System_and_Screen_Specification.md` §13-14 field by
+    # field. G-7 in the M7 plan asked whether these were owed and never got an answer; the
+    # consequence is that the whole money path works through the API and is invisible in a
+    # browser.
+    #
+    # **Five of the nineteen assert an absence** — a preview offering no mark-sent control, no
+    # "download anyway" anywhere — which is the shape M7 slice 6A used for break-glass and the
+    # easiest kind of assertion to lose.
+    "UI-APPROVAL-001": "screens slice 1 — every mandatory field of §13.3, parsed from the document",
+    "UI-APPROVAL-002": "screens slice 1 — the queue identifies the exact version, not the batch",
+    "UI-APPROVAL-003": "screens slice 1 — the surface needs read_approval_view, nav included",
+    "UI-APPROVAL-004": "screens slice 1 — the failure state is accessible and in the a11y sweep",
+    "UI-APPROVE-001": "screens slice 2 — the dialog sends the hash it rendered, never a re-read",
+    "UI-APPROVE-002": "screens slice 2 — the UI updates only after authoritative server success",
+    "UI-STALE-001": "screens slice 2 — blocked, bannered, linked, readable: §13.4's four",
+    "UI-STALE-002": "screens slice 2 — an open dialog does not transfer to the replacement",
+    "UI-REJECT-001": "screens slice 2 — rejection requires a reason and edits no version",
+    "UI-PREVIEW-001": "screens slice 3 — §14.1's banner verbatim, parsed not transcribed",
+    "UI-PREVIEW-002": "screens slice 3 — a preview offers none of §14.1's three prohibited things",
+    "UI-EXPORT-001": "screens slice 3 — every field §14.4 lists, parsed from the document",
+    "UI-INTEGRITY-001": "screens slice 3 — a quarantined export shows each failed check",
+    "UI-INTEGRITY-002": "screens slice 3 — no 'download anyway', over the whole export surface",
+    "UI-DOWNLOAD-001": "screens slice 4 — §14.6's sentence verbatim beside the download control",
+    "UI-SENT-001": "screens slice 4 — the confirmation shows all ten fields §14.7 lists",
+    "UI-SENT-002": "screens slice 4 — downloaded-and-unconfirmed is visible from the API's field",
+    "UI-SENT-003": "screens slice 4 — the command targets the exact export, not the batch",
+    "TRACE-SCREENS-001": "screens slice 4 — every new screen is in the a11y sweep's fixed list",
     # DB-SPEC-001 and TRACE-PLAN-001 were owed by slice 1B and are discharged by it.
     #
     # TRACE-PLAN-001 had **no definition anywhere**. It appeared exactly twice in the
