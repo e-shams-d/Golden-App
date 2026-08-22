@@ -23,6 +23,7 @@ from app.db.models.idempotency_record import IdempotencyRecord
 from app.db.models.identity import AdminUser, TraderUser
 from app.db.models.outbox_event import OutboxEvent
 from app.db.models.payment_batch import (
+    BatchApproval,
     PaymentAttempt,
     PaymentAttemptAllocation,
     PaymentBatch,
@@ -45,6 +46,7 @@ __all__ = [
     "BankMapping",
     "BankProfile",
     "BankProfileVersion",
+    "BatchApproval",
     "Beneficiary",
     "CenterProfile",
     "FeatureFlag",

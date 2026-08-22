@@ -60,4 +60,9 @@ from __future__ import annotations
 # revision. `payment_request_revisions` receives **no UPDATE grant of any kind** — the
 # bootstrap default is SELECT+INSERT, so its immutability is an absence rather than a
 # rule, which is stricter than `bank_profile_versions`, where `status` moves.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260821_0019"})
+# 20260822_0020 adds `batch_approvals` (doc 04 §11.7) and the three unique constraints on
+# `payment_batch_versions` its composite foreign keys reference. No grant of any kind: the
+# bootstrap default is SELECT+INSERT, and §11.7 says approved/rejected rows are never updated,
+# so the table's append-only property is the absence of a grant rather than a rule somebody
+# must remember.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260822_0020"})

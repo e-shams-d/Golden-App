@@ -125,7 +125,16 @@ def specification_columns(heading: str) -> dict[str, tuple[str, bool]]:
         # column-set comparison then reported it as *extra* in the model, and a
         # careless reading would have deleted a column document 04 requires. Anything
         # unrecognised now fails loudly instead of being passed over.
-        if required.startswith("no"):
+        # `conditional` is document 04's wording for `batch_approvals.approved_content_hash`
+        # (§11.7, "Required for approval"): nullable in the column, with a CHECK deciding when
+        # it must be present. Nullable is the honest reading — a rejection genuinely has no
+        # hash — and reading it as NOT NULL would make a rejection impossible to record.
+        #
+        # Added rather than special-cased in the caller, because the vocabulary is document
+        # 04's and the next table to use it should not have to rediscover this. The refusal
+        # below is what surfaced it: the parser met an unfamiliar word and said so instead of
+        # skipping the column, which is precisely the behaviour its own comment argues for.
+        if required.startswith("no") or required == "conditional":
             nullable = True
         elif required == "yes":
             nullable = False

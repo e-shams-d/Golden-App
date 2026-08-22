@@ -65,6 +65,21 @@ ALLOWED_METADATA_KEYS: frozenset[str] = frozenset(
         "capability",
         "permission_code",
         "role_code",
+        # M7 slice 1's step-up refusal, added the same deliberate way. A refused approval is
+        # the event an investigator most wants context on — "somebody presented a context that
+        # did not authorise deciding batch version 7" is the whole content of the alert — and
+        # neither key can carry a secret:
+        #
+        #   `payment_batch_version_id` is a primary key this system generated. Knowing it
+        #     grants nothing: every route that reads a version checks a permission first.
+        #   `operation` is a command id from `command_catalog.yaml`, which is public
+        #     vocabulary in this repository, exactly as `permission_code` is.
+        #
+        # The step-up *reference* is deliberately not here and never will be. It is a bearer
+        # credential, and `12_Security_RBAC_Audit.md:536` requires the context to be
+        # audit-linked without the replayable value — which is why the row is named by its id.
+        "payment_batch_version_id",
+        "operation",
     }
 )
 

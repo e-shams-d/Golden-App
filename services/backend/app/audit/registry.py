@@ -466,6 +466,28 @@ CREATE_PAYMENT_BATCH_VERSION = CommandNames(
     catalogued=True,
 )
 
+APPROVE_PAYMENT_BATCH_VERSION = CommandNames(
+    audit_action="payment_batch_version.approved",
+    # `command_catalog.yaml:153`. The event is in `audit_outbox_catalog.yaml:72` and the action
+    # at `:29`, so neither name is invented here.
+    outbox_event_type="PaymentBatchVersionApproved",
+    catalogued=True,
+)
+
+REJECT_PAYMENT_BATCH_VERSION = CommandNames(
+    audit_action="payment_batch_version.rejected",
+    # `command_catalog.yaml:166` gives this one `"outbox_event": null`, and
+    # `audit_outbox_catalog.yaml` defines no rejection event either. That asymmetry is the
+    # catalogue's answer, not an omission to be helpfully corrected: an approval releases work
+    # to the export side and something downstream must hear it, while a rejection returns the
+    # batch to the accountant who is already looking at it. Publishing an invented
+    # `PaymentBatchVersionRejected` would put an event type in the outbox that no consumer
+    # contract names — the same shape as an audit action nothing catalogues. AUD-APPROVAL-001
+    # asserts this absence rather than leaving it to be read as forgetfulness.
+    outbox_event_type=None,
+    catalogued=True,
+)
+
 # G-8, answered without inventing a name. The plan offered two options: catalogue a supersession
 # action, or let the replacement's own creation action carry the record. The second needs no
 # invention and is what `CREATE_PAYMENT_BATCH_VERSION` above does — the audit row for the
@@ -583,4 +605,11 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     # by the same gate on the same run.
     UPLOAD_FILE,
     REQUEST_FILE_PREVIEW,
+    # M7 slice 1. Added in the same commit as the entries themselves, which is the whole lesson
+    # of the two gaps above: this tuple is the only thing
+    # `tests/backend/test_name_registry_and_errors.py` iterates, so a name defined and left out
+    # of it is a name whose catalogue position nobody checks — and the gate stays green while it
+    # goes unchecked.
+    APPROVE_PAYMENT_BATCH_VERSION,
+    REJECT_PAYMENT_BATCH_VERSION,
 )

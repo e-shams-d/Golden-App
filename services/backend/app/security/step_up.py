@@ -76,6 +76,26 @@ class StepUpRejection(StrEnum):
     UNREGISTERED_FACTOR = "unregistered_factor"
 
 
+class StepUpRefused(Exception):
+    """The presented context does not authorise this command.
+
+    Raised rather than translated here, because `RecentAuthRequiredError` lives in
+    `app/api/v1/auth.py` and a command that imported it would make this layer depend
+    on the transport. The route translates; the reason travels with the exception so
+    it can be recorded, and it is never rendered.
+
+    Lives beside the enum it carries rather than inside the first command that raised
+    it. M3 defined it in `app/commands/role_permissions.py`, which was correct while
+    there was one caller; M7's approval is the second, and the alternative was a
+    second exception class meaning the same thing — which every route handler would
+    then have to catch twice, and one of them eventually would not.
+    """
+
+    def __init__(self, rejection: StepUpRejection) -> None:
+        super().__init__(rejection.value)
+        self.rejection = rejection
+
+
 @dataclass(frozen=True, slots=True)
 class StepUpRequest:
     """What a caller must name to obtain a context.
