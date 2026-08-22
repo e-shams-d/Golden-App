@@ -395,9 +395,17 @@ Transfer the decision to the replacement automatically: `SVC-INVALIDATE-001` mus
 
 ## Slice 6 — The M7 Definition of Done gate
 
-### Goal
+**Split into 6A and 6B, the same way and for the same reason as slice 5.** Two of the four
+obligations below need the export and two need nothing that is not already merged. 6A discharges
+`TRACE-DOD-014` and `TRACE-DOD-015` in `tests/backend/test_m7_separation_is_unreachable.py`; 6B
+discharges `TRACE-DOD-013` and `TRACE-M7-001` once slices 2 to 4 exist.
 
-The DoD's verb is "prove". This slice is the proof.
+**A Definition-of-Done gate arriving before the milestone is finished is unusual and it is the
+point here.** `TRACE-DOD-015` guards the property slice 1 created — the same actor cannot finalize
+and approve — and the thing it guards against is a convenience endpoint added *later*, by somebody
+who did not read slice 1. A gate that lands after every route exists protects nothing that was
+built in the meantime. `TRACE-DOD-014` is the same argument about a runtime bypass: the moment to
+forbid one is before somebody needs it at two in the morning.
 
 ### What proves it
 
