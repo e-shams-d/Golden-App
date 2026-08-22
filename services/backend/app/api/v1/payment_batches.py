@@ -32,8 +32,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Response
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, aliased
 
 from app.api.contract import VALIDATION_ERROR_RESPONSE
 from app.api.dependencies import get_runtime
@@ -54,9 +54,12 @@ from app.core.errors import (
 from app.core.request_context import get_request_id
 from app.core.runtime import RuntimeServices
 from app.core.time import utc_now
-from app.db.models.bank import BankProfileVersion
+from app.db.models.bank import BankAccount, BankMapping, BankProfile, BankProfileVersion
+from app.db.models.bank_export import BankExcelExport
+from app.db.models.identity import AdminUser
 from app.db.models.payment_batch import (
     BatchApproval,
+    PaymentAttempt,
     PaymentAttemptAllocation,
     PaymentBatch,
     PaymentBatchItem,
@@ -84,6 +87,10 @@ RESPONSES: dict[int | str, dict[str, object]] = {
 # The state a request must be in to be previewed. Document 06 makes `eligible_for_batching`
 # the entry to batching, and M5's `mark-eligible-for-batching` is what reaches it.
 ELIGIBLE = "eligible_for_batching"
+
+# The one version status a manager can act on. Named here rather than inlined because both the
+# queue filter and the separation-of-duty status below read it, and they must agree.
+VERSION_READY_FOR_APPROVAL = "ready_for_approval"
 
 
 class PreviewItem(BaseModel):
@@ -333,7 +340,20 @@ class BatchDetail(BaseModel):
 
 
 class BatchListEntry(BaseModel):
-    """One line of the list. Enough to choose a batch, not enough to be a detail read."""
+    """One line of the approval queue. §13.2 of the screen specification names ten columns.
+
+    **The first sentence of §13.2 is the requirement**: "Each row must identify the exact version,
+    not only the logical batch." A batch may have had several versions and a manager approves one
+    of them, so a queue keyed on the batch alone would ask somebody to decide about the wrong
+    thing. `version_id` and `version_number` are here for that reason and not for completeness.
+
+    **Names, not identifiers.** `bank`, `source_account`, `prepared_by` and `finalized_by` are the
+    human-readable values, because a queue row showing a UUID is a row nobody can read. They cost
+    three joins, which is what a queue read is for.
+
+    `finalized_by` is nullable: a draft has no finalizer, and M6 made that column nullable
+    deliberately so `create_batch` would not have to invent one.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -343,6 +363,19 @@ class BatchListEntry(BaseModel):
     record_version: int
     row_count: int
     total_amount_irr: str
+
+    # §13.2's remaining seven columns.
+    version_id: uuid.UUID | None
+    version_number: int | None
+    bank: str | None
+    source_account: str | None
+    mapping_version: int | None
+    warning_count: int
+    prepared_by: str | None
+    finalized_by: str | None
+    # "age" in §13.2. The instant is returned rather than a duration: a server-computed "3 days
+    # ago" is stale the moment it is serialised, and the client knows what time it is.
+    version_created_at: datetime | None
 
 
 class BatchList(BaseModel):
@@ -456,6 +489,7 @@ def create_batch(
 def list_batches(
     actor: Annotated[ActorContext, Depends(authenticated_actor)],
     runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    awaiting_decision: bool = False,
 ) -> BatchList:
     """`GET /api/v1/payment-batches`.
 
@@ -471,23 +505,51 @@ def list_batches(
 
     del actor  # The guard consumed it; there is no per-actor filtering to do.
 
+    preparer = aliased(AdminUser)
+    finalizer = aliased(AdminUser)
+
     with runtime.uow_factory() as uow:
-        rows = (
-            uow.session.execute(
-                select(PaymentBatch, PaymentBatchVersion)
-                # An outer join: a batch whose version row is missing would vanish from a list
-                # built on an inner join, and vanishing is the one behaviour an operator cannot
-                # debug. The composite deferred key makes it impossible, so this is belt to that
-                # brace — and the `None` branch below says what it would mean.
-                .outerjoin(
-                    PaymentBatchVersion,
-                    PaymentBatch.current_version_id == PaymentBatchVersion.id,
-                )
-                .order_by(PaymentBatch.created_at.desc())
+        query = (
+            select(
+                PaymentBatch,
+                PaymentBatchVersion,
+                BankProfile.name,
+                BankAccount.display_name,
+                BankMapping.template_version,
+                preparer.username,
+                finalizer.username,
             )
-            .tuples()
-            .all()
+            # An outer join: a batch whose version row is missing would vanish from a list
+            # built on an inner join, and vanishing is the one behaviour an operator cannot
+            # debug. The composite deferred key makes it impossible, so this is belt to that
+            # brace — and the `None` branch below says what it would mean.
+            #
+            # Every join below is outer for the same reason. A queue that dropped a batch
+            # because one lookup missed would hide work rather than show it broken.
+            .outerjoin(
+                PaymentBatchVersion,
+                PaymentBatch.current_version_id == PaymentBatchVersion.id,
+            )
+            .outerjoin(
+                BankProfileVersion,
+                PaymentBatchVersion.bank_profile_version_id == BankProfileVersion.id,
+            )
+            .outerjoin(BankProfile, BankProfileVersion.bank_profile_id == BankProfile.id)
+            .outerjoin(BankAccount, PaymentBatchVersion.bank_account_id == BankAccount.id)
+            .outerjoin(BankMapping, PaymentBatchVersion.bank_mapping_id == BankMapping.id)
+            .outerjoin(preparer, PaymentBatchVersion.created_by_admin_user_id == preparer.id)
+            .outerjoin(
+                finalizer, PaymentBatchVersion.finalized_by_admin_user_id == finalizer.id
+            )
+            .order_by(PaymentBatch.created_at.desc())
         )
+        if awaiting_decision:
+            # `API-APPROVALREAD-004`. The queue, rather than the history — and the history stays
+            # reachable without the flag, because §13.4 requires a superseded version's page to
+            # remain readable and a filter that became the only view would take that away.
+            query = query.where(PaymentBatchVersion.status == VERSION_READY_FOR_APPROVAL)
+
+        rows = uow.session.execute(query).tuples().all()
 
         # Rendered inside the unit of work. Built outside it, every attribute access on these
         # rows raises `DetachedInstanceError` — which is what the first version of this route
@@ -502,12 +564,91 @@ def list_batches(
                     record_version=batch.record_version,
                     row_count=version.row_count if version else 0,
                     total_amount_irr=str(version.total_amount_irr) if version else "0",
+                    version_id=version.id if version else None,
+                    version_number=version.version_number if version else None,
+                    bank=bank_name,
+                    source_account=account_name,
+                    mapping_version=mapping_version,
+                    warning_count=_warning_count(version),
+                    prepared_by=prepared_by,
+                    finalized_by=finalized_by,
+                    version_created_at=version.created_at if version else None,
                 )
-                for batch, version in rows
+                for (
+                    batch,
+                    version,
+                    bank_name,
+                    account_name,
+                    mapping_version,
+                    prepared_by,
+                    finalized_by,
+                ) in rows
             ]
         )
 
     return listed
+
+
+def _username(session: Session, admin_user_id: uuid.UUID | None) -> str | None:
+    """The name to show for an actor id, or `None` when there is no actor.
+
+    `None` is a real answer here and not a lookup failure: a draft has no finalizer, and M6 made
+    that column nullable rather than let `create_batch` invent one.
+    """
+
+    if admin_user_id is None:
+        return None
+    found = session.get(AdminUser, admin_user_id)
+    return found.username if found is not None else None
+
+
+def _separation_of_duty(
+    version: PaymentBatchVersion, actor: ActorContext
+) -> SeparationOfDutyStatus:
+    """`API-APPROVALREAD-003`. Whether **this** caller may decide, and which rule refuses them.
+
+    The same two comparisons `app/commands/payment_batch_approval.py` makes, in the same order,
+    reported rather than enforced. **This is advisory** — the command refuses again, and the
+    database refuses after that — but a screen that offered an approve button to the person who
+    finalized the version would be inviting a refusal instead of explaining one.
+
+    Read from the version, so it cannot disagree with the guard: both compare
+    `finalized_by_admin_user_id` and `created_by_admin_user_id` against the acting administrator.
+    """
+
+    if version.status != VERSION_READY_FOR_APPROVAL:
+        return SeparationOfDutyStatus(
+            may_decide=False,
+            reason=f"this version is {version.status!r} and is not awaiting a decision",
+        )
+    if actor.actor_id is None:
+        return SeparationOfDutyStatus(
+            may_decide=False, reason="a decision must be taken by an administrator"
+        )
+    if version.finalized_by_admin_user_id == actor.actor_id:
+        return SeparationOfDutyStatus(
+            may_decide=False, reason="you finalized this version, so you may not decide it"
+        )
+    if version.created_by_admin_user_id == actor.actor_id:
+        return SeparationOfDutyStatus(
+            may_decide=False, reason="you prepared this version, so you may not decide it"
+        )
+    return SeparationOfDutyStatus(may_decide=True, reason=None)
+
+
+def _warning_count(version: PaymentBatchVersion | None) -> int:
+    """§13.2's "warning count", read from the version's own `validation_summary`.
+
+    Warnings do not block finalization — M6 settled that — so a version can reach a manager
+    carrying several, and the count is what tells them whether to look. Errors are deliberately
+    not counted here: a version with an error cannot have been finalized at all, so a non-zero
+    error count on this screen would describe a state that cannot exist.
+    """
+
+    if version is None:
+        return 0
+    warnings = version.validation_summary.get("warnings", [])
+    return len(warnings) if isinstance(warnings, list) else 0
 
 
 @router.get(
@@ -1071,12 +1212,35 @@ class PriorDecision(BaseModel):
     reason: str | None
 
 
+class SeparationOfDutyStatus(BaseModel):
+    """Whether **this** caller may decide, and which rule would refuse them.
+
+    §13.3 lists "separation-of-duty status" among the mandatory fields, and the useful reading is
+    the actor-dependent one: a status that always said "may decide" would render unchanged on the
+    screen of the accountant who prepared the version.
+
+    `FINANCIAL_INTEGRITY_BASELINE.md` §5 gives two comparisons, so there are two ways to be
+    refused and they have different remedies — a preparer hands the file to a colleague, a
+    finalizer asks a different manager. `reason` names which, so the screen can say so.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    may_decide: bool
+    reason: str | None
+
+
 class ApprovalView(BaseModel):
-    """`05_API_Specification.md:1395-1410`, the manager's screen.
+    """`05_API_Specification.md:1395-1410` and §13.3's nineteen mandatory fields.
 
     `version.content_hash` is the field the approve call sends back, and that is the whole
     mechanism behind the word "exact": the server does not assume the manager saw the current
     version, it requires them to quote it.
+
+    **The counts are computed from the version's own items, never from the live tables.** A trader
+    count taken from `traders` would answer "how many traders exist" on a screen asking "how many
+    traders are in this file" — and after a beneficiary is renamed or a request cancelled, the two
+    diverge silently. The version froze its rows; the counts come from those.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -1085,6 +1249,21 @@ class ApprovalView(BaseModel):
     version: VersionSummary
     items: list[BatchItemResponse]
     prior_decision: PriorDecision | None = None
+
+    # §13.3's remaining fields.
+    request_count: int
+    trader_count: int
+    beneficiary_count: int
+    bank: str | None
+    bank_profile_version_number: int | None
+    mapping_version: int | None
+    source_account: str | None
+    prepared_by: str | None
+    finalized_by: str | None
+    separation_of_duty: SeparationOfDutyStatus
+    # "non-sendable preview export if available". The id alone: the screen links to the export
+    # surface rather than duplicating its fields, and §14.1's banner belongs to that screen.
+    preview_export_id: uuid.UUID | None
 
 
 class ApproveVersionRequest(BaseModel):
@@ -1162,9 +1341,66 @@ def get_approval_view(
         decision = session.scalar(
             select(BatchApproval).where(BatchApproval.payment_batch_version_id == version.id)
         )
+
+        # The three counts, from the version's frozen rows. `payment_attempts` carries the
+        # request; the request carries the trader; the item carries the beneficiary's IBAN as it
+        # was. Counting distinct IBANs rather than joining `beneficiaries` is deliberate: the
+        # snapshot is what the file pays, and a beneficiary row that has since been merged or
+        # renamed must not change what this screen says was in the version.
+        counts = session.execute(
+            select(
+                func.count(func.distinct(PaymentAttempt.payment_request_id)),
+                func.count(func.distinct(PaymentRequest.trader_id)),
+                func.count(func.distinct(PaymentBatchItem.beneficiary_iban_snapshot)),
+            )
+            .select_from(PaymentBatchItem)
+            .join(PaymentAttempt, PaymentAttempt.id == PaymentBatchItem.payment_attempt_id)
+            .join(PaymentRequest, PaymentRequest.id == PaymentAttempt.payment_request_id)
+            .where(PaymentBatchItem.payment_batch_version_id == version.id)
+        ).one()
+
+        configuration = session.execute(
+            select(
+                BankProfile.name,
+                BankProfileVersion.version_number,
+                BankMapping.template_version,
+                BankAccount.display_name,
+            )
+            .select_from(PaymentBatchVersion)
+            .outerjoin(
+                BankProfileVersion,
+                PaymentBatchVersion.bank_profile_version_id == BankProfileVersion.id,
+            )
+            .outerjoin(BankProfile, BankProfileVersion.bank_profile_id == BankProfile.id)
+            .outerjoin(BankMapping, PaymentBatchVersion.bank_mapping_id == BankMapping.id)
+            .outerjoin(BankAccount, PaymentBatchVersion.bank_account_id == BankAccount.id)
+            .where(PaymentBatchVersion.id == version.id)
+        ).one()
+
+        preview = session.scalar(
+            select(BankExcelExport.id)
+            .where(
+                BankExcelExport.payment_batch_version_id == version.id,
+                BankExcelExport.export_type == "preview",
+            )
+            .order_by(BankExcelExport.generated_at.desc())
+            .limit(1)
+        )
+
         return ApprovalView(
             batch=_batch_summary(batch),
             version=_version_summary(version),
+            request_count=counts[0],
+            trader_count=counts[1],
+            beneficiary_count=counts[2],
+            bank=configuration[0],
+            bank_profile_version_number=configuration[1],
+            mapping_version=configuration[2],
+            source_account=configuration[3],
+            prepared_by=_username(session, version.created_by_admin_user_id),
+            finalized_by=_username(session, version.finalized_by_admin_user_id),
+            separation_of_duty=_separation_of_duty(version, actor),
+            preview_export_id=preview,
             items=[
                 BatchItemResponse(
                     id=item.id,

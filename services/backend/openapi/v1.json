@@ -280,10 +280,47 @@
       },
       "ApprovalView": {
         "additionalProperties": false,
-        "description": "`05_API_Specification.md:1395-1410`, the manager's screen.\n\n`version.content_hash` is the field the approve call sends back, and that is the whole\nmechanism behind the word \"exact\": the server does not assume the manager saw the current\nversion, it requires them to quote it.",
+        "description": "`05_API_Specification.md:1395-1410` and §13.3's nineteen mandatory fields.\n\n`version.content_hash` is the field the approve call sends back, and that is the whole\nmechanism behind the word \"exact\": the server does not assume the manager saw the current\nversion, it requires them to quote it.\n\n**The counts are computed from the version's own items, never from the live tables.** A trader\ncount taken from `traders` would answer \"how many traders exist\" on a screen asking \"how many\ntraders are in this file\" — and after a beneficiary is renamed or a request cancelled, the two\ndiverge silently. The version froze its rows; the counts come from those.",
         "properties": {
+          "bank": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank"
+          },
+          "bank_profile_version_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Profile Version Number"
+          },
           "batch": {
             "$ref": "#/components/schemas/BatchSummary"
+          },
+          "beneficiary_count": {
+            "title": "Beneficiary Count",
+            "type": "integer"
+          },
+          "finalized_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finalized By"
           },
           "items": {
             "items": {
@@ -291,6 +328,40 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "mapping_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mapping Version"
+          },
+          "prepared_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prepared By"
+          },
+          "preview_export_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preview Export Id"
           },
           "prior_decision": {
             "anyOf": [
@@ -302,6 +373,28 @@
               }
             ]
           },
+          "request_count": {
+            "title": "Request Count",
+            "type": "integer"
+          },
+          "separation_of_duty": {
+            "$ref": "#/components/schemas/SeparationOfDutyStatus"
+          },
+          "source_account": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Account"
+          },
+          "trader_count": {
+            "title": "Trader Count",
+            "type": "integer"
+          },
           "version": {
             "$ref": "#/components/schemas/VersionSummary"
           }
@@ -309,7 +402,18 @@
         "required": [
           "batch",
           "version",
-          "items"
+          "items",
+          "request_count",
+          "trader_count",
+          "beneficiary_count",
+          "bank",
+          "bank_profile_version_number",
+          "mapping_version",
+          "source_account",
+          "prepared_by",
+          "finalized_by",
+          "separation_of_duty",
+          "preview_export_id"
         ],
         "title": "ApprovalView",
         "type": "object"
@@ -553,16 +657,60 @@
       },
       "BatchListEntry": {
         "additionalProperties": false,
-        "description": "One line of the list. Enough to choose a batch, not enough to be a detail read.",
+        "description": "One line of the approval queue. §13.2 of the screen specification names ten columns.\n\n**The first sentence of §13.2 is the requirement**: \"Each row must identify the exact version,\nnot only the logical batch.\" A batch may have had several versions and a manager approves one\nof them, so a queue keyed on the batch alone would ask somebody to decide about the wrong\nthing. `version_id` and `version_number` are here for that reason and not for completeness.\n\n**Names, not identifiers.** `bank`, `source_account`, `prepared_by` and `finalized_by` are the\nhuman-readable values, because a queue row showing a UUID is a row nobody can read. They cost\nthree joins, which is what a queue read is for.\n\n`finalized_by` is nullable: a draft has no finalizer, and M6 made that column nullable\ndeliberately so `create_batch` would not have to invent one.",
         "properties": {
+          "bank": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank"
+          },
           "batch_number": {
             "title": "Batch Number",
             "type": "string"
+          },
+          "finalized_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finalized By"
           },
           "id": {
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "mapping_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mapping Version"
+          },
+          "prepared_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prepared By"
           },
           "record_version": {
             "title": "Record Version",
@@ -572,6 +720,17 @@
             "title": "Row Count",
             "type": "integer"
           },
+          "source_account": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Account"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -579,6 +738,45 @@
           "total_amount_irr": {
             "title": "Total Amount Irr",
             "type": "string"
+          },
+          "version_created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Created At"
+          },
+          "version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Id"
+          },
+          "version_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Number"
+          },
+          "warning_count": {
+            "title": "Warning Count",
+            "type": "integer"
           }
         },
         "required": [
@@ -587,7 +785,16 @@
           "status",
           "record_version",
           "row_count",
-          "total_amount_irr"
+          "total_amount_irr",
+          "version_id",
+          "version_number",
+          "bank",
+          "source_account",
+          "mapping_version",
+          "warning_count",
+          "prepared_by",
+          "finalized_by",
+          "version_created_at"
         ],
         "title": "BatchListEntry",
         "type": "object"
@@ -3216,6 +3423,33 @@
           "matches"
         ],
         "title": "SchemaState",
+        "type": "object"
+      },
+      "SeparationOfDutyStatus": {
+        "additionalProperties": false,
+        "description": "Whether **this** caller may decide, and which rule would refuse them.\n\n§13.3 lists \"separation-of-duty status\" among the mandatory fields, and the useful reading is\nthe actor-dependent one: a status that always said \"may decide\" would render unchanged on the\nscreen of the accountant who prepared the version.\n\n`FINANCIAL_INTEGRITY_BASELINE.md` §5 gives two comparisons, so there are two ways to be\nrefused and they have different remedies — a preparer hands the file to a colleague, a\nfinalizer asks a different manager. `reason` names which, so the screen can say so.",
+        "properties": {
+          "may_decide": {
+            "title": "May Decide",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "may_decide",
+          "reason"
+        ],
+        "title": "SeparationOfDutyStatus",
         "type": "object"
       },
       "SessionListResponse": {
@@ -6875,6 +7109,18 @@
       "get": {
         "description": "`GET /api/v1/payment-batches`.\n\n**No ownership scope, and that is not an omission.** A batch has no trader: it is a file the\ncentre sends to a bank, and its rows belong to many traders at once. `owned_or_permitted`\nwould have nothing to scope on, and `app/security/ownership.py`'s `scoped()` takes an actor\nprecisely so a route cannot invent a filter. The guard is the permission, and\n`permission_catalog.yaml:459` gives `payment_batch.read` to no trader role.\n\nA container nothing can read is a container nobody can act on, which is why this ships in the\nsame slice as the create rather than waiting for a screen to need it.",
         "operationId": "listPaymentBatches",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "awaiting_decision",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Awaiting Decision",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {

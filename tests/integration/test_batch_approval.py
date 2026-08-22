@@ -21,9 +21,13 @@ two-comparison test. So the preparer case is prepared by `approval_dual` and fin
 about the approval, and its tests need the same three administrators for the same reason — the
 replacement has to be approvable by somebody who did not finalize it.
 
+**The screens' read slice is here too**, and for the same reason: the separation-of-duty status
+the approval view reports is per-actor, so proving it needs the same three administrators. A
+fixture with one dual-role user could not tell "you prepared it" from "you finalized it".
+
 Covers: SEC-APPROVAL-001, SEC-APPROVAL-002, SEC-APPROVAL-003, CON-APPROVAL-001,
 SVC-APPROVAL-001, AUD-APPROVAL-001, TRACE-APPROVAL-001, SVC-INVALIDATE-001, SVC-INVALIDATE-002,
-AUD-INVALIDATE-001.
+AUD-INVALIDATE-001, API-APPROVALREAD-003, API-APPROVALREAD-004.
 """
 
 from __future__ import annotations
@@ -1206,6 +1210,180 @@ def test_replacing_a_version_nobody_decided_writes_no_invalidation(
         "                    WHERE payment_batch_version_id = v.id)",
         frozen["batch_id"],
     ) == [], "an invalidation was recorded for a version nobody had decided"
+
+
+def test_the_separation_status_names_the_rule_that_refuses_each_actor(
+    world: dict[str, Any],
+) -> None:
+    """`API-APPROVALREAD-003`. Three actors, three different answers.
+
+    The negative control for this obligation is a status that always says "may decide" — which
+    would render unchanged on the screen of the accountant who prepared the version, inviting a
+    refusal instead of explaining one. So each actor is asserted separately, and the *reason*
+    matters as much as the boolean: a preparer hands the file to a colleague, a finalizer asks a
+    different manager, and the two remedies are not interchangeable.
+
+    `approval_dual` prepares and `approval_accountant` finalizes, so the two refusals can be told
+    apart at all.
+    """
+
+    frozen = a_finalized_version(
+        world, prepared_by="approval_dual", finalized_by="approval_accountant"
+    )
+    client = world["client"]
+    path = (
+        f"/api/v1/payment-batches/{frozen['batch_id']}"
+        f"/versions/{frozen['version_id']}/approval-view"
+    )
+
+    sign_in_admin(client, "approval_dual")
+    prepared = client.get(path)
+    assert prepared.status_code == 200, prepared.text
+    assert prepared.json()["separation_of_duty"]["may_decide"] is False
+    assert "prepared" in prepared.json()["separation_of_duty"]["reason"]
+
+    sign_in_admin(client, "approval_accountant")
+    finalized = client.get(path)
+    assert finalized.status_code == 200, finalized.text
+    assert finalized.json()["separation_of_duty"]["may_decide"] is False
+    assert "finalized" in finalized.json()["separation_of_duty"]["reason"]
+
+    sign_in_admin(client, "approval_manager")
+    permitted = client.get(path)
+    assert permitted.status_code == 200, permitted.text
+    assert permitted.json()["separation_of_duty"] == {"may_decide": True, "reason": None}
+
+
+def test_the_separation_status_agrees_with_what_the_command_does(
+    world: dict[str, Any],
+) -> None:
+    """The status is advisory and must not disagree with the guard it advises about.
+
+    A screen that said "you may decide" to somebody the command refuses would be worse than no
+    status at all. So the claim is checked against the outcome: whoever the view says may decide,
+    can; whoever it refuses, is refused with the matching rule.
+    """
+
+    frozen = a_finalized_version(
+        world, prepared_by="approval_accountant", finalized_by="approval_dual"
+    )
+    client = world["client"]
+    path = (
+        f"/api/v1/payment-batches/{frozen['batch_id']}"
+        f"/versions/{frozen['version_id']}/approval-view"
+    )
+
+    sign_in_admin(client, "approval_dual")
+    advised = client.get(path).json()["separation_of_duty"]
+    assert advised["may_decide"] is False
+
+    refused = approve(world, frozen)
+    assert refused.status_code == 400, refused.text
+    # Both name the finalizer rule, in their own words.
+    assert "finalized" in advised["reason"]
+    assert "finalized" in refused.json()["error"]["message"]
+
+
+def test_the_counts_come_from_the_version_not_the_live_tables(world: dict[str, Any]) -> None:
+    """`API-APPROVALREAD-002`'s behavioural half.
+
+    The beneficiary is renamed after the version is frozen. A count taken from `beneficiaries`
+    would be answering "how many beneficiaries exist" on a screen asking "how many are in this
+    file" — and the two diverge silently, which is the worst way for a number on an approval
+    screen to be wrong.
+    """
+
+    frozen = a_finalized_version(world)
+    client = world["client"]
+    sign_in_admin(client, "approval_manager")
+
+    before = client.get(
+        f"/api/v1/payment-batches/{frozen['batch_id']}"
+        f"/versions/{frozen['version_id']}/approval-view"
+    )
+    assert before.status_code == 200, before.text
+    assert before.json()["request_count"] == 1
+    assert before.json()["trader_count"] == 1
+    assert before.json()["beneficiary_count"] == 1
+
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            "UPDATE beneficiaries SET status = 'inactive' WHERE id = %s",
+            (world["beneficiary_id"],),
+        )
+        connection.commit()
+
+    after = client.get(
+        f"/api/v1/payment-batches/{frozen['batch_id']}"
+        f"/versions/{frozen['version_id']}/approval-view"
+    )
+    assert after.json()["beneficiary_count"] == 1, (
+        "the count moved when a live row changed; it must come from the version's own items"
+    )
+
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            "UPDATE beneficiaries SET status = 'active' WHERE id = %s",
+            (world["beneficiary_id"],),
+        )
+        connection.commit()
+
+
+def test_the_queue_filters_to_what_is_awaiting_a_decision(world: dict[str, Any]) -> None:
+    """`API-APPROVALREAD-004`. A queue, and a history that stays reachable.
+
+    §13.4 requires a superseded version's page to remain readable, so the filter must be a
+    filter and not the only view. Both are asserted: the flag narrows, its absence does not.
+    """
+
+    frozen = a_finalized_version(world)
+    client = world["client"]
+    sign_in_admin(client, "approval_manager")
+
+    queued = client.get("/api/v1/payment-batches?awaiting_decision=true")
+    assert queued.status_code == 200, queued.text
+    waiting = {entry["id"] for entry in queued.json()["batches"]}
+    assert frozen["batch_id"] in waiting
+
+    assert approve(world, frozen).status_code == 200
+
+    after = client.get("/api/v1/payment-batches?awaiting_decision=true")
+    assert frozen["batch_id"] not in {entry["id"] for entry in after.json()["batches"]}, (
+        "an approved version is still in the queue"
+    )
+
+    everything = client.get("/api/v1/payment-batches")
+    assert frozen["batch_id"] in {entry["id"] for entry in everything.json()["batches"]}, (
+        "the unfiltered list dropped it too; §13.4 needs the history readable"
+    )
+
+
+def test_the_queue_row_identifies_the_exact_version(world: dict[str, Any]) -> None:
+    """`API-APPROVALREAD-001`'s behavioural half, and §13.2's opening sentence.
+
+    "Each row must identify the exact version, not only the logical batch." A row carrying a
+    batch reference alone would ask a manager to decide about a container that has had several
+    versions — which is the defect that sentence exists to prevent.
+    """
+
+    frozen = a_finalized_version(world)
+    sign_in_admin(world["client"], "approval_manager")
+
+    listed = world["client"].get("/api/v1/payment-batches?awaiting_decision=true")
+    assert listed.status_code == 200, listed.text
+    row = next(
+        entry for entry in listed.json()["batches"] if entry["id"] == frozen["batch_id"]
+    )
+
+    assert row["version_id"] == frozen["version_id"]
+    assert row["version_number"] == 1
+    assert row["bank"] == "Bank Ayandeh"
+    assert row["source_account"] == "Centre Account"
+    assert row["mapping_version"] == 1
+    assert row["warning_count"] == 0
+    assert row["prepared_by"] == "approval_accountant"
+    assert row["finalized_by"] == "approval_accountant"
+    assert row["version_created_at"] is not None
 
 
 def test_the_approval_view_shows_the_decision_once_one_exists(world: dict[str, Any]) -> None:
