@@ -47,6 +47,10 @@ APPROVAL_VIEW = (
 )
 APPROVE = ("POST", "/api/v1/payment-batches/{batch_id}/versions/{version_id}/approve")
 REJECT = ("POST", "/api/v1/payment-batches/{batch_id}/versions/{version_id}/reject")
+PREVIEW_EXPORT = (
+    "POST",
+    "/api/v1/payment-batches/{batch_id}/versions/{version_id}/exports/preview",
+)
 
 # What each route must declare, and nothing else. The create is the only one that writes.
 EXPECTED: dict[tuple[str, str], set[str]] = {
@@ -80,6 +84,11 @@ EXPECTED: dict[tuple[str, str], set[str]] = {
     # stop a payment may also authorise one.
     APPROVE: {"payment_batch_version.approve"},
     REJECT: {"payment_batch_version.reject"},
+    # M7 slice 2. `permission_catalog.yaml:490` gives this to `accountant` and not to `manager`,
+    # which is the right way round and worth stating: rendering a file to look at is preparation
+    # work, and giving the manager who approves it the ability to produce it too would put both
+    # sides of the export on one desk.
+    PREVIEW_EXPORT: {"bank_export.generate_preview"},
 }
 
 SEED = (

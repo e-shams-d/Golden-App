@@ -41,6 +41,7 @@ from app.api.v1.auth import RecentAuthRequiredError, authenticated_actor, requir
 from app.audit.redaction import RedactionPolicy
 from app.audit.writer import AuditActor, AuditContext
 from app.batching.splitting import SplittingRules, split
+from app.commands import bank_export as export_commands
 from app.commands import payment_batch as commands
 from app.commands import payment_batch_approval as approval_commands
 from app.core.errors import (
@@ -1347,3 +1348,103 @@ def _prior_decision(decision: BatchApproval | None) -> PriorDecision | None:
         approved_content_hash=decision.approved_content_hash,
         reason=decision.reason,
     )
+
+
+# ---------------------------------------------------------------------------
+# M7 slice 2. The preview export.
+# ---------------------------------------------------------------------------
+
+
+class ExportGenerated(BaseModel):
+    """`05_API_Specification.md:1466-1478`.
+
+    `sendable` is not in document 05 and is deliberate. `15_Agent_Implementation_Plan.md:936`
+    requires a preview to be "visibly marked non-sendable", and a screen cannot mark what the
+    response does not say. Derived from `export_type` rather than stored, because a stored
+    boolean is a second place for the same fact to be wrong.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    export_number: str
+    export_type: str
+    sendable: bool
+    row_count: int
+    total_amount_irr: str
+    content_hash: str
+    file_sha256_hash: str
+    file_id: uuid.UUID
+    generated_at: datetime
+    replayed: bool = False
+
+
+@router.post(
+    "/{batch_id}/versions/{version_id}/exports/preview",
+    response_model=ExportGenerated,
+    status_code=201,
+    operation_id="generateBankExportPreview",
+    summary="Render this version as a bank file that can be looked at and never sent.",
+    responses=RESPONSES,
+    dependencies=[requires(declare("bank_export.generate_preview"))],
+)
+def generate_export_preview(
+    batch_id: uuid.UUID,
+    version_id: uuid.UUID,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> ExportGenerated:
+    """`POST /api/v1/payment-batches/{batch_id}/versions/{version_id}/exports/preview`.
+
+    **201, not 202.** `:1478` says "Response is `202` when worker processing is used", and this
+    path uses none — the file is rendered, stored and recorded inside the request. Returning 202
+    would tell a client to poll for something already finished. Slice 3's final export is where
+    asynchronous generation is decided, and the status code follows that decision rather than
+    anticipating it.
+
+    **No `If-Match`.** `command_catalog.yaml` asks only for idempotency here. A preview changes no
+    state a caller could hold a stale view of: it does not move the version, does not touch the
+    batch, and writes a row nothing else reads yet.
+
+    **Any state, including a draft.** `:1478` — "Preview may be generated before approval." The
+    point of a preview is to see what the file would be *before* committing to it, so a guard
+    requiring `ready_for_approval` would remove the only moment it earns its name.
+    """
+
+    if idempotency_key is None:
+        raise PreconditionRequiredError("Idempotency-Key")
+
+    now = utc_now()
+    with runtime.uow_factory() as uow:
+        result = export_commands.generate_preview(
+            export_commands.GeneratePreview(
+                payment_batch_id=batch_id,
+                payment_batch_version_id=version_id,
+            ),
+            uow=uow,
+            storage=runtime.storage,
+            policy=BATCH_REDACTION,
+            actor=_audit_actor(actor),
+            context=AuditContext(request_id=get_request_id()),
+            idempotency_key=idempotency_key,
+            now=now,
+        )
+        rendered = ExportGenerated(
+            id=result.export.id,
+            export_number=result.export.export_number,
+            export_type=result.export.export_type,
+            # SVC-EXPORT-002's visible half. A preview is never sendable, and the response says
+            # so rather than leaving a screen to infer it from a type string.
+            sendable=result.export.export_type != "preview",
+            row_count=result.export.row_count,
+            total_amount_irr=str(result.export.total_amount_irr),
+            content_hash=result.export.content_hash,
+            file_sha256_hash=result.export.file_sha256_hash,
+            file_id=result.export.file_id,
+            generated_at=result.export.generated_at,
+            replayed=result.replayed,
+        )
+        uow.commit()
+
+    return rendered

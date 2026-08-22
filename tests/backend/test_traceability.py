@@ -461,13 +461,11 @@ PENDING: dict[str, str] = {
     # Slice 1's eight are gone from this dictionary, discharged by
     # `tests/backend/test_approval_schema.py`, `tests/integration/test_batch_approval.py` and
     # `tests/integration/test_approval_table_privileges.py`.
-    "DB-EXPORT-001": "M7 slice 2 — bank_excel_exports matches document 04, parsed",
-    "SVC-EXPORT-001": "M7 slice 2 — the record exists only after the file verifies",
-    "SVC-EXPORT-002": "M7 slice 2 — a preview is permanently non-sendable and cannot be promoted",
-    "SVC-EXPORT-003": "M7 slice 2 — amounts are integers in the file, never floats",
-    "SVC-EXPORT-004": "M7 slice 2 — Persian and English round-trip; row order is the version's",
-    "SEC-EXPORT-001": "M7 slice 2 — formula-like untrusted text is inert in the written cell",
-    "AUD-EXPORT-001": "M7 slice 2 — preview_generated, from the registry not a literal",
+    #
+    # Slice 2's seven are gone too, discharged by `tests/backend/test_export_schema.py`,
+    # `tests/backend/test_excel_writer.py`, `tests/integration/test_export_preview.py` and
+    # `tests/integration/test_export_table_privileges.py`. G-1 was answered on 2026-08-22, which
+    # is what let the slice be written at all.
     "SVC-EXPORT-005": "M7 slice 3 — a final export needs an approval for the exact version",
     "SVC-INTEGRITY-001": "M7 slice 3 — all eight of §15.5, eight assertions with eight cases",
     "SVC-INTEGRITY-002": "M7 slice 3 — a mismatch quarantines and raises the security event",

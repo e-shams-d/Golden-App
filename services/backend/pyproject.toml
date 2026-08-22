@@ -14,6 +14,20 @@ dependencies = [
   "argon2-cffi==25.1.0",
   "celery[redis]==5.5.3",
   "fastapi==0.139.0",
+  # The bank file writer, and the only new production dependency M7 adds. G-1 in
+  # `docs/handoff/M7_IMPLEMENTATION_PLAN.md`, approved by the project owner on 2026-08-22.
+  #
+  # **Chosen for what the deployment can do, not for features.** MIT licensed and pure Python —
+  # `find .venv/lib -name '*.so'` finds nothing for it or for its one dependency `et-xmlfile` —
+  # so there is no native build step, no compiler needed on the target, and the wheel can be
+  # vendored for a network that cannot reach a registry. Two packages in total.
+  #
+  # **Verified against `15_Agent_Implementation_Plan.md` §15.6's requirements before it was
+  # pinned**, rather than assumed: amounts round-trip as `int` (12,345,678,901,234 exactly, with
+  # no float anywhere), Persian text survives, row order is preserved, and formula-like text can
+  # be rendered inert. `tests/backend/test_excel_writer.py` re-asserts each of those against the
+  # written file, so this comment is not the evidence.
+  "openpyxl==3.1.5",
   "pydantic==2.11.10",
   "pydantic-settings==2.10.1",
   "psycopg[binary]==3.2.12",
@@ -42,6 +56,12 @@ dev = [
   "pytest==9.0.2",
   "pytest-cov==7.0.0",
   "ruff==0.14.3",
+  # Stubs only, and deliberately in the dev group rather than beside `openpyxl` itself: they
+  # are not imported at runtime and must not reach the deployed image. Without them mypy
+  # reports `import-untyped` for every openpyxl import, and the alternative — an
+  # `ignore_missing_imports` override — would silence real type errors in the one module that
+  # writes the file a bank receives.
+  "types-openpyxl==3.1.5.20250919",
 ]
 
 [tool.setuptools.packages.find]
@@ -102,6 +122,14 @@ ignore = ["B008"]
 # is that it normalises to the same account as the ASCII spelling. Writing that
 # constant in ASCII would delete the test while leaving it green.
 "**/test_beneficiaries.py" = ["RUF001"]
+# M7 slice 2. The bank file's column headers are Persian because the file is read by an
+# Iranian bank, and the formula-introducer guard has to name the zero-width and
+# bidirectional marks a payee name can legitimately contain — those characters are the
+# subject of the code, not a stray paste. `15_Agent_Implementation_Plan.md:972-974`
+# requires Persian and English text to round-trip, which is asserted against the written
+# file rather than against these constants.
+"**/exports/excel.py" = ["RUF001"]
+"**/test_excel_writer.py" = ["RUF001"]
 
 [tool.mypy]
 python_version = "3.12"

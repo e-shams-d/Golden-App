@@ -51,6 +51,10 @@ EXPECTED_TABLES = frozenset(
         # `020-runtime-roles.sql` gives new tables SELECT and INSERT only, so no runtime role
         # can rewrite a decision, and `20260822_0020` adds no grant.
         "batch_approvals",
+        # M7 slice 2, §11.8. One table for both artifact kinds, because a preview and a final
+        # export are the same rendering of the same version. `20260822_0021` likewise adds no
+        # grant, which is what makes `export_type` unwritable and a preview unpromotable.
+        "bank_excel_exports",
         "payment_attempt_allocations",
         "payment_attempts",
         "payment_batch_items",
