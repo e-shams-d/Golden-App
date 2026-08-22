@@ -80,6 +80,14 @@ STATUS_COLUMN_TO_AGGREGATE: dict[tuple[str, str], str] = {
     ("payment_attempts", "status"): "payment_attempt",
     ("payment_batches", "status"): "payment_batch",
     ("payment_batch_versions", "status"): "payment_batch_version",
+    # M7 slice 2. `05_API_Specification.md:536` lists a *different* five states for this column —
+    # it has `superseded`, which the catalogue does not, and `failed` where the catalogue says
+    # `generation_failed`. That is DOC-CONFLICT-016, and mapping the column here is what settles
+    # it without anybody having to arbitrate: this gate holds the CHECK to the aggregate exactly,
+    # so the catalogue's eight are what the column permits and document 05 is owed an editorial
+    # fix. G-3 records the one substantive part, which is whether an export can be `superseded`
+    # at all or whether replacement always voids it.
+    ("bank_excel_exports", "status"): "bank_export",
 }
 
 # Columns whose aggregate the catalogue records with `canonical: null`, and which

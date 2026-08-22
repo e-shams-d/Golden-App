@@ -212,6 +212,13 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     ): PERMISSION,
     ("POST", "/api/v1/payment-batches/{batch_id}/versions/{version_id}/approve"): PERMISSION,
     ("POST", "/api/v1/payment-batches/{batch_id}/versions/{version_id}/reject"): PERMISSION,
+    # M7 slice 2. `PERMISSION` again, and the file it produces is *not* reachable through the
+    # generic file surface: `bank_export` has no ownership resolver, and `may_access` returns
+    # `False` for a category with none. The export's own download route is slice 4's.
+    (
+        "POST",
+        "/api/v1/payment-batches/{batch_id}/versions/{version_id}/exports/preview",
+    ): PERMISSION,
     # M5 slice 8. The two reads the screens need, and which nothing had built: eleven
     # published operations and only the revision history read. Both are `DUAL` — a trader
     # sees their own through `scoped()`, an accountant sees the queue through
@@ -508,6 +515,11 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
         "/api/v1/payment-batches/{batch_id}/versions/{version_id}/reject",
         "permission",
     ): "test_rejecting_needs_the_reject_permission",
+    (
+        "POST",
+        "/api/v1/payment-batches/{batch_id}/versions/{version_id}/exports/preview",
+        "permission",
+    ): "test_generating_a_preview_needs_the_preview_permission",
     # M5 slice 8. The two reads, four entries because both are `DUAL`. The ownership pair
     # answers `404` and the permission pair `403`, and each is asserted in its own test
     # rather than shared: the list's ownership case is about which rows come back, and the

@@ -195,6 +195,10 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "getPaymentBatchApprovalView",
         "approvePaymentBatchVersion",
         "rejectPaymentBatchVersion",
+        # M7 slice 2. `05_API_Specification.md:1466`. The final export is slice 3's and is
+        # deliberately absent here — the two are separate operations because §1 forbids one
+        # becoming the other.
+        "generateBankExportPreview",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

@@ -474,6 +474,16 @@ APPROVE_PAYMENT_BATCH_VERSION = CommandNames(
     catalogued=True,
 )
 
+GENERATE_EXPORT_PREVIEW = CommandNames(
+    audit_action="bank_export.preview_generated",
+    # `command_catalog.yaml:180` gives this `"outbox_event": null`, and the catalogue is right: a
+    # preview is something an accountant looks at, not something any consumer outside the platform
+    # can act on. `BankExportSent` is the one event this family owns and it belongs to slice 4's
+    # mark-sent, which is the moment a payment genuinely left the building.
+    outbox_event_type=None,
+    catalogued=True,
+)
+
 INVALIDATE_BATCH_APPROVAL = CommandNames(
     audit_action="payment_batch_approval.invalidated",
     # `audit_outbox_catalog.yaml:31` names the action and its `outbox_events` list names nothing
@@ -631,4 +641,6 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     REJECT_PAYMENT_BATCH_VERSION,
     # M7 slice 5A. In the tuple in the same commit as the entry, for the reason above it.
     INVALIDATE_BATCH_APPROVAL,
+    # M7 slice 2, same commit as its entry, same reason.
+    GENERATE_EXPORT_PREVIEW,
 )

@@ -1726,6 +1726,74 @@
         "title": "ErrorEnvelope",
         "type": "object"
       },
+      "ExportGenerated": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1466-1478`.\n\n`sendable` is not in document 05 and is deliberate. `15_Agent_Implementation_Plan.md:936`\nrequires a preview to be \"visibly marked non-sendable\", and a screen cannot mark what the\nresponse does not say. Derived from `export_type` rather than stored, because a stored\nboolean is a second place for the same fact to be wrong.",
+        "properties": {
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "export_number": {
+            "title": "Export Number",
+            "type": "string"
+          },
+          "export_type": {
+            "title": "Export Type",
+            "type": "string"
+          },
+          "file_id": {
+            "format": "uuid",
+            "title": "File Id",
+            "type": "string"
+          },
+          "file_sha256_hash": {
+            "title": "File Sha256 Hash",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "replayed": {
+            "default": false,
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "sendable": {
+            "title": "Sendable",
+            "type": "boolean"
+          },
+          "total_amount_irr": {
+            "title": "Total Amount Irr",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "export_number",
+          "export_type",
+          "sendable",
+          "row_count",
+          "total_amount_irr",
+          "content_hash",
+          "file_sha256_hash",
+          "file_id",
+          "generated_at"
+        ],
+        "title": "ExportGenerated",
+        "type": "object"
+      },
       "FeatureFlagState": {
         "additionalProperties": false,
         "properties": {
@@ -7298,6 +7366,116 @@
           }
         },
         "summary": "Approve the exact version whose hash the caller quotes back.",
+        "tags": [
+          "payment-batches"
+        ]
+      }
+    },
+    "/api/v1/payment-batches/{batch_id}/versions/{version_id}/exports/preview": {
+      "post": {
+        "description": "`POST /api/v1/payment-batches/{batch_id}/versions/{version_id}/exports/preview`.\n\n**201, not 202.** `:1478` says \"Response is `202` when worker processing is used\", and this\npath uses none — the file is rendered, stored and recorded inside the request. Returning 202\nwould tell a client to poll for something already finished. Slice 3's final export is where\nasynchronous generation is decided, and the status code follows that decision rather than\nanticipating it.\n\n**No `If-Match`.** `command_catalog.yaml` asks only for idempotency here. A preview changes no\nstate a caller could hold a stale view of: it does not move the version, does not touch the\nbatch, and writes a row nothing else reads yet.\n\n**Any state, including a draft.** `:1478` — \"Preview may be generated before approval.\" The\npoint of a preview is to see what the file would be *before* committing to it, so a guard\nrequiring `ready_for_approval` would remove the only moment it earns its name.",
+        "operationId": "generateBankExportPreview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportGenerated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks payment_batch.read."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A named request or bank version is missing."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A named revision or record version is no longer current."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Render this version as a bank file that can be looked at and never sent.",
         "tags": [
           "payment-batches"
         ]

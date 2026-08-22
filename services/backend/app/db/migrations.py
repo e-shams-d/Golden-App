@@ -65,4 +65,9 @@ from __future__ import annotations
 # bootstrap default is SELECT+INSERT, and §11.7 says approved/rejected rows are never updated,
 # so the table's append-only property is the absence of a grant rather than a rule somebody
 # must remember.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260822_0020"})
+# 20260822_0021 adds `bank_excel_exports` (§11.8) with the composite key to `batch_approvals`
+# that slice 1's `uq_batch_approvals_version_pair` exists for, and the partial unique index that
+# permits one *active* final export per version while leaving previews unconstrained. No grant of
+# any kind, which is what makes `export_type` unwritable by the runtime and a preview therefore
+# unpromotable — `FINANCIAL_INTEGRITY_BASELINE.md` §1 enforced by an absence rather than a rule.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260822_0021"})

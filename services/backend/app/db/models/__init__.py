@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from app.db.models.audit_log import AuditLog
 from app.db.models.bank import BankAccount, BankMapping, BankProfile, BankProfileVersion
+from app.db.models.bank_export import BankExcelExport
 from app.db.models.beneficiary import Beneficiary
 from app.db.models.center_profile import CenterProfile
 from app.db.models.configuration import (
@@ -43,6 +44,7 @@ __all__ = [
     "AuthEvent",
     "AuthSession",
     "BankAccount",
+    "BankExcelExport",
     "BankMapping",
     "BankProfile",
     "BankProfileVersion",
