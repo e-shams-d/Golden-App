@@ -474,6 +474,23 @@ APPROVE_PAYMENT_BATCH_VERSION = CommandNames(
     catalogued=True,
 )
 
+INVALIDATE_BATCH_APPROVAL = CommandNames(
+    audit_action="payment_batch_approval.invalidated",
+    # `audit_outbox_catalog.yaml:31` names the action and its `outbox_events` list names nothing
+    # for it. That is consistent: an invalidation is the *inside* of a replacement, which already
+    # publishes nothing, so there is no moment here that a consumer outside the platform could
+    # act on. An invented `PaymentBatchApprovalInvalidated` would be an event type no consumer
+    # contract names.
+    #
+    # **This name belongs to no command of its own.** It is written by
+    # `create_replacement_version`, because `05_API_Specification.md` defines no invalidation
+    # endpoint and `:1366` makes the replacement the thing that invalidates. The M7 plan
+    # originally said otherwise and slice 5A corrected it — a command here would have been a
+    # route no document defines, for a permission that authorises nothing.
+    outbox_event_type=None,
+    catalogued=True,
+)
+
 REJECT_PAYMENT_BATCH_VERSION = CommandNames(
     audit_action="payment_batch_version.rejected",
     # `command_catalog.yaml:166` gives this one `"outbox_event": null`, and
@@ -612,4 +629,6 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     # goes unchecked.
     APPROVE_PAYMENT_BATCH_VERSION,
     REJECT_PAYMENT_BATCH_VERSION,
+    # M7 slice 5A. In the tuple in the same commit as the entry, for the reason above it.
+    INVALIDATE_BATCH_APPROVAL,
 )

@@ -479,11 +479,11 @@ PENDING: dict[str, str] = {
     "SVC-SENT-002": "M7 slice 4 — a downloaded, unsent export is visibly unsent",
     "CON-SENT-001": "M7 slice 4 — mark-sent is idempotent and does not move the timestamp",
     "AUD-SENT-001": "M7 slice 4 — sent_marked with BankExportSent, both catalogued",
-    "SVC-INVALIDATE-001": "M7 slice 5 — a replacement makes a prior approval non-operational",
-    "SVC-INVALIDATE-002": "M7 slice 5 — the replacement needs a new approval, same separation rule",
-    "SVC-INVALIDATE-003": "M7 slice 5 — a superseded version's approval exports nothing",
-    "AUD-INVALIDATE-001": "M7 slice 5 — payment_batch_approval.invalidated, catalogued",
-    "TRACE-INVALIDATE-001": "M7 slice 5 — a sent file names its own approval, not the other one",
+    # Slice 5 split into 5A and 5B when slice 1 landed and G-1 still had no answer: three of its
+    # five obligations are about the approval and two are about the export. 5A discharged the
+    # three; these two are the export half and wait on slices 2 to 4.
+    "SVC-INVALIDATE-003": "M7 slice 5B — a superseded version's approval exports nothing",
+    "TRACE-INVALIDATE-001": "M7 slice 5B — a sent file names its own approval, not the other one",
     "TRACE-DOD-013": "M7 slice 6 — the whole chain, recoverable from the sent export alone",
     "TRACE-DOD-014": "M7 slice 6 — break-glass is absent, asserted structurally",
     "TRACE-DOD-015": "M7 slice 6 — no path lets one actor finalize and approve",
