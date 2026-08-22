@@ -493,6 +493,15 @@ GENERATE_FINAL_EXPORT = CommandNames(
     catalogued=True,
 )
 
+MARK_EXPORT_SENT = CommandNames(
+    audit_action="bank_export.sent_marked",
+    # The one event this family owns. `command_catalog.yaml:207` names it and
+    # `audit_outbox_catalog.yaml:75` defines it — because a person saying "I uploaded this" is
+    # the moment a payment leaves the building, and generating the file was not.
+    outbox_event_type="BankExportSent",
+    catalogued=True,
+)
+
 QUARANTINE_EXPORT_ON_INTEGRITY_FAILURE = CommandNames(
     audit_action="bank_export.integrity_failed",
     # `audit_outbox_catalog.yaml:34` names the action; no event accompanies it.
@@ -670,4 +679,6 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     # M7 slice 3.
     GENERATE_FINAL_EXPORT,
     QUARANTINE_EXPORT_ON_INTEGRITY_FAILURE,
+    # M7 slice 4.
+    MARK_EXPORT_SENT,
 )

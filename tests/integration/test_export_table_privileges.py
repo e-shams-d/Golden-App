@@ -31,10 +31,15 @@ pytestmark = pytest.mark.integration
 
 TABLE = "bank_excel_exports"
 
-# The columns slices 3 and 4 will legitimately need to write, and which must therefore be granted
-# **by name** when they arrive. Listed here so that the day one of them becomes writable, the
-# grant is a deliberate edit to this file rather than a table-level shortcut nobody reviews.
-COLUMNS_A_LATER_SLICE_MAY_GRANT: tuple[str, ...] = (
+# The four `20260822_0022` granted, so download and mark-sent can write them. Listed to be
+# asserted as **present** now, which is the other half of the boundary: a grant that quietly
+# disappeared would make mark-sent fail at the database with no test saying why.
+#
+# `test_the_columns_a_later_slice_will_need_are_not_granted_yet` used to assert their absence and
+# was **deleted** by slice 4 rather than amended — its own docstring asked for that, and
+# `20260821_0019` did the same to `test_release_is_not_possible_yet`. A test left passing against
+# a narrower claim is worse than no test.
+COLUMNS_DOWNLOAD_AND_MARK_SENT_WRITE: tuple[str, ...] = (
     "status",
     "downloaded_at",
     "sent_to_bank_marked_at",
@@ -145,19 +150,18 @@ def test_the_columns_that_define_the_artifact_are_not_writable(
     )
 
 
-@pytest.mark.parametrize("column", COLUMNS_A_LATER_SLICE_MAY_GRANT)
-def test_the_columns_a_later_slice_will_need_are_not_granted_yet(
+@pytest.mark.parametrize("column", COLUMNS_DOWNLOAD_AND_MARK_SENT_WRITE)
+def test_the_four_columns_download_and_mark_sent_write_are_granted(
     migrated: RuntimeIdentities, column: str
 ) -> None:
-    """The withheld grants, asserted as an absence — M6 slice 2's pattern.
+    """The grants `20260822_0022` added, asserted as present.
 
-    These four are what slices 3 and 4 need for download and mark-sent. Granting them now would
-    be a capability with no command behind it, which is how `payment_batch.cancel_draft` came to
-    be an approved permission that authorises nothing (DOC-CONFLICT-056).
-
-    This test is expected to be **deleted** by the slice that grants them, not amended — the same
-    way `test_release_is_not_possible_yet` was deleted by `20260821_0019`. A test left passing
-    against a narrower claim is worse than no test.
+    The absence of these four was asserted for two slices while nothing wrote them; now that
+    something does, the assertion turns around. Both directions matter and for the same reason:
+    a grant that disappeared in a later migration would make mark-sent fail at the database with
+    nothing saying why, and one that appeared early would be a capability with no command behind
+    it — which is how `payment_batch.cancel_draft` became an approved permission that authorises
+    nothing (DOC-CONFLICT-056).
     """
 
     writable = _ask(
@@ -166,6 +170,6 @@ def test_the_columns_a_later_slice_will_need_are_not_granted_yet(
         {"role": migrated.app_role, "table": f"public.{TABLE}", "column": column},
     )
 
-    assert writable is False, (
-        f"{TABLE}.{column} is already writable, but no command in this milestone writes it yet"
+    assert writable is True, (
+        f"{TABLE}.{column} is not writable, but download or mark-sent writes it"
     )

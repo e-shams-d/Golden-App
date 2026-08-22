@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from app.api.v1.admin_users import router as admin_users_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.bank_config import router as bank_config_router
+from app.api.v1.bank_exports import router as bank_exports_router
 from app.api.v1.beneficiaries import router as beneficiaries_router
 from app.api.v1.center_profile import router as center_profile_router
 from app.api.v1.files import router as files_router
@@ -32,3 +33,7 @@ api_v1_router.include_router(bank_config_router)
 api_v1_router.include_router(beneficiaries_router)
 api_v1_router.include_router(payment_requests_router)
 api_v1_router.include_router(payment_batches_router)
+# M7 slice 4. Its own prefix rather than a branch of the batch surface, because
+# `15_Agent_Implementation_Plan.md:978` makes mark-sent act on an exact export: a batch may have
+# had several versions and several exports, and exactly one of them was uploaded to a bank.
+api_v1_router.include_router(bank_exports_router)

@@ -69,3 +69,21 @@ def open_stream(storage: StorageBackend, record: FileObject) -> FileStream:
         media_type=record.mime_type_declared,
         filename=record.original_filename,
     )
+
+
+def measure_now(storage: StorageBackend, record: FileObject) -> str | None:
+    """Re-hash the stored object and return the digest, or `None` if it is gone.
+
+    Added for M7 §15.5's eighth integrity check, which is the only one whose left side is not a
+    stored value: it exists to detect a file that changed *after* it was recorded, so the digest
+    has to be measured now rather than read from the row.
+
+    **Here rather than in the caller**, because `TRACE-DOD-003` is the reason this package exists:
+    a module outside `app/files/` names a `FileObject` and asks for what it needs, never learning
+    where the bytes are. M7 slice 4 wrote `storage.stat(record.storage_key)` at the call site
+    first and the boundary gate refused it — correctly, since ADR-003 is still open and a change
+    of storage provider must touch `app/storage/` and nothing else.
+    """
+
+    measured = storage.stat(record.storage_key)
+    return None if measured is None else measured.sha256_hash

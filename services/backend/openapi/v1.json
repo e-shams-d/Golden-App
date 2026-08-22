@@ -1726,6 +1726,118 @@
         "title": "ErrorEnvelope",
         "type": "object"
       },
+      "ExportDetail": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1500-1505`, plus the two fields §2.5 of the M7 plan argues for.\n\n`sendable` and `awaiting_send_confirmation` are not in document 05 and are deliberate.\n`15_Agent_Implementation_Plan.md:989` — \"Downloading does not mean sent\" — is this milestone's\ncentral human-factors risk: an accountant who downloads a file, emails it to the bank and\nforgets to come back leaves the system believing the payment was never made, and the next\nreconciliation cycle chases it.\n\n`SVC-SENT-002` asks that such an export be *visibly* unsent rather than merely lacking a\ntimestamp. A screen cannot show what the response does not say, and \"the timestamp is null\"\nis not something a UI should have to interpret.",
+        "properties": {
+          "awaiting_send_confirmation": {
+            "title": "Awaiting Send Confirmation",
+            "type": "boolean"
+          },
+          "batch_approval_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Approval Id"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "downloaded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Downloaded At"
+          },
+          "export_number": {
+            "title": "Export Number",
+            "type": "string"
+          },
+          "export_type": {
+            "title": "Export Type",
+            "type": "string"
+          },
+          "file_sha256_hash": {
+            "title": "File Sha256 Hash",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "payment_batch_version_id": {
+            "format": "uuid",
+            "title": "Payment Batch Version Id",
+            "type": "string"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "sendable": {
+            "title": "Sendable",
+            "type": "boolean"
+          },
+          "sent_to_bank_marked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent To Bank Marked At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "total_amount_irr": {
+            "title": "Total Amount Irr",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "export_number",
+          "export_type",
+          "status",
+          "sendable",
+          "awaiting_send_confirmation",
+          "row_count",
+          "total_amount_irr",
+          "content_hash",
+          "file_sha256_hash",
+          "payment_batch_version_id",
+          "batch_approval_id",
+          "generated_at",
+          "downloaded_at",
+          "sent_to_bank_marked_at"
+        ],
+        "title": "ExportDetail",
+        "type": "object"
+      },
       "ExportGenerated": {
         "additionalProperties": false,
         "description": "`05_API_Specification.md:1466-1478`.\n\n`sendable` is not in document 05 and is deliberate. `15_Agent_Implementation_Plan.md:936`\nrequires a preview to be \"visibly marked non-sendable\", and a screen cannot mark what the\nresponse does not say. Derived from `export_type` rather than stored, because a stored\nboolean is a second place for the same fact to be wrong.",
@@ -2038,6 +2150,41 @@
           "expected_revision_id"
         ],
         "title": "MarkEligibleRequest",
+        "type": "object"
+      },
+      "MarkSentRequest": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1523-1528`.",
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "sent_at": {
+            "format": "date-time",
+            "title": "Sent At",
+            "type": "string"
+          },
+          "submission_channel": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Submission Channel",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sent_at",
+          "submission_channel"
+        ],
+        "title": "MarkSentRequest",
         "type": "object"
       },
       "OutboxHealth": {
@@ -5053,6 +5200,277 @@
         "summary": "Create Bank Account",
         "tags": [
           "bank-configuration"
+        ]
+      }
+    },
+    "/api/v1/bank-exports/{export_id}": {
+      "get": {
+        "description": "`GET /api/v1/bank-exports/{export_id}`.\n\n`bank_export.read` goes to `accountant`, `manager` and `read_only_auditor`\n(`permission_catalog.yaml:495`) — reading what was sent is not the same authority as sending\nit, and an auditor needs the first without the second.",
+        "operationId": "getBankExport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the export permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such export."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "EXPORT_INTEGRITY_MISMATCH — revalidation failed and the export has been quarantined; or the export was already marked sent."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "What this export is, and whether anybody has confirmed sending it.",
+        "tags": [
+          "bank-exports"
+        ]
+      }
+    },
+    "/api/v1/bank-exports/{export_id}/download": {
+      "get": {
+        "description": "`GET /api/v1/bank-exports/{export_id}/download`.\n\n**Revalidated before *this* download**, per `:1514`. `SVC-INTEGRITY-003` is about the word\n\"every\": checking once at generation catches a file that was wrong when written and misses one\nthat changed afterwards, which is the only thing a checksum can actually detect. A mismatch\nquarantines and answers `409`.\n\n**`downloaded_at` is set, and it is not a lifecycle step.** It exists so that §2.5's question —\n\"who has a copy of this and has not told us they sent it\" — is answerable. The status moves to\n`downloaded` only from `validated`, so a re-download does not walk a `sent_to_bank_marked`\nexport backwards.",
+        "operationId": "downloadBankExport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the export permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such export."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "EXPORT_INTEGRITY_MISMATCH — revalidation failed and the export has been quarantined; or the export was already marked sent."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Stream the file, after revalidating it.",
+        "tags": [
+          "bank-exports"
+        ]
+      }
+    },
+    "/api/v1/bank-exports/{export_id}/mark-sent-to-bank": {
+      "post": {
+        "description": "`POST /api/v1/bank-exports/{export_id}/mark-sent-to-bank`.\n\n**Nothing here contacts a bank.** §15.7 makes submission manual by design, so this records a\nclaim a person makes — which is why it captures the channel they used and what they said\nabout it. The record has to be enough for somebody else to check the claim later.\n\n**No `If-Match`.** Document 05 shows one; §11.8 gives this table no `record_version`; and\n`command_catalog.yaml:203` says `open_conflict_if_match_target_not_defined` — the catalogue\ndescribing an unresolved contract rather than a requirement being ignored. G-13 records it.\n`Idempotency-Key` is required, and `CON-SENT-001` is what makes a retry safe.",
+        "operationId": "markBankExportSent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Export Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkSentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the export permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such export."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "EXPORT_INTEGRITY_MISMATCH — revalidation failed and the export has been quarantined; or the export was already marked sent."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Record that a person uploaded this exact file to the bank.",
+        "tags": [
+          "bank-exports"
         ]
       }
     },

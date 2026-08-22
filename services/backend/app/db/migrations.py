@@ -70,4 +70,8 @@ from __future__ import annotations
 # permits one *active* final export per version while leaving previews unconstrained. No grant of
 # any kind, which is what makes `export_type` unwritable by the runtime and a preview therefore
 # unpromotable — `FINANCIAL_INTEGRITY_BASELINE.md` §1 enforced by an absence rather than a rule.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260822_0021"})
+# 20260822_0022 widens that by exactly four columns — `status`, `downloaded_at`,
+# `sent_to_bank_marked_at`, `sent_to_bank_marked_by_admin_user_id` — so an export can be
+# downloaded and marked sent. Column-level, so `export_type`, `batch_approval_id` and both hashes
+# stay unwritable and a preview stays unpromotable.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260822_0022"})

@@ -50,10 +50,12 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.audit.outbox import OutboxMessage, OutboxWriter
 from app.audit.redaction import RedactionPolicy
 from app.audit.registry import (
     GENERATE_EXPORT_PREVIEW,
     GENERATE_FINAL_EXPORT,
+    MARK_EXPORT_SENT,
     QUARANTINE_EXPORT_ON_INTEGRITY_FAILURE,
 )
 from app.audit.writer import AuditActor, AuditContext, AuditEntry, AuditWriter
@@ -71,6 +73,7 @@ from app.db.models.payment_batch import (
 from app.db.unit_of_work import SqlAlchemyUnitOfWork
 from app.exports.excel import ExportRow, render_bank_file
 from app.exports.integrity import IntegrityFacts, IntegrityFailure, failed_checks
+from app.files.download import measure_now
 from app.idempotency import IdempotencyResolver
 from app.storage.interface import StorageBackend, StoredObject
 from app.storage.keys import generate_storage_key
@@ -80,6 +83,9 @@ METADATA_VERSION = 1
 
 PREVIEW_OPERATION = "bank_export.generate_preview"
 FINAL_OPERATION = "bank_export.generate_final"
+MARK_SENT_OPERATION = "bank_export.mark_sent"
+
+PAYLOAD_VERSION = 1
 
 # What `batch_approvals.decision` and `payment_batch_versions.status` must say before a final
 # export may exist. Both are checked, and they answer different questions: the decision says a
@@ -117,6 +123,15 @@ STATUS_VALIDATED = "validated"
 # quarantine is evidence, not deletion — and `uq_active_final_export_per_version`'s predicate
 # excludes this status, so a quarantined export does not block the next attempt.
 STATUS_QUARANTINED = "quarantined"
+
+# `15_Agent_Implementation_Plan.md:989`: "Downloading does not mean sent." Two separate statuses
+# for two separate facts, and the gap between them is the milestone's central human-factors risk.
+STATUS_DOWNLOADED = "downloaded"
+STATUS_SENT = "sent_to_bank_marked"
+
+# The container follows. `status_catalog.yaml` marks nine of eleven `payment_batch` states
+# `derived: true`, so this is a projection rather than an independent decision.
+BATCH_SENT = "sent_to_bank"
 
 # `file_objects.storage_status`. The bytes are on disk before the row exists, so `available` is
 # the only honest value — anything else would describe a file that is in fact there.
@@ -431,7 +446,16 @@ def generate_final(
         ) from None
 
     failures = failed_checks(
-        _facts_for(export, version=version, approval=approval, measured=_measure(storage, key))
+        # Measured through the file service, so this module never learns where the bytes are.
+        # Re-read rather than reused from the write above, which is the eighth check's whole
+        # purpose: it exists to catch a file that changed after it was recorded, and reusing the
+        # write's own digest would compare a number against itself.
+        _facts_for(
+            export,
+            version=version,
+            approval=approval,
+            measured=measure_now(storage, file_record) or "",
+        )
     )
     if failures:
         _quarantine(
@@ -457,6 +481,308 @@ def generate_final(
     )
 
     return ExportResult(export=export, file=file_record)
+
+
+@dataclass(frozen=True, slots=True)
+class MarkSent:
+    """`05_API_Specification.md:1516-1530`. An **export** id, not a batch id.
+
+    `15_Agent_Implementation_Plan.md:978`: "Mark sent acts on an exact `BankExcelExport`, not a
+    generic batch." The distinction is the milestone's: a batch may have had several versions and
+    several exports, and only one of them was actually uploaded to the bank.
+    """
+
+    bank_excel_export_id: uuid.UUID
+    sent_at: datetime
+    submission_channel: str
+    note: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SentResult:
+    export: BankExcelExport
+    replayed: bool = False
+
+
+def revalidate_for_download(
+    export: BankExcelExport,
+    *,
+    session: Session,
+    storage: StorageBackend,
+    policy: RedactionPolicy,
+    actor: AuditActor,
+    context: AuditContext,
+    now: datetime,
+) -> None:
+    """`SVC-INTEGRITY-003`. The eight checks, again, before **this** download.
+
+    `05_API_Specification.md:1514`: "Before every final download, the server revalidates export
+    integrity." *Every* is the word that matters — validating once at generation would catch a
+    file that was wrong when it was written and miss one that changed afterwards, which is the
+    only failure mode a checksum can actually detect.
+
+    A preview is not revalidated because there is nothing to revalidate it against: it has no
+    approval, and half the comparisons read one. It is also not sendable, so a preview whose bytes
+    drifted is a file nobody can act on.
+    """
+
+    if export.export_type != EXPORT_FINAL:
+        return
+
+    version = session.get(PaymentBatchVersion, export.payment_batch_version_id)
+    approval = session.scalar(
+        select(BatchApproval).where(
+            BatchApproval.payment_batch_version_id == export.payment_batch_version_id
+        )
+    )
+    if version is None or approval is None:  # pragma: no cover - the FKs guarantee both
+        raise NotFoundError()
+
+    record = session.get(FileObject, export.file_id)
+    if record is None:  # pragma: no cover - `fk_bank_exports_file` guarantees it
+        raise NotFoundError()
+
+    # Through the file service, which keeps the address. `TRACE-DOD-003` refused
+    # `storage.stat(record.storage_key)` here, correctly: ADR-003 has not chosen a production
+    # storage adapter, and a change of provider must touch `app/storage/` and nothing else.
+    measured = measure_now(storage, record)
+    if measured is None:
+        raise BusinessRuleViolationError(
+            f"export {export.export_number} names a file storage cannot produce; it is not "
+            "downloadable and nothing may claim it was sent"
+        )
+
+    failures = failed_checks(
+        _facts_for(export, version=version, approval=approval, measured=measured)
+    )
+    if failures:
+        batch = session.get(PaymentBatch, version.payment_batch_id)
+        if batch is None:  # pragma: no cover - the version's FK guarantees it
+            raise NotFoundError()
+        _quarantine(
+            session, policy, batch=batch, export=export, failures=failures, actor=actor,
+            context=context, now=now,
+        )
+        raise IntegrityRefused(failures)
+
+
+def mark_sent(
+    command: MarkSent,
+    *,
+    uow: SqlAlchemyUnitOfWork,
+    storage: StorageBackend,
+    policy: RedactionPolicy,
+    actor: AuditActor,
+    context: AuditContext,
+    idempotency_key: str,
+    now: datetime,
+) -> SentResult:
+    """Record that a human uploaded this exact file to the bank.
+
+    **Nothing here talks to a bank.** §15.7 makes submission manual by design and there is no
+    channel to automate, so this command records a claim a person makes. That is why it captures
+    *which* channel and *what* they said about it: the record has to be enough for somebody else
+    to check the claim later.
+
+    **Revalidated first, because `:1514` says before download *and* before mark-sent.** A file
+    that changed between being downloaded and being marked sent is the case this catches, and it
+    is not far-fetched: the gap between the two is however long it takes a person to open a bank
+    portal.
+    """
+
+    resolver = IdempotencyResolver(uow)
+    claim = resolver.claim(
+        actor_type=actor.actor_type,
+        actor_id=actor.idempotency_scope_id,
+        operation=MARK_SENT_OPERATION,
+        idempotency_key=idempotency_key,
+        payload={
+            "bank_excel_export_id": str(command.bank_excel_export_id),
+            "submission_channel": command.submission_channel,
+            "note": command.note,
+        },
+    )
+
+    session = uow.session
+    if claim.is_replay:
+        # `CON-SENT-001`. The stored result, so a retry neither moves the timestamp nor writes a
+        # second audit row.
+        stored = claim.record.response_body or {}
+        export = session.get(BankExcelExport, uuid.UUID(str(stored["export_id"])))
+        if export is None:  # pragma: no cover - the record made it
+            raise NotFoundError()
+        return SentResult(export=export, replayed=True)
+
+    lock_rows(
+        session,
+        [LockTarget.of(LockScope.EXPORT_MARK_SENT, BankExcelExport, command.bank_excel_export_id)],
+        models={BankExcelExport.__tablename__: BankExcelExport},
+    )
+
+    export = session.get(BankExcelExport, command.bank_excel_export_id)
+    if export is None:
+        raise NotFoundError()
+
+    # `SVC-SENT-001`. A preview is not sendable, and this is the service half of a property the
+    # database already holds by refusing to let anything write `export_type`.
+    if export.export_type != EXPORT_FINAL:
+        raise BusinessRuleViolationError(
+            "a preview cannot be marked sent to the bank; it is a rendering to look at, and "
+            "15_Agent_Implementation_Plan.md:936 requires it to stay permanently non-sendable"
+        )
+    if export.sent_to_bank_marked_at is not None:
+        raise ConflictError(
+            f"export {export.export_number} was already marked sent at "
+            f"{export.sent_to_bank_marked_at.isoformat()}"
+        )
+    if export.status == STATUS_QUARANTINED:
+        raise BusinessRuleViolationError(
+            f"export {export.export_number} is quarantined and cannot be marked sent"
+        )
+
+    if not command.submission_channel.strip():
+        raise BusinessRuleViolationError(
+            "a submission channel is required; 15_Agent_Implementation_Plan.md:983 lists it "
+            "among what mark-sent records"
+        )
+
+    revalidate_for_download(
+        export, session=session, storage=storage, policy=policy, actor=actor, context=context,
+        now=now,
+    )
+
+    export.sent_to_bank_marked_at = command.sent_at
+    export.sent_to_bank_marked_by_admin_user_id = _generator(actor)
+    export.status = STATUS_SENT
+
+    version = session.get(PaymentBatchVersion, export.payment_batch_version_id)
+    if version is None:  # pragma: no cover - the FK guarantees it
+        raise NotFoundError()
+    batch = session.get(PaymentBatch, version.payment_batch_id)
+    if batch is None:  # pragma: no cover - the FK guarantees it
+        raise NotFoundError()
+    batch.status = BATCH_SENT
+
+    uow.flush()
+
+    _audit_sent(
+        session, policy, batch=batch, version=version, export=export, command=command,
+        actor=actor, context=context, now=now,
+    )
+    _publish_sent(session, policy, batch=batch, version=version, export=export, context=context)
+
+    resolver.complete(
+        claim,
+        response_code=200,
+        response_body={"export_id": str(export.id)},
+        resource_type="bank_excel_export",
+        resource_id=export.id,
+        now=now,
+    )
+
+    return SentResult(export=export)
+
+
+def _audit_sent(
+    session: Session,
+    policy: RedactionPolicy,
+    *,
+    batch: PaymentBatch,
+    version: PaymentBatchVersion,
+    export: BankExcelExport,
+    command: MarkSent,
+    actor: AuditActor,
+    context: AuditContext,
+    now: datetime,
+) -> None:
+    """`AUD-SENT-001`, carrying all seven things §15.7 says mark-sent records.
+
+    Export id, batch and version, actor, sent timestamp, submission channel, note, and the
+    integrity state — the last being the two hashes, which is what "checksum/integrity state"
+    means for a row that has just been revalidated.
+
+    **Two of the seven live only here.** §11.8 gives the table no column for `submission_channel`
+    or `note`, and inventing two would be schema drift in the one milestone where the schema is
+    the evidence. An audit row is where a recorded fact with no column belongs — it is append-only
+    and the runtime cannot rewrite it, which is a stronger guarantee than a nullable column would
+    have had.
+    """
+
+    AuditWriter(session, policy).record(
+        AuditEntry(
+            action=MARK_EXPORT_SENT.audit_action,
+            outcome="success",
+            metadata_schema=METADATA_SCHEMA,
+            metadata_version=METADATA_VERSION,
+            entity_type="bank_excel_export",
+            entity_id=export.id,
+            entity_record_version=batch.record_version,
+            previous_values={"status": STATUS_DOWNLOADED, "sent_to_bank_marked_at": None},
+            new_values={
+                "status": export.status,
+                "payment_batch_id": str(batch.id),
+                "payment_batch_version_id": str(version.id),
+                "sent_to_bank_marked_at": command.sent_at.isoformat(),
+                "sent_to_bank_marked_by_admin_user_id": str(
+                    export.sent_to_bank_marked_by_admin_user_id
+                ),
+                "submission_channel": command.submission_channel,
+                "content_hash": export.content_hash,
+                "file_sha256_hash": export.file_sha256_hash,
+                "batch_status": batch.status,
+            },
+            reason=command.note,
+            occurred_at=now,
+            metadata={"operation": MARK_EXPORT_SENT.audit_action},
+        ),
+        actor=actor,
+        context=context,
+    )
+
+
+def _publish_sent(
+    session: Session,
+    policy: RedactionPolicy,
+    *,
+    batch: PaymentBatch,
+    version: PaymentBatchVersion,
+    export: BankExcelExport,
+    context: AuditContext,
+) -> None:
+    """`BankExportSent` — the one outbox event this family owns.
+
+    `command_catalog.yaml:207` names it, and it is the only export command that publishes.
+    Generating a file is not the moment a payment leaves the building; a person saying they
+    uploaded it is.
+    """
+
+    event = MARK_EXPORT_SENT.outbox_event_type
+    if event is None:  # pragma: no cover - the registry entry names one
+        raise RuntimeError(
+            "MARK_EXPORT_SENT has no outbox event type, and command_catalog.yaml:207 requires "
+            "BankExportSent"
+        )
+
+    OutboxWriter(session, policy).enqueue(
+        OutboxMessage(
+            aggregate_type="bank_excel_export",
+            aggregate_id=export.id,
+            aggregate_version=batch.record_version,
+            event_type=event,
+            payload={
+                "bank_excel_export_id": str(export.id),
+                "export_number": export.export_number,
+                "payment_batch_id": str(batch.id),
+                "payment_batch_version_id": str(version.id),
+                "row_count": export.row_count,
+                "total_amount_irr": str(export.total_amount_irr),
+                "file_sha256_hash": export.file_sha256_hash,
+            },
+            payload_version=PAYLOAD_VERSION,
+            correlation_id=context.correlation_id,
+            causation_id=context.causation_id,
+        )
+    )
 
 
 def _violated_constraint(error: IntegrityError) -> str | None:
@@ -633,23 +959,6 @@ def _audit_final(
         actor=actor,
         context=context,
     )
-
-
-def _measure(storage: StorageBackend, key: str) -> str:
-    """The eighth check's left side: what the bytes on disk hash to **now**.
-
-    Re-read rather than reused from the write, which is the whole point. Every other comparison
-    comes from a stored value; this one exists to catch a file that changed after it was
-    recorded, and reusing the write's digest would compare a number against itself.
-    """
-
-    measured = storage.stat(key)
-    if measured is None:
-        raise BusinessRuleViolationError(
-            f"the export was written to {key} and is not there; no record may claim a file that "
-            "storage cannot produce"
-        )
-    return measured.sha256_hash
 
 
 def _facts_for(

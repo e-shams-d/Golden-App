@@ -225,6 +225,13 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
         "POST",
         "/api/v1/payment-batches/{batch_id}/versions/{version_id}/exports/final",
     ): PERMISSION,
+    # M7 slice 4. `PERMISSION` for the same reason as the rest of the family — an export has no
+    # trader, so there is no ownership scope. The download is the one that matters: the file is a
+    # list of every payment the centre is making, and `bank_export.download` is what stands
+    # between it and anybody holding a session.
+    ("GET", "/api/v1/bank-exports/{export_id}"): PERMISSION,
+    ("GET", "/api/v1/bank-exports/{export_id}/download"): PERMISSION,
+    ("POST", "/api/v1/bank-exports/{export_id}/mark-sent-to-bank"): PERMISSION,
     # M5 slice 8. The two reads the screens need, and which nothing had built: eleven
     # published operations and only the revision history read. Both are `DUAL` — a trader
     # sees their own through `scoped()`, an accountant sees the queue through
@@ -531,6 +538,15 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
         "/api/v1/payment-batches/{batch_id}/versions/{version_id}/exports/final",
         "permission",
     ): "test_generating_a_final_export_needs_the_final_permission",
+    ("GET", "/api/v1/bank-exports/{export_id}", "permission"): (
+        "test_reading_an_export_needs_the_read_permission"
+    ),
+    ("GET", "/api/v1/bank-exports/{export_id}/download", "permission"): (
+        "test_downloading_needs_the_download_permission_and_is_refused_to_a_trader"
+    ),
+    ("POST", "/api/v1/bank-exports/{export_id}/mark-sent-to-bank", "permission"): (
+        "test_marking_sent_needs_the_mark_sent_permission"
+    ),
     # M5 slice 8. The two reads, four entries because both are `DUAL`. The ownership pair
     # answers `404` and the permission pair `403`, and each is asserted in its own test
     # rather than shared: the list's ownership case is about which rows come back, and the
