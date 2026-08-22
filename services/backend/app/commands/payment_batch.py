@@ -61,6 +61,7 @@ from app.core.time import to_business_time
 from app.db.concurrency import compare_and_swap
 from app.db.locking import LockScope, LockTarget, lock_rows
 from app.db.models.bank import BankAccount, BankMapping, BankProfileVersion
+from app.db.models.bank_export import EXPORT_FINAL, EXPORT_VOIDED, BankExcelExport
 from app.db.models.payment_batch import (
     BatchApproval,
     PaymentAttempt,
@@ -1329,6 +1330,25 @@ def create_replacement_version(
         select(BatchApproval).where(BatchApproval.payment_batch_version_id == superseded.id)
     )
 
+    # M7 slice 5B. `SVC-INVALIDATE-003`: an existing final export for the superseded version is
+    # **voided rather than deleted**.
+    #
+    # §29.2's "approval remains historical" applies to the file too. The export is the evidence
+    # that a particular file was produced and possibly sent; deleting it would erase the answer to
+    # "what went to the bank" at the exact moment that question becomes hardest — after somebody
+    # replaced the version it came from.
+    #
+    # `voided` is outside `uq_active_final_export_per_version`'s predicate, so voiding also frees
+    # the version for a later export without any row being removed. That predicate was written in
+    # slice 2 with this case in it.
+    #
+    # **An export already marked sent is left alone.** Voiding it would claim a payment that
+    # really left the building is no longer real, and `15_Agent_Implementation_Plan.md:1381`
+    # permits replacement only "before valid final export is sent" — so reaching here with a sent
+    # export is a state the batch should not have been in, and rewriting history is not this
+    # command's way of noticing.
+    voided = _void_active_final_exports(session, superseded, now=now)
+
     swap = compare_and_swap(
         session,
         PaymentBatch,
@@ -1360,6 +1380,9 @@ def create_replacement_version(
                 "superseded_version_number": superseded.version_number,
                 "superseded_from_status": previous_status,
                 "released_allocations": released,
+                # M7 slice 5B. Named here so "why is that export voided" is answerable from the
+                # row that caused it, rather than by correlating a status change with a timestamp.
+                "voided_exports": voided,
             },
             new_values={
                 "version_number": version.version_number,
@@ -1401,6 +1424,35 @@ def create_replacement_version(
     del swap
 
     return BatchResult(batch=batch, version=version, items=tuple(items))
+
+
+def _void_active_final_exports(
+    session: Session, superseded: PaymentBatchVersion, *, now: datetime
+) -> list[str]:
+    """Void every still-active final export of a version being replaced. Returns their numbers.
+
+    `SVC-INVALIDATE-003`. Only the four statuses inside
+    `uq_active_final_export_per_version`'s predicate are touched, and `sent_to_bank_marked` is
+    deliberately not among the ones this voids: a file somebody uploaded to a bank stays exactly
+    as it is, because the record of a payment that happened is not ours to revise.
+
+    The numbers come back so the replacement's audit row can name what it voided — otherwise the
+    only trace would be a status change nobody correlated with a cause.
+    """
+
+    active = list(
+        session.scalars(
+            select(BankExcelExport).where(
+                BankExcelExport.payment_batch_version_id == superseded.id,
+                BankExcelExport.export_type == EXPORT_FINAL,
+                BankExcelExport.status.in_(("generated", "validated", "downloaded")),
+            )
+        )
+    )
+    for export in active:
+        export.status = EXPORT_VOIDED
+    del now  # the export carries no voided-at column; §11.8 gives it none and none is invented
+    return [export.export_number for export in active]
 
 
 def _audit_invalidation(

@@ -78,6 +78,12 @@ EXPORT_TYPES: tuple[str, ...] = ("preview", "final")
 EXPORT_PREVIEW = "preview"
 EXPORT_FINAL = "final"
 
+# Where a replacement puts a still-active final export of the version it supersedes. §29.2's
+# "approval remains historical" applied to the file: the row stays, because it is the evidence
+# that a particular file existed, and `voided` is outside `uq_active_final_export_per_version`'s
+# predicate so the version is free again without anything being deleted.
+EXPORT_VOIDED = "voided"
+
 # The four states in which a final export still occupies its version, from §11.8's partial unique
 # index. `voided`, `quarantined` and `generation_failed` are deliberately outside it: a voided
 # export must not block the replacement that voided it, and a failed generation must not stop the
