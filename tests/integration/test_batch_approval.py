@@ -17,8 +17,13 @@ constraint fired — which is exactly how a one-comparison implementation would 
 two-comparison test. So the preparer case is prepared by `approval_dual` and finalized by
 `approval_accountant`, and the finalizer case is the other way round.
 
+**Slice 5A is here too, and it belongs here.** What a replacement does to an approval is a fact
+about the approval, and its tests need the same three administrators for the same reason — the
+replacement has to be approvable by somebody who did not finalize it.
+
 Covers: SEC-APPROVAL-001, SEC-APPROVAL-002, SEC-APPROVAL-003, CON-APPROVAL-001,
-SVC-APPROVAL-001, AUD-APPROVAL-001, TRACE-APPROVAL-001.
+SVC-APPROVAL-001, AUD-APPROVAL-001, TRACE-APPROVAL-001, SVC-INVALIDATE-001, SVC-INVALIDATE-002,
+AUD-INVALIDATE-001.
 """
 
 from __future__ import annotations
@@ -353,6 +358,55 @@ def approve(
             "Idempotency-Key": key or str(uuid.uuid4()),
             "X-Recent-Auth": reference or step_up(client, frozen["version_id"]),
         },
+    )
+
+
+def replace(world: dict[str, Any], frozen: dict[str, Any], *, etag: str) -> Any:
+    """A replacement version carrying the same request, re-read so its expectations are current.
+
+    The selection's `expected_record_version` and `expected_revision_id` are read from the
+    database rather than remembered from the create call: batching moved the request, and a
+    replacement that quoted stale expectations would be refused for a reason that has nothing to
+    do with what these tests are about.
+    """
+
+    current = rows(
+        world,
+        "SELECT pr.id, pr.current_revision_id, pr.record_version FROM payment_requests pr "
+        "JOIN payment_attempts pa ON pa.payment_request_id = pr.id "
+        "JOIN payment_batch_items pbi ON pbi.payment_attempt_id = pa.id "
+        "WHERE pbi.payment_batch_version_id = %s LIMIT 1",
+        frozen["version_id"],
+    )
+    assert current, "the finalized version has no request behind it"
+    request_id, revision_id, record_version = current[0]
+
+    client = world["client"]
+    return client.post(
+        f"/api/v1/payment-batches/{frozen['batch_id']}/versions",
+        json={
+            "items": [
+                {
+                    "payment_request_id": str(request_id),
+                    "expected_revision_id": str(revision_id),
+                    "expected_record_version": record_version,
+                }
+            ],
+            "bank_profile_version_id": str(world["version_id"]),
+            "bank_account_id": str(world["account_id"]),
+            "bank_mapping_id": str(world["mapping_id"]),
+            "reason": "the beneficiary was corrected",
+        },
+        headers={**csrf(client), "If-Match": etag, "Idempotency-Key": str(uuid.uuid4())},
+    )
+
+
+def approvals_of(world: dict[str, Any], version_id: str) -> list[tuple[Any, ...]]:
+    return rows(
+        world,
+        "SELECT decision, approved_content_hash, decided_by_admin_user_id, decided_at "
+        "FROM batch_approvals WHERE payment_batch_version_id = %s",
+        version_id,
     )
 
 
@@ -954,6 +1008,204 @@ def test_rejecting_needs_the_reject_permission(world: dict[str, Any]) -> None:
     )
 
     assert response.status_code == 403, response.text
+
+
+def test_a_replacement_makes_the_prior_approval_historical_and_changes_nothing_about_it(
+    world: dict[str, Any],
+) -> None:
+    """`SVC-INVALIDATE-001`. §29.2: "approval remains historical".
+
+    Two halves, and the second is the one worth asserting. The approval stops being operational —
+    its version is `superseded` and is no longer the batch's current one. And the decision row is
+    **byte-identical** afterwards: §11.7 says approved/rejected rows are never updated, and there
+    is no UPDATE grant that would let this command touch it even by accident. What the manager
+    decided is exactly what the record still says; only its subject moved out from under it.
+    """
+
+    frozen = a_finalized_version(world)
+    client = world["client"]
+    sign_in_admin(client, "approval_manager")
+    approved = approve(world, frozen)
+    assert approved.status_code == 200, approved.text
+    before = approvals_of(world, frozen["version_id"])
+    assert len(before) == 1
+
+    sign_in_admin(client, "approval_accountant")
+    replaced = replace(world, frozen, etag=f'"rv-{approved.json()["batch"]["record_version"]}"')
+    assert replaced.status_code == 201, replaced.text
+
+    assert approvals_of(world, frozen["version_id"]) == before, (
+        "the decision row changed; §11.7 says approved/rejected rows are never updated"
+    )
+
+    state = rows(
+        world,
+        "SELECT v.status, b.status, b.current_version_id <> v.id FROM payment_batch_versions v "
+        "JOIN payment_batches b ON b.id = v.payment_batch_id WHERE v.id = %s",
+        frozen["version_id"],
+    )
+    assert state == [("superseded", "draft", True)], state
+
+
+def test_no_decision_transfers_to_the_replacement(world: dict[str, Any]) -> None:
+    """`SVC-INVALIDATE-001`. `15_Agent_Implementation_Plan.md:931`: no decision is transferred.
+
+    The negative control for this obligation is to carry the approval forward, and the reason it
+    is worth a test is that carrying it forward is the *helpful-looking* behaviour: the same rows,
+    the same total, the same manager — why make them decide again? Because "the same rows" is
+    precisely what a replacement is not obliged to be, and the approval named a content hash that
+    the new version does not have.
+    """
+
+    frozen = a_finalized_version(world)
+    client = world["client"]
+    sign_in_admin(client, "approval_manager")
+    approved = approve(world, frozen)
+    assert approved.status_code == 200, approved.text
+
+    sign_in_admin(client, "approval_accountant")
+    replaced = replace(world, frozen, etag=f'"rv-{approved.json()["batch"]["record_version"]}"')
+    assert replaced.status_code == 201, replaced.text
+    replacement_id = replaced.json()["current_version"]["id"]
+
+    assert approvals_of(world, replacement_id) == [], (
+        "the replacement arrived already approved; no decision transfers"
+    )
+    assert replaced.json()["current_version"]["status"] == "draft"
+
+    view = client.get(
+        f"/api/v1/payment-batches/{frozen['batch_id']}/versions/{replacement_id}/approval-view"
+    )
+    assert view.status_code == 200, view.text
+    assert view.json()["prior_decision"] is None
+
+
+def test_the_replacement_is_approved_under_the_same_separation_rule(
+    world: dict[str, Any],
+) -> None:
+    """`SVC-INVALIDATE-002`. `FINANCIAL_INTEGRITY_BASELINE.md` §5 applies afresh.
+
+    The replacement is prepared and finalized by `approval_dual`, who then tries to approve it.
+    Refused as the finalizer — the same guard slice 1 built, on a version that did not exist when
+    the first decision was taken. A manager who approved version 1 has no standing on version 2
+    that they finalized.
+    """
+
+    frozen = a_finalized_version(world)
+    client = world["client"]
+    sign_in_admin(client, "approval_manager")
+    approved = approve(world, frozen)
+    assert approved.status_code == 200, approved.text
+
+    sign_in_admin(client, "approval_dual")
+    replaced = replace(world, frozen, etag=f'"rv-{approved.json()["batch"]["record_version"]}"')
+    assert replaced.status_code == 201, replaced.text
+    replacement = {
+        "batch_id": frozen["batch_id"],
+        "version_id": replaced.json()["current_version"]["id"],
+        "content_hash": replaced.json()["current_version"]["content_hash"],
+    }
+
+    frozen_again = client.post(
+        f"/api/v1/payment-batches/{replacement['batch_id']}"
+        f"/versions/{replacement['version_id']}/finalize",
+        json={"note": "validated again"},
+        headers={
+            **csrf(client),
+            "If-Match": replaced.headers["ETag"],
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
+    )
+    assert frozen_again.status_code == 200, frozen_again.text
+
+    refused = approve(world, replacement)
+    assert refused.status_code == 400, refused.text
+    assert "finalized" in refused.json()["error"]["message"]
+
+    # And the legitimate approver still can, so the refusal above is about who asked rather than
+    # about the replacement being unapprovable.
+    sign_in_admin(client, "approval_manager")
+    second = approve(world, replacement)
+    assert second.status_code == 200, second.text
+    assert len(approvals_of(world, replacement["version_id"])) == 1
+
+
+def test_the_invalidation_is_recorded_as_its_own_catalogued_action(
+    world: dict[str, Any],
+) -> None:
+    """`AUD-INVALIDATE-001`. `payment_batch_approval.invalidated`, from the registry.
+
+    A second audit row beside the replacement's own, because they answer different questions:
+    one says why a new version exists, this one says why the approval somebody remembers is no
+    longer in force. `audit_outbox_catalog.yaml:31` names it and its `outbox_events` list names
+    nothing for it, so nothing is published — asserted, because an invented
+    `PaymentBatchApprovalInvalidated` would be an event type no consumer contract names.
+    """
+
+    frozen = a_finalized_version(world)
+    client = world["client"]
+    sign_in_admin(client, "approval_manager")
+    approved = approve(world, frozen)
+    assert approved.status_code == 200, approved.text
+    approval_id = approved.json()["approval"]["id"]
+
+    sign_in_admin(client, "approval_accountant")
+    replaced = replace(world, frozen, etag=f'"rv-{approved.json()["batch"]["record_version"]}"')
+    assert replaced.status_code == 201, replaced.text
+
+    recorded = rows(
+        world,
+        "SELECT entity_type, previous_values->>'operational', new_values->>'operational', "
+        "new_values->>'replacement_version_id', reason FROM audit_logs "
+        "WHERE action = 'payment_batch_approval.invalidated' AND entity_id = %s",
+        approval_id,
+    )
+    assert recorded == [
+        (
+            "batch_approval",
+            "true",
+            "false",
+            replaced.json()["current_version"]["id"],
+            "a replacement version was created; no decision transfers to it",
+        )
+    ], recorded
+
+    assert rows(
+        world,
+        "SELECT event_type FROM outbox_events WHERE aggregate_id = %s",
+        replaced.json()["current_version"]["id"],
+    ) == [], "an invalidation publishes nothing; the catalogue defines no event for it"
+
+
+def test_replacing_a_version_nobody_decided_writes_no_invalidation(
+    world: dict[str, Any],
+) -> None:
+    """The control, and without it the test above proves almost nothing.
+
+    An implementation that wrote `payment_batch_approval.invalidated` on **every** replacement
+    would pass every assertion above — the row would be there, with the right shape, for the
+    right approval id. What makes the record mean something is that it appears only when a
+    decision actually existed to invalidate.
+
+    M6's replacement path is unchanged for this case, and that is the claim: a batch replaced
+    before anybody approved it produces exactly the audit trail it did before slice 5A.
+    """
+
+    frozen = a_finalized_version(world)
+    client = world["client"]
+    sign_in_admin(client, "approval_accountant")
+
+    replaced = replace(world, frozen, etag=frozen["etag"])
+    assert replaced.status_code == 201, replaced.text
+
+    assert rows(
+        world,
+        "SELECT 1 FROM audit_logs a JOIN payment_batch_versions v "
+        "ON v.payment_batch_id = %s WHERE a.action = 'payment_batch_approval.invalidated' "
+        "AND a.entity_id IN (SELECT id FROM batch_approvals "
+        "                    WHERE payment_batch_version_id = v.id)",
+        frozen["batch_id"],
+    ) == [], "an invalidation was recorded for a version nobody had decided"
 
 
 def test_the_approval_view_shows_the_decision_once_one_exists(world: dict[str, Any]) -> None:

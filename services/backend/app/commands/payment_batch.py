@@ -51,6 +51,7 @@ from app.audit.registry import (
     CREATE_PAYMENT_BATCH,
     CREATE_PAYMENT_BATCH_VERSION,
     FINALIZE_PAYMENT_BATCH_VERSION,
+    INVALIDATE_BATCH_APPROVAL,
 )
 from app.audit.writer import AuditActor, AuditContext, AuditEntry, AuditWriter
 from app.batching.splitting import SplittingRules, split
@@ -61,6 +62,7 @@ from app.db.concurrency import compare_and_swap
 from app.db.locking import LockScope, LockTarget, lock_rows
 from app.db.models.bank import BankAccount, BankMapping, BankProfileVersion
 from app.db.models.payment_batch import (
+    BatchApproval,
     PaymentAttempt,
     PaymentAttemptAllocation,
     PaymentBatch,
@@ -1310,6 +1312,23 @@ def create_replacement_version(
     superseded.status = VERSION_SUPERSEDED
     superseded.superseded_at = now
 
+    # M7 slice 5A. If the version being replaced carried a manager's approval, that approval stops
+    # being operational here — `05_API_Specification.md:1366`, "Previous operational approval
+    # becomes historical", and `06_Workflows_and_State_Machines.md:793`.
+    #
+    # **The approval row is not touched, and cannot be.** §11.7 says approved/rejected rows are
+    # never updated and the runtime holds no UPDATE grant on `batch_approvals`, so "historical" is
+    # not a flag somebody sets — it is what the version's `superseded` status already means. The
+    # decision stays exactly as the manager left it, which is what "approval remains historical"
+    # asks for; only its subject moved.
+    #
+    # Read **after** the status change above, deliberately: the query is by version id, which the
+    # status does not affect, and reading it here keeps the invalidation record beside the
+    # supersession that caused it rather than in a branch further up.
+    invalidated = session.scalar(
+        select(BatchApproval).where(BatchApproval.payment_batch_version_id == superseded.id)
+    )
+
     swap = compare_and_swap(
         session,
         PaymentBatch,
@@ -1358,6 +1377,19 @@ def create_replacement_version(
         context=context,
     )
 
+    if invalidated is not None:
+        _audit_invalidation(
+            session,
+            policy,
+            batch=batch,
+            superseded=superseded,
+            replacement=version,
+            approval=invalidated,
+            actor=actor,
+            context=context,
+            now=now,
+        )
+
     resolver.complete(
         claim,
         response_code=201,
@@ -1369,6 +1401,70 @@ def create_replacement_version(
     del swap
 
     return BatchResult(batch=batch, version=version, items=tuple(items))
+
+
+def _audit_invalidation(
+    session: Session,
+    policy: RedactionPolicy,
+    *,
+    batch: PaymentBatch,
+    superseded: PaymentBatchVersion,
+    replacement: PaymentBatchVersion,
+    approval: BatchApproval,
+    actor: AuditActor,
+    context: AuditContext,
+    now: datetime,
+) -> None:
+    """`AUD-INVALIDATE-001`. A second audit row, and it is not a duplicate of the first.
+
+    The replacement's own row already says a version was superseded. This one says a *manager's
+    decision* stopped being operational, which is a different fact with a different reader: the
+    first answers "why is there a new version", this one answers "why is the approval I remember
+    no longer in force". `payment_batch_approval.invalidated` is catalogued at
+    `audit_outbox_catalog.yaml:31` precisely because the two are not the same event.
+
+    `entity_type` is the **approval**, not the version. It is the thing whose meaning changed, and
+    an investigator asking about a decision looks for the decision's id.
+
+    **`previous_values` and `new_values` describe the approval's standing, not its columns.** The
+    row itself did not change and cannot — there is no UPDATE grant on `batch_approvals`. What
+    moved is whether the decision authorises anything, so that is what is recorded, with the
+    version ids on both sides so the chain is readable from this row alone.
+    """
+
+    AuditWriter(session, policy).record(
+        AuditEntry(
+            action=INVALIDATE_BATCH_APPROVAL.audit_action,
+            outcome="success",
+            metadata_schema=METADATA_SCHEMA,
+            metadata_version=METADATA_VERSION,
+            entity_type="batch_approval",
+            entity_id=approval.id,
+            entity_record_version=batch.record_version,
+            previous_values={
+                "operational": True,
+                "approved_version_id": str(superseded.id),
+                "approved_version_number": superseded.version_number,
+                "approved_content_hash": approval.approved_content_hash,
+            },
+            new_values={
+                "operational": False,
+                "superseded_version_status": superseded.status,
+                "replacement_version_id": str(replacement.id),
+                "replacement_version_number": replacement.version_number,
+                "batch_status": batch.status,
+            },
+            # `15_Agent_Implementation_Plan.md:931` in as many words: no decision is transferred.
+            # Written as the reason rather than left to a reader to infer, because the natural
+            # assumption on seeing a replacement of an approved batch is that the approval carried
+            # over.
+            reason="a replacement version was created; no decision transfers to it",
+            occurred_at=now,
+            metadata={"operation": INVALIDATE_BATCH_APPROVAL.audit_action},
+        ),
+        actor=actor,
+        context=context,
+    )
 
 
 def cancel_batch(

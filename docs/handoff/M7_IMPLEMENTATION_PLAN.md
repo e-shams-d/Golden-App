@@ -328,16 +328,45 @@ Mark a preview sent: `SVC-SENT-001` must fail. Skip revalidation on the second d
 
 ## Slice 5 — Invalidation, and what a replacement does to an approval
 
-### Goal
+**Split into 5A and 5B after slice 1 shipped, and corrected on one point. Read this before the
+obligations.**
 
-An approval stops being operational when the version it approved stops being current.
+**The split.** Three of the five obligations below are about the approval and two are about the
+export. G-1 blocks the export and nothing else, so slice 5A discharges `SVC-INVALIDATE-001`,
+`SVC-INVALIDATE-002` and `AUD-INVALIDATE-001`, and slice 5B discharges `SVC-INVALIDATE-003` and
+`TRACE-INVALIDATE-001` once slices 2 to 4 exist. The precedent is M3's slice 8, split into five
+when its parts turned out to have different dependencies. Splitting is not deferral: the two
+export obligations stay in `PENDING` under 5B's name, which is the same commitment they had
+before.
+
+**The correction, which matters more.** §5 of this plan said slice 5 would build
+`payment_batch_version.invalidate_approval` as "a command with a recorded catalogue gap", in
+contrast to quarantine as a consequence. **That was wrong**, and checking the authority before
+implementing is what found it:
+
+- `05_API_Specification.md` defines **no invalidation endpoint**. The word appears five times and
+  never as a route.
+- `:1366` says the *replacement* command "never edits an approved/finalized version. Previous
+  operational approval becomes historical and the batch status becomes `approval_invalidated` or
+  `draft` as applicable."
+- `06_Workflows_and_State_Machines.md:793` draws `approved --> approval_invalidated:
+  replacement/material change`, and `:901` says the batch becomes `approval_invalidated`/`draft`
+  "as a replacement version is prepared".
+
+So invalidation is a **consequence**, exactly as quarantine is — and building it as a command
+would have created an endpoint no document defines, for a permission that authorises nothing.
+That is the mechanism-with-no-caller failure §5 warns about, written into the plan that warns
+about it. `payment_batch_version.invalidate_approval` therefore joins `bank_export.quarantine`
+under G-4, and G-12 records the state this leaves unreachable.
 
 ### What it changes
 
-- `payment_batch_version.invalidate_approval`, whose permission exists and whose
-  `command_catalog.yaml` row does not (G-4).
-- The batch container's `approval_invalidated` projection, and M6's replacement path extended to
-  reach it.
+- M6's `create_replacement_version` extended: replacing an **approved** version makes its approval
+  historical and records that it did. The approval row itself is never touched — §11.7 says
+  approved/rejected rows are never updated, and there is no grant that would permit it, so
+  "historical" is a property of the version's state rather than a flag on the decision.
+- No migration. `approval_invalidated` is already in `payment_batch`'s CHECK, `payment_batches`
+  already grants `status`, and the audit action is already catalogued.
 
 ### What proves it
 
@@ -409,8 +438,11 @@ of the chain — a final export whose `batch_approval_id` names an approval of a
 | **G-10** | **Where does the "high-priority task" for a failed integrity check go?** §15.5 requires a task *and* a security event. The event has a home — `auth_events` and the audit log. There is no task table in Phase 1A. Slice 3 writes the security event and records this gap rather than inventing a queue. | Slice 3's `SVC-INTEGRITY-002` |
 | **G-11** | **Is a rejection's outbox event genuinely absent?** `audit_outbox_catalog.yaml` defines `PaymentBatchVersionApproved` and no rejection event, while `command_catalog.yaml:158-170` carries `outbox_event: null` for reject — so the two agree. Recorded because M5's `AUD-REQ-002` overclaimed in exactly this shape, and confirming the agreement is cheaper than rediscovering it. | Nothing; slice 1 follows both |
 
-None of G-2 through G-11 blocks starting. **G-1 blocks slice 2**, and slice 1 is independent of it —
-approval touches no file — so the milestone can begin while the dependency question is settled.
+| **G-12** | **`approval_invalidated` is a canonical container state that nothing can rest in.** `06_Workflows_and_State_Machines.md:793` gives it one entry arrow — `approved --> approval_invalidated: replacement/material change` — and `:794` takes it straight out again to `draft` "current replacement version editable". Since `create_replacement_version` produces an editable draft in the same transaction, a replacement passes through the state without ever being in it. The other cause, a **material change** to an already-approved batch (`:901`, `:1208`), has no command, no route and no watcher: nothing in M6 or M7 re-examines an approved batch when a request is corrected or a bank profile version is superseded. So the state is reachable in principle and unreachable in practice, and `payment_batch_version.invalidate_approval` — the manager-only permission that would express it — authorises nothing. Two possible answers: the state is a documentation artifact of the `approval_invalidated`/`draft` pair and should be recorded as unreachable, or a material-change watcher is real work that belongs to a milestone. Slice 5A implements the replacement consequence and records this rather than inventing either. | Nothing in M7; the state stays unreachable and the permission unused |
+
+None of G-2 through G-12 blocks starting. **G-1 blocks slices 2, 3, 4 and 5B**; slices 1 and 5A are
+independent of it — neither touches a file — so the milestone can proceed while the dependency
+question is settled.
 
 ---
 
@@ -423,10 +455,14 @@ Recorded because the same failures are available here:
   must assert its own corpus is complete.
 - **"Where is its route?" kills a mechanism-with-no-caller before it ships.** M6 wrote a full
   `release_allocation` command for an operation with no endpoint and no permission. M7 has two
-  permissions in that position already — `bank_export.quarantine` and
-  `payment_batch_version.invalidate_approval` — and G-4 and slice 5 handle them differently on
-  purpose: one is implemented as a consequence, the other as a command with a recorded catalogue
-  gap.
+  permissions in that position — `bank_export.quarantine` and
+  `payment_batch_version.invalidate_approval` — and **both** are implemented as consequences.
+
+  This bullet originally said they were handled differently, with invalidation built as a command
+  carrying a recorded catalogue gap. Asking its own question of its own sentence is what corrected
+  it: document 05 defines no invalidation route, so a command would have been the exact failure
+  this bullet describes. The lesson survived the plan; the plan did not. Slice 5A's revision note
+  has the evidence.
 - **A disjunctive assertion can be insensitive to the removal of either guard.** M6's hash test
   said `"content hash" in text or "sum to" in text` and passed with either check deleted.
   `SVC-INTEGRITY-001`'s eight comparisons are therefore eight assertions with eight provocations,
