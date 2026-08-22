@@ -134,7 +134,15 @@ PENDING: dict[str, str] = {
     # **Five of the nineteen assert an absence** — a preview offering no mark-sent control, no
     # "download anyway" anywhere — which is the shape M7 slice 6A used for break-glass and the
     # easiest kind of assertion to lose.
-    "UI-APPROVAL-001": "screens slice 1 — every mandatory field of §13.3, parsed from the document",
+    # Slice 0, added after the plan merged: neither screen can be rendered from what the API
+    # returns today. The list gives 3 of §13.2's 10 columns and the approval view 11 of §13.3's
+    # 19 fields — including neither the finalizer's identity nor the separation-of-duty status,
+    # which is what a manager needs to know before deciding.
+    # Slice 0's four are discharged by `tests/backend/test_approval_read_shape.py` and
+    # `tests/integration/test_batch_approval.py`. Both lists are **parsed from the screen
+    # specification**, which is the same parse slice 1's screen will use — so the API and the UI
+    # are held to one source rather than two copies of "the nineteen mandatory fields".
+    "UI-APPROVAL-001": "screens slice 1 — every mandatory field of §13.3, parsed from the doc",
     "UI-APPROVAL-002": "screens slice 1 — the queue identifies the exact version, not the batch",
     "UI-APPROVAL-003": "screens slice 1 — the surface needs read_approval_view, nav included",
     "UI-APPROVAL-004": "screens slice 1 — the failure state is accessible and in the a11y sweep",

@@ -1,6 +1,9 @@
 # M7 Screens — The Money Path, Made Visible
 
-Status: proposed. Four slices, nineteen obligations, five questions for the owner.
+Status: in progress. **Five slices, twenty-three obligations**, five questions for the owner.
+
+Slice 0 was added after this plan merged: building slice 1 found that neither screen can be
+rendered from what the API returns today, which is the finding §1.3's rule exists to produce.
 
 Authority: `21_UI_Design_System_and_Screen_Specification.md` §12–14, which specify these screens
 field by field. This plan implements a specification; it does not invent one.
@@ -141,6 +144,69 @@ the system.
 # 3. Slices
 
 Each slice is one pull request. `### What proves it` is the section the traceability gate parses.
+
+## Slice 0 — The reads the screens need, which do not exist
+
+**Added after the plan was merged, because building slice 1 found the gap the plan's own rule was
+written to find.** §1.3 says: "If a screen needs a field the API does not return, that is a finding
+to record, not a route to add in a frontend slice." This is that finding, and it is larger than a
+field.
+
+### What the survey showed
+
+`BatchListEntry` returns four values. §13.2 requires **ten columns**, and its first sentence is the
+one that matters: "Each row must identify the exact version, not only the logical batch." The
+version is not among the four.
+
+| §13.2 asks for | Returned today |
+|---|---|
+| batch reference, total, row count | yes |
+| **version** | **no** |
+| bank, source account, mapping version | no |
+| warning count, prepared/finalized by, age | no |
+
+`ApprovalView` is closer and still short: eleven of §13.3's nineteen mandatory fields. The two
+absences that matter most are **finalizer identity** and **separation-of-duty status** — a screen
+built to let a manager decide cannot show them who finalized the version, which is the exact actor
+the guard compares them against.
+
+### Why this is a backend slice and not three lines of frontend
+
+A screen that rendered eleven of nineteen fields would fail `UI-APPROVAL-001`, which asserts the
+list **parsed from the specification**. Softening that assertion to match what the API happens to
+return would empty the obligation — the screen would then be checked against itself.
+
+### What it changes
+
+- `BatchListEntry` gains the current version's identity and the human-readable values §13.2 names.
+  **Names, not ids**: a queue row showing a UUID for "prepared by" is a row nobody can read.
+- `ApprovalView` gains the eight missing fields, including the counts §13.3 asks for and the
+  finalizer's identity.
+- A `status` filter on the list, so "the approval queue" is a queue and not the whole history.
+
+### What proves it
+
+- `API-APPROVALREAD-001` — every column §13.2 names is present in the list response, asserted by
+  parsing the specification's list. The same parse `UI-APPROVAL-002` will use, so the screen and
+  the API are held to one source.
+- `API-APPROVALREAD-002` — every field §13.3 names is present in the approval view, parsed the
+  same way. Where the field is a count, it is computed from the version's own items rather than
+  read from a live table — a trader count taken from `traders` would drift from what the version
+  froze.
+- `API-APPROVALREAD-003` — the separation-of-duty status is **actor-dependent** and says which
+  rule would refuse: this viewer prepared it, finalized it, or may decide. Asserted for all three
+  actors, because a status that only ever said "may decide" would render on the screen of somebody
+  who cannot.
+- `API-APPROVALREAD-004` — the queue filter returns only versions awaiting a decision, and the
+  unfiltered list still returns everything. A filter that silently became the only view would hide
+  the history §13.4 requires to stay readable.
+
+### Negative controls
+
+Drop one column from the list: `API-APPROVALREAD-001` must fail, naming it. Report "may decide" for
+the finalizer: `API-APPROVALREAD-003` must fail. Compute the trader count from `traders` rather
+than the version's items: `API-APPROVALREAD-002` must fail once the version's rows and the live
+table disagree.
 
 ## Slice 1 — The approval queue and detail
 
