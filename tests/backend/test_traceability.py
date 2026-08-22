@@ -482,16 +482,19 @@ PENDING: dict[str, str] = {
     # Slice 5 split into 5A and 5B when slice 1 landed and G-1 still had no answer: three of its
     # five obligations are about the approval and two are about the export. 5A discharged the
     # three; these two are the export half and wait on slices 2 to 4.
-    "SVC-INVALIDATE-003": "M7 slice 5B — a superseded version's approval exports nothing",
-    "TRACE-INVALIDATE-001": "M7 slice 5B — a sent file names its own approval, not the other one",
+    #
+    # Slice 5B's two are gone, discharged by `tests/integration/test_m7_journey.py`.
     # Slice 6 split the same way and for the same reason. Two of its four obligations need the
     # export and two need nothing that is not merged; 6A discharged those two. The second entry
     # below reads this dictionary, so it is necessarily the last obligation in the milestone —
     # named by position rather than by id, because an id in a comment inside a test file is a
     # citation to the scanner and would mark it covered by the very line explaining that it
     # is not.
-    "TRACE-DOD-013": "M7 slice 6B — the whole chain, recoverable from the sent export alone",
-    "TRACE-M7-001": "M7 slice 6B — nothing is owed for M7; it reads this dictionary",
+    #
+    # And slice 6B's two, by `tests/integration/test_m7_journey.py` and
+    # `tests/backend/test_m7_definition_of_done.py`. **`PENDING` now holds no M7 obligation**,
+    # which is the milestone's own closing gate rather than a claim made here — that gate parses
+    # the plan for the ids it states and fails on any of them still in this dictionary.
 }
 
 
