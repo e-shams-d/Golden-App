@@ -484,10 +484,14 @@ PENDING: dict[str, str] = {
     # three; these two are the export half and wait on slices 2 to 4.
     "SVC-INVALIDATE-003": "M7 slice 5B — a superseded version's approval exports nothing",
     "TRACE-INVALIDATE-001": "M7 slice 5B — a sent file names its own approval, not the other one",
-    "TRACE-DOD-013": "M7 slice 6 — the whole chain, recoverable from the sent export alone",
-    "TRACE-DOD-014": "M7 slice 6 — break-glass is absent, asserted structurally",
-    "TRACE-DOD-015": "M7 slice 6 — no path lets one actor finalize and approve",
-    "TRACE-M7-001": "M7 slice 6 — nothing is owed for M7; it reads this dictionary",
+    # Slice 6 split the same way and for the same reason. Two of its four obligations need the
+    # export and two need nothing that is not merged; 6A discharged those two. The second entry
+    # below reads this dictionary, so it is necessarily the last obligation in the milestone —
+    # named by position rather than by id, because an id in a comment inside a test file is a
+    # citation to the scanner and would mark it covered by the very line explaining that it
+    # is not.
+    "TRACE-DOD-013": "M7 slice 6B — the whole chain, recoverable from the sent export alone",
+    "TRACE-M7-001": "M7 slice 6B — nothing is owed for M7; it reads this dictionary",
 }
 
 
