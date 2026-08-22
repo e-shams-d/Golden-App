@@ -67,7 +67,7 @@ from app.db.models.session_and_security import AuthEvent, RecentAuthContext
 from app.security import high_risk_grants, step_up
 from app.security.actor import ActorContext
 from app.security.events import OUTCOME_DENIED, OUTCOME_SUCCESS, SecurityEvent
-from app.security.step_up import StepUpRejection, StepUpRequest
+from app.security.step_up import StepUpRefused, StepUpRejection, StepUpRequest
 
 METADATA_SCHEMA = "audit.metadata"
 METADATA_VERSION = 1
@@ -108,18 +108,11 @@ class StaleRolePermissions(Exception):
     """The `If-Match` digest names a permission set that is no longer current."""
 
 
-class StepUpRefused(Exception):
-    """The presented context does not authorise this change.
-
-    Raised rather than translated here, because `RecentAuthRequiredError` lives in
-    `app/api/v1/auth.py` and a command that imported it would make this layer depend on
-    the transport. The route translates; the reason travels with the exception so it can
-    be recorded, and it is never rendered.
-    """
-
-    def __init__(self, rejection: StepUpRejection) -> None:
-        super().__init__(rejection.value)
-        self.rejection = rejection
+# `StepUpRefused` moved to `app/security/step_up.py` when M7's approval became the second
+# command to raise it. Re-exported here because `app/api/v1/roles.py` catches
+# `role_permissions.StepUpRefused` and that spelling is still the honest one for a reader of
+# this module — the class did not change, only where it is defined.
+__all__ = ["StepUpRefused"]
 
 
 def permission_etag(codes: tuple[str, ...]) -> str:

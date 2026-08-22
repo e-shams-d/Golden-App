@@ -27,6 +27,7 @@ Covers: API-BATCH-001, API-BATCH-002, CON-BATCH-001, SEC-BATCH-001.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Response
@@ -36,11 +37,12 @@ from sqlalchemy.orm import Session
 
 from app.api.contract import VALIDATION_ERROR_RESPONSE
 from app.api.dependencies import get_runtime
-from app.api.v1.auth import authenticated_actor, requires
+from app.api.v1.auth import RecentAuthRequiredError, authenticated_actor, requires
 from app.audit.redaction import RedactionPolicy
 from app.audit.writer import AuditActor, AuditContext
 from app.batching.splitting import SplittingRules, split
 from app.commands import payment_batch as commands
+from app.commands import payment_batch_approval as approval_commands
 from app.core.errors import (
     ConflictError,
     ErrorEnvelope,
@@ -53,14 +55,17 @@ from app.core.runtime import RuntimeServices
 from app.core.time import utc_now
 from app.db.models.bank import BankProfileVersion
 from app.db.models.payment_batch import (
+    BatchApproval,
     PaymentAttemptAllocation,
     PaymentBatch,
     PaymentBatchItem,
     PaymentBatchVersion,
 )
 from app.db.models.payment_request import PaymentRequest, PaymentRequestRevision
+from app.db.unit_of_work import SqlAlchemyUnitOfWork
 from app.security.actor import ActorContext
 from app.security.permissions import declare
+from app.security.step_up import StepUpRefused
 
 router = APIRouter(prefix="/payment-batches", tags=["payment-batches"])
 
@@ -1021,3 +1026,324 @@ def _current(
     if revision is None:  # pragma: no cover - the pointer's FK guarantees it
         raise NotFoundError()
     return record, revision
+
+
+# ---------------------------------------------------------------------------
+# M7 slice 1. The manager's decision on one exact version.
+# ---------------------------------------------------------------------------
+
+DECISION_RESPONSES: dict[int | str, dict[str, object]] = {
+    400: {
+        "model": ErrorEnvelope,
+        "description": (
+            "The version is not awaiting approval, or the caller prepared or finalized it "
+            "(FINANCIAL_INTEGRITY_BASELINE.md §5)."
+        ),
+    },
+    401: {
+        "model": ErrorEnvelope,
+        "description": "No valid session, or X-Recent-Auth did not authorise this decision.",
+    },
+    403: {"model": ErrorEnvelope, "description": "The caller lacks the decision permission."},
+    404: {"model": ErrorEnvelope, "description": "No such batch or version."},
+    409: {
+        "model": ErrorEnvelope,
+        "description": (
+            "The content hash is stale, the version is no longer current, or another decision "
+            "reached this version first."
+        ),
+    },
+    428: {"model": ErrorEnvelope, "description": "Idempotency-Key or X-Recent-Auth is missing."},
+    **VALIDATION_ERROR_RESPONSE,
+}
+
+
+class PriorDecision(BaseModel):
+    """`:1409` — "prior decision if any". Absent until one exists."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    decision: str
+    decided_at: datetime
+    approved_content_hash: str | None
+    reason: str | None
+
+
+class ApprovalView(BaseModel):
+    """`05_API_Specification.md:1395-1410`, the manager's screen.
+
+    `version.content_hash` is the field the approve call sends back, and that is the whole
+    mechanism behind the word "exact": the server does not assume the manager saw the current
+    version, it requires them to quote it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    batch: BatchSummary
+    version: VersionSummary
+    items: list[BatchItemResponse]
+    prior_decision: PriorDecision | None = None
+
+
+class ApproveVersionRequest(BaseModel):
+    """`05_API_Specification.md:1421-1426`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_content_hash: str = Field(min_length=64, max_length=64)
+    approval_note: str | None = Field(default=None, max_length=2000)
+
+
+class RejectVersionRequest(BaseModel):
+    """`:1456-1461`. Both required — "Rejection reason is mandatory"."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_content_hash: str = Field(min_length=64, max_length=64)
+    reason_code: str = Field(min_length=1, max_length=64)
+    reason: str = Field(min_length=1, max_length=2000)
+
+
+class DecisionRecorded(BaseModel):
+    """`:1430-1442`, plus `replayed` for the reason `BatchCreated` gives."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    approval: PriorDecision
+    batch: BatchSummary
+    version: VersionSummary
+    replayed: bool = False
+
+
+@router.get(
+    "/{batch_id}/versions/{version_id}/approval-view",
+    response_model=ApprovalView,
+    operation_id="getPaymentBatchApprovalView",
+    summary="What the manager decides on, including the hash they must quote back.",
+    responses=RESPONSES,
+    dependencies=[requires(declare("payment_batch_version.read_approval_view"))],
+)
+def get_approval_view(
+    batch_id: uuid.UUID,
+    version_id: uuid.UUID,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+) -> ApprovalView:
+    """`GET /api/v1/payment-batches/{batch_id}/versions/{version_id}/approval-view`.
+
+    **A separate permission from deciding.** `permission_catalog.yaml:475` gives
+    `read_approval_view` to `accountant`, `manager` and `read_only_auditor`, and the decision only
+    to `manager`. An auditor must be able to see what was decided without being able to decide,
+    and the accountant who prepared the file must be able to check their own work — which they can
+    do here and, by `SEC-APPROVAL-002`, cannot do by approving.
+
+    **The prior decision is included when one exists**, because `:1409` asks for it: a manager
+    arriving after a colleague sees the answer rather than a button that will fail.
+    """
+
+    with runtime.uow_factory() as uow:
+        session = uow.session
+        batch = session.get(PaymentBatch, batch_id)
+        if batch is None:
+            raise NotFoundError()
+        version = session.get(PaymentBatchVersion, version_id)
+        if version is None or version.payment_batch_id != batch.id:
+            raise NotFoundError()
+
+        items = list(
+            session.scalars(
+                select(PaymentBatchItem)
+                .where(PaymentBatchItem.payment_batch_version_id == version.id)
+                .order_by(PaymentBatchItem.row_order)
+            )
+        )
+        decision = session.scalar(
+            select(BatchApproval).where(BatchApproval.payment_batch_version_id == version.id)
+        )
+        return ApprovalView(
+            batch=_batch_summary(batch),
+            version=_version_summary(version),
+            items=[
+                BatchItemResponse(
+                    id=item.id,
+                    row_order=item.row_order,
+                    payment_attempt_id=item.payment_attempt_id,
+                    amount_irr=str(item.amount_irr),
+                    beneficiary_name=item.beneficiary_name_snapshot,
+                    beneficiary_iban=item.beneficiary_iban_snapshot,
+                    description=item.description_snapshot,
+                    row_hash=item.row_hash,
+                )
+                for item in items
+            ],
+            prior_decision=_prior_decision(decision),
+        )
+
+
+@router.post(
+    "/{batch_id}/versions/{version_id}/approve",
+    response_model=DecisionRecorded,
+    operation_id="approvePaymentBatchVersion",
+    summary="Approve the exact version whose hash the caller quotes back.",
+    responses=DECISION_RESPONSES,
+    dependencies=[requires(declare("payment_batch_version.approve"))],
+)
+def approve_version(
+    batch_id: uuid.UUID,
+    version_id: uuid.UUID,
+    payload: ApproveVersionRequest,
+    response: Response,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    recent_auth: Annotated[str | None, Header(alias="X-Recent-Auth")] = None,
+) -> DecisionRecorded:
+    """`POST /api/v1/payment-batches/{batch_id}/versions/{version_id}/approve`.
+
+    **No `If-Match`, and that is document 05's decision, not an omission.** `:1443` — "No
+    `If-Match` is needed for the immutable version itself, but the server verifies it remains the
+    batch's current version." The hash in the body is the stronger token: a record version says
+    *when* the caller read, the hash says *what* they read.
+
+    **`X-Recent-Auth` is required here and was not required to finalize.**
+    `command_catalog.yaml:150` says `required_action_bound` for this command and
+    `not_required_by_current_baseline` for finalization. This is the moment money is authorised,
+    and `FINANCIAL_INTEGRITY_BASELINE.md` §3 wants proof the person holding the session is
+    present — bound to this action and this version, so a context obtained to approve version 7
+    cannot approve version 8.
+    """
+
+    if idempotency_key is None:
+        raise PreconditionRequiredError("Idempotency-Key")
+    if recent_auth is None:
+        raise PreconditionRequiredError("X-Recent-Auth")
+
+    now = utc_now()
+    with runtime.uow_factory() as uow:
+        try:
+            result = approval_commands.approve_version(
+                approval_commands.ApproveVersion(
+                    payment_batch_id=batch_id,
+                    payment_batch_version_id=version_id,
+                    expected_content_hash=payload.expected_content_hash,
+                    recent_auth_reference=recent_auth,
+                    approval_note=payload.approval_note,
+                ),
+                uow=uow,
+                policy=BATCH_REDACTION,
+                actor=actor,
+                audit_actor=_audit_actor(actor),
+                context=AuditContext(request_id=get_request_id()),
+                idempotency_key=idempotency_key,
+                now=now,
+            )
+        except StepUpRefused:
+            raise _recent_auth_refused(uow) from None
+        rendered = _decision_response(result)
+        uow.commit()
+
+    response.headers["ETag"] = f'"rv-{rendered.batch.record_version}"'
+    return rendered
+
+
+@router.post(
+    "/{batch_id}/versions/{version_id}/reject",
+    response_model=DecisionRecorded,
+    operation_id="rejectPaymentBatchVersion",
+    summary="Reject the exact version, with the reason document 05 makes mandatory.",
+    responses=DECISION_RESPONSES,
+    dependencies=[requires(declare("payment_batch_version.reject"))],
+)
+def reject_version(
+    batch_id: uuid.UUID,
+    version_id: uuid.UUID,
+    payload: RejectVersionRequest,
+    response: Response,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    recent_auth: Annotated[str | None, Header(alias="X-Recent-Auth")] = None,
+) -> DecisionRecorded:
+    """`POST /api/v1/payment-batches/{batch_id}/versions/{version_id}/reject`.
+
+    The same two headers, because `command_catalog.yaml:163` asks for the same. A rejection is not
+    the dangerous direction, but a rejection nobody made is: it stops a payment, and the
+    separation rule and the step-up together are what make "who rejected this, and were they
+    present" answerable.
+    """
+
+    if idempotency_key is None:
+        raise PreconditionRequiredError("Idempotency-Key")
+    if recent_auth is None:
+        raise PreconditionRequiredError("X-Recent-Auth")
+
+    now = utc_now()
+    with runtime.uow_factory() as uow:
+        try:
+            result = approval_commands.reject_version(
+                approval_commands.RejectVersion(
+                    payment_batch_id=batch_id,
+                    payment_batch_version_id=version_id,
+                    expected_content_hash=payload.expected_content_hash,
+                    recent_auth_reference=recent_auth,
+                    reason_code=payload.reason_code,
+                    reason=payload.reason,
+                ),
+                uow=uow,
+                policy=BATCH_REDACTION,
+                actor=actor,
+                audit_actor=_audit_actor(actor),
+                context=AuditContext(request_id=get_request_id()),
+                idempotency_key=idempotency_key,
+                now=now,
+            )
+        except StepUpRefused:
+            raise _recent_auth_refused(uow) from None
+        rendered = _decision_response(result)
+        uow.commit()
+
+    response.headers["ETag"] = f'"rv-{rendered.batch.record_version}"'
+    return rendered
+
+
+def _recent_auth_refused(uow: SqlAlchemyUnitOfWork) -> RecentAuthRequiredError:
+    """Commit the refusal, then produce the one thing the client is told.
+
+    **The commit is deliberate.** The command wrote a `step_up.rejected` security event before
+    raising, and rolling back would discard the record of the refusal — which is exactly what an
+    investigator needs when somebody is presenting contexts that do not authorise what they are
+    trying to do. `app/api/v1/roles.py:242-250` made the same choice for the same reason.
+
+    The nine reasons `StepUpRejection` distinguishes stay in `auth_events`. The client is told one
+    thing, as login is, so a caller cannot map which contexts exist by reading error messages.
+    """
+
+    uow.commit()
+    return RecentAuthRequiredError()
+
+
+def _decision_response(
+    result: approval_commands.DecisionResult,
+) -> DecisionRecorded:
+    decision = _prior_decision(result.approval)
+    if decision is None:  # pragma: no cover - the command returned the row
+        raise RuntimeError("a recorded decision cannot be absent from its own response")
+    return DecisionRecorded(
+        approval=decision,
+        batch=_batch_summary(result.batch),
+        version=_version_summary(result.version),
+        replayed=result.replayed,
+    )
+
+
+def _prior_decision(decision: BatchApproval | None) -> PriorDecision | None:
+    if decision is None:
+        return None
+    return PriorDecision(
+        id=decision.id,
+        decision=decision.decision,
+        decided_at=decision.decided_at,
+        approved_content_hash=decision.approved_content_hash,
+        reason=decision.reason,
+    )

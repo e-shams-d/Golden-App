@@ -112,6 +112,11 @@ PAYMENT_BATCH_VERSION_STATUSES: tuple[str, ...] = (
     "superseded",
 )
 
+# `04_Database_Schema.md:1046` — the two values `batch_approvals.decision` may hold. Not a
+# status aggregate: no state machine governs it, because the row never changes. It is the
+# decision itself, and the version's `status` is what moves as a result.
+BATCH_APPROVAL_DECISIONS: tuple[str, ...] = ("approved", "rejected")
+
 # What M6 reaches, kept beside the full sets so the difference is visible rather than
 # discovered. Approval, export, mark-sent and every result state belong to M7 and M8;
 # `15_Agent_Implementation_Plan.md:901` and `:934-947` assign them.
@@ -413,6 +418,17 @@ class PaymentBatchVersion(Base):
         UniqueConstraint("payment_batch_id", "content_hash", name="uq_version_content_per_batch"),
         # The pair the container's composite key needs. `:1555` names it.
         UniqueConstraint("id", "payment_batch_id", name="uq_batch_version_pair"),
+        # Three references `batch_approvals` needs, added by `20260822_0020`. None of them
+        # constrains anything: `id` is the primary key, so `(id, x)` is unique for any `x`.
+        # They exist because PostgreSQL will not accept a composite foreign key unless the
+        # referenced pair is declared unique — and those foreign keys are what make the
+        # approval row's copies of the finalizer, the preparer and the content hash provably
+        # the version's own values rather than something a caller supplied.
+        UniqueConstraint(
+            "id", "finalized_by_admin_user_id", name="uq_batch_version_finalizer_pair"
+        ),
+        UniqueConstraint("id", "created_by_admin_user_id", name="uq_batch_version_preparer_pair"),
+        UniqueConstraint("id", "content_hash", name="uq_batch_version_hash_pair"),
         Index(
             "idx_batch_versions_approval_queue",
             "status",
@@ -547,5 +563,123 @@ class PaymentAttemptAllocation(Base):
             "idx_allocations_by_version",
             "payment_batch_version_id",
             postgresql_where="released_at IS NULL",
+        ),
+    )
+
+
+class BatchApproval(Base):
+    """The manager's one decision on one exact version. §11.7.
+
+    Append-only, and not by convention: `020-runtime-roles.sql:95-96` gives new tables
+    `SELECT, INSERT` and nothing else, so no runtime role can rewrite a decision. There is no
+    `updated_at` and no `record_version` here for the same reason — a row that cannot change
+    has nothing to version.
+
+    Two columns document 04 does not list carry the version's finalizer and preparer, so the
+    separation rule can be a CHECK on one row instead of a comparison a service does. See
+    `20260822_0020_batch_approvals.py` for why that is the mechanism and why not a trigger.
+    """
+
+    __tablename__ = "batch_approvals"
+
+    id: Mapped[uuid.UUID] = uuid_primary_key()
+
+    payment_batch_version_id: Mapped[uuid.UUID] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("payment_batch_versions.id", name="fk_batch_approvals_version"),
+        nullable=False,
+    )
+
+    decision: Mapped[str] = mapped_column(String(16), nullable=False)
+    decided_by_admin_user_id: Mapped[uuid.UUID] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("admin_users.id", name="fk_batch_approvals_decided_by"),
+        nullable=False,
+    )
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    # §11.7: "Required for rejection", and the CHECK below is what makes that true rather
+    # than this comment.
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # §11.7: "conditional — Required for approval". NULL on a rejection, which is also what
+    # disables the composite foreign key to the version's hash: under MATCH SIMPLE a key with
+    # a NULL member is not enforced, and a rejection has no hash to verify.
+    approved_content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # §11.7: "Session ID/auth level/recent-auth metadata; **no secret**". The step-up context
+    # is named by id; its reference never appears here, and `12_Security_RBAC_Audit.md:536`
+    # requires exactly that separation.
+    authentication_context: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+    request_id: Mapped[uuid.UUID | None] = mapped_column(
+        PostgresUUID(as_uuid=True), nullable=True
+    )
+    created_at: Mapped[datetime] = created_at_column()
+
+    # The two additions. Each is tied to the version's own value by a composite foreign key
+    # below, so neither can be a number the caller chose.
+    version_finalized_by_admin_user_id: Mapped[uuid.UUID] = mapped_column(
+        PostgresUUID(as_uuid=True), nullable=False
+    )
+    version_created_by_admin_user_id: Mapped[uuid.UUID] = mapped_column(
+        PostgresUUID(as_uuid=True), nullable=False
+    )
+
+    __table_args__ = (
+        named_check(
+            "decision IN ("
+            + ", ".join(f"'{value}'" for value in BATCH_APPROVAL_DECISIONS)
+            + ")",
+            name="decision_value",
+        ),
+        # §11.7 verbatim: an approval names a hash, a rejection names a reason and no hash.
+        named_check(
+            "(decision = 'approved' AND approved_content_hash IS NOT NULL)"
+            " OR "
+            "(decision = 'rejected' AND approved_content_hash IS NULL AND reason IS NOT NULL)",
+            name="decision_shape",
+        ),
+        # `FINANCIAL_INTEGRITY_BASELINE.md` §5. SEC-APPROVAL-001.
+        named_check(
+            "decided_by_admin_user_id <> version_finalized_by_admin_user_id",
+            name="approver_is_not_finalizer",
+        ),
+        # The stricter reading of `12_Security_RBAC_Audit.md:1111`. G-2 records that the owner
+        # may mean the finalizer alone; if so, this one constraint goes and nothing else moves.
+        # SEC-APPROVAL-002.
+        named_check(
+            "decided_by_admin_user_id <> version_created_by_admin_user_id",
+            name="approver_is_not_preparer",
+        ),
+        named_check(
+            "approved_content_hash IS NULL OR approved_content_hash ~ '^[0-9a-f]{64}$'",
+            name="hash_is_lowercase_hex",
+        ),
+        ForeignKeyConstraint(
+            ["payment_batch_version_id", "version_finalized_by_admin_user_id"],
+            ["payment_batch_versions.id", "payment_batch_versions.finalized_by_admin_user_id"],
+            name="fk_batch_approvals_version_finalizer",
+        ),
+        ForeignKeyConstraint(
+            ["payment_batch_version_id", "version_created_by_admin_user_id"],
+            ["payment_batch_versions.id", "payment_batch_versions.created_by_admin_user_id"],
+            name="fk_batch_approvals_version_preparer",
+        ),
+        # TRACE-APPROVAL-001 as a schema fact: the approval cannot name a hash this version
+        # does not have.
+        ForeignKeyConstraint(
+            ["payment_batch_version_id", "approved_content_hash"],
+            ["payment_batch_versions.id", "payment_batch_versions.content_hash"],
+            name="fk_batch_approvals_approved_hash",
+        ),
+        # §11.7's first statement, and the whole of CON-APPROVAL-001: two concurrent approvals
+        # of one version end as one row and one loser who is told so.
+        UniqueConstraint(
+            "payment_batch_version_id", name="uq_batch_approvals_one_per_version"
+        ),
+        # §11.7's second statement.
+        UniqueConstraint(
+            "id", "payment_batch_version_id", name="uq_batch_approvals_version_pair"
         ),
     )

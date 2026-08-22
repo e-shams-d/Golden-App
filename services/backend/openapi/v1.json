@@ -278,6 +278,71 @@
         "title": "AmountRequest",
         "type": "object"
       },
+      "ApprovalView": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1395-1410`, the manager's screen.\n\n`version.content_hash` is the field the approve call sends back, and that is the whole\nmechanism behind the word \"exact\": the server does not assume the manager saw the current\nversion, it requires them to quote it.",
+        "properties": {
+          "batch": {
+            "$ref": "#/components/schemas/BatchSummary"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BatchItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "prior_decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriorDecision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "$ref": "#/components/schemas/VersionSummary"
+          }
+        },
+        "required": [
+          "batch",
+          "version",
+          "items"
+        ],
+        "title": "ApprovalView",
+        "type": "object"
+      },
+      "ApproveVersionRequest": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1421-1426`.",
+        "properties": {
+          "approval_note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Note"
+          },
+          "expected_content_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Expected Content Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_content_hash"
+        ],
+        "title": "ApproveVersionRequest",
+        "type": "object"
+      },
       "BackgroundProcessingResponse": {
         "additionalProperties": false,
         "properties": {
@@ -1311,6 +1376,33 @@
         "title": "DeactivateBeneficiaryRequest",
         "type": "object"
       },
+      "DecisionRecorded": {
+        "additionalProperties": false,
+        "description": "`:1430-1442`, plus `replayed` for the reason `BatchCreated` gives.",
+        "properties": {
+          "approval": {
+            "$ref": "#/components/schemas/PriorDecision"
+          },
+          "batch": {
+            "$ref": "#/components/schemas/BatchSummary"
+          },
+          "replayed": {
+            "default": false,
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "version": {
+            "$ref": "#/components/schemas/VersionSummary"
+          }
+        },
+        "required": [
+          "approval",
+          "batch",
+          "version"
+        ],
+        "title": "DecisionRecorded",
+        "type": "object"
+      },
       "DecisionRequest": {
         "additionalProperties": false,
         "description": "`reason` is required for reject and suspend, per `05_API_Specification.md:894-895`.\n\nOptional in the model and enforced per route, because the same shape serves\nfour commands and two of them do not require it — a required field on all four\nwould make approval carry a reason nobody has.",
@@ -2233,6 +2325,57 @@
         "title": "PreviewValidation",
         "type": "object"
       },
+      "PriorDecision": {
+        "additionalProperties": false,
+        "description": "`:1409` — \"prior decision if any\". Absent until one exists.",
+        "properties": {
+          "approved_content_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved Content Hash"
+          },
+          "decided_at": {
+            "format": "date-time",
+            "title": "Decided At",
+            "type": "string"
+          },
+          "decision": {
+            "title": "Decision",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "id",
+          "decision",
+          "decided_at",
+          "approved_content_hash",
+          "reason"
+        ],
+        "title": "PriorDecision",
+        "type": "object"
+      },
       "ProfileCreatedResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2506,6 +2649,37 @@
           "pending_approval"
         ],
         "title": "RegisterTraderResponse",
+        "type": "object"
+      },
+      "RejectVersionRequest": {
+        "additionalProperties": false,
+        "description": "`:1456-1461`. Both required — \"Rejection reason is mandatory\".",
+        "properties": {
+          "expected_content_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Expected Content Hash",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_code": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Reason Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_content_hash",
+          "reason_code",
+          "reason"
+        ],
+        "title": "RejectVersionRequest",
         "type": "object"
       },
       "ReleaseEvidenceResponse": {
@@ -6879,6 +7053,256 @@
         ]
       }
     },
+    "/api/v1/payment-batches/{batch_id}/versions/{version_id}/approval-view": {
+      "get": {
+        "description": "`GET /api/v1/payment-batches/{batch_id}/versions/{version_id}/approval-view`.\n\n**A separate permission from deciding.** `permission_catalog.yaml:475` gives\n`read_approval_view` to `accountant`, `manager` and `read_only_auditor`, and the decision only\nto `manager`. An auditor must be able to see what was decided without being able to decide,\nand the accountant who prepared the file must be able to check their own work — which they can\ndo here and, by `SEC-APPROVAL-002`, cannot do by approving.\n\n**The prior decision is included when one exists**, because `:1409` asks for it: a manager\narriving after a colleague sees the answer rather than a button that will fail.",
+        "operationId": "getPaymentBatchApprovalView",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks payment_batch.read."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A named request or bank version is missing."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A named revision or record version is no longer current."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "What the manager decides on, including the hash they must quote back.",
+        "tags": [
+          "payment-batches"
+        ]
+      }
+    },
+    "/api/v1/payment-batches/{batch_id}/versions/{version_id}/approve": {
+      "post": {
+        "description": "`POST /api/v1/payment-batches/{batch_id}/versions/{version_id}/approve`.\n\n**No `If-Match`, and that is document 05's decision, not an omission.** `:1443` — \"No\n`If-Match` is needed for the immutable version itself, but the server verifies it remains the\nbatch's current version.\" The hash in the body is the stronger token: a record version says\n*when* the caller read, the hash says *what* they read.\n\n**`X-Recent-Auth` is required here and was not required to finalize.**\n`command_catalog.yaml:150` says `required_action_bound` for this command and\n`not_required_by_current_baseline` for finalization. This is the moment money is authorised,\nand `FINANCIAL_INTEGRITY_BASELINE.md` §3 wants proof the person holding the session is\npresent — bound to this action and this version, so a context obtained to approve version 7\ncannot approve version 8.",
+        "operationId": "approvePaymentBatchVersion",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Recent-Auth",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Recent-Auth"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionRecorded"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The version is not awaiting approval, or the caller prepared or finalized it (FINANCIAL_INTEGRITY_BASELINE.md §5)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session, or X-Recent-Auth did not authorise this decision."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the decision permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such batch or version."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The content hash is stale, the version is no longer current, or another decision reached this version first."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Idempotency-Key or X-Recent-Auth is missing."
+          }
+        },
+        "summary": "Approve the exact version whose hash the caller quotes back.",
+        "tags": [
+          "payment-batches"
+        ]
+      }
+    },
     "/api/v1/payment-batches/{batch_id}/versions/{version_id}/finalize": {
       "post": {
         "description": "`POST /api/v1/payment-batches/{batch_id}/versions/{version_id}/finalize`.\n\n**Both headers are required, and they answer different questions.**\n`command_catalog.yaml:139-140` says `if_match_batch_and_lock_current_version` and\n`\"idempotency\": \"required\"`. `If-Match` is \"is the batch still in the state you read\", which\nrefuses an accountant acting on a stale screen. `Idempotency-Key` is \"have I already\nfinalized this\", which makes a retry after a timeout return the first answer instead of\nmeeting a `draft`-only guard and reporting a failure for work that succeeded.\n\n**`If-Match` targets the batch, not the version.** A version is an immutable snapshot and has\nno `record_version` — giving it one would invite a compare-and-swap against a record nobody\nmay modify, which `app/db/base.py:record_version_column` warns about in as many words.\n\n**The guard is `payment_batch_version.finalize`, which is not `payment_batch.create`.**\n`permission_catalog.yaml:472` gives it to `accountant` with the `batch_finalize` constraint,\nand `FINANCIAL_INTEGRITY_BASELINE.md` §5 is why it is separate: the actor recorded here is\nthe one M7 must refuse as an approver, so conflating it with any other grant would blur the\nidentity the separation rule compares.",
@@ -7040,6 +7464,162 @@
           }
         },
         "summary": "Freeze a draft version as the exact thing a manager will approve.",
+        "tags": [
+          "payment-batches"
+        ]
+      }
+    },
+    "/api/v1/payment-batches/{batch_id}/versions/{version_id}/reject": {
+      "post": {
+        "description": "`POST /api/v1/payment-batches/{batch_id}/versions/{version_id}/reject`.\n\nThe same two headers, because `command_catalog.yaml:163` asks for the same. A rejection is not\nthe dangerous direction, but a rejection nobody made is: it stops a payment, and the\nseparation rule and the step-up together are what make \"who rejected this, and were they\npresent\" answerable.",
+        "operationId": "rejectPaymentBatchVersion",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Recent-Auth",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Recent-Auth"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionRecorded"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The version is not awaiting approval, or the caller prepared or finalized it (FINANCIAL_INTEGRITY_BASELINE.md §5)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session, or X-Recent-Auth did not authorise this decision."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the decision permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such batch or version."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The content hash is stale, the version is no longer current, or another decision reached this version first."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Idempotency-Key or X-Recent-Auth is missing."
+          }
+        },
+        "summary": "Reject the exact version, with the reason document 05 makes mandatory.",
         "tags": [
           "payment-batches"
         ]

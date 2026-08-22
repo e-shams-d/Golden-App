@@ -61,6 +61,35 @@ BATCH_PREFIX = "/api/v1/payment-batches"
 # fails the completeness check at the bottom rather than escaping the scan.
 M6_COMMAND_MODULES = ("payment_batch.py",)
 
+# Batch command modules a later milestone owns, which the manager-only prohibition therefore does
+# **not** apply to. `payment_batch_approval.py` names `payment_batch_version.approve` because
+# approving is what it does.
+#
+# Listed rather than skipped by pattern. The completeness check at the bottom of this file asserts
+# that every `*batch*.py` under `app/commands` appears in one of these two tuples, so a module
+# added later still fails until somebody decides which one it belongs in. A regex that let
+# anything containing "approval" through would have been the exemption nobody re-reads.
+LATER_MILESTONE_BATCH_COMMAND_MODULES = ("payment_batch_approval.py",)
+
+# The six routes M6 mounted, by name. Two tests below need this set for opposite reasons — one
+# asserts every one of them exists, the other asserts none of them is manager-gated — and it was
+# written out inline in the first when there was only one caller.
+#
+# It is a *fixed* list on purpose, and that matters more now than when it was written. M7 mounts
+# `approve` and `reject` under the same prefix and they **are** manager-gated, correctly. Had the
+# prohibition below kept iterating every batch route, the choice on the day M7 arrived would have
+# been to delete a true gate or to weaken it. Naming M6's own six keeps it proving exactly what it
+# was written to prove — that the actor who finalizes is not, by routing, an actor who may
+# approve — while leaving M7 free to add routes that are.
+M6_BATCH_PATHS: tuple[str, ...] = (
+    f"{BATCH_PREFIX}/preview",
+    BATCH_PREFIX,
+    f"{BATCH_PREFIX}/{{batch_id}}",
+    f"{BATCH_PREFIX}/{{batch_id}}/versions",
+    f"{BATCH_PREFIX}/{{batch_id}}/versions/{{version_id}}/finalize",
+    f"{BATCH_PREFIX}/{{batch_id}}/cancel",
+)
+
 
 def batch_routes(app_factory: Any) -> list[tuple[str, str, object]]:
     """Every route under the batch prefix, with its route object.
@@ -93,15 +122,8 @@ def test_the_batch_surface_is_found_at_all(app_factory: Any) -> None:
     routes = batch_routes(app_factory)
     paths = {path for _method, path, _route in routes}
 
-    # The five M6 built, by name. A count would pass on any five.
-    for expected in (
-        f"{BATCH_PREFIX}/preview",
-        BATCH_PREFIX,
-        f"{BATCH_PREFIX}/{{batch_id}}",
-        f"{BATCH_PREFIX}/{{batch_id}}/versions",
-        f"{BATCH_PREFIX}/{{batch_id}}/versions/{{version_id}}/finalize",
-        f"{BATCH_PREFIX}/{{batch_id}}/cancel",
-    ):
+    # The ones M6 built, by name. A count would pass on any six.
+    for expected in M6_BATCH_PATHS:
         assert expected in paths, f"{expected} is not mounted; {sorted(paths)}"
 
 
@@ -121,11 +143,31 @@ def test_no_batch_route_requires_a_manager_only_permission(
     Asserted over the declared permissions rather than over role membership: a route could be
     reachable today because one accountant happens to hold a manager role, and that is an
     accident of seeding rather than a property of the route.
+
+    **Scoped to `M6_BATCH_PATHS`, and the scoping is the point.** M7 slice 1 mounts `approve` and
+    `reject` under this same prefix, and those routes *must* declare a manager-only permission —
+    that is the separation rule working, not breaking it. Iterating every batch route would have
+    made this gate fail on the correct change, and the two ways out of that would have been to
+    delete it or to add an exemption list nobody re-reads. Naming M6's own six keeps the claim
+    exact: **finalization** must stay reachable by an accountant.
     """
+
+    m6_routes = [
+        (method, path, route)
+        for method, path, route in batch_routes(app_factory)
+        if path in M6_BATCH_PATHS
+    ]
+    # The control the sibling test above provides for the whole surface, repeated for this
+    # subset: a filter that matched nothing would make the prohibition below vacuous, which is
+    # the exact failure this file's first test exists to prevent.
+    assert len(m6_routes) >= len(M6_BATCH_PATHS), (
+        f"only {len(m6_routes)} of M6's {len(M6_BATCH_PATHS)} paths matched; the filter has "
+        "stopped seeing them and this assertion would prove nothing"
+    )
 
     offenders = {
         f"{method} {path}": sorted(declared_permissions(route) & manager_only)
-        for method, path, route in batch_routes(app_factory)
+        for method, path, route in m6_routes
         if declared_permissions(route) & manager_only
     }
 
@@ -207,10 +249,14 @@ def test_every_m6_command_module_is_in_the_scan(
         if path.name != "__init__.py" and "batch" in path.name
     }
 
-    assert present == set(M6_COMMAND_MODULES), (
-        "the batch command modules and this file's list have diverged.\n"
-        f"  present, not scanned: {sorted(present - set(M6_COMMAND_MODULES))}\n"
-        f"  scanned, not present: {sorted(set(M6_COMMAND_MODULES) - present)}"
+    accounted = set(M6_COMMAND_MODULES) | set(LATER_MILESTONE_BATCH_COMMAND_MODULES)
+
+    assert present == accounted, (
+        "the batch command modules and this file's lists have diverged. Every module must be in "
+        "M6_COMMAND_MODULES, where the manager-only prohibition applies, or in "
+        "LATER_MILESTONE_BATCH_COMMAND_MODULES, where it deliberately does not.\n"
+        f"  present, not accounted for: {sorted(present - accounted)}\n"
+        f"  accounted for, not present: {sorted(accounted - present)}"
     )
 
 

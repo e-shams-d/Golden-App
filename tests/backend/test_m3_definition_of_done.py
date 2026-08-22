@@ -201,6 +201,17 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # has no trader, so there is no ownership scope to filter.
     ("POST", "/api/v1/payment-batches/{batch_id}/versions"): PERMISSION,
     ("POST", "/api/v1/payment-batches/{batch_id}/cancel"): PERMISSION,
+    # M7 slice 1. `PERMISSION` for the same reason again — a batch has no trader — but the
+    # grants are the first manager-only ones on this surface, and that is deliberate:
+    # `FINANCIAL_INTEGRITY_BASELINE.md` §5 requires the approver to differ from the finalizer,
+    # and a shared grant would make the two indistinguishable at the routing layer before any
+    # comparison of actors could run.
+    (
+        "GET",
+        "/api/v1/payment-batches/{batch_id}/versions/{version_id}/approval-view",
+    ): PERMISSION,
+    ("POST", "/api/v1/payment-batches/{batch_id}/versions/{version_id}/approve"): PERMISSION,
+    ("POST", "/api/v1/payment-batches/{batch_id}/versions/{version_id}/reject"): PERMISSION,
     # M5 slice 8. The two reads the screens need, and which nothing had built: eleven
     # published operations and only the revision history read. Both are `DUAL` — a trader
     # sees their own through `scoped()`, an accountant sees the queue through
@@ -479,6 +490,24 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ("POST", "/api/v1/payment-batches/{batch_id}/cancel", "permission"): (
         "test_cancelling_needs_the_cancel_draft_permission"
     ),
+    # M7 slice 1. Each negative signs in holding every *other* batch grant, so it proves the
+    # route wants this particular one — which for approve and reject is the whole separation
+    # rule, one layer above the CHECK constraint that enforces it.
+    (
+        "GET",
+        "/api/v1/payment-batches/{batch_id}/versions/{version_id}/approval-view",
+        "permission",
+    ): "test_the_approval_view_needs_its_own_read_permission",
+    (
+        "POST",
+        "/api/v1/payment-batches/{batch_id}/versions/{version_id}/approve",
+        "permission",
+    ): "test_approving_needs_the_approve_permission",
+    (
+        "POST",
+        "/api/v1/payment-batches/{batch_id}/versions/{version_id}/reject",
+        "permission",
+    ): "test_rejecting_needs_the_reject_permission",
     # M5 slice 8. The two reads, four entries because both are `DUAL`. The ownership pair
     # answers `404` and the permission pair `403`, and each is asserted in its own test
     # rather than shared: the list's ownership case is about which rows come back, and the

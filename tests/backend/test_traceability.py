@@ -457,14 +457,10 @@ PENDING: dict[str, str] = {
     # questions, of which **G-1 blocks slice 2** — no Excel writer is pinned, and that is a
     # dependency decision on a deployment that cannot reach a registry. Slice 1 touches no file
     # and is independent of it.
-    "DB-APPROVAL-001": "M7 slice 1 — batch_approvals matches document 04, parsed not transcribed",
-    "SEC-APPROVAL-001": "M7 slice 1 — the approver is not the finalizer, at both boundaries",
-    "SEC-APPROVAL-002": "M7 slice 1 — nor the preparer; the stricter reading of `:1111`, see G-2",
-    "SEC-APPROVAL-003": "M7 slice 1 — recent-auth bound to this action and consumed in the txn",
-    "CON-APPROVAL-001": "M7 slice 1 — two concurrent approvals produce one decision",
-    "SVC-APPROVAL-001": "M7 slice 1 — the expected hash is required; a replacement makes it stale",
-    "AUD-APPROVAL-001": "M7 slice 1 — approved and rejected, with the one catalogued event",
-    "TRACE-APPROVAL-001": "M7 slice 1 — the approval names the exact hash it approved",
+    #
+    # Slice 1's eight are gone from this dictionary, discharged by
+    # `tests/backend/test_approval_schema.py`, `tests/integration/test_batch_approval.py` and
+    # `tests/integration/test_approval_table_privileges.py`.
     "DB-EXPORT-001": "M7 slice 2 — bank_excel_exports matches document 04, parsed",
     "SVC-EXPORT-001": "M7 slice 2 — the record exists only after the file verifies",
     "SVC-EXPORT-002": "M7 slice 2 — a preview is permanently non-sendable and cannot be promoted",

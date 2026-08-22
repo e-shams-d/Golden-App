@@ -41,6 +41,12 @@ PREVIEW = ("POST", "/api/v1/payment-batches/preview")
 FINALIZE = ("POST", "/api/v1/payment-batches/{batch_id}/versions/{version_id}/finalize")
 REPLACE = ("POST", "/api/v1/payment-batches/{batch_id}/versions")
 CANCEL = ("POST", "/api/v1/payment-batches/{batch_id}/cancel")
+APPROVAL_VIEW = (
+    "GET",
+    "/api/v1/payment-batches/{batch_id}/versions/{version_id}/approval-view",
+)
+APPROVE = ("POST", "/api/v1/payment-batches/{batch_id}/versions/{version_id}/approve")
+REJECT = ("POST", "/api/v1/payment-batches/{batch_id}/versions/{version_id}/reject")
 
 # What each route must declare, and nothing else. The create is the only one that writes.
 EXPECTED: dict[tuple[str, str], set[str]] = {
@@ -60,6 +66,20 @@ EXPECTED: dict[tuple[str, str], set[str]] = {
     # `cancel_draft` is the only batch cancellation permission that exists, which is
     # why cancellation is draft-only. DOC-CONFLICT-056.
     CANCEL: {"payment_batch.cancel_draft"},
+    # M7 slice 1. Three separate grants for three different authorities, and the
+    # separation is the milestone's whole subject.
+    #
+    # `read_approval_view` goes to `accountant`, `manager` and `read_only_auditor`
+    # (`permission_catalog.yaml:475`) — an auditor must be able to see what was decided
+    # without being able to decide, and the accountant who prepared the file must be
+    # able to check their own work, which they can do here and, by SEC-APPROVAL-002,
+    # cannot do by approving.
+    APPROVAL_VIEW: {"payment_batch_version.read_approval_view"},
+    # Approve and reject are separate rows in the catalogue (`:480`, `:483`) and stay
+    # separate here. Collapsing them into one "decide" grant would mean anybody who may
+    # stop a payment may also authorise one.
+    APPROVE: {"payment_batch_version.approve"},
+    REJECT: {"payment_batch_version.reject"},
 }
 
 SEED = (

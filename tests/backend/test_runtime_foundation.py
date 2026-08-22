@@ -47,6 +47,10 @@ EXPECTED_TABLES = frozenset(
         # membership *is* `payment_attempt_allocations`, whose uniqueness is a partial
         # unique index rather than a column, so two active versions cannot both claim
         # one attempt and the refusal comes from the database rather than a service.
+        # M7 slice 1, `04_Database_Schema.md` §11.7. Append-only: the fail-closed default in
+        # `020-runtime-roles.sql` gives new tables SELECT and INSERT only, so no runtime role
+        # can rewrite a decision, and `20260822_0020` adds no grant.
+        "batch_approvals",
         "payment_attempt_allocations",
         "payment_attempts",
         "payment_batch_items",

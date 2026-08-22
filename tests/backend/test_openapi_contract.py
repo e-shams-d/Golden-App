@@ -189,6 +189,12 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # cancellation is draft-only, because §29.2's second origin has no permission.
         "createReplacementPaymentBatchVersion",
         "cancelPaymentBatch",
+        # M7 slice 1. `05_API_Specification.md:1398`, `:1415` and `:1449`. Three operations
+        # rather than two: the view is separately permissioned, because an auditor must be
+        # able to see what was decided without being able to decide it.
+        "getPaymentBatchApprovalView",
+        "approvePaymentBatchVersion",
+        "rejectPaymentBatchVersion",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas
