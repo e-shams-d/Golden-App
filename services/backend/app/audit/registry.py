@@ -484,6 +484,30 @@ GENERATE_EXPORT_PREVIEW = CommandNames(
     catalogued=True,
 )
 
+GENERATE_FINAL_EXPORT = CommandNames(
+    audit_action="bank_export.final_generated",
+    # `command_catalog.yaml:194` gives this `"outbox_event": null` too. The event this family
+    # owns is `BankExportSent`, and it belongs to mark-sent — because generating a file is not
+    # the moment a payment leaves the building, and a consumer told otherwise would act early.
+    outbox_event_type=None,
+    catalogued=True,
+)
+
+QUARANTINE_EXPORT_ON_INTEGRITY_FAILURE = CommandNames(
+    audit_action="bank_export.integrity_failed",
+    # `audit_outbox_catalog.yaml:34` names the action; no event accompanies it.
+    #
+    # **This name belongs to no command of its own**, and that is deliberate.
+    # `permission_catalog.yaml:507` grants `bank_export.quarantine` to `default_roles: []` — to
+    # nobody — and `command_catalog.yaml` has no row for it, so a manual quarantine is a
+    # capability nothing can invoke. §15.5 describes quarantine as what *happens* when a check
+    # fails, and this action is written by the code that runs the checks. G-4 records the
+    # unreachable permission; slice 5A took the same reading for invalidation after the plan had
+    # said otherwise.
+    outbox_event_type=None,
+    catalogued=True,
+)
+
 INVALIDATE_BATCH_APPROVAL = CommandNames(
     audit_action="payment_batch_approval.invalidated",
     # `audit_outbox_catalog.yaml:31` names the action and its `outbox_events` list names nothing
@@ -643,4 +667,7 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     INVALIDATE_BATCH_APPROVAL,
     # M7 slice 2, same commit as its entry, same reason.
     GENERATE_EXPORT_PREVIEW,
+    # M7 slice 3.
+    GENERATE_FINAL_EXPORT,
+    QUARANTINE_EXPORT_ON_INTEGRITY_FAILURE,
 )

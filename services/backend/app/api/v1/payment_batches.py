@@ -1355,6 +1355,27 @@ def _prior_decision(decision: BatchApproval | None) -> PriorDecision | None:
 # ---------------------------------------------------------------------------
 
 
+EXPORT_RESPONSES: dict[int | str, dict[str, object]] = {
+    400: {
+        "model": ErrorEnvelope,
+        "description": "The version has no operational approval, so no final file may exist.",
+    },
+    401: {"model": ErrorEnvelope, "description": "No valid session."},
+    403: {"model": ErrorEnvelope, "description": "The caller lacks the generation permission."},
+    404: {"model": ErrorEnvelope, "description": "No such batch or version."},
+    409: {
+        "model": ErrorEnvelope,
+        "description": (
+            "EXPORT_INTEGRITY_MISMATCH. The eight checks of §15.5 did not hold; the export has "
+            "been written, quarantined and recorded, and the response names which comparisons "
+            "failed."
+        ),
+    },
+    428: {"model": ErrorEnvelope, "description": "Idempotency-Key is missing."},
+    **VALIDATION_ERROR_RESPONSE,
+}
+
+
 class ExportGenerated(BaseModel):
     """`05_API_Specification.md:1466-1478`.
 
@@ -1448,3 +1469,86 @@ def generate_export_preview(
         uow.commit()
 
     return rendered
+
+
+@router.post(
+    "/{batch_id}/versions/{version_id}/exports/final",
+    response_model=ExportGenerated,
+    status_code=201,
+    operation_id="generateBankExportFinal",
+    summary="Render the approved version as the file that will go to the bank.",
+    responses=EXPORT_RESPONSES,
+    dependencies=[requires(declare("bank_export.generate_final"))],
+)
+def generate_export_final(
+    batch_id: uuid.UUID,
+    version_id: uuid.UUID,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> ExportGenerated:
+    """`POST /api/v1/payment-batches/{batch_id}/versions/{version_id}/exports/final`.
+
+    **The same shape as the preview and a different set of preconditions.**
+    `command_catalog.yaml:192` names three — `valid_exact_version_approval`,
+    `content_hash_matches`, `mapping_and_source_account_match` — and a preview asks for none of
+    them, because a preview authorises nothing.
+
+    **A `409` here means the export was quarantined, not that nothing happened.** §15.5 says a
+    mismatch "quarantines the export"; the row exists, its status is `quarantined`, and the
+    security event has been written. The commit is deliberate for the same reason the step-up
+    refusal commits in `_recent_auth_refused`: rolling back would discard the evidence that
+    something disagreed, which is the one artifact an investigation needs.
+
+    **Still 201, not 202.** `:1478` offers `202` "when worker processing is used" and this path
+    uses none. G-10 records what is genuinely missing — §15.5 asks for a high-priority *task* as
+    well as a security event, and Phase 1A has no task table — rather than a queue being invented
+    to make the status code fit.
+    """
+
+    if idempotency_key is None:
+        raise PreconditionRequiredError("Idempotency-Key")
+
+    now = utc_now()
+    with runtime.uow_factory() as uow:
+        try:
+            result = export_commands.generate_final(
+                export_commands.GenerateFinal(
+                    payment_batch_id=batch_id,
+                    payment_batch_version_id=version_id,
+                ),
+                uow=uow,
+                storage=runtime.storage,
+                policy=BATCH_REDACTION,
+                actor=_audit_actor(actor),
+                context=AuditContext(request_id=get_request_id()),
+                idempotency_key=idempotency_key,
+                now=now,
+            )
+        except export_commands.IntegrityRefused:
+            # Committed on purpose: the quarantine, its audit row and its security event are the
+            # point of the failure path.
+            uow.commit()
+            raise
+        rendered = _export_response(result)
+        uow.commit()
+
+    return rendered
+
+
+def _export_response(result: export_commands.ExportResult) -> ExportGenerated:
+    return ExportGenerated(
+        id=result.export.id,
+        export_number=result.export.export_number,
+        export_type=result.export.export_type,
+        # `SVC-EXPORT-002`'s visible half, derived rather than stored: a preview is never
+        # sendable, a final export is. One place, so the two routes cannot disagree.
+        sendable=result.export.export_type != "preview",
+        row_count=result.export.row_count,
+        total_amount_irr=str(result.export.total_amount_irr),
+        content_hash=result.export.content_hash,
+        file_sha256_hash=result.export.file_sha256_hash,
+        file_id=result.export.file_id,
+        generated_at=result.export.generated_at,
+        replayed=result.replayed,
+    )

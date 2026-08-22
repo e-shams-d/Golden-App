@@ -7371,6 +7371,136 @@
         ]
       }
     },
+    "/api/v1/payment-batches/{batch_id}/versions/{version_id}/exports/final": {
+      "post": {
+        "description": "`POST /api/v1/payment-batches/{batch_id}/versions/{version_id}/exports/final`.\n\n**The same shape as the preview and a different set of preconditions.**\n`command_catalog.yaml:192` names three — `valid_exact_version_approval`,\n`content_hash_matches`, `mapping_and_source_account_match` — and a preview asks for none of\nthem, because a preview authorises nothing.\n\n**A `409` here means the export was quarantined, not that nothing happened.** §15.5 says a\nmismatch \"quarantines the export\"; the row exists, its status is `quarantined`, and the\nsecurity event has been written. The commit is deliberate for the same reason the step-up\nrefusal commits in `_recent_auth_refused`: rolling back would discard the evidence that\nsomething disagreed, which is the one artifact an investigation needs.\n\n**Still 201, not 202.** `:1478` offers `202` \"when worker processing is used\" and this path\nuses none. G-10 records what is genuinely missing — §15.5 asks for a high-priority *task* as\nwell as a security event, and Phase 1A has no task table — rather than a queue being invented\nto make the status code fit.",
+        "operationId": "generateBankExportFinal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportGenerated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The version has no operational approval, so no final file may exist."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the generation permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such batch or version."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "EXPORT_INTEGRITY_MISMATCH. The eight checks of §15.5 did not hold; the export has been written, quarantined and recorded, and the response names which comparisons failed."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Idempotency-Key is missing."
+          }
+        },
+        "summary": "Render the approved version as the file that will go to the bank.",
+        "tags": [
+          "payment-batches"
+        ]
+      }
+    },
     "/api/v1/payment-batches/{batch_id}/versions/{version_id}/exports/preview": {
       "post": {
         "description": "`POST /api/v1/payment-batches/{batch_id}/versions/{version_id}/exports/preview`.\n\n**201, not 202.** `:1478` says \"Response is `202` when worker processing is used\", and this\npath uses none — the file is rendered, stored and recorded inside the request. Returning 202\nwould tell a client to poll for something already finished. Slice 3's final export is where\nasynchronous generation is decided, and the status code follows that decision rather than\nanticipating it.\n\n**No `If-Match`.** `command_catalog.yaml` asks only for idempotency here. A preview changes no\nstate a caller could hold a stale view of: it does not move the version, does not touch the\nbatch, and writes a row nothing else reads yet.\n\n**Any state, including a draft.** `:1478` — \"Preview may be generated before approval.\" The\npoint of a preview is to see what the file would be *before* committing to it, so a guard\nrequiring `ready_for_approval` would remove the only moment it earns its name.",

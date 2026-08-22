@@ -466,11 +466,13 @@ PENDING: dict[str, str] = {
     # `tests/backend/test_excel_writer.py`, `tests/integration/test_export_preview.py` and
     # `tests/integration/test_export_table_privileges.py`. G-1 was answered on 2026-08-22, which
     # is what let the slice be written at all.
-    "SVC-EXPORT-005": "M7 slice 3 — a final export needs an approval for the exact version",
-    "SVC-INTEGRITY-001": "M7 slice 3 — all eight of §15.5, eight assertions with eight cases",
-    "SVC-INTEGRITY-002": "M7 slice 3 — a mismatch quarantines and raises the security event",
-    "CON-EXPORT-001": "M7 slice 3 — two concurrent final exports produce one logical result",
-    "AUD-EXPORT-002": "M7 slice 3 — final_generated and integrity_failed, both catalogued",
+    #
+    # Slice 3's five are gone, discharged by `tests/backend/test_export_integrity.py` and
+    # `tests/integration/test_export_final.py`. One of them shipped narrower than its wording:
+    # §15.5 asks for a "security event" as well as a task, and Phase 1A has a channel for
+    # neither — `auth_events.event_class` admits only doc 12's six identity-and-access classes,
+    # and an integrity mismatch is none of them. The audit row carries the record; G-10 now
+    # covers both halves of the missing channel.
     "SEC-DOWNLOAD-001": "M7 slice 4 — download is guarded and refused for a quarantined export",
     "SVC-INTEGRITY-003": "M7 slice 4 — revalidated before *every* download, not once",
     "SVC-SENT-001": "M7 slice 4 — mark-sent acts on an exact export; a preview cannot be sent",
