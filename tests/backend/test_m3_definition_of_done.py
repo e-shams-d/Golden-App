@@ -219,6 +219,12 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
         "POST",
         "/api/v1/payment-batches/{batch_id}/versions/{version_id}/exports/preview",
     ): PERMISSION,
+    # M7 slice 3, and its own grant for the reason the batch family keeps repeating: the actor
+    # recorded by one command is the actor a later guard compares against.
+    (
+        "POST",
+        "/api/v1/payment-batches/{batch_id}/versions/{version_id}/exports/final",
+    ): PERMISSION,
     # M5 slice 8. The two reads the screens need, and which nothing had built: eleven
     # published operations and only the revision history read. Both are `DUAL` — a trader
     # sees their own through `scoped()`, an accountant sees the queue through
@@ -520,6 +526,11 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
         "/api/v1/payment-batches/{batch_id}/versions/{version_id}/exports/preview",
         "permission",
     ): "test_generating_a_preview_needs_the_preview_permission",
+    (
+        "POST",
+        "/api/v1/payment-batches/{batch_id}/versions/{version_id}/exports/final",
+        "permission",
+    ): "test_generating_a_final_export_needs_the_final_permission",
     # M5 slice 8. The two reads, four entries because both are `DUAL`. The ownership pair
     # answers `404` and the permission pair `403`, and each is asserted in its own test
     # rather than shared: the list's ownership case is about which rows come back, and the

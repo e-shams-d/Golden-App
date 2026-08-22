@@ -589,9 +589,19 @@ def _is_one_decision_per_version(error: IntegrityError) -> bool:
     By constraint name, not by message text: the message is PostgreSQL's and localised, and a
     substring match on it would silently start catching a different violation the day somebody
     adds one. Every other constraint on this table is a programming error and must keep raising.
+
+    **Read from `diag.constraint_name`, which is a correction.** The first version tested
+    `"uq_..." in str(error.orig.diag)`, and a diagnostic renders as its repr — the constraint name
+    is nowhere in it, so the branch could never match and every concurrent loser would have got a
+    500 instead of a 409. Nothing here caught it: the early `SELECT` above returns `AlreadyDecided`
+    first in every test, so this path has no coverage of its own and would only have fired under
+    a genuine race in production. M7 slice 3 met the same mistake in its own new code, where a
+    test *did* reach the branch, and fixed both.
     """
 
-    return "uq_batch_approvals_one_per_version" in str(getattr(error.orig, "diag", "") or error)
+    diagnostic = getattr(error.orig, "diag", None)
+    name = getattr(diagnostic, "constraint_name", None)
+    return str(name) == "uq_batch_approvals_one_per_version" if name else False
 
 
 def _decision_now_recorded(uow: SqlAlchemyUnitOfWork, version_id: uuid.UUID) -> str:

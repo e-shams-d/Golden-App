@@ -51,6 +51,10 @@ PREVIEW_EXPORT = (
     "POST",
     "/api/v1/payment-batches/{batch_id}/versions/{version_id}/exports/preview",
 )
+FINAL_EXPORT = (
+    "POST",
+    "/api/v1/payment-batches/{batch_id}/versions/{version_id}/exports/final",
+)
 
 # What each route must declare, and nothing else. The create is the only one that writes.
 EXPECTED: dict[tuple[str, str], set[str]] = {
@@ -89,6 +93,11 @@ EXPECTED: dict[tuple[str, str], set[str]] = {
     # work, and giving the manager who approves it the ability to produce it too would put both
     # sides of the export on one desk.
     PREVIEW_EXPORT: {"bank_export.generate_preview"},
+    # M7 slice 3. A separate grant from the preview's (`permission_catalog.yaml:492`), and the
+    # separation is real: a preview authorises nothing, a final export is the file that goes to a
+    # bank. Collapsing them would mean anybody who may look at a rendering may also produce the
+    # one that gets sent.
+    FINAL_EXPORT: {"bank_export.generate_final"},
 }
 
 SEED = (
