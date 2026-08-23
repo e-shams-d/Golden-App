@@ -142,10 +142,11 @@ PENDING: dict[str, str] = {
     # `tests/integration/test_batch_approval.py`. Both lists are **parsed from the screen
     # specification**, which is the same parse slice 1's screen will use — so the API and the UI
     # are held to one source rather than two copies of "the nineteen mandatory fields".
-    "UI-APPROVAL-001": "screens slice 1 — every mandatory field of §13.3, parsed from the doc",
-    "UI-APPROVAL-002": "screens slice 1 — the queue identifies the exact version, not the batch",
-    "UI-APPROVAL-003": "screens slice 1 — the surface needs read_approval_view, nav included",
-    "UI-APPROVAL-004": "screens slice 1 — the failure state is accessible and in the a11y sweep",
+    # Slice 1's four are discharged in two places, and the split is recorded in
+    # `tests/backend/test_approval_screens_exist.py`: the field-by-field parse of §13.2 and §13.3
+    # is `apps/admin-web/test/approval-screens.test.ts`, which this scanner cannot see, and the
+    # structural half — the screens exist, the a11y sweep opens them, the menu is gated on the
+    # read — is the Python file. `UI-NAV-001` set that precedent in M3.
     "UI-APPROVE-001": "screens slice 2 — the dialog sends the hash it rendered, never a re-read",
     "UI-APPROVE-002": "screens slice 2 — the UI updates only after authoritative server success",
     "UI-STALE-001": "screens slice 2 — blocked, bannered, linked, readable: §13.4's four",
