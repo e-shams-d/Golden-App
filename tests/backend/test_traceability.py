@@ -125,6 +125,62 @@ RECORDED_GAPS: dict[str, str] = {
 # An entry here is a commitment, not an exemption: two tests below fail on an entry
 # whose obligation no plan states, and on an entry for something already covered.
 PENDING: dict[str, str] = {
+    # M8 — `docs/handoff/M8_IMPLEMENTATION_PLAN.md`. Bank-result bundles, the manual crop, and the
+    # review workspace: seven slices, thirty-five obligations, `15_Agent_Implementation_Plan.md`
+    # §16 and `08_Bank_File_and_Result_Processing.md` §15.
+    #
+    # **Q-4 blocks three of the seven.** Nothing in the dependency list can open a PDF, and the
+    # capable alternative is AGPL — a licence decision, not a technical one. Slices 1, 2 and 3 (the
+    # bundle, the segment table with its non-rendering creation method, and the review queue)
+    # need no answer, which is why they are first. M7 ordered itself the same way around its G-1.
+    #
+    # **The plan corrects M7's G-10 rather than inheriting it.** M7 recorded "there is no task table
+    # in Phase 1A" and used it to excuse not creating a review task when an export is quarantined.
+    # `04_Database_Schema.md:1312` specifies `manual_review_tasks` with two indexes and no
+    # later-phase marker, and `05_API_Specification.md:2058` gives it six routes. It was unbuilt
+    # work, not a design gap — so slice 3 builds it and removes the `RECORDED_GAPS` entry in the
+    # same commit, because a recorded gap whose reason has expired reads as considered.
+    #
+    # **The finding worth knowing before reading the plan** is rotation. Document 08 requires it in
+    # the crop input and in stored provenance, §16 requires it validated, and document 05's request
+    # body and document 04's table both omit it. A crop of a rotated page is then not reproducible
+    # from its own provenance — the one property `receipt_segments` exists to have — so the plan
+    # follows document 08 and adds the column. Q-1.
+    "DB-BUNDLE-001": "M8 slice 1 — the three bundle tables match doc 04 §12.1-12.3 exactly",
+    "SVC-BUNDLE-001": "M8 slice 1 — a batch link proves nothing about payment",
+    "SVC-BUNDLE-002": "M8 slice 1 — file_role's four values and both uniqueness constraints",
+    "SVC-BUNDLE-003": "M8 slice 1 — the cached counts are recomputed, never incremented",
+    "API-BUNDLE-001": "M8 slice 1 — the reads carry what §16's workspace list names",
+    "SEC-BUNDLE-001": "M8 slice 1 — no trader reaches any bundle route",
+    "DB-SEGMENT-001": "M8 slice 2 — doc 04's bbox CHECK at each of its edges, all-null included",
+    "DB-SEGMENT-002": "M8 slice 2 — five creation methods, and the AI one unreachable",
+    "SVC-SEGMENT-001": "M8 slice 2 — PATCH refused after finalization, naming the replacement path",
+    "SVC-SEGMENT-002": "M8 slice 2 — provenance and coordinates are never rewritable",
+    "SEC-SEGMENT-001": "M8 slice 2 — no trader reads an internal segment",
+    "DB-TASK-001": "M8 slice 3 — manual_review_tasks and its partial index from the catalogue",
+    "SVC-TASK-001": "M8 slice 3 — four transitions and no other; resolve needs a code",
+    "SVC-TASK-002": "M8 slice 3 — entity ids are queue navigation, never a financial join",
+    "SVC-QUARANTINE-001": "M8 slice 3 — quarantining an export creates a task; M7's gap entry goes",
+    "SVC-CROP-001": "M8 slice 4 — §16's ten crop requirements, one assertion each",
+    "SVC-CROP-002": "M8 slice 4 — §16's three prohibitions, as absences",
+    "SVC-CROP-003": "M8 slice 4 — the source file is byte-identical afterwards, measured",
+    "SVC-CROP-004": "M8 slice 4 — provenance alone reproduces the crop, rotated page included",
+    "SVC-CROP-005": "M8 slice 4 — a retry duplicates nothing; a failed render leaves no evidence",
+    "SVC-CROP-006": "M8 slice 4 — a quarantined or unavailable source cannot be cropped",
+    "AUD-CROP-001": "M8 slice 4 — the audit and outbox records §16 requires",
+    "SVC-PREVIEW-001": "M8 slice 5 — multi-page PDFs and rotated images render",
+    "SVC-PREVIEW-002": "M8 slice 5 — previews are derived objects, never the original",
+    "SEC-PREVIEW-001": "M8 slice 5 — preview and download refused without the bundle permission",
+    "API-PREVIEW-001": "M8 slice 5 — page dimensions are returned; a client cannot invent them",
+    "UI-WORKSPACE-001": "M8 slice 6 — every item §16's workspace list names, parsed",
+    "UI-CROP-001": "M8 slice 6 — the rectangle is keyboard-operable, not pointer-only",
+    "UI-CROP-002": "M8 slice 6 — normalized coordinates and rotation are what the screen sends",
+    "UI-EVIDENCE-001": "M8 slice 6 — the external-evidence fallback stays reachable",
+    "TRACE-M8-001": "M8 slice 6 — every screen is in the a11y sweep, compared against what exists",
+    "SVC-PRIVACY-001": "M8 slice 7 — the privacy verification is per segment version",
+    "SVC-PRIVACY-002": "M8 slice 7 — no route this milestone adds can mark a segment publishable",
+    "TRACE-M8-002": "M8 slice 7 — §16's Definition of Done as one journey, not nine steps",
+    "TRACE-M8-003": "M8 slice 7 — no AI path is reachable at all",
     # M7's screens — `docs/handoff/M7_SCREENS_IMPLEMENTATION_PLAN.md`. Four slices, nineteen
     # obligations, implementing `21_UI_Design_System_and_Screen_Specification.md` §13-14 field by
     # field. G-7 in the M7 plan asked whether these were owed and never got an answer; the
