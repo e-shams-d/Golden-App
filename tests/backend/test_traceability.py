@@ -189,10 +189,10 @@ PENDING: dict[str, str] = {
     # have passed, which is the whole reason it is not scoped that way.
     #
     # `UI-DOWNLOAD-001` is the only obligation in this milestone whose entire content is a form of
-    # words. `15_Agent_Implementation_Plan.md:989` makes "downloading does not mean sent" the central
-    # human-factors risk and §14.6 answers it by giving the sentence, so a paraphrase is not a
-    # translation decision — it is dropping the requirement. The English is rendered verbatim from a
-    # constant the specification is parsed to check, with the Persian beside it.
+    # words. `15_Agent_Implementation_Plan.md:989` makes "downloading does not mean sent" the
+    # central human-factors risk and §14.6 answers it by giving the sentence, so a paraphrase is
+    # not a translation decision — it is dropping the requirement. The English is rendered verbatim
+    # from a constant the specification is parsed to check, with the Persian beside it.
     # DB-SPEC-001 and TRACE-PLAN-001 were owed by slice 1B and are discharged by it.
     #
     # TRACE-PLAN-001 had **no definition anywhere**. It appeared exactly twice in the
