@@ -3,6 +3,15 @@ import { expect, test } from "@playwright/test";
 
 const paths = [
   "/",
+  // Added by screens slice 4, because `TRACE-SCREENS-001` found them missing the moment it was
+  // written. Neither belongs to the screens plan — which is the point: the obligation compares the
+  // list against the routes that *exist*, and softening it to "the screens this plan added" would
+  // have left the first page every operator sees unchecked since M3.
+  //
+  // `/login` is that page. `/requests/[requestId]` arrived with M5 slice 8 and was the one route of
+  // that slice nobody swept.
+  "/login",
+  "/requests/00000000-0000-4000-8000-000000000003",
   "/states/loading",
   "/states/error",
   "/states/empty",

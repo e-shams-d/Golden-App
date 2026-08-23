@@ -72,6 +72,22 @@ export const EXPORT_QUARANTINED = "quarantined";
 export const PREVIEW_BANNER = "PREVIEW — NOT APPROVED FOR BANK SUBMISSION";
 
 /**
+ * §14.6's sentence, character for character.
+ *
+ * `15_Agent_Implementation_Plan.md:989` makes this the milestone's central human-factors risk, and
+ * the wording is the mitigation: an accountant who downloads a file, emails it to the bank and
+ * forgets to come back leaves the system believing the payment was never made, and the next
+ * reconciliation cycle chases a payment that already happened.
+ *
+ * Verbatim for `PREVIEW_BANNER`'s reason and one more. §14.6 says "The UI must clearly state" and
+ * then gives the words — so a paraphrase is not a translation decision, it is dropping the
+ * requirement. The Persian sentence beside it says the same thing for the person who has to act on
+ * it; neither replaces the other.
+ */
+export const DOWNLOAD_IS_NOT_SENDING =
+  "Downloading the file does not mean it was sent to the bank.";
+
+/**
  * §14.3's states, mapped to their labels. All eight the catalogue has, and only those.
  *
  * A map rather than a template key, because `t(`admin.export.status.${status}`)` is not a checkable
@@ -117,6 +133,80 @@ export async function readExport(exportId: string, signal?: AbortSignal): Promis
     ...(signal ? { signal } : {}),
   });
   return response.data;
+}
+
+/**
+ * The URL the download control points at. §14.6.
+ *
+ * A plain link rather than a fetch, deliberately: the response is a streamed spreadsheet with a
+ * `Content-Disposition` filename, and a `fetch` would mean reading a payment file into memory and
+ * re-inventing the save dialog. The server revalidates integrity on this path and answers `409`
+ * when it fails — which the browser shows as a failed download, and the screen's next refresh
+ * explains, because `status` will have moved to `quarantined`.
+ *
+ * **The export id, never the batch.** `15_Agent_Implementation_Plan.md:978`: mark-sent "acts on an
+ * exact `BankExcelExport`, not a generic batch", and the same is true of taking the file — a batch
+ * may have had several versions and several exports, and exactly one of them is the one somebody
+ * uploads.
+ */
+export function downloadPath(exportId: string): string {
+  return `/api/v1/bank-exports/${encodeURIComponent(exportId)}/download`;
+}
+
+/**
+ * Record that a person uploaded this exact file. §14.7's command.
+ *
+ * `exportId` is the only target this takes. `UI-SENT-003` exists because a screen holding both a
+ * batch and an export in scope is one careless edit from sending the batch id, and the server would
+ * answer `404` rather than doing something wrong — but a `404` on this command reads as "the file is
+ * gone", which is the most alarming possible way to report a typo.
+ */
+export async function markSentToBank(input: {
+  exportId: string;
+  sentAt: string;
+  submissionChannel: string;
+  note: string | null;
+  idempotencyKey: string;
+  signal?: AbortSignal;
+}): Promise<MarkSentConfirmation> {
+  const response = await transport.request<MarkSentConfirmation>({
+    method: "POST",
+    path: `/bank-exports/${encodeURIComponent(input.exportId)}/mark-sent-to-bank`,
+    body: {
+      sent_at: input.sentAt,
+      submission_channel: input.submissionChannel,
+      note: input.note,
+    },
+    idempotencyKey: input.idempotencyKey,
+    ...(input.signal ? { signal: input.signal } : {}),
+  });
+  return response.data;
+}
+
+/**
+ * §14.7's confirmation. Everything `ExportDetail` carries, plus the two values no table stores.
+ *
+ * Slice 2B's asymmetry: §11.8 gives `bank_excel_exports` no column for the channel or the note, so
+ * the command's own response is the only place they can be shown honestly. A screen that expected
+ * to re-read them later would be asking for a column to be invented.
+ */
+export type MarkSentConfirmation = ExportDetail &
+  Readonly<{
+    submission_channel: string;
+    note: string | null;
+  }>;
+
+/**
+ * Whether this export is downloaded and still unconfirmed. `UI-SENT-002`.
+ *
+ * **Read, not derived.** The obvious client-side version is
+ * `downloaded_at !== null && sent_to_bank_marked_at === null`, and it is wrong in a way that would
+ * not show up in testing: it ignores `export_type`, so a downloaded preview would grow a reminder
+ * to confirm sending a file nobody may send. The server derives this from three values and
+ * `SVC-SENT-002` is the obligation; this function's whole job is to not have an opinion.
+ */
+export function isAwaitingSendConfirmation(view: ExportDetail): boolean {
+  return view.awaiting_send_confirmation;
 }
 
 /**
