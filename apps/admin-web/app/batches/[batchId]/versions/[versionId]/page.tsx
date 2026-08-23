@@ -6,10 +6,18 @@ import Link from "next/link";
 import { use, useCallback, useEffect, useState } from "react";
 
 import { AdminShell } from "../../../../../components/admin-shell";
+import { type DecisionKind, DecisionDialog } from "../../../../../components/decision-dialog";
+import { adminAuthAdapter } from "../../../../../src/auth";
 import {
+  APPROVE_PURPOSE,
   type ApprovalView,
+  approveVersion,
   fingerprint,
+  isStale,
   readApprovalView,
+  REJECT_PURPOSE,
+  rejectVersion,
+  STEP_UP_RESOURCE_TYPE,
   tomanFromIrr,
 } from "../../../../../src/batches";
 
@@ -123,9 +131,184 @@ export default function ApprovalDetailPage({
           />
         ) : null}
 
-        {phase.kind === "ready" ? <Detail view={phase.view} /> : null}
+        {phase.kind === "ready" ? (
+          <>
+            {/*
+              §13.4. The version this page was rendered from is no longer the batch's current one,
+              which means somebody replaced it while the manager was reading. Five behaviours, and
+              the page does all five: the command is blocked (the decision section is not
+              rendered at all), the banner is prominent, the current version is linked, the page
+              below stays readable as history, and — the one that needs saying — an open dialog is
+              not transferred. It cannot be: `Decide` is not rendered in this branch, so a dialog
+              inside it unmounts rather than re-targeting.
+            */}
+            {isStale(versionId, phase.view) ? (
+              <div
+                className="mt-4 rounded-2xl border-2 border-[var(--danger-600)] bg-[var(--danger-50)] p-4"
+                data-testid="stale-banner"
+                role="alert"
+              >
+                <p className="text-lg font-black">{t("admin.decide.staleTitle")}</p>
+                <p className="mt-2 leading-8">{t("admin.decide.staleBody")}</p>
+                <Link
+                  className="mt-3 inline-block rounded-lg border border-[var(--danger-600)] px-3 py-1 font-bold"
+                  data-testid="stale-current-link"
+                  href={`/batches/${phase.view.batch.id}/versions/${phase.view.version.id}`}
+                >
+                  {t("admin.decide.staleLink")}
+                </Link>
+              </div>
+            ) : (
+              <Decide
+                batchId={phase.view.batch.id}
+                onDecided={() => void load()}
+                view={phase.view}
+              />
+            )}
+            <Detail view={phase.view} />
+          </>
+        ) : null}
       </section>
     </AdminShell>
+  );
+}
+
+/**
+ * The decision, and the step-up it needs. §13.5 and §13.6.
+ *
+ * **The hash is captured when the dialog opens.** `openFor` stores it alongside the version id,
+ * and `DecisionDialog` never receives either — the request is built here from what was captured,
+ * so there is no path by which a re-read value could be sent. `UI-APPROVE-001`.
+ *
+ * **Nothing is shown as decided until the server says so.** `onDecided` is called after the
+ * response and reloads the view; there is no local "approved" state to be wrong. `UI-APPROVE-002`.
+ *
+ * **Not rendered at all when the caller may not decide.** The separation status arrives from the
+ * server, and a screen that offered the button anyway would be inviting a refusal rather than
+ * explaining one.
+ */
+function Decide({
+  batchId,
+  onDecided,
+  view,
+}: {
+  readonly batchId: string;
+  readonly onDecided: () => void;
+  readonly view: ApprovalView;
+}) {
+  const [open, setOpen] = useState<DecisionKind | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Captured at open time, from the view this component was rendered with. Read once so a later
+  // re-render cannot change what a dialog already open would submit.
+  const [captured, setCaptured] = useState<{ hash: string; versionId: string } | null>(null);
+
+  if (view.prior_decision) {
+    return (
+      <p className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
+        {t("admin.decide.recorded")}
+      </p>
+    );
+  }
+
+  if (!view.separation_of_duty.may_decide) return null;
+
+  const openFor = (kind: DecisionKind) => {
+    setCaptured({ hash: view.version.content_hash, versionId: view.version.id });
+    setError(null);
+    setOpen(kind);
+  };
+
+  const submit = ({ password, reason }: { password: string; reason: string }) => {
+    if (!captured || open === null) return;
+    setBusy(true);
+    setError(null);
+
+    const purpose = open === "approve" ? APPROVE_PURPOSE : REJECT_PURPOSE;
+    const idempotencyKey = crypto.randomUUID();
+
+    // The step-up is obtained for *this* action and *this* version, then **spent immediately**.
+    //
+    // The adapter is called directly rather than through `createAuthClient`, which is what this
+    // app already does everywhere else — and here it is also the right shape: a recent-auth
+    // context is single-use, so holding one in a cache to reuse would be holding something the
+    // server will refuse the second time. `getRecentAuth`'s resource binding still matters for
+    // any caller that does cache, which is why slice 2 fixed it.
+    void adminAuthAdapter
+      .reauthenticate({
+        actionClass: purpose,
+        challengeResponse: password,
+        resourceType: STEP_UP_RESOURCE_TYPE,
+        resourceId: captured.versionId,
+      })
+      .then((context) =>
+        open === "approve"
+          ? approveVersion({
+              batchId,
+              versionId: captured.versionId,
+              expectedContentHash: captured.hash,
+              recentAuthReference: context.reference,
+              idempotencyKey,
+            })
+          : rejectVersion({
+              batchId,
+              versionId: captured.versionId,
+              expectedContentHash: captured.hash,
+              recentAuthReference: context.reference,
+              idempotencyKey,
+              reasonCode: "manager_rejected",
+              reason,
+            }),
+      )
+      .then(() => {
+        // Only now. The server has recorded it; the reload is what makes the screen say so.
+        setOpen(null);
+        setCaptured(null);
+        onDecided();
+      })
+      .catch((caught: unknown) => {
+        const message = (caught as { body?: { error?: { message?: string } } }).body?.error
+          ?.message;
+        setError(message ?? t("admin.decide.failed"));
+      })
+      .finally(() => setBusy(false));
+  };
+
+  if (open !== null) {
+    return (
+      <DecisionDialog
+        busy={busy}
+        error={error}
+        kind={open}
+        onCancel={() => {
+          setOpen(null);
+          setCaptured(null);
+        }}
+        onSubmit={submit}
+      />
+    );
+  }
+
+  return (
+    <div className="mt-4 flex flex-wrap gap-3">
+      <button
+        className="rounded-lg bg-[var(--gold-700)] px-4 py-2 font-bold text-white"
+        data-testid="open-approve"
+        onClick={() => openFor("approve")}
+        type="button"
+      >
+        {t("admin.decide.approve")}
+      </button>
+      <button
+        className="rounded-lg border border-[var(--danger-600)] px-4 py-2 font-bold text-[var(--danger-600)]"
+        data-testid="open-reject"
+        onClick={() => openFor("reject")}
+        type="button"
+      >
+        {t("admin.decide.reject")}
+      </button>
+    </div>
   );
 }
 

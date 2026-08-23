@@ -21,6 +21,7 @@ export const faMessages = {
   // For a value the server could not resolve — a bank profile whose row is gone, say. Distinct
   // from a value that is legitimately absent, which gets its own wording where it appears.
   "common.unknown": "نامشخص",
+  "common.cancel": "انصراف",
   "state.loading.title": "در حال دریافت اطلاعات",
   "state.loading.description": "لطفاً چند لحظه منتظر بمانید.",
   "state.error.title": "دریافت اطلاعات انجام نشد",
@@ -391,6 +392,32 @@ export const faMessages = {
   "admin.approval.preview": "پیش‌نمایش",
   "admin.approval.previewAvailable": "پیش‌نمایش این نسخه — قابل ارسال نیست",
   "admin.approval.noPreview": "پیش‌نمایشی برای این نسخه ساخته نشده است.",
+  // §13.4 to §13.6. The decision itself, and the banner that stops one being taken about a
+  // version somebody has already replaced.
+  "admin.decide.approve": "تأیید این نسخه",
+  "admin.decide.reject": "رد این نسخه",
+  "admin.decide.approveTitle": "تأیید نسخهٔ دقیق",
+  "admin.decide.approveBody":
+    "با تأیید، همین نسخه و همین محتوا برای ارسال به بانک مجاز می‌شود. برای ادامه رمز خود را وارد کنید.",
+  "admin.decide.rejectTitle": "رد نسخهٔ دقیق",
+  "admin.decide.rejectBody":
+    "رد کردن این نسخه را ویرایش نمی‌کند؛ در صورت نیاز بعداً نسخهٔ جایگزین ساخته می‌شود.",
+  "admin.decide.reasonLabel": "دلیل رد (اجباری)",
+  "admin.decide.passwordLabel": "رمز شما",
+  "admin.decide.confirmApprove": "می‌دانم که این تأیید، پرداخت این فایل را مجاز می‌کند.",
+  "admin.decide.confirmReject": "می‌دانم که این نسخه رد می‌شود و پرداختی از آن انجام نمی‌شود.",
+  "admin.decide.submit": "ثبت تصمیم",
+  "admin.decide.working": "در حال ثبت…",
+  "admin.decide.recorded": "تصمیم ثبت شد.",
+  // The fallback when the server refused without a readable message. The server writes for a
+  // person, so its own wording is preferred wherever it gives one.
+  "admin.decide.failed": "تصمیم ثبت نشد. رمز را بررسی کنید و دوباره تلاش کنید.",
+  // §13.4's five behaviours. The banner is deliberately loud: it is the difference between a
+  // manager deciding about what they read and deciding about what replaced it.
+  "admin.decide.staleTitle": "این نسخه دیگر نسخهٔ جاری نیست",
+  "admin.decide.staleBody":
+    "پس از باز شدن این صفحه، نسخهٔ جایگزینی ساخته شده است. تصمیم‌گیری دربارهٔ این نسخه ممکن نیست و صفحه فقط برای سابقه باز مانده.",
+  "admin.decide.staleLink": "رفتن به نسخهٔ جاری",
   "admin.requests.title": "درخواست‌های پرداخت",
   "admin.requests.description":
     "صف بررسی حسابداری. تأیید برای پرداخت، تأیید مدیر نیست؛ در این مرحله فقط درستی درخواست بررسی می‌شود.",

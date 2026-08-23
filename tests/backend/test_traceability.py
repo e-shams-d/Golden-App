@@ -147,11 +147,20 @@ PENDING: dict[str, str] = {
     # is `apps/admin-web/test/approval-screens.test.ts`, which this scanner cannot see, and the
     # structural half — the screens exist, the a11y sweep opens them, the menu is gated on the
     # read — is the Python file. `UI-NAV-001` set that precedent in M3.
-    "UI-APPROVE-001": "screens slice 2 — the dialog sends the hash it rendered, never a re-read",
-    "UI-APPROVE-002": "screens slice 2 — the UI updates only after authoritative server success",
-    "UI-STALE-001": "screens slice 2 — blocked, bannered, linked, readable: §13.4's four",
-    "UI-STALE-002": "screens slice 2 — an open dialog does not transfer to the replacement",
-    "UI-REJECT-001": "screens slice 2 — rejection requires a reason and edits no version",
+    # Slice 2's five are discharged by `apps/admin-web/test/decision-dialog.test.ts`, and their
+    # entries left here in the same commit. Four of the five are claims about what the screen
+    # *cannot* do — send a re-read hash, announce success before the server answers, re-target an
+    # open dialog, submit a rejection with no reason — so they are asserted against the source of
+    # the page and the dialog rather than a rendering. This repository has no jsdom, and a
+    # rendering test would prove the happy path while leaving every one of those four open.
+    #
+    # The strongest of the four is structural rather than asserted: the dialog never receives the
+    # content hash or the version id at all, so there is no value it could send a stale copy of,
+    # and the decision section is not rendered in the stale branch, so an open dialog unmounts
+    # instead of being handed the replacement. Seven negative controls in
+    # `scripts/sabotage-screens-slice2.sh` each fail exactly one of these on the intended
+    # assertion — including one that caught a real defect in slice 1's Toman rendering, where a
+    # single-digit rial amount displayed as zero.
     "UI-PREVIEW-001": "screens slice 3 — §14.1's banner verbatim, parsed not transcribed",
     "UI-PREVIEW-002": "screens slice 3 — a preview offers none of §14.1's three prohibited things",
     "UI-EXPORT-001": "screens slice 3 — every field §14.4 lists, parsed from the document",
