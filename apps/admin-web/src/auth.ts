@@ -108,14 +108,39 @@ export const adminAuthAdapter: AuthAdapter = {
     });
   },
 
-  async reauthenticate({ actionClass, challengeResponse, signal }) {
-    // The endpoint slice 7 built. `resource_type`/`resource_id` are required by
-    // the approved baseline and are not known here — no admin screen performs a
-    // critical action yet — so this stays unreachable until M6/M7 supplies them,
-    // rather than sending a placeholder that would bind a context to nothing.
-    void actionClass;
-    void challengeResponse;
-    void signal;
-    throw new Error("step_up_requires_a_resource_binding_supplied_by_the_calling_screen");
+  async reauthenticate({ actionClass, challengeResponse, resourceType, resourceId, signal }) {
+    // The endpoint M3 slice 7 built, reached for the first time by M7's screens slice 2.
+    //
+    // This threw for four milestones and the message said exactly why:
+    // `resource_type`/`resource_id` are required by the approved baseline, no admin screen
+    // performed a critical action, and sending a placeholder would have bound a context to
+    // nothing. The approval screen is the caller that comment was waiting for — it knows which
+    // version the manager is deciding.
+    //
+    // `purpose` is the command id, which is what the approve and reject dialogs pass as their
+    // action class. The two are deliberately different purposes: a step-up obtained to refuse a
+    // batch must not be spendable on authorising it.
+    const response = await transport.request<{
+      recent_auth_reference: string;
+      expires_at: string;
+    }>({
+      method: "POST",
+      path: "/auth/reauthenticate",
+      body: {
+        password: challengeResponse,
+        purpose: actionClass,
+        resource_type: resourceType,
+        resource_id: resourceId,
+      },
+      ...(signal ? { signal } : {}),
+    });
+
+    return {
+      reference: response.data.recent_auth_reference,
+      actionClass,
+      expiresAt: response.data.expires_at,
+      resourceType,
+      resourceId,
+    };
   },
 };

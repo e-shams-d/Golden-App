@@ -140,6 +140,103 @@ export async function readApprovalView(
   return response.data;
 }
 
+export type DecisionRecorded = Readonly<{
+  approval: PriorDecision;
+  batch: BatchSummary;
+  version: VersionSummary;
+  replayed: boolean;
+}>;
+
+/**
+ * The two purposes a step-up may be obtained for, and they are not interchangeable.
+ *
+ * `FINANCIAL_INTEGRITY_BASELINE.md` §3 binds a context to an action as well as a resource, and
+ * the two failures differ in kind: the wrong resource pays the wrong people, the wrong action
+ * pays them when somebody meant to stop it. The strings are the command ids the server reads as
+ * `purpose`.
+ */
+export const APPROVE_PURPOSE = "payment_batch_version.approve";
+export const REJECT_PURPOSE = "payment_batch_version.reject";
+export const STEP_UP_RESOURCE_TYPE = "payment_batch_version";
+
+/**
+ * Approve the exact version whose hash the caller quotes back.
+ *
+ * **`expectedContentHash` is a parameter, not something read here.** `05_API_Specification.md:1443`
+ * — "The command is blocked when the content hash differs" — is the whole mechanism behind
+ * "exact": the server does not assume the manager saw the current version, it requires them to
+ * quote it. A function that fetched the hash before submitting would be quoting whatever is
+ * current, which after a replacement is not what was reviewed. `UI-APPROVE-001`.
+ *
+ * **No `If-Match`.** `:1443` says none is needed for the immutable version, and the hash is the
+ * stronger token: a record version says *when* the caller read, the hash says *what* they read.
+ */
+export async function approveVersion(input: {
+  batchId: string;
+  versionId: string;
+  expectedContentHash: string;
+  recentAuthReference: string;
+  idempotencyKey: string;
+  approvalNote?: string;
+  signal?: AbortSignal;
+}): Promise<DecisionRecorded> {
+  const response = await transport.request<DecisionRecorded>({
+    method: "POST",
+    path: `/payment-batches/${encodeURIComponent(input.batchId)}/versions/${encodeURIComponent(input.versionId)}/approve`,
+    body: {
+      expected_content_hash: input.expectedContentHash,
+      approval_note: input.approvalNote ?? null,
+    },
+    idempotencyKey: input.idempotencyKey,
+    recentAuthToken: input.recentAuthReference,
+    ...(input.signal ? { signal: input.signal } : {}),
+  });
+  return response.data;
+}
+
+/**
+ * Reject it, with the reason `05_API_Specification.md:1461` makes mandatory.
+ *
+ * §13.6: "Rejection does not edit the version; a new replacement version may be created later."
+ * Nothing here creates one — that is the accountant's command on a different screen.
+ */
+export async function rejectVersion(input: {
+  batchId: string;
+  versionId: string;
+  expectedContentHash: string;
+  recentAuthReference: string;
+  idempotencyKey: string;
+  reasonCode: string;
+  reason: string;
+  signal?: AbortSignal;
+}): Promise<DecisionRecorded> {
+  const response = await transport.request<DecisionRecorded>({
+    method: "POST",
+    path: `/payment-batches/${encodeURIComponent(input.batchId)}/versions/${encodeURIComponent(input.versionId)}/reject`,
+    body: {
+      expected_content_hash: input.expectedContentHash,
+      reason_code: input.reasonCode,
+      reason: input.reason,
+    },
+    idempotencyKey: input.idempotencyKey,
+    recentAuthToken: input.recentAuthReference,
+    ...(input.signal ? { signal: input.signal } : {}),
+  });
+  return response.data;
+}
+
+/**
+ * Whether the version this page was rendered from is still the batch's current one.
+ *
+ * §13.4's trigger. Read from the freshly-fetched view rather than remembered, so a page open
+ * while somebody replaces the version underneath it can tell — and `UI-STALE-002` is the reason
+ * this is a pure function over two values: the decision must not depend on anything the dialog
+ * closed over.
+ */
+export function isStale(renderedVersionId: string, current: ApprovalView): boolean {
+  return current.version.id !== renderedVersionId;
+}
+
 /**
  * IRR to Toman, for display only. S-1 in the screens plan.
  *
@@ -155,8 +252,9 @@ export async function readApprovalView(
 export function tomanFromIrr(irr: string): string {
   const digits = irr.replace(/^0+(?=\d)/u, "");
   if (!/^\d+$/u.test(digits)) return irr;
-  if (digits.length <= 1) return "0";
-  const whole = digits.slice(0, -1);
+  // A single-digit rial amount is a *fraction* of a Toman, not zero. Returning "0" for five rials
+  // would be the same rounding this function exists to avoid, just at the small end.
+  const whole = digits.length > 1 ? digits.slice(0, -1) : "0";
   const remainder = digits.slice(-1);
   return remainder === "0" ? whole : `${whole}.${remainder}`;
 }

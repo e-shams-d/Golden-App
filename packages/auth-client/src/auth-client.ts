@@ -60,14 +60,28 @@ export function createAuthClient(adapter: AuthAdapter): AuthClient {
       recentAuth = context;
       return context;
     },
-    getRecentAuth(actionClass) {
+    /**
+     * The held context, if it authorises **this** action on **this** resource.
+     *
+     * `resourceId` became part of the question in M7's screens slice 2, and matching on the
+     * action class alone was wrong the moment a context carried a binding: a step-up obtained to
+     * approve version 7 would have been handed back for version 8, which is precisely what
+     * `app/security/step_up.py` exists to refuse. The server would have said `WRONG_RESOURCE` and
+     * the caller would have spent a single-use assurance learning it.
+     *
+     * The resource is optional in the signature so callers with nothing to bind — none today —
+     * keep working; when it is given, it must match.
+     */
+    getRecentAuth(actionClass, resourceId) {
       if (!recentAuth) return undefined;
       const expiresAt = Date.parse(recentAuth.expiresAt);
       if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
         clearRecentAuth();
         return undefined;
       }
-      return recentAuth.actionClass === actionClass ? recentAuth : undefined;
+      if (recentAuth.actionClass !== actionClass) return undefined;
+      if (resourceId !== undefined && recentAuth.resourceId !== resourceId) return undefined;
+      return recentAuth;
     },
     clearRecentAuth,
   };

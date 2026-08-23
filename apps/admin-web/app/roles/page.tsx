@@ -16,10 +16,13 @@ import { listRoles, type Role } from "../../src/admin-users";
  *
  * **A change requires a step-up context bound to this exact role**, obtained through
  * `POST /auth/reauthenticate` with `purpose: "role.permissions.update"`, `resource_type:
- * "role"` and this role's id. `adminAuthAdapter.reauthenticate` deliberately throws rather
- * than sending a placeholder binding, because a context bound to nothing would authorise
- * anything. Wiring that is a screen with a password prompt inside a modal, and it is the
- * next slice's, not a button added here.
+ * "role"` and this role's id.
+ *
+ * `adminAuthAdapter.reauthenticate` used to throw rather than send a placeholder binding,
+ * because a context bound to nothing would authorise anything. **M7's screens slice 2
+ * implemented it**, supplying the binding from the approval screen — so the obstacle this
+ * paragraph described is gone, and what remains is the second reason below, which is not
+ * about authentication at all.
  *
  * **And the route cannot remove a permission at all.** `role_permissions.py` refuses any
  * request that would drop one, because removing means deleting a `role_permissions` row and
