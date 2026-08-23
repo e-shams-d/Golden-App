@@ -6,8 +6,12 @@ import Link from "next/link";
 import { use, useCallback, useEffect, useState } from "react";
 
 import { AdminShell } from "../../../components/admin-shell";
+import { MarkSentDialog } from "../../../components/mark-sent-dialog";
 import {
+  DOWNLOAD_IS_NOT_SENDING,
+  downloadPath,
   type ExportDetail,
+  isAwaitingSendConfirmation,
   isPreview,
   isQuarantined,
   PREVIEW_BANNER,
@@ -127,11 +131,135 @@ export default function BankExportPage({
           <>
             {isPreview(phase.view) ? <PreviewBanner /> : null}
             {isQuarantined(phase.view) ? <Quarantine view={phase.view} /> : null}
+            {/*
+              §2.5's reminder, above the detail because it is the thing that needs doing. Driven by
+              `awaiting_send_confirmation`, which the server derives — see `isAwaitingSendConfirmation`
+              for why the obvious client-side version is wrong rather than merely duplicated.
+            */}
+            {isAwaitingSendConfirmation(phase.view) ? <AwaitingConfirmation /> : null}
+            {/*
+              Both actions are withheld for anything not sendable, and `sendable` arrives from the
+              server: `export_type === "final" && status !== "quarantined"`. Deriving it here would
+              be re-implementing the rule that keeps a preview out of a bank, in the one place where
+              being wrong is a wrong payment.
+            */}
+            {phase.view.sendable ? (
+              <Actions onDone={() => void load()} view={phase.view} />
+            ) : null}
             <Detail view={phase.view} />
           </>
         ) : null}
       </section>
     </AdminShell>
+  );
+}
+
+/**
+ * §2.5's reminder. `UI-SENT-002`.
+ *
+ * "Who has a copy of this and has not told us they sent it" is the question this answers, and it is
+ * the one that catches the milestone's central human-factors risk: an accountant who downloaded the
+ * file, uploaded it to the bank portal and never came back.
+ *
+ * Rendered from `awaiting_send_confirmation` alone. Nothing here looks at a timestamp.
+ */
+function AwaitingConfirmation() {
+  return (
+    <div
+      className="mt-4 rounded-2xl border-2 border-[var(--warning-600)] bg-[var(--warning-50)] p-4"
+      data-testid="awaiting-send-confirmation"
+      role="status"
+    >
+      <p className="font-black">{t("admin.export.awaitingTitle")}</p>
+      <p className="mt-2 leading-8">{t("admin.export.awaitingBody")}</p>
+    </div>
+  );
+}
+
+/**
+ * Take the file, then come back and say you sent it. §14.6 and §14.7.
+ *
+ * **The sentence sits beside the control, not in a tooltip or a confirmation that appears after.**
+ * §14.6 says "The UI must clearly state" — and the moment it has to be stated is before somebody
+ * clicks, because afterwards they have the file and have left.
+ *
+ * **Mark-sent asks for the channel and gives a place for a note**, because §15.7 makes submission
+ * manual and this command records a *claim a person makes*. The record has to be enough for
+ * somebody else to check the claim later, which a bare timestamp is not.
+ *
+ * Not rendered at all when the export is not sendable, so a preview and a quarantined file have no
+ * controls to disable. `UI-PREVIEW-002` and `UI-INTEGRITY-002` both rest on that.
+ */
+function Actions({ onDone, view }: { readonly onDone: () => void; readonly view: ExportDetail }) {
+  const [open, setOpen] = useState(false);
+
+  if (view.sent_to_bank_marked_at !== null) {
+    return (
+      <div
+        className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4"
+        data-testid="already-sent"
+      >
+        <p className="font-bold">{t("admin.export.alreadySent")}</p>
+        <p className="mt-1 text-[var(--ink-600)]">
+          {view.sent_to_bank_marked_at} — {view.sent_by ?? t("common.unknown")}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
+      {/*
+        §14.6, verbatim, then in Persian. The English is the sentence the specification requires;
+        the Persian is the one the accountant reads. `dir="ltr"` for the same reason as §14.1's
+        banner: English punctuation inside an RTL paragraph ends up in the wrong place.
+      */}
+      <p
+        className="font-black"
+        data-testid="download-is-not-sending"
+        dir="ltr"
+        lang="en"
+      >
+        {DOWNLOAD_IS_NOT_SENDING}
+      </p>
+      <p className="mt-2 leading-8">{t("admin.export.downloadIsNotSending")}</p>
+
+      <div className="mt-4 flex flex-wrap gap-3">
+        {/*
+          A link, not a fetch. The response is a streamed spreadsheet with a filename in
+          `Content-Disposition`; fetching it would mean holding a payment file in memory and
+          re-inventing the browser's save dialog. `download` is deliberately absent — the server's
+          filename is the one that should land on disk.
+        */}
+        <a
+          className="rounded-lg bg-[var(--gold-700)] px-4 py-2 font-bold text-white"
+          data-testid="download-export"
+          href={downloadPath(view.id)}
+          rel="noreferrer"
+        >
+          {t("admin.export.download")}
+        </a>
+        <button
+          className="rounded-lg border border-[var(--border)] px-4 py-2 font-bold"
+          data-testid="open-mark-sent"
+          onClick={() => setOpen(true)}
+          type="button"
+        >
+          {t("admin.export.markSent")}
+        </button>
+      </div>
+
+      {open ? (
+        <MarkSentDialog
+          onCancel={() => setOpen(false)}
+          onDone={() => {
+            setOpen(false);
+            onDone();
+          }}
+          view={view}
+        />
+      ) : null}
+    </div>
   );
 }
 

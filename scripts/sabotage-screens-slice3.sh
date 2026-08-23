@@ -77,7 +77,7 @@ run "the banner is retyped with a hyphen" "matches the specification character"
 # 2. UI-PREVIEW-002, the plan's second. Add a mark-sent control to the preview screen. Written the
 #    way it would arrive: a button calling the real endpoint.
 perl -0pi -e 's/(function Cell\(\{ children, label \})/function MarkSent({ id }: { id: string }) {\n  return (\n    <button onClick={() => fetch(`\/bank-exports\/\${id}\/mark-sent-to-bank`, { method: "POST" })} type="button">\n      mark sent\n    <\/button>\n  );\n}\n\n$1/' "$PAGE"
-run "a mark-sent control appears" "no mark-as-sent control anywhere"
+run "a mark-sent control appears" "exactly one place"
 
 # 3. UI-INTEGRITY-002, the plan's third. The control §14.5 forbids, spelled the obvious way.
 perl -0pi -e 's/(function Cell\(\{ children, label \})/function Override() {\n  return <button data-testid="download-anyway" type="button">download anyway<\/button>;\n}\n\n$1/' "$PAGE"

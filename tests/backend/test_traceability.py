@@ -178,11 +178,21 @@ PENDING: dict[str, str] = {
     # for a quarantined file. Each is asserted over the **whole app bundle** rather than the one
     # screen, because the control somebody adds under pressure gets added wherever the download
     # lives. Seven negative controls in `scripts/sabotage-screens-slice3.sh`.
-    "UI-DOWNLOAD-001": "screens slice 4 — §14.6's sentence verbatim beside the download control",
-    "UI-SENT-001": "screens slice 4 — the confirmation shows all ten fields §14.7 lists",
-    "UI-SENT-002": "screens slice 4 — downloaded-and-unconfirmed is visible from the API's field",
-    "UI-SENT-003": "screens slice 4 — the command targets the exact export, not the batch",
-    "TRACE-SCREENS-001": "screens slice 4 — every new screen is in the a11y sweep's fixed list",
+    # Slice 4's five are discharged by `apps/admin-web/test/download-and-sent.test.ts`, which ends
+    # the screens plan: the money path is now visible in a browser from the approval queue to the
+    # confirmation that a file reached a bank.
+    #
+    # `TRACE-SCREENS-001` earned its place immediately. Written as "compare the sweep's list against
+    # the routes that exist", it failed on two screens neither this slice nor this plan added:
+    # `/login` — the first page every operator sees, unswept since M3 — and M5 slice 8's request
+    # detail. Both are in the list now. Scoping the assertion to "the screens this plan added" would
+    # have passed, which is the whole reason it is not scoped that way.
+    #
+    # `UI-DOWNLOAD-001` is the only obligation in this milestone whose entire content is a form of
+    # words. `15_Agent_Implementation_Plan.md:989` makes "downloading does not mean sent" the central
+    # human-factors risk and §14.6 answers it by giving the sentence, so a paraphrase is not a
+    # translation decision — it is dropping the requirement. The English is rendered verbatim from a
+    # constant the specification is parsed to check, with the Persian beside it.
     # DB-SPEC-001 and TRACE-PLAN-001 were owed by slice 1B and are discharged by it.
     #
     # TRACE-PLAN-001 had **no definition anywhere**. It appeared exactly twice in the

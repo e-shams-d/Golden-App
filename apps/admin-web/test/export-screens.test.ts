@@ -57,6 +57,22 @@ function bundleSource(): string {
   return found.map((path) => readFileSync(path, "utf8")).join("\n");
 }
 
+/**
+ * Source with comments removed, for assertions that are about JSX rather than about words.
+ *
+ * Used only by the two branch assertions below. The bundle-wide scan for the phrase §14.5 forbids
+ * stays deliberately blunt — a stripper is a thing that can be confused, and for a prohibition the
+ * cost of a false positive is rewording a comment while the cost of a false negative is shipping
+ * the control. Here the claim genuinely is "this branch renders no button", and a doc comment
+ * saying *"mark-sent is blocked"* is the correct thing to say and the wrong thing to match.
+ *
+ * This has now cost three corrections in two slices: the page failed its own phrase scan on its own
+ * prose, and this assertion failed twice on comments explaining the very rule it checks.
+ */
+function codeOnly(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//gu, "").replace(/^\s*\/\/.*$/gmu, "");
+}
+
 /** The bullet list under a heading, ending at the next heading of any level. */
 function bulleted(heading: string): readonly string[] {
   const start = specification.indexOf(heading);
@@ -111,13 +127,67 @@ describe("UI-PREVIEW-001: the banner is verbatim", () => {
 });
 
 describe("UI-PREVIEW-002: a preview offers none of §14.1's three things", () => {
-  it("has no mark-as-sent control anywhere in the bundle yet", () => {
-    // §14.1's first clause. Slice 4 adds this control to this screen, gated on `sendable` — which
-    // the server derives and which is false for every preview. Until then the guarantee is the
-    // strongest available: the bundle contains no such control to be shown by mistake.
-    const source = bundleSource();
-    expect(source).not.toContain("mark-sent-to-bank");
-    expect(source).not.toMatch(/markSent|mark_sent/u);
+  it("puts the mark-as-sent control behind the server's sendable flag", () => {
+    // §14.1's first clause.
+    //
+    // **This assertion changed shape in slice 4, and that was planned.** While no mark-sent control
+    // existed, the strongest available claim was that the bundle contained none — nothing to be
+    // shown by mistake. Slice 4 adds one, so the claim becomes about reachability: a preview cannot
+    // reach it.
+    //
+    // The guarantee is that `Actions` — the only component that renders either the download link or
+    // the mark-sent button — is rendered in exactly one place, behind `phase.view.sendable`. That
+    // field is derived server-side as `export_type === "final" && status !== "quarantined"`, so it
+    // is false for every preview and for every quarantined file. Deriving it here would be
+    // re-implementing the rule that keeps a preview out of a bank.
+    const renders = [...page.matchAll(/<Actions\b/gu)];
+    expect(renders, "Actions is rendered somewhere other than the one guarded site").toHaveLength(1);
+
+    const guard = page.slice(page.indexOf("phase.view.sendable"), page.indexOf("<Detail"));
+    expect(guard).toContain("<Actions");
+
+    // And the dialog is reached only through `Actions`. If any other component imported it, the
+    // guard above would not be the only path to a mark-sent button.
+    const importers = bundleSource().match(/from "[^"]*mark-sent-dialog"/gu) ?? [];
+    expect(importers).toHaveLength(1);
+  });
+
+  it("names the mark-sent endpoint in exactly one place", () => {
+    // The blunt claim, added after a negative control walked past the three above. All of them
+    // reason about `Actions` and the dialog; a hand-rolled `fetch` to the endpoint is neither, and
+    // it is what somebody writes when the guarded path is inconvenient.
+    //
+    // One occurrence, in `src/bank-exports.ts`. A second is a second way to reach the command, and
+    // whether it happens to be rendered today is not something a test should have to decide.
+    const occurrences = bundleSource().match(/mark-sent-to-bank/gu) ?? [];
+
+    expect(
+      occurrences,
+      "the mark-sent endpoint is named more than once, so there is more than one path to it",
+    ).toHaveLength(1);
+  });
+
+  it("keeps the control out of the preview and quarantine branches", () => {
+    // The two branches that render for a non-sendable export contain no controls at all — not
+    // disabled ones. Asserted separately from the guard above because a screen could satisfy that
+    // one and still put a second button inside the banner.
+    const preview = codeOnly(
+      page.slice(page.indexOf("function PreviewBanner"), page.indexOf("function Quarantine")),
+    );
+    const quarantine = codeOnly(
+      page.slice(page.indexOf("function Quarantine"), page.indexOf("function Detail")),
+    );
+
+    // Guard the guard: an over-eager stripper that returned nothing would make this vacuous, and
+    // "renders no button" is exactly the claim an empty string satisfies.
+    expect(preview).toContain("PREVIEW_BANNER");
+    expect(quarantine).toContain("integrity_failed_checks");
+
+    for (const branch of [preview, quarantine]) {
+      expect(branch).not.toContain("<button");
+      expect(branch).not.toContain("mark-sent");
+      expect(branch).not.toContain("downloadPath");
+    }
   });
 
   it("labels a preview checksum as unofficial", () => {

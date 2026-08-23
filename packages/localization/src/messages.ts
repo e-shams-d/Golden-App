@@ -475,6 +475,35 @@ export const faMessages = {
   "admin.export.failedChecks": "بررسی‌هایی که برقرار نبود",
   "admin.export.failedChecksUnavailable":
     "این فایل زمانی قرنطینه شده که یکی از بررسی‌ها برقرار نبود، اما در این لحظه همهٔ بررسی‌ها برقرارند. این خودش موضوعی است که باید بررسی شود — فایل بین دو بررسی تغییر کرده است.",
+  // §14.6 and §14.7. The English sentence beside this one is rendered verbatim from the
+  // specification; this is the same thing said to the person who has to act on it.
+  // `15_Agent_Implementation_Plan.md:989` makes this the milestone's central human-factors risk.
+  "admin.export.downloadIsNotSending":
+    "دانلود کردن این فایل به این معنا نیست که به بانک ارسال شده است. تا وقتی ارسال را ثبت نکنید، سامانه این پرداخت را انجام‌نشده می‌داند — و در تطبیق بعدی دنبال پرداختی می‌گردد که شما انجامش داده‌اید.",
+  "admin.export.download": "دانلود فایل",
+  "admin.export.markSent": "ثبت ارسال به بانک",
+  "admin.export.markSentTitle": "ثبت ارسال همین فایل",
+  "admin.export.markSentBody":
+    "این ثبت، اظهار شماست که همین فایل را به بانک داده‌اید. سامانه با بانک تماس نمی‌گیرد و نمی‌تواند این را بررسی کند؛ پس مشخصات زیر را ببینید و مطمئن شوید همین فایل است.",
+  "admin.export.batchAndVersion": "دسته و نسخه",
+  "admin.export.checksumAndIntegrity": "مجموع کنترلی و صحت",
+  "admin.export.bankAndSourceAccount": "بانک و حساب مبدأ",
+  "admin.export.channelLabel": "از چه راهی ارسال شد؟",
+  "admin.export.channel.bank_portal_manual_upload": "بارگذاری دستی در سامانهٔ بانک",
+  "admin.export.channel.bank_branch_in_person": "تحویل حضوری در شعبه",
+  "admin.export.channel.secure_email_to_bank": "ایمیل امن به بانک",
+  "admin.export.noteLabel": "توضیح (اختیاری)",
+  "admin.export.markSentAffirmation":
+    "تأیید می‌کنم که همین فایل را به بانک داده‌ام. این یک اظهار از طرف من است.",
+  "admin.export.markSentSubmit": "ثبت ارسال",
+  "admin.export.markSentWorking": "در حال ثبت…",
+  "admin.export.markSentFailed": "ثبت ارسال انجام نشد. صفحه را تازه کنید و دوباره تلاش کنید.",
+  "admin.export.alreadySent": "ارسال این فایل قبلاً ثبت شده است",
+  // §2.5's reminder. The question it answers: who has a copy of this and has not told us they
+  // sent it.
+  "admin.export.awaitingTitle": "این فایل دانلود شده و ارسالش ثبت نشده",
+  "admin.export.awaitingBody":
+    "کسی این فایل را برداشته اما ارسال به بانک را ثبت نکرده است. اگر ارسال شده، همین حالا ثبتش کنید؛ اگر نشده، بدانید که سامانه این پرداخت را انجام‌نشده می‌داند.",
   // §14.3's eight canonical states, from `status_catalog.yaml`'s `bank_export` aggregate.
   "admin.export.status.generating": "در حال ساخت",
   "admin.export.status.generated": "ساخته‌شده",
