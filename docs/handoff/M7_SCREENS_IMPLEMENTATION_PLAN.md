@@ -269,6 +269,78 @@ The manager decides, and cannot decide about something they are no longer lookin
 Re-read the hash at submit time: `UI-APPROVE-001` must fail. Update the UI before the response:
 `UI-APPROVE-002` must fail. Re-target the open dialog: `UI-STALE-002` must fail.
 
+## Slice 2B — The export reads, which are short by the same amount
+
+**Added after slice 2, by running §1.3's rule against §14 before writing a screen against it.**
+Slice 0 was this finding for the approval view; this is the same finding for the export detail, and
+it is worth saying that the rule caught it the second time without anybody having to remember.
+
+### What the survey showed
+
+`ExportDetail` returns fifteen fields. §14.4 requires twelve items and §14.7 requires ten, and the
+overlap is not the point — five things are missing, and two of them are missing from the *system*
+rather than from the response.
+
+| §14.4 asks for | Returned today |
+|---|---|
+| checksum, generation time, row count, total | yes |
+| exact version | id only — no batch number, no version number |
+| file name, mapping, source account | on the row or one join away; not in the response |
+| approval/hash match | both hashes are returned; the comparison is not |
+| integrity state | the status, but not *which* checks failed |
+| **generator version** | **nowhere in the system** |
+| **download history** | one timestamp, not a history |
+
+§14.5's "show each failed check" is the sharpest of these. `_quarantine` writes each failed
+comparison to `audit_events.new_values.failed_checks` and nowhere else, and no endpoint returns
+audit rows — so the screen §14.5 specifies cannot be rendered at all today, not merely rendered
+short.
+
+### Why this is a backend slice, again
+
+The same reason as slice 0: `UI-EXPORT-001` asserts every field §14.4 lists, **parsed from the
+specification**. An API that returns eight of twelve leaves two options — widen the API, or soften
+the assertion until the screen is checked against itself. The second is how a green gate comes to
+cover unwritten work.
+
+### What it changes
+
+- `ExportDetail` gains the file name, the batch and version numbers, the mapping and profile
+  versions, the source account, and the approval/hash comparison as a decided boolean. **Names and
+  numbers, not ids**, for slice 0's reason.
+- A `failed_checks` field, populated for a quarantined export from the integrity re-evaluation
+  rather than by parsing the audit row back out. The audit row is the record of *what happened*; a
+  screen needs the current comparison, and re-running eight pure checks is cheaper than reading it.
+- The mark-sent response echoes the `submission_channel` and `note` it just recorded. **Not new
+  columns** — §11.8 has none and inventing them is the schema drift this milestone guards hardest
+  against. The route has both values in hand at the moment §14.7's confirmation is shown.
+
+### What proves it
+
+- `API-EXPORTREAD-001` — every item §14.4 lists is present in the export detail, asserted by
+  parsing the specification's list. The same parse `UI-EXPORT-001` will use.
+- `API-EXPORTREAD-002` — a quarantined export returns each failed check, named, and a healthy one
+  returns none. Both halves: a field that always returned every check would render a scary screen
+  over a sound file.
+- `API-EXPORTREAD-003` — the approval/hash match is **computed against the version**, not reported
+  from the export's own copy of the hash. An export that carried the wrong hash would otherwise
+  agree with itself.
+- `API-EXPORTREAD-004` — every item §14.7 lists is present in the mark-sent response, including the
+  channel and note, and the subsequent `GET` is asserted **not** to carry them. The asymmetry is
+  real and a test that ignored it would let somebody build a screen that reads them later.
+
+### Negative controls
+
+Drop one item from the detail: `API-EXPORTREAD-001` must fail, naming it. Return the export's own
+`content_hash` as the match: `API-EXPORTREAD-003` must fail once the export and the version
+disagree. Return an empty `failed_checks` for a quarantined export: `API-EXPORTREAD-002` must fail.
+
+### What it does not build
+
+Generator version and download history. Both are S-6 and S-5 — questions, not fields — and a
+response field invented for either would be a placeholder, which §1 of the baseline forbids by
+name.
+
 ## Slice 3 — Export screens, and the things they must not offer
 
 ### Goal
@@ -344,8 +416,21 @@ fail.
 | **S-4** | **Is a screen owed for batch creation (§12)?** §12 specifies the batch builder — the accountant's selection surface. It is M6's backend and this plan does not cover it, because the manager's approval is the part with no visible surface *at all*. An accountant can already reach the request queue; they cannot currently build a batch from it. | Would add two slices |
 | **S-5** | **Who may see the download history (§14.4)?** "download history where permitted" names a permission that does not exist: `bank_exports` records `downloaded_at` only, not a history, and no catalogue entry governs who reads it. This plan shows the single timestamp and records the rest as absent. | Slice 3's field list |
 
-None of S-1 through S-5 blocks starting. S-3 and S-4 would each *add* work rather than change what
-is planned.
+| **S-7** | **One of §15.5's eight integrity checks cannot fail in production, and slice 2B is about to display it.** `source_account_matches_approved_account` compares `facts.version_bank_account_id` against `facts.export_bank_account_id` — and `_facts_for` fills the second from `version.bank_account_id`, because `bank_excel_exports` has no account column. Both sides are the same value, so the comparison always holds. `app/exports/integrity.py` takes flat values, so its unit tests *can* construct a failing case and do; the check is inert only for stored rows, which is where it matters. This is not a gap slice 2B creates, but it is one slice 2B makes visible: a screen listing "8 checks passed" over a comparison that cannot fail is a false assurance about which account the money leaves from. Either §11.8 gains `bank_account_id` on the export, or the check is recorded as structurally satisfied by the version link and removed from the eight. **This plan neither fixes nor hides it** — the field returns what the checks return, and this row is the record. | Nothing; it makes an existing check honest |
+| **S-6** | **Where does §14.4's "generator version" come from?** It exists nowhere: §11.8 gives `bank_excel_exports` no column and `app/exports/` has no version constant. A constant read at request time would name the *current* writer, not the one that produced the file — the opposite of what the field is for, since its only use is explaining why an old export looks different from a new one. Either §11.8 gains a column, in the milestone where schema drift is most guarded against, or this is an uncovered obligation with its reason. This plan does the second and records it. | Slice 2B's field list; slice 3's screen |
+
+None of S-1 through S-7 blocks starting. S-3 and S-4 would each *add* work rather than change what
+is planned. S-5 and S-6 are the two items slice 2B deliberately leaves out of the response: both
+are answerable only by a schema or permission decision, and a field invented to fill either would
+be the placeholder `FINANCIAL_INTEGRITY_BASELINE.md` §1 forbids by name.
+
+S-7 is the only one of the seven that is a **defect rather than a question**, and it was found by
+reading the integrity module in order to display it. It is worth saying why it survived M7's gates:
+`SVC-INTEGRITY-001` requires each of the eight comparisons to have its own failing case, and each
+does — the facts are flat values, so a unit test can make any of them disagree. What no gate asked
+was whether the *caller* can produce facts in which each comparison can disagree. That is the same
+shape as "a gate whose input is incomplete passes", one level up: the gate checked the comparison
+and not the assembly.
 
 ---
 

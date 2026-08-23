@@ -961,6 +961,27 @@ def _audit_final(
     )
 
 
+def facts_and_failures(
+    export: BankExcelExport,
+    *,
+    version: PaymentBatchVersion,
+    approval: BatchApproval,
+    measured: str,
+) -> tuple[IntegrityFailure, ...]:
+    """The eight comparisons, for a caller that wants to *show* them rather than act on them.
+
+    Public because slice 2B's read needs the same answer the download path acts on, and the
+    alternative was the read module assembling its own `IntegrityFacts`. Two copies of the
+    eighteen-value gather is how a screen and a download come to disagree about whether a file is
+    sound, and that is the defect shape this repository has produced in every milestone: a second
+    implementation of one rule, drifting quietly.
+
+    Reading is separated from deciding — this returns the failures and quarantines nothing.
+    """
+
+    return failed_checks(_facts_for(export, version=version, approval=approval, measured=measured))
+
+
 def _facts_for(
     export: BankExcelExport,
     *,

@@ -626,3 +626,174 @@ def test_marking_sent_requires_an_idempotency_key(world: dict[str, Any]) -> None
     )
 
     assert response.status_code == 428, response.text
+
+
+def test_the_detail_names_each_failed_check_and_names_none_when_sound(
+    world: dict[str, Any],
+) -> None:
+    """`API-EXPORTREAD-002`. Both halves, and the second half is the one that matters.
+
+    §14.5 says "show each failed check". A field that always returned every check would render a
+    frightening screen over a sound file, and one that always returned none would render a
+    reassuring screen over a tampered file — so a sound export is asserted to report **nothing**
+    before the same export is broken and asserted to report the comparison that failed.
+
+    **The read does not quarantine**, and that is asserted too. Opening a screen must not move an
+    export to a state the download path is responsible for.
+    """
+
+    target = a_final_export(world)
+    client = world["client"]
+    sign_in_admin(client, "sent_accountant")
+
+    sound = client.get(f"/api/v1/bank-exports/{target['export_id']}").json()
+    assert sound["integrity_failed_checks"] == [], sound["integrity_failed_checks"]
+
+    path = stored_path(world, target["file_id"])
+    path.write_bytes(path.read_bytes() + b"tampered")
+
+    broken = client.get(f"/api/v1/bank-exports/{target['export_id']}").json()
+    assert len(broken["integrity_failed_checks"]) == 1, broken["integrity_failed_checks"]
+    assert "file_checksum_matches_stored_checksum" in broken["integrity_failed_checks"][0]
+
+    assert rows(
+        world, "SELECT status FROM bank_excel_exports WHERE id = %s", target["export_id"]
+    ) != [("quarantined",)]
+
+
+def test_a_preview_reports_no_integrity_verdict_at_all(world: dict[str, Any]) -> None:
+    """A preview has no approval, and half of §15.5's comparisons read one.
+
+    Reporting "integrity holds" for a preview would be an assurance about a file nobody may send,
+    which is §14.1's "official checksum as final" in another form. The empty list means "not
+    applicable", and a null `approval_hash_matches` is what says so without ambiguity — `false`
+    would read as a mismatch.
+    """
+
+    preview = rows(
+        world, "SELECT id FROM bank_excel_exports WHERE export_type = 'preview' LIMIT 1"
+    )
+    assert preview, "no preview exists in this world; the assertions below would be vacuous"
+
+    client = world["client"]
+    sign_in_admin(client, "sent_accountant")
+    body = client.get(f"/api/v1/bank-exports/{preview[0][0]}").json()
+
+    assert body["integrity_failed_checks"] == []
+    assert body["approval_hash_matches"] is None
+    assert body["sendable"] is False
+
+
+def test_the_hash_match_is_computed_against_the_version(world: dict[str, Any]) -> None:
+    """`API-EXPORTREAD-003`. A copy of a hash agrees with itself.
+
+    §14.4 asks for "approval/hash match", which is a comparison — and what this proves is that the
+    **export's own hash is one of the two things compared**. The dangerous implementation is the one
+    that reads well and asks nothing: "does the approval's hash match the version's". That is always
+    true, because `fk_batch_approvals_approved_hash` makes the approval's hash the version's by
+    construction — so the field would report a match for a file rendered from anything at all.
+
+    Proved by breaking the export's copy and requiring the verdict to turn false. The version is
+    immutable and the approval's hash is foreign-keyed to it, so the export's copy is the only one
+    of the three that can be made to disagree.
+
+    **What this does not prove**, said plainly because a negative control established it: whether
+    the export is compared against the version or against the approval. The same foreign key makes
+    those two equivalent for every reachable state, so no test can separate them and none should
+    claim to. `_context_for` compares against the version because that is the value with meaning,
+    not because a test forced it.
+    """
+
+    target = a_final_export(world)
+    client = world["client"]
+    sign_in_admin(client, "sent_accountant")
+
+    before = client.get(f"/api/v1/bank-exports/{target['export_id']}").json()
+    assert before["approval_hash_matches"] is True
+
+    # The owner connection, because `content_hash` is deliberately not writable by the application
+    # role — the same absence of a grant that makes an export unable to rewrite its own provenance.
+    # Corrupting it therefore takes the one connection the application does not have.
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE bank_excel_exports SET content_hash = %s WHERE id = %s",
+                ("0" * 64, target["export_id"]),
+            )
+        connection.commit()
+
+    after = client.get(f"/api/v1/bank-exports/{target['export_id']}").json()
+    assert after["approval_hash_matches"] is False
+
+
+def test_the_confirmation_echoes_the_channel_and_the_later_read_does_not(
+    world: dict[str, Any],
+) -> None:
+    """`API-EXPORTREAD-004`, end to end, including the asymmetry.
+
+    §14.7 requires the confirmation to show the submission channel and the note. §11.8 gives the
+    table no column for either, and slice 4 recorded that inventing two would be schema drift — so
+    the confirmation echoes what it recorded, and a later `GET` honestly does not carry them.
+
+    The second half is the valuable one. Without it, somebody could build a screen that re-reads
+    the confirmation later, find the fields missing, and add columns to make it work.
+    """
+
+    target = a_final_export(world)
+    client = world["client"]
+    sign_in_admin(client, "sent_accountant")
+    assert download(world, target["export_id"]).status_code == 200
+
+    confirmation = mark_sent(world, target["export_id"])
+    assert confirmation.status_code == 200, confirmation.text
+    body = confirmation.json()
+
+    assert body["submission_channel"] == CHANNEL
+    assert body["note"] == "Uploaded manually to the bank portal."
+    # §14.7's other eight, from the same response.
+    assert body["export_number"]
+    assert body["file_name"]
+    assert body["batch_number"]
+    assert body["version_number"] >= 1
+    assert body["file_sha256_hash"]
+    assert body["row_count"] >= 1
+    assert body["total_amount_irr"]
+    assert body["sent_to_bank_marked_at"]
+
+    later = client.get(f"/api/v1/bank-exports/{target['export_id']}").json()
+    assert "submission_channel" not in later
+    assert "note" not in later
+    assert later["sent_to_bank_marked_at"] == body["sent_to_bank_marked_at"]
+
+
+def test_the_detail_names_people_and_versions_rather_than_identifiers(
+    world: dict[str, Any],
+) -> None:
+    """`API-EXPORTREAD-001`'s behavioural half. Slice 0's rule, on this surface.
+
+    The read-shape test proves the fields exist; this proves they carry names. A `source_account`
+    holding a UUID satisfies the first and leaves slice 3's screen showing an identifier where
+    §14.4 asks for an account.
+    """
+
+    target = a_final_export(world)
+    client = world["client"]
+    sign_in_admin(client, "sent_accountant")
+
+    body = client.get(f"/api/v1/bank-exports/{target['export_id']}").json()
+
+    for field in ("bank", "source_account", "generated_by", "file_name", "batch_number"):
+        value = body[field]
+        assert value, f"{field} is empty"
+        assert not _looks_like_an_identifier(str(value)), f"{field} carries an id: {value}"
+
+    assert isinstance(body["version_number"], int)
+    assert isinstance(body["mapping_version"], int)
+
+
+def _looks_like_an_identifier(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        return False
+    return True
