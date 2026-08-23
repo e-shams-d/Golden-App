@@ -32,6 +32,12 @@ const paths = [
   // the reason is not theoretical here: `pnpm check` passed on this branch before this line
   // existed, over a screen the sweep had never opened.
   "/requests",
+  // M7 screens slice 1. The approval queue and one version's detail, added with them for the
+  // reason stated three times above. The detail path uses obviously-fake ids: against no backend
+  // it renders its "not found" state, which is a real state a manager reaches by following a
+  // stale link — and it is the state most likely to ship without a heading.
+  "/batches",
+  "/batches/00000000-0000-4000-8000-000000000000/versions/00000000-0000-4000-8000-000000000001",
 ] as const;
 
 for (const path of paths) {

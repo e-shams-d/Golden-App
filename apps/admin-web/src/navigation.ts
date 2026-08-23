@@ -62,4 +62,22 @@ export const adminNavigation = [
     permission: "payment_request.read",
     icon: "requests",
   },
+  // M7 screens slice 1. The approval queue.
+  //
+  // `payment_batch_version.read_approval_view` rather than `payment_batch.read`, and the
+  // difference is the point: the read grant goes to the roles that may see a batch, while this
+  // one is what the approval-view route itself is guarded on. Gating on the weaker grant would
+  // put the item in front of somebody whose every click ends in a 403.
+  //
+  // Not `.approve` either, for the reason the requests entry gives about its own actions:
+  // `read_approval_view` goes to `accountant`, `manager` and `read_only_auditor` deliberately —
+  // an auditor must see what was decided without being able to decide, and an accountant must be
+  // able to check their own work. `.approve` would hide the screen from two of the three roles
+  // that have a reason to open it.
+  {
+    href: "/batches",
+    label: t("admin.nav.batches"),
+    permission: "payment_batch_version.read_approval_view",
+    icon: "requests",
+  },
 ] as const satisfies readonly NavigationItem[];
