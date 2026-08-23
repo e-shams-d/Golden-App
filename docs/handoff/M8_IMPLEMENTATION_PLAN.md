@@ -1,0 +1,490 @@
+# M8 — Bank-Result Bundles, Manual Crop, and the Review Workspace
+
+Bring bank-returned evidence into the system, and let an accountant cut a reproducible rectangle
+out of it without AI. `15_Agent_Implementation_Plan.md:1012`.
+
+## Where every section cited below lives
+
+The prose says `§16 :1044`; this table is what makes that checkable. Each line is cited once here
+rather than at every mention, because a sixty-character path repeated forty times is a document
+nobody reads — the screens plan learned that the hard way and this follows its shape.
+
+**Short forms used throughout: `§16` is document 15's milestone section, `doc 04` the schema, `doc
+05` the API specification, `doc 08` the bank-file document.**
+
+| Cited as | Full citation | What it specifies |
+|---|---|---|
+| §16 `:1012` | `15_Agent_Implementation_Plan.md:1012` | the milestone's goal |
+| §16 `:1016` | `15_Agent_Implementation_Plan.md:1016` | the nine required entities and services |
+| §16 `:1028` | `15_Agent_Implementation_Plan.md:1028` | the review workspace's eleven items |
+| §16 `:1039` | `15_Agent_Implementation_Plan.md:1039` | keyboard-accessible controls |
+| §16 `:1044` | `15_Agent_Implementation_Plan.md:1044` | the ten things crop creation must do |
+| §16 `:1057` | `15_Agent_Implementation_Plan.md:1057` | the three things it must **not** do |
+| §16 `:1065` | `15_Agent_Implementation_Plan.md:1065` | the privacy review |
+| §16 `:1069` | `15_Agent_Implementation_Plan.md:1069` | the nine tests and the gate |
+| §16 `:1081` | `15_Agent_Implementation_Plan.md:1081` | the Definition of Done |
+| doc 04 `:1170` | `04_Database_Schema.md:1170` | `bank_result_bundles` fields and CHECKs |
+| doc 04 `:1179` | `04_Database_Schema.md:1179` | the counts are cached, not financial truth |
+| doc 04 `:1181` | `04_Database_Schema.md:1181` | `bank_result_bundle_files` |
+| doc 04 `:1191` | `04_Database_Schema.md:1191` | `file_role`'s four values |
+| doc 04 `:1193` | `04_Database_Schema.md:1193` | `bank_result_bundle_batch_links` |
+| doc 04 `:1199` | `04_Database_Schema.md:1199` | a link does not prove payment |
+| doc 04 `:1201` | `04_Database_Schema.md:1201` | `receipt_segments`, column by column |
+| doc 04 `:1240` | `04_Database_Schema.md:1240` | the bbox CHECK, all-null or in bounds |
+| doc 04 `:1249` | `04_Database_Schema.md:1249` | the five creation methods |
+| doc 04 `:1259` | `04_Database_Schema.md:1259` | manual crop is Phase 1A; AI is flagged off |
+| doc 04 `:1312` | `04_Database_Schema.md:1312` | `manual_review_tasks` — M7's G-10 answered |
+| doc 04 `:1317` | `04_Database_Schema.md:1317` | its two indexes |
+| doc 04 `:1324` | `04_Database_Schema.md:1324` | entity refs are queue navigation only |
+| doc 05 `:1676` | `05_API_Specification.md:1676` | the two bundle reads |
+| doc 05 `:1685` | `05_API_Specification.md:1685` | batch links |
+| doc 05 `:1693` | `05_API_Specification.md:1693` | start review |
+| doc 05 `:1700` | `05_API_Specification.md:1700` | close |
+| doc 05 `:1721` | `05_API_Specification.md:1721` | AI extraction — **not** in this plan |
+| doc 05 `:1733` | `05_API_Specification.md:1733` | external evidence, the crop-free method |
+| doc 05 `:1756` | `05_API_Specification.md:1756` | the crop request, which omits rotation |
+| doc 05 `:1786` | `05_API_Specification.md:1786` | `202` with a job; the source stays immutable |
+| doc 05 `:1791` | `05_API_Specification.md:1791` | get and patch a segment |
+| doc 05 `:1795` | `05_API_Specification.md:1795` | patch only before finalization, with `If-Match` |
+| doc 05 `:2058` | `05_API_Specification.md:2058` | the six manual-review routes |
+| doc 08 `:137` | `08_Bank_File_and_Result_Processing.md:137` | an original is never overwritten |
+| doc 08 `:395` | `08_Bank_File_and_Result_Processing.md:395` | the derivation kinds |
+| doc 08 `:431` | `08_Bank_File_and_Result_Processing.md:431` | what a derivation stores |
+| doc 08 `:975` | `08_Bank_File_and_Result_Processing.md:975` | Phase 1A includes a minimal crop tool |
+| doc 08 `:979` | `08_Bank_File_and_Result_Processing.md:979` | the seven preview capabilities |
+| doc 08 `:985` | `08_Bank_File_and_Result_Processing.md:985` | rotation is a preview control |
+| doc 08 `:989` | `08_Bank_File_and_Result_Processing.md:989` | the crop input, **with** rotation |
+| doc 08 `:1011` | `08_Bank_File_and_Result_Processing.md:1011` | crop provenance, **with** rotation |
+| doc 08 `:1031` | `08_Bank_File_and_Result_Processing.md:1031` | the crop workflow, request before file |
+| doc 08 `:1044` | `08_Bank_File_and_Result_Processing.md:1044` | crop failure |
+
+Also leaned on: `FINANCIAL_INTEGRITY_BASELINE.md:1` (§1's no-placeholder rule),
+`docs/governance/status_catalog.yaml:384` (the `bank_result_bundle` aggregate), and
+`CONFLICT_REGISTER.md:83` (DOC-CONFLICT-057, which §2.1 files).
+
+---
+
+# 1. What exists, and what does not
+
+## 1.1 The tables are specified and none are built
+
+doc 04 §12 and §13 define six: `bank_result_bundles` (`:1170`), `bank_result_bundle_files`
+(`:1181`), `bank_result_bundle_batch_links` (`:1193`), `receipt_segments` (`:1201`),
+`matching_candidates` and `confirmed_evidence_links` — plus `manual_review_tasks` (`:1312`).
+
+**M8 builds four of them.** `matching_candidates` and `confirmed_evidence_links` are M9: §17 makes
+candidates and confirmation the *separated human decisions*, and building a suggestion table with
+no decision to feed would be a mechanism with no caller — the defect this repository has produced
+in every milestone.
+
+## 1.2 M7's G-10 was wrong, and this plan corrects it
+
+M7 recorded G-10 as "there is no task table in Phase 1A", and used it to justify not building
+§14.5's "create/link urgent review task" for a quarantined export. **doc 04 `:1312` specifies
+`manual_review_tasks`**, with two indexes and no later-phase marker, and doc 05 `:2058` gives it six
+routes. The table was never a design gap; it was unbuilt work, and M8 is where it is scheduled.
+
+So slice 3 owes a debt: once the queue exists, M7's quarantine path should create a task, and the
+`RECORDED_GAPS` entry that excused it has to go. A recorded gap whose reason has expired is worse
+than no gap at all — it reads as considered.
+
+## 1.3 The worker has never run a real job
+
+`app/workers/tasks/files.py` is thirteen lines and empty by design: the module exists so that the
+first task defined in it routes to the `files` queue instead of landing silently on `maintenance`.
+M8's crop render is that first task.
+
+`processing_jobs` — an M2 table — has the catalogue's richest lifecycle (`queued`, `running`,
+`succeeded`, `failed`, `retry_scheduled`, `cancelled`, `dead_lettered`, `fallback_to_manual`) and
+no application caller. **Slice 4 is its first**, which is the same shape as M6 slice 3 becoming
+`lock_rows()`'s first caller two milestones after it was written.
+
+## 1.4 What this plan does not build
+
+- **Matching and confirmation** (§17). M9.
+- **Publication to a trader** (§17). M9, and §16 `:1057` forbids crop creation from doing any of
+  it: it must not confirm evidence, mark an attempt paid, or publish.
+- **AI segmentation.** doc 04 `:1259`: `manual_in_panel_crop` is Phase 1A and
+  `ai_auto_segmentation` stays feature-flagged. doc 05 `:1721` defines an `ai-extraction` route
+  and this plan does not add it.
+- **Excel row preview.** doc 08 `:979` asks for it "where a deterministic parser exists" and none
+  does; `BANK-VER-005` already records that absence.
+
+---
+
+# 2. Decisions this plan makes
+
+## 2.1 Rotation is a hole in three documents, and it breaks reproduction (Q-1)
+
+This is the finding that matters most, and it was found by reading the three documents against each
+other rather than in turn:
+
+| Document | Says about rotation |
+|---|---|
+| doc 08 `:989` | the crop input carries `"rotation_degrees": 90` |
+| doc 08 `:1011` | provenance stores `rotation_degrees: integer` |
+| §16 `:1044` | crop creation must "validate normalized rectangle **and rotation**" |
+| doc 05 `:1756` | the request body has **no rotation field** |
+| doc 04 `:1201` | `receipt_segments` has **no rotation column** |
+
+**Why it is not cosmetic.** §16 `:1069` requires that "normalized coordinates reproduce the same
+crop within approved tolerance". If an operator rotates a scanned page 90° and *then* draws a
+rectangle, the normalized coordinates are relative to the rotated page. Store the rectangle without
+the rotation and the same four numbers describe a different region of the same file — so the stored
+crop is not reproducible from its own provenance, which is the one property the whole table exists
+to have.
+
+**This plan follows doc 08 and doc 04 gains the column**, because doc 08 is the only document that
+states the requirement rather than omitting it, and because §16 `:1044` independently requires
+rotation to be validated — which is impossible if it is never sent. Recorded as **Q-1** and as a
+new conflict-register row; the migration adds `rotation_degrees` with a CHECK constraining it to
+the four right angles doc 08's preview supports.
+
+## 2.2 A segment pending render rests in `created`, not in a new state (Q-2)
+
+doc 08 `:1031` has the segment created before its file exists: *save segment request → worker
+renders → verify checksum → available*. The catalogue's `receipt_segment` states are `created`,
+`unmatched`, `candidate_found`, `confirmed_linked`, `published`, `superseded`, `voided` — and
+`processing`, the obvious name for that window, is an **unresolved alias**, not canonical.
+
+This plan does not invent a state. The segment stays `created` and the *job* carries the render's
+progress, which is what `processing_jobs` is for. §16 `:1069`'s "failed render leaves no active
+evidence" then has a precise meaning: `segment_file_id IS NULL` and the job is `failed`, so nothing
+downstream can treat it as evidence — M9's matching reads segments that have a file.
+
+The cost is that `created` means two things, and a screen must say which. Recorded as **Q-2**; it
+does not block, because the alternative is an M0 catalogue change and this reading needs none.
+
+## 2.3 "Approved tolerance" has no value anywhere (Q-3)
+
+§16 `:1069` requires reproduction "within approved tolerance" and no document approves one. A crop
+is a rectangle of pixels; the sources of drift are rounding normalized coordinates to integer
+pixels and the renderer's own rasterisation at a given DPI.
+
+This plan asserts **exact byte equality of the derived file** for a re-render at the same renderer
+version, DPI and rotation, which needs no tolerance and is the stronger claim. Tolerance only
+becomes necessary across renderer versions, and that comparison is what `renderer_version` exists
+to make possible rather than to paper over. Recorded as **Q-3**.
+
+## 2.4 The renderer is a new production dependency and a licence decision (Q-4)
+
+Nothing in the dependency list can open a PDF. `openpyxl` was M7's G-1 and the owner answered it;
+this is the same question with a sharper edge, because the leading library is licensed in a way that
+matters.
+
+| Candidate | Licence | Shape |
+|---|---|---|
+| **pypdfium2** | Apache-2.0 / BSD-3 | wraps Google's PDFium; manylinux wheels ship the native library, so no compiler on the target |
+| PyMuPDF | **AGPL-3.0** or paid commercial | fastest and most capable, and AGPL is a legal decision for a closed product |
+| pdf2image | MIT wrapper | shells out to `poppler-utils`; adds a system package to the image, not a wheel |
+
+**Recommendation: `pypdfium2` for PDF pages and `Pillow` for raster crop and rotation.** Apache-2.0
+and HPND respectively, both vendorable as wheels for a network that cannot reach a registry — which
+`wsl-environment-gotchas` and the Iran-only constraint make a hard requirement rather than a
+preference.
+
+This is weaker than M7's openpyxl precedent in one stated way and the plan says so: openpyxl was
+chosen partly because `find .venv/lib -name '*.so'` found nothing for it. Neither of these is pure
+Python. What is preserved is the property that mattered — no build step on the target — and what is
+lost is the audit simplicity of a dependency with no native code at all.
+
+**Q-4 blocks slices 4, 5 and 6 and blocks none of 1, 2 or 3.** Slice order follows from that, the
+way M7's did.
+
+## 2.5 Privacy review records a verification; it cannot gate publication yet
+
+§16 `:1065`: before evidence is included in publication, the operator must verify the crop reveals
+no unrelated names, IBANs, amounts, tracking references or transactions.
+
+Publication is M9. So M8 records the verification — who, when, and against which segment — and M9's
+publication path reads it. This plan does **not** write a publication guard, because a guard on a
+path that does not exist is untestable and would be the eighth mechanism with no caller.
+
+What M8 *can* assert is the absence of a way round it: no route this milestone adds may mark a
+segment publishable, and slice 7 asserts that over the whole surface.
+
+## 2.6 Counts are cached, and a cached count is a thing that drifts
+
+doc 04 `:1179` is explicit: `segment_count`, `resolved_segment_count` and `unresolved_segment_count`
+are cached read values, "recomputed/validated transactionally from segments/tasks", and "not
+independent financial truth".
+
+They are therefore recomputed in the same transaction that changes a segment, never incremented.
+An increment is correct until the first retry, and this repository already has the pattern for
+this: M7's approval view computes its three counts from the version's own items rather than reading
+a live table.
+
+---
+
+# 3. Slices
+
+Each slice is one pull request. `### What proves it` is the section the traceability gate parses.
+Slices 1–3 need no answer to Q-4.
+
+## Slice 1 — The bundle, its files, and the batches it may point at
+
+### Goal
+
+An accountant uploads what the bank returned, and the system knows what it is without claiming
+anything was paid.
+
+### What it changes
+
+- `bank_result_bundles`, `bank_result_bundle_files` and `bank_result_bundle_batch_links` (doc 04
+  `:1170`, `:1181`, `:1193`), with `bundle_number` unique and the three count CHECKs.
+- `POST /bank-result-bundles` and its file attachment, reusing M4's `file_objects` — doc 08 `:137`
+  forbids overwriting an original, so a bundle file is a link to an existing uploaded file, never a
+  copy.
+- `POST /bank-result-bundles/{id}/batch-links` (doc 05 `:1685`), `start-review` (`:1693`) and
+  `close` (`:1700`).
+- The two reads doc 05 `:1676` defines.
+
+### What proves it
+
+- `DB-BUNDLE-001` — the three tables match doc 04's field lists and every constraint it states,
+  asserted against the migrated database rather than the model.
+- `SVC-BUNDLE-001` — a bundle links to a batch and the link **proves nothing about payment**. doc
+  04 `:1199` says so in its own words; the test asserts no attempt or batch status changes when a
+  link is created, which is the only way that sentence can be checked.
+- `SVC-BUNDLE-002` — `file_role` accepts exactly doc 04 `:1191`'s four values and the two
+  uniqueness constraints hold, including the one on `(bundle, sequence_number, file_role)` that
+  allows a source and a preview to share a sequence number.
+- `SVC-BUNDLE-003` — the counts are recomputed, not incremented, and a second call in the same
+  transaction produces the same numbers.
+- `API-BUNDLE-001` — the reads carry what a review workspace needs, parsed from §16 `:1028`'s list
+  rather than transcribed. The same parse slice 6 uses.
+- `SEC-BUNDLE-001` — a trader cannot reach any bundle route. §16 `:1069`'s seventh test.
+
+### Negative controls
+
+Increment a count instead of recomputing: `SVC-BUNDLE-003` must fail after a retry. Let a batch
+link set the batch's status: `SVC-BUNDLE-001` must fail. Grant a trader `bank_result_bundle.read`:
+`SEC-BUNDLE-001` must fail.
+
+## Slice 2 — Segments that are records, before any of them are pictures
+
+### Goal
+
+The evidence table exists and the creation method that needs no renderer works end to end.
+
+### What it changes
+
+- `receipt_segments` (doc 04 `:1201`), including the bbox CHECK at `:1240` verbatim and — per §2.1
+  — a `rotation_degrees` column doc 04 does not yet list.
+- `POST /bank-result-bundles/{id}/receipt-segments/external` (doc 05 `:1733`): the
+  `manual_external_attachment` method, which attaches a whole file as evidence and crops nothing.
+- `GET` and `PATCH /receipt-segments/{id}` (doc 05 `:1791`), with `If-Match` and the finalization
+  rule at `:1795`.
+
+### What proves it
+
+- `DB-SEGMENT-001` — doc 04 `:1240`'s CHECK, tested at each of its edges: all-null is allowed, a
+  zero width is not, and `x + width > 1` is not. The all-null case matters because a segment with
+  no rectangle is exactly what `manual_external_attachment` creates.
+- `DB-SEGMENT-002` — `creation_method` admits doc 04 `:1249`'s five names, and
+  `ai_auto_segmentation` is unreachable through every route this milestone adds. An enum value with
+  no writer is how a feature flag gets bypassed.
+- `SVC-SEGMENT-001` — a `PATCH` is refused once a segment is finalized, and the refusal names the
+  replacement path doc 05 `:1795` requires instead of a generic conflict.
+- `SVC-SEGMENT-002` — provenance and source coordinates cannot be rewritten by `PATCH` at all, at
+  any status. `:1795` allows editing manual fields; a route that let the bbox move would make every
+  earlier reproduction claim false retroactively.
+- `SEC-SEGMENT-001` — a trader cannot read an internal segment. §16 `:1069`.
+
+### Negative controls
+
+Allow `bbox_x + bbox_width` to reach 1.000001: `DB-SEGMENT-001` must fail. Accept a bbox change in
+`PATCH`: `SVC-SEGMENT-002` must fail. Reach `ai_auto_segmentation` through the external route:
+`DB-SEGMENT-002` must fail.
+
+## Slice 3 — The review queue, and M7's expired excuse
+
+### Goal
+
+Work that needs a person has somewhere to be, and the gap M7 recorded closes.
+
+### What it changes
+
+- `manual_review_tasks` (doc 04 `:1312`) with both indexes at `:1317`.
+- The six routes doc 05 `:2058` defines: list, read, assign, start, resolve, cancel.
+- **M7's quarantine path creates a task.** §14.5's fifth requirement, unbuildable in M7 and
+  buildable now.
+
+### What proves it
+
+- `DB-TASK-001` — the table matches doc 04 `:1314`, and the partial index covers exactly `open` and
+  `in_progress`, asserted from the catalogue's `manual_review_task` states rather than a literal.
+- `SVC-TASK-001` — the four transitions, and no other. `resolve` requires a resolution code.
+- `SVC-TASK-002` — `entity_type`/`entity_id` are **queue navigation only** (doc 04 `:1324`): no
+  financial read joins through them, asserted by walking the query surface for a join on those two
+  columns.
+- `SVC-QUARANTINE-001` — quarantining a bank export creates an open task naming that export, and
+  M7's `RECORDED_GAPS` entry excusing its absence is **removed in the same commit**. The gate that
+  fails an obligation both pending and covered is what makes that not optional.
+
+### Negative controls
+
+Leave the `RECORDED_GAPS` entry in place: the traceability gate must fail. Resolve without a code:
+`SVC-TASK-001` must fail. Join a financial read through `entity_id`: `SVC-TASK-002` must fail.
+
+## Slice 4 — The renderer, the crop, and the job that does it
+
+**Blocked on Q-4.**
+
+### Goal
+
+A rectangle drawn on a page becomes a derived file whose provenance can rebuild it.
+
+### What it changes
+
+- The renderer dependency, pinned with the same evidence M7 demanded of `openpyxl`: properties
+  verified against a written-and-reread file before the version is fixed, not asserted in a comment.
+- `POST /bank-result-bundles/{id}/receipt-segments/crop` (doc 05 `:1756`), answering `202` with a
+  processing job per `:1786`.
+- The `files` queue's first task, and `processing_jobs`' first caller.
+- `file_derivations` rows recording operation, parameters, renderer version and checksums (doc 08
+  `:431`).
+
+### What proves it
+
+- `SVC-CROP-001` — every one of §16 `:1044`'s ten requirements, one assertion each. Ten, because a
+  single "crop works" test passes with authorization, lifecycle validation and idempotency all
+  removed.
+- `SVC-CROP-002` — §16 `:1057`'s three prohibitions, as absences: crop creation confirms no
+  evidence, marks no attempt paid, publishes nothing. Asserted by reading the attempt and its
+  publication state before and after.
+- `SVC-CROP-003` — **the source file is byte-identical afterwards**, doc 08 `:137`. Measured, not
+  assumed: the file is hashed before and after **through the storage service**, because M4's
+  boundary obligation — the one forbidding any module outside `app/storage/` and `app/files/` from
+  touching a storage key — applies here too. Its id is deliberately not written: the traceability
+  scanner counts an id in a plan as that plan *stating* the obligation, so naming M4's would make a
+  citation of either discharge both.
+- `SVC-CROP-004` — reproduction. Re-rendering from stored provenance alone produces a
+  byte-identical derived file, per §2.3. Includes a rotated page, which is the case §2.1 exists for.
+- `SVC-CROP-005` — a retry does not duplicate a segment (§16 `:1069`), and a failed render leaves
+  `segment_file_id` null with the job `failed`, per §2.2.
+- `SVC-CROP-006` — a quarantined or unavailable source cannot be cropped (§16 `:1069`), reusing
+  M4's file lifecycle rather than a second opinion about it.
+- `AUD-CROP-001` — the audit and outbox records §16 `:1055` requires.
+
+### Negative controls
+
+Store the bbox without the rotation: `SVC-CROP-004` must fail on the rotated page — this is the
+control that would have caught §2.1's gap had the documents been consistent. Write the crop over
+the source: `SVC-CROP-003` must fail. Let the render succeed twice: `SVC-CROP-005` must fail.
+
+## Slice 5 — Preview: pages, zoom, rotation, and a download that stays internal
+
+**Blocked on Q-4.**
+
+### What it changes
+
+doc 08 `:979`'s list, minus the Excel row preview §1.4 explains: page images for image and text
+PDFs, page navigation, and the authorized internal download.
+
+### What proves it
+
+- `SVC-PREVIEW-001` — a multi-page PDF and a rotated image both render (§16 `:1069`'s first test),
+  with page count matching `bank_result_bundle_files.page_count`.
+- `SVC-PREVIEW-002` — preview files are derived objects, never the original, with a
+  `file_derivations` row each.
+- `SEC-PREVIEW-001` — the preview and its download are refused to a trader and to any admin without
+  the bundle permission, and no preview URL is guessable from a segment id.
+- `API-PREVIEW-001` — page dimensions are returned, because a client that must send
+  `client_source_dimensions` (doc 05 `:1773`) cannot invent them.
+
+### Negative controls
+
+Serve the source file as the preview: `SVC-PREVIEW-002` must fail. Drop the permission check on the
+page route: `SEC-PREVIEW-001` must fail.
+
+## Slice 6 — The review workspace
+
+**Blocked on Q-4.**
+
+### What it changes
+
+§16 `:1028`'s eleven items, as a desktop-first admin screen.
+
+### What proves it
+
+- `UI-WORKSPACE-001` — every item §16 `:1028` lists, parsed from the document. The same parse slice
+  1's `API-BUNDLE-001` uses, so the API and the screen answer to one list.
+- `UI-CROP-001` — the rectangle is **keyboard-operable**: §16 `:1039` requires keyboard-accessible
+  controls, and a drag-only crop excludes anybody who cannot use a mouse. Numeric entry for the four
+  coordinates plus arrow-key nudging, asserted as controls rather than as a pointer gesture.
+- `UI-CROP-002` — the coordinates the screen sends are normalized against the dimensions it
+  reports, and rotation is sent with them.
+- `UI-EVIDENCE-001` — the external-evidence fallback stays reachable (§16 `:1069`'s last test), so
+  a bundle nothing can render is still workable.
+- `TRACE-M8-001` — every screen in the a11y sweep's fixed list. Written as the screens plan
+  wrote it: compared against the routes that exist, not against the ones this plan added.
+
+### Negative controls
+
+Make the crop pointer-only: `UI-CROP-001` must fail. Send pixel coordinates: `UI-CROP-002` must
+fail. Remove the fallback: `UI-EVIDENCE-001` must fail.
+
+## Slice 7 — Privacy review and the Definition of Done
+
+### What it changes
+
+The §16 `:1065` verification as a recorded fact, and the milestone gate.
+
+### What proves it
+
+- `SVC-PRIVACY-001` — the verification records actor, time and segment, and is **per segment
+  version**: a segment edited after verification is unverified again, or the record would attest to
+  something else.
+- `SVC-PRIVACY-002` — no route this milestone adds can mark a segment publishable, asserted over the
+  whole route table. §2.5.
+- `TRACE-M8-002` — §16 `:1081`: an accountant can inspect a mixed bundle, create a reproducible
+  crop, and continue without OCR or AI. One journey test through the API, because nine steps proved
+  separately can all pass while the sequence is impossible — M5 slice 5 shipped exactly that.
+- `TRACE-M8-003` — no AI path is reachable: `ai_auto_segmentation` unwritable, doc 05 `:1721`'s
+  route absent, and `ai_usage_logs` empty after the journey.
+
+### Negative controls
+
+Add a publishable flag: `SVC-PRIVACY-002` must fail. Leave a verification attached across an edit:
+`SVC-PRIVACY-001` must fail. Register the AI extraction route: `TRACE-M8-003` must fail.
+
+---
+
+# 4. What the owner must settle
+
+| ID | Question | Blocks |
+|---|---|---|
+| **Q-1** | **Is rotation stored?** doc 08 `:989` and `:1011` require it in the crop input and its provenance, and §16 `:1044` requires it validated. doc 05 `:1756` omits it from the request and doc 04 `:1201` gives `receipt_segments` no column. Without it a crop of a rotated page is **not reproducible from its own provenance**, which is the property §16 `:1069` tests. This plan follows doc 08, adds the column, and files a conflict-register row. Confirm, or say rotation is a view-only control and accept that §16 `:1069`'s reproduction test cannot cover rotated sources. | Slices 2 and 4 |
+| **Q-2** | **What status does a segment hold while its crop renders?** doc 08 `:1031` creates it before the file exists; the catalogue's `processing` is an unresolved alias, not a canonical `receipt_segment` state. This plan leaves it `created` and puts the progress on `processing_jobs`. The cost is that `created` means both "render pending" and "rendered, awaiting matching". | Nothing; §2.2 needs no catalogue change |
+| **Q-3** | **What is the "approved tolerance"** for reproduction (§16 `:1069`)? No document sets one. This plan asserts byte equality at a fixed renderer version, DPI and rotation, which needs no tolerance; a tolerance is only meaningful across renderer versions, and that is what `renderer_version` is stored for. | Nothing; a stricter reading ships |
+| **Q-4** | **Which PDF renderer, and is its licence acceptable?** Nothing in the dependency list can open a PDF. Recommendation: `pypdfium2` (Apache-2.0) with `Pillow`, both vendorable as wheels so nothing compiles on the target. The alternative with the best capability is PyMuPDF, which is **AGPL-3.0 or paid** — a legal decision, not a technical one. Note both are unlike `openpyxl` in one respect the M7 decision leaned on: they carry native code. | **Slices 4, 5 and 6** |
+| **Q-5** | **Does a bundle need a `bank_profile_id`?** doc 04 `:1170` makes it nullable and no document says when it is set. A bundle whose bank is unknown cannot be checked against the profile the export used, which is the one cross-check available at this stage. This plan sets it when a batch link supplies it and leaves it null otherwise. | Slice 1's field list |
+
+**Q-4 is the only one that blocks starting.** Slices 1, 2 and 3 — the bundle, the segment table with
+its non-rendering creation method, and the review queue — need none of the five answered, and they
+are three of the seven.
+
+---
+
+# 5. What this plan carries forward
+
+- **A gate whose input is incomplete passes.** Every list parsed from a document is checked for
+  being non-empty first. This has caught real defects twice, both times as a list that quietly
+  became empty rather than a comparison that failed.
+- **NOT CAUGHT has four meanings**, and "the sabotage does not break the property" is one of them.
+  M7's slice 2B had a control that was correctly not caught, because a foreign key made two
+  formulations equivalent; the control was wrong, not the test.
+- **Assert an absence over the whole surface, not the one screen.** §16 `:1057`'s three
+  prohibitions and §2.5's publishable flag are bundle-wide greps, because the thing somebody adds
+  under pressure gets added wherever it is convenient.
+- **When an absence stops being literal, the claim becomes reachability.** The screens plan hit
+  this: slice 3 asserted a control did not exist and slice 4 added it. One render site behind a
+  server-derived flag, one importer, and the endpoint named exactly once.
+- **Source-grep assertions collide with the prose explaining them** — three corrections in the
+  screens plan. Narrow claims about code strip comments, with a guard against an over-eager
+  stripper; blunt prohibition scans stay raw.
+- **Name an absent obligation, never its id.** The traceability scanner counts any id in a test file
+  as a citation, and that has now cost eleven corrections.
+- **Run the gate's own invocation.** `ruff check app/` is not the lint gate; the verifier reads
+  `infra/verification/lint_targets.txt`, and `scripts/lint-like-ci.sh` reads the same file.
