@@ -418,6 +418,72 @@ export const faMessages = {
   "admin.decide.staleBody":
     "پس از باز شدن این صفحه، نسخهٔ جایگزینی ساخته شده است. تصمیم‌گیری دربارهٔ این نسخه ممکن نیست و صفحه فقط برای سابقه باز مانده.",
   "admin.decide.staleLink": "رفتن به نسخهٔ جاری",
+  // §14 — the bank file. The screens for an artifact that leaves the platform and becomes a
+  // payment somewhere else, which is why so much of this text is about what a screen is *not*
+  // telling you.
+  "admin.export.title": "فایل بانکی",
+  "admin.export.loading": "در حال دریافت اطلاعات فایل…",
+  "admin.export.forbiddenTitle": "دسترسی به فایل‌های بانکی ندارید",
+  "admin.export.forbidden":
+    "خواندن فایل بانکی مجوز جداگانه دارد، چون این فایل فهرست کامل پرداخت‌های مرکز است.",
+  "admin.export.missingTitle": "این فایل پیدا نشد",
+  "admin.export.missing": "فایلی با این شناسه وجود ندارد یا حذف نشده اما دیگر در دسترس شما نیست.",
+  "admin.export.failedTitle": "اطلاعات فایل دریافت نشد",
+  "admin.export.failed": "ارتباط با سرور برقرار نشد. دوباره تلاش کنید.",
+  // §14.1. The English marker beside this is rendered verbatim from the specification; this is
+  // what it means, which is the part that changes what somebody does next.
+  "admin.export.previewExplanation":
+    "این یک پیش‌نمایش است، نه فایل نهایی. برای بررسی ساخته شده و مجاز به ارسال به بانک نیست؛ ثبت «ارسال شد» برای آن ممکن نیست و مجموع کنترلی آن، مجموع کنترلی رسمی هیچ فایلی نیست.",
+  "admin.export.reference": "شمارهٔ فایل",
+  "admin.export.fileName": "نام فایل",
+  "admin.export.state": "وضعیت",
+  "admin.export.kind": "نوع",
+  "admin.export.kindPreview": "پیش‌نمایش",
+  "admin.export.kindFinal": "نهایی",
+  "admin.export.batch": "دستهٔ پرداخت",
+  "admin.export.exactVersion": "نسخهٔ دقیق",
+  "admin.export.checksum": "مجموع کنترلی فایل",
+  // §14.1's second prohibition, done by labelling. A preview's checksum is a real checksum; it is
+  // simply not the official checksum of anything that may be sent.
+  "admin.export.checksumPreview": "مجموع کنترلی (غیررسمی — پیش‌نمایش)",
+  "admin.export.approvalMatch": "تطابق با تأییدیه",
+  "admin.export.matchHolds": "محتوای فایل با نسخهٔ تأییدشده یکی است",
+  "admin.export.matchBroken": "محتوای فایل با نسخهٔ تأییدشده یکی نیست",
+  "admin.export.matchNotApplicable": "موضوعیت ندارد (پیش‌نمایش تأییدیه‌ای ندارد)",
+  "admin.export.rowCount": "تعداد سطر",
+  "admin.export.total": "مبلغ کل (ریال)",
+  "admin.export.bank": "بانک",
+  "admin.export.sourceAccount": "حساب مبدأ",
+  "admin.export.mapping": "نسخهٔ نقشهٔ ستون‌ها",
+  "admin.export.bankProfileVersion": "نسخهٔ پروفایل بانک",
+  "admin.export.generationTime": "زمان ساخت",
+  "admin.export.generatedBy": "سازنده",
+  "admin.export.integrityState": "وضعیت صحت",
+  "admin.export.integrityHolds": "هر هشت بررسی برقرار است",
+  "admin.export.integrityFailing": "بررسی‌هایی برقرار نیست",
+  "admin.export.integrityQuarantined": "قرنطینه‌شده",
+  "admin.export.integrityNotApplicable": "موضوعیت ندارد (پیش‌نمایش بررسی نمی‌شود)",
+  "admin.export.lastDownloaded": "آخرین دانلود",
+  "admin.export.neverDownloaded": "دانلود نشده",
+  // S-6, said where an accountant will look rather than only in the plan.
+  "admin.export.generatorVersionAbsent":
+    "نسخهٔ سازندهٔ فایل ثبت نمی‌شود. اگر دو فایل بانکی ظاهر متفاوتی دارند، سامانه فعلاً نمی‌تواند بگوید با چه نسخه‌ای از تولیدکننده ساخته شده‌اند.",
+  // §14.5. Four of its five requirements; the fifth needs a task table Phase 1A does not have.
+  "admin.export.quarantinedTitle": "این فایل قرنطینه شده است",
+  "admin.export.quarantinedBody":
+    "محتوای فایل با آنچه ثبت شده یکی نیست. دانلود برای ارسال به بانک و ثبت «ارسال شد» هر دو بسته‌اند. این فایل مدرک است، نه چیزی که به بانک برود؛ برای جایگزینی باید نسخهٔ تأییدشده دوباره تولید شود.",
+  "admin.export.failedChecks": "بررسی‌هایی که برقرار نبود",
+  "admin.export.failedChecksUnavailable":
+    "این فایل زمانی قرنطینه شده که یکی از بررسی‌ها برقرار نبود، اما در این لحظه همهٔ بررسی‌ها برقرارند. این خودش موضوعی است که باید بررسی شود — فایل بین دو بررسی تغییر کرده است.",
+  // §14.3's eight canonical states, from `status_catalog.yaml`'s `bank_export` aggregate.
+  "admin.export.status.generating": "در حال ساخت",
+  "admin.export.status.generated": "ساخته‌شده",
+  "admin.export.status.validated": "بررسی‌شده",
+  "admin.export.status.downloaded": "دانلودشده",
+  "admin.export.status.sent_to_bank_marked": "ارسال به بانک ثبت شده",
+  "admin.export.status.voided": "باطل‌شده",
+  "admin.export.status.quarantined": "قرنطینه‌شده",
+  "admin.export.status.generation_failed": "ساخت ناموفق",
   "admin.requests.title": "درخواست‌های پرداخت",
   "admin.requests.description":
     "صف بررسی حسابداری. تأیید برای پرداخت، تأیید مدیر نیست؛ در این مرحله فقط درستی درخواست بررسی می‌شود.",

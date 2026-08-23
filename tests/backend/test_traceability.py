@@ -161,11 +161,23 @@ PENDING: dict[str, str] = {
     # `scripts/sabotage-screens-slice2.sh` each fail exactly one of these on the intended
     # assertion — including one that caught a real defect in slice 1's Toman rendering, where a
     # single-digit rial amount displayed as zero.
-    "UI-PREVIEW-001": "screens slice 3 — §14.1's banner verbatim, parsed not transcribed",
-    "UI-PREVIEW-002": "screens slice 3 — a preview offers none of §14.1's three prohibited things",
-    "UI-EXPORT-001": "screens slice 3 — every field §14.4 lists, parsed from the document",
-    "UI-INTEGRITY-001": "screens slice 3 — a quarantined export shows each failed check",
-    "UI-INTEGRITY-002": "screens slice 3 — no 'download anyway', over the whole export surface",
+    # Slice 2B's four are discharged by `tests/backend/test_export_read_shape.py` and the five new
+    # cases in `tests/integration/test_export_download_and_sent.py`. That slice was added after
+    # slice 2 by running §1.3's rule against §14 before writing a screen against it — the same
+    # finding slice 0 was, caught the second time without anybody having to remember.
+    #
+    # It also found S-7: one of §15.5's eight comparisons cannot fail for a stored row, because
+    # `bank_excel_exports` has no account column and the fact-gather fills both sides of the
+    # source-account check from the version. `SVC-INTEGRITY-001` requires each comparison to have a
+    # failing case and each does — what no gate asked was whether the *caller* can produce facts in
+    # which each can disagree. Recorded in the plan and pinned by a test rather than fixed here.
+    #
+    # Slice 3's five are discharged by `apps/admin-web/test/export-screens.test.ts`, which this
+    # scanner cannot see — the split `UI-NAV-001` set in M3 and slice 1 followed. Three of the five
+    # assert absences: no mark-as-sent control, no checksum presented as official, and no override
+    # for a quarantined file. Each is asserted over the **whole app bundle** rather than the one
+    # screen, because the control somebody adds under pressure gets added wherever the download
+    # lives. Seven negative controls in `scripts/sabotage-screens-slice3.sh`.
     "UI-DOWNLOAD-001": "screens slice 4 — §14.6's sentence verbatim beside the download control",
     "UI-SENT-001": "screens slice 4 — the confirmation shows all ten fields §14.7 lists",
     "UI-SENT-002": "screens slice 4 — downloaded-and-unconfirmed is visible from the API's field",
