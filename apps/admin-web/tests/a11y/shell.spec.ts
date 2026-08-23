@@ -38,6 +38,11 @@ const paths = [
   // stale link — and it is the state most likely to ship without a heading.
   "/batches",
   "/batches/00000000-0000-4000-8000-000000000000/versions/00000000-0000-4000-8000-000000000001",
+  // M7 screens slice 3. The bank file, added with it for the reason stated four times above. A
+  // fake id again, so this opens the "not found" state — and here that state matters more than
+  // most: somebody following a link to an export that was voided and replaced lands on exactly
+  // this page, and they need to be told which of the two things happened.
+  "/bank-exports/00000000-0000-4000-8000-000000000002",
 ] as const;
 
 for (const path of paths) {
