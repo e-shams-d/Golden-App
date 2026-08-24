@@ -88,6 +88,33 @@ STATUS_COLUMN_TO_AGGREGATE: dict[tuple[str, str], str] = {
     # fix. G-3 records the one substantive part, which is whether an export can be `superseded`
     # at all or whether replacement always voids it.
     ("bank_excel_exports", "status"): "bank_export",
+    # M8 slice 1. The catalogue's `bank_result_bundle` aggregate has eight canonical states and
+    # records five more — `files_stored`, `normalized`, `under_manual_review`, `needs_attention`,
+    # `archived` — as unresolved aliases. Mapping the column is what keeps those five out of the
+    # CHECK: this gate holds the constraint to the aggregate exactly, so an alias cannot be
+    # admitted by somebody who reads another document and finds the name plausible.
+    ("bank_result_bundles", "status"): "bank_result_bundle",
+}
+
+# Status columns whose value set is **local to one relation** and is not a lifecycle the catalogue
+# governs. The opposite case from `DELIBERATELY_UNCONSTRAINED` below: there a governed column ships
+# with no CHECK because the values are undecided; here a CHECK exists and there is no aggregate for
+# it to answer to.
+#
+# The distinction is worth keeping because the two failures look identical from the gate and are
+# opposite in kind. Every entry carries its reason, and `test_each_local_lifecycle_has_a_reason`
+# refuses a bare one — a new unmapped column still fails until somebody says which of the two it is.
+LOCAL_LIFECYCLES: dict[tuple[str, str], str] = {
+    ("bank_result_bundle_batch_links", "status"): (
+        "M8 slice 1. Two values, `active` and `replaced`. `04_Database_Schema.md:1197` gives the "
+        "table a `status` and a `replaced_at` and describes replacement in prose at `:1306`; it "
+        "names no aggregate, and `status_catalog.yaml` has none. Nothing outside this table "
+        "observes the value — it exists so a corrected belief supersedes an earlier one instead of "
+        "overwriting it, which is the same shape as `payment_attempt_allocations`' release "
+        "columns, a relation document 04 never mentions at all. Adding an aggregate would mean "
+        "inventing one for a two-value flag inside approved M0 governance under a checksum chain, "
+        "which is not an implementer's decision. Q-8 in the M8 plan records it."
+    ),
 }
 
 # Columns whose aggregate the catalogue records with `canonical: null`, and which
@@ -191,12 +218,44 @@ def test_every_enforced_status_set_is_mapped_to_an_aggregate() -> None:
     silently exempt.
     """
 
-    unmapped = sorted(set(enforced_status_values()) - set(STATUS_COLUMN_TO_AGGREGATE))
+    unmapped = sorted(
+        set(enforced_status_values()) - set(STATUS_COLUMN_TO_AGGREGATE) - set(LOCAL_LIFECYCLES)
+    )
 
     assert unmapped == [], (
         "these status constraints are not mapped to a catalogue aggregate, so nothing "
-        f"checks them against the approved names: {unmapped}"
+        f"checks them against the approved names: {unmapped}. If the column is a lifecycle local "
+        "to one relation rather than one the catalogue governs, record it in LOCAL_LIFECYCLES "
+        "with the reason."
     )
+
+
+def test_each_local_lifecycle_has_a_reason() -> None:
+    """An exemption with no reason is what the gate above exists to prevent, one level up.
+
+    `LOCAL_LIFECYCLES` subtracts from that assertion, so it is the place an unwanted column would
+    be parked. Requiring a substantial reason that cites its authority makes parking one more work
+    than mapping it — and a bare entry fails here rather than passing quietly.
+    """
+
+    assert LOCAL_LIFECYCLES, "the set is empty; delete it rather than carrying an unused escape"
+
+    for column, reason in LOCAL_LIFECYCLES.items():
+        assert len(reason) > 200, f"{column} is exempted with no real reason"
+        assert ".md:" in reason, f"{column} is exempted and cites no document line"
+
+
+def test_no_column_is_both_mapped_and_exempted() -> None:
+    """The two dictionaries must not overlap, or one of them is a lie.
+
+    A column in both would be mapped to an aggregate *and* declared to have none, and the
+    subtraction above would hide the contradiction — the gate would pass while the file disagreed
+    with itself.
+    """
+
+    both = sorted(set(STATUS_COLUMN_TO_AGGREGATE) & set(LOCAL_LIFECYCLES))
+
+    assert both == [], f"these columns are both mapped and exempted: {both}"
 
 
 def test_the_mapping_does_not_name_a_column_that_no_longer_exists() -> None:

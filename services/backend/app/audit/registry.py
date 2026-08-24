@@ -619,6 +619,42 @@ CREATE_SOURCE_BANK_ACCOUNT = CommandNames(
     catalogued=True,
 )
 
+UPLOAD_BANK_RESULT_BUNDLE = CommandNames(
+    audit_action="bank_result_bundle.uploaded",
+    outbox_event_type=None,
+    # `audit_outbox_catalog.yaml:36` names the action and `command_catalog.yaml:264` gives the
+    # command its permission, idempotency and audit contract. Nothing outside the platform acts on
+    # a bundle arriving, so no outbox event: the centre's own queue changes, and M9's confirmation
+    # is the point at which anything downstream cares.
+    catalogued=True,
+)
+
+LINK_BANK_RESULT_BUNDLE_TO_BATCH = CommandNames(
+    audit_action="bank_result_bundle.linked_to_batch",
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=(
+        "Third instance of DOC-CONFLICT-052's shape. `bank_result_bundle.link_batch` is in the "
+        "approved permission catalogue at permission_catalog.yaml:528 and is seeded to accountant "
+        "by 20260801_0008_seed_rbac_catalogue.py:143,208 — and it has no row in "
+        "command_catalog.yaml and no entry in audit_outbox_catalog.yaml, whose only two bundle "
+        "actions are bank_result_bundle.uploaded and .closed. So an approved, seeded permission "
+        "authorises a command no catalogue describes, exactly as -052 recorded for "
+        "payment_batch.cancel_draft and payment_batch_version.invalidate_approval. M8 slice 1 "
+        "implements the route against the permission's own identifier, which is what M6 slice 4 "
+        "did under that conflict, and this action name must be renamed to whatever M0 approves. "
+        "The catalogue is provisional_pending_m0_approval and its own m0_open_items records its "
+        "event set as incomplete, so the gap is acknowledged upstream rather than invented here."
+    ),
+)
+
+CLOSE_BANK_RESULT_BUNDLE = CommandNames(
+    audit_action="bank_result_bundle.closed",
+    outbox_event_type=None,
+    # `audit_outbox_catalog.yaml:37` and `command_catalog.yaml:593`.
+    catalogued=True,
+)
+
 
 # Every `CommandNames` defined above, and the gate that reads this tuple is the only thing
 # checking any of them against the catalogue. Three M5 entries — `BEGIN_REVIEW`,
@@ -660,6 +696,11 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     ACTIVATE_BANK_PROFILE_VERSION,
     CREATE_BANK_MAPPING_VERSION,
     CREATE_SOURCE_BANK_ACCOUNT,
+    # M8 slice 1. Added here in the same edit that defines them, which is the whole lesson of the
+    # two comments below.
+    UPLOAD_BANK_RESULT_BUNDLE,
+    LINK_BANK_RESULT_BUNDLE_TO_BATCH,
+    CLOSE_BANK_RESULT_BUNDLE,
     # M4's file lifecycle. Defined since M4 and **left out of this tuple**, so their catalogue
     # position went unverified for two milestones — the same gap as M5's accountant three, found
     # by the same gate on the same run.

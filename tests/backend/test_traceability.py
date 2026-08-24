@@ -146,12 +146,17 @@ PENDING: dict[str, str] = {
     # body and document 04's table both omit it. A crop of a rotated page is then not reproducible
     # from its own provenance — the one property `receipt_segments` exists to have — so the plan
     # follows document 08 and adds the column. Q-1.
-    "DB-BUNDLE-001": "M8 slice 1 — the three bundle tables match doc 04 §12.1-12.3 exactly",
-    "SVC-BUNDLE-001": "M8 slice 1 — a batch link proves nothing about payment",
-    "SVC-BUNDLE-002": "M8 slice 1 — file_role's four values and both uniqueness constraints",
-    "SVC-BUNDLE-003": "M8 slice 1 — the cached counts are recomputed, never incremented",
-    "API-BUNDLE-001": "M8 slice 1 — the reads carry what §16's workspace list names",
-    "SEC-BUNDLE-001": "M8 slice 1 — no trader reaches any bundle route",
+    # Slice 1's six are discharged by `tests/backend/test_bundle_schema.py` and
+    # `tests/integration/test_bundle_intake.py`, and their entries left here in the same commit.
+    #
+    # Two decisions in that slice were forced by catalogue gaps rather than by design, and both are
+    # recorded where the code makes them. The route document 05 defines for moving a bundle into
+    # review has **no permission entry at all**, so deny-by-default would answer 403 to every
+    # caller — upload therefore lands the bundle in `ready_for_manual_review` directly, which is the
+    # transition the state machine labels "direct manual mode" and which Phase 1A has no
+    # normalization job to reach any other way. And the batch-link permission is approved and
+    # seeded while no command row and no audit action exist for it, which is DOC-CONFLICT-052's
+    # shape for the third time; the audit name is declared `catalogued=False` with its reason.
     "DB-SEGMENT-001": "M8 slice 2 — doc 04's bbox CHECK at each of its edges, all-null included",
     "DB-SEGMENT-002": "M8 slice 2 — five creation methods, and the AI one unreachable",
     "SVC-SEGMENT-001": "M8 slice 2 — PATCH refused after finalization, naming the replacement path",
