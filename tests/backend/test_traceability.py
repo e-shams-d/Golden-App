@@ -157,11 +157,34 @@ PENDING: dict[str, str] = {
     # normalization job to reach any other way. And the batch-link permission is approved and
     # seeded while no command row and no audit action exist for it, which is DOC-CONFLICT-052's
     # shape for the third time; the audit name is declared `catalogued=False` with its reason.
-    "DB-SEGMENT-001": "M8 slice 2 — doc 04's bbox CHECK at each of its edges, all-null included",
-    "DB-SEGMENT-002": "M8 slice 2 — five creation methods, and the AI one unreachable",
-    "SVC-SEGMENT-001": "M8 slice 2 — PATCH refused after finalization, naming the replacement path",
-    "SVC-SEGMENT-002": "M8 slice 2 — provenance and coordinates are never rewritable",
-    "SEC-SEGMENT-001": "M8 slice 2 — no trader reads an internal segment",
+    # Slice 2's five are discharged by `tests/backend/test_segment_surface.py` and
+    # `tests/integration/test_segment_intake.py`, and **two of them changed shape while it was
+    # built**. That is recorded here because the plan's wording no longer describes what is tested.
+    #
+    # `SVC-SEGMENT-001` expected a guarded `PATCH` with a finalization rule.
+    # `permission_catalog.yaml`
+    # resolves `receipt_segment.update` as `unresolved_no_exact_canonical_target` with
+    # `canonical_targets: []` and "deny until an explicitly scoped pre-finalization update
+    # permission
+    # is approved", and `m0_open_items` carries the same decision citing the same document 05 lines
+    # the plan read. So the obligation is now an **absence**: no route mutates a segment, asserted
+    # over the live route table, with a companion test that fails when the catalogue stops refusing
+    # —
+    # so the silence cannot outlive its reason. Unlike slice 1's three gaps this was not a silence
+    # discovered here; it was an approved decision the plan had not consulted, and shipping the
+    # route
+    # would have broken it.
+    #
+    # `SVC-SEGMENT-002` is stronger than written: provenance is unwritable at *every* status rather
+    # than after finalization, in two independent ways — no request model accepts those fields, and
+    # the migration grants UPDATE on none of them.
+    #
+    # `DB-SEGMENT-001` found a defect in the specified constraint. §12.4's bbox CHECK **accepts
+    # three
+    # coordinates and a NULL fourth**: the all-null branch is false, the in-bounds branch is NULL
+    # because a comparison against NULL is NULL, and a CHECK rejects only on false. A row claiming
+    # three quarters of a rectangle satisfies the document exactly as written and can never be
+    # reproduced. Closed with `num_nonnulls(...) IN (0, 4)`; Q-11 owes document 04 a correction.
     "DB-TASK-001": "M8 slice 3 — manual_review_tasks and its partial index from the catalogue",
     "SVC-TASK-001": "M8 slice 3 — four transitions and no other; resolve needs a code",
     "SVC-TASK-002": "M8 slice 3 — entity ids are queue navigation, never a financial join",

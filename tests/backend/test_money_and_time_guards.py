@@ -66,6 +66,64 @@ def _calls(path: Path) -> list[tuple[int, str, str | None, ast.Call]]:
 SQL_FUNCTION_RECEIVERS = frozenset({"func", "sa", "sqlalchemy"})
 
 
+# Columns the schema specification itself declares as `NUMERIC`, and which hold no money.
+#
+# **This is not a widening of the money rule; it is the boundary the rule always had.** The guard
+# below exists because binary floating point loses rials at scale, and its own docstring says
+# "forbidden for *monetary* storage". A normalized crop coordinate is not a monetary value: it is a
+# fraction of a page, `04_Database_Schema.md:1213-1216` specifies it as `NUMERIC(10,6)` by name, and
+# a float would be wrong for the same reason money must not be one — a rectangle that reproduces a
+# *different* crop is the exact failure DOC-CONFLICT-057 is about.
+#
+# Keyed by `(module, column)` rather than by file, so the exemption cannot drift onto a money column
+# in the same model. `test_no_exempted_column_looks_monetary` is what keeps that true.
+NON_MONETARY_NUMERIC: dict[tuple[str, str], str] = {
+    ("receipt_segment.py", "bbox_x"): (
+        "Normalized crop coordinate, 0..1. 04_Database_Schema.md:1213 specifies NUMERIC(10,6) and "
+        "the value must reproduce a rectangle exactly; a float would store a number the database "
+        "never held."
+    ),
+    ("receipt_segment.py", "bbox_y"): (
+        "Normalized crop coordinate, 0..1. 04_Database_Schema.md:1214 specifies NUMERIC(10,6)."
+    ),
+    ("receipt_segment.py", "bbox_width"): (
+        "Normalized crop width, >0..1. 04_Database_Schema.md:1215 specifies NUMERIC(10,6)."
+    ),
+    ("receipt_segment.py", "bbox_height"): (
+        "Normalized crop height, >0..1. 04_Database_Schema.md:1216 specifies NUMERIC(10,6)."
+    ),
+    ("receipt_segment.py", "extraction_confidence"): (
+        "A confidence between 0 and 1 for a later phase that guesses. "
+        "04_Database_Schema.md:1228 specifies NUMERIC(5,4). Never money, and never a rial."
+    ),
+}
+
+# Any column whose name suggests money. Deliberately broad: this decides what the exemption above
+# may never contain, so a false positive costs a rename and a false negative costs the rule.
+MONETARY_HINTS = ("amount", "irr", "toman", "rial", "total", "price", "fee", "balance")
+
+
+def _numeric_column_owner(tree: ast.AST, lineno: int) -> str | None:
+    """The name of the column a forbidden type appears inside, if any.
+
+    Walks assignments and returns the target whose value spans `lineno`. Needed because the scanner
+    reports a type reference and the exemption is per column: exempting a *file* would let a money
+    column arrive beside an approved coordinate and inherit its permission.
+    """
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.AnnAssign | ast.Assign):
+            continue
+        start = node.lineno
+        end = getattr(node, "end_lineno", start) or start
+        if not (start <= lineno <= end):
+            continue
+        target = node.target if isinstance(node, ast.AnnAssign) else node.targets[0]
+        if isinstance(target, ast.Name):
+            return target.id
+    return None
+
+
 def _floating_point_references(paths: list[Path]) -> list[str]:
     """Every mention of a forbidden numeric type, called or not.
 
@@ -84,8 +142,14 @@ def _floating_point_references(paths: list[Path]) -> list[str]:
                 name = node.id
             elif isinstance(node, ast.Attribute):
                 name = node.attr
-            if name in FORBIDDEN_COLUMN_TYPES:
-                offenders.append(f"{path.name}:{node.lineno}: {name}")
+            if name not in FORBIDDEN_COLUMN_TYPES:
+                continue
+            # `Float` is never exempt; only `Numeric` can be, and only per column. Binary floating
+            # point is wrong for every value this system stores, monetary or not.
+            column = _numeric_column_owner(tree, node.lineno)
+            if name == "Numeric" and (path.name, column) in NON_MONETARY_NUMERIC:
+                continue
+            offenders.append(f"{path.name}:{node.lineno}: {name}")
     return sorted(set(offenders))
 
 
@@ -95,6 +159,58 @@ def test_the_scanner_sees_the_models() -> None:
     files = _model_files()
 
     assert len(files) >= 4, f"only found {[f.name for f in files]}"
+
+
+def test_no_exempted_column_looks_monetary() -> None:
+    """The exemption above may never hold a money column, and this is what makes that true.
+
+    `NON_MONETARY_NUMERIC` subtracts from the floating-point guard, so it is where a monetary
+    `NUMERIC` would be parked to make a failure go away. Names are checked against a deliberately
+    broad list of money words: a false positive costs somebody a rename, and a false negative costs
+    the rule the guard exists to enforce.
+    """
+
+    assert NON_MONETARY_NUMERIC, "the set is empty; delete it rather than carrying an unused escape"
+
+    suspicious = sorted(
+        f"{module}:{column}"
+        for module, column in NON_MONETARY_NUMERIC
+        for hint in MONETARY_HINTS
+        if hint in column.lower()
+    )
+
+    assert suspicious == [], (
+        "these exempted columns have monetary-sounding names. NUMERIC for money needs a recorded "
+        f"governance exception, not an entry here: {suspicious}"
+    )
+
+
+def test_each_numeric_exemption_cites_the_specification() -> None:
+    """A bare entry is the thing this mechanism must not become.
+
+    Every reason names the document line that specifies the type, so the exemption records a
+    decision the schema already made rather than a preference this test file has.
+    """
+
+    for column, reason in NON_MONETARY_NUMERIC.items():
+        assert len(reason) > 60, f"{column} is exempted with no real reason"
+        assert "04_Database_Schema.md:" in reason, f"{column} cites no specification line"
+
+
+def test_float_is_never_exempt() -> None:
+    """`Float` cannot be waived by the mechanism above, only `Numeric`.
+
+    Binary floating point is wrong for every value this system stores — a coordinate no less than a
+    rial — so the exemption is typed narrowly rather than left as "the guard can be silenced".
+    """
+
+    import inspect as inspect_module
+
+    source = inspect_module.getsource(_floating_point_references)
+
+    assert 'name == "Numeric"' in source, (
+        "the exemption is no longer restricted to Numeric, so a Float column could be waived"
+    )
 
 
 def test_no_model_declares_a_floating_point_column() -> None:

@@ -26,7 +26,7 @@ from bootstrap_replay import RuntimeIdentities
 
 pytestmark = pytest.mark.integration
 
-PASSWORD = "Bundle-Intake-Pass-1"
+PASSWORD = "correct-horse-battery-staple"
 TRADER_PHONE = "+989120000811"
 IBAN = "IR820540102680020817909002"
 LIMIT = 900_000_000_000

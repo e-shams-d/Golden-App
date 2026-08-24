@@ -94,6 +94,10 @@ STATUS_COLUMN_TO_AGGREGATE: dict[tuple[str, str], str] = {
     # CHECK: this gate holds the constraint to the aggregate exactly, so an alias cannot be
     # admitted by somebody who reads another document and finds the name plausible.
     ("bank_result_bundles", "status"): "bank_result_bundle",
+    # M8 slice 2. Seven canonical states; `processing` and `archived` are unresolved aliases in the
+    # catalogue and neither is admitted. Q-2 records why a segment awaiting its crop rests in
+    # `created` rather than in an invented `processing`: the *job* carries the render's progress.
+    ("receipt_segments", "status"): "receipt_segment",
 }
 
 # Status columns whose value set is **local to one relation** and is not a lifecycle the catalogue

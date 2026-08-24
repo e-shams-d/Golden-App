@@ -39,6 +39,7 @@ from app.db.models.payment_batch import (
 from app.db.models.payment_request import PaymentRequest, PaymentRequestRevision
 from app.db.models.processing_job import ProcessingJob
 from app.db.models.rbac import AdminUserRole, Permission, Role, RolePermission
+from app.db.models.receipt_segment import ReceiptSegment
 from app.db.models.session_and_security import AuthEvent, AuthSession, RecentAuthContext
 from app.db.models.trader import Trader
 
@@ -75,6 +76,7 @@ __all__ = [
     "PaymentRequestRevision",
     "Permission",
     "ProcessingJob",
+    "ReceiptSegment",
     "RecentAuthContext",
     "RetentionPolicy",
     "Role",

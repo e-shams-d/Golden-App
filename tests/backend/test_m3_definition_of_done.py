@@ -241,6 +241,13 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     ("GET", "/api/v1/bank-result-bundles/{bundle_id}"): PERMISSION,
     ("POST", "/api/v1/bank-result-bundles/{bundle_id}/batch-links"): PERMISSION,
     ("POST", "/api/v1/bank-result-bundles/{bundle_id}/close"): PERMISSION,
+    # M8 slice 2. `PERMISSION` for the same reason as the bundle family: evidence about the
+    # centre's own payments has no owning trader to scope by.
+    (
+        "POST",
+        "/api/v1/bank-result-bundles/{bundle_id}/receipt-segments/external",
+    ): PERMISSION,
+    ("GET", "/api/v1/receipt-segments/{segment_id}"): PERMISSION,
     # M5 slice 8. The two reads the screens need, and which nothing had built: eleven
     # published operations and only the revision history read. Both are `DUAL` — a trader
     # sees their own through `scoped()`, an accountant sees the queue through
@@ -576,6 +583,15 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ),
     ("POST", "/api/v1/bank-result-bundles/{bundle_id}/close", "permission"): (
         "test_no_bundle_route_answers_a_caller_without_the_permission"
+    ),
+    # M8 slice 2. One test over the surface, for the reason the bundle entries give.
+    (
+        "POST",
+        "/api/v1/bank-result-bundles/{bundle_id}/receipt-segments/external",
+        "permission",
+    ): "test_no_segment_route_answers_a_caller_without_the_permission",
+    ("GET", "/api/v1/receipt-segments/{segment_id}", "permission"): (
+        "test_no_segment_route_answers_a_caller_without_the_permission"
     ),
     # M5 slice 8. The two reads, four entries because both are `DUAL`. The ownership pair
     # answers `404` and the permission pair `403`, and each is asserted in its own test

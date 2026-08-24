@@ -80,4 +80,11 @@ from __future__ import annotations
 # facts that do not change. The bundle's own number, source type, uploader and upload time are
 # outside the grant too, so the runtime can move a bundle through its lifecycle and cannot rewrite
 # what it is.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260823_0023"})
+# 20260824_0024 adds `receipt_segments`. Grants UPDATE on the extracted fields a person may
+# correct, on `segment_file_id` for the crop worker, and on `status` and `record_version` — and on
+# **no provenance column at all**: not the source file, not the four bbox coordinates, not the
+# rotation, not the renderer version, not the source pixel dimensions.
+# `05_API_Specification.md:1795`
+# freezes those after finalization; this freezes them always, because a rectangle that could move
+# would retroactively falsify every reproduction claim already made from it.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260824_0024"})

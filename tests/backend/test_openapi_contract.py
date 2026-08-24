@@ -220,6 +220,15 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "getBankResultBundle",
         "linkBankResultBundleToBatch",
         "closeBankResultBundle",
+        # M8 slice 2. `05_API_Specification.md:1733` and `:1791`.
+        #
+        # **`patchReceiptSegment` is absent and that is the record.** `:1792` defines it;
+        # `permission_catalog.yaml` resolves `receipt_segment.update` as deny-until-approved with
+        # `canonical_targets: []`, and `m0_open_items` carries the same decision. `:1756`'s crop is
+        # slice 4's and needs the renderer question answered. This set is where somebody comparing
+        # the contract against document 05 will notice both.
+        "attachExternalEvidence",
+        "getReceiptSegment",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

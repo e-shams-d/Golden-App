@@ -655,6 +655,25 @@ CLOSE_BANK_RESULT_BUNDLE = CommandNames(
     catalogued=True,
 )
 
+ATTACH_EXTERNAL_EVIDENCE = CommandNames(
+    audit_action="receipt_segment.external_attached",
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=(
+        "Fourth instance of DOC-CONFLICT-052's shape, and the narrowest yet. "
+        "`receipt_segment.create_external` is in the approved permission catalogue at "
+        "permission_catalog.yaml:534 and seeded to accountant; command_catalog.yaml has a row for "
+        "receipt_segment.create_crop at :277 and none for the external method, and "
+        "audit_outbox_catalog.yaml names receipt_segment.crop_created at :38 and no external "
+        "counterpart. So the two creation methods 04_Database_Schema.md:1259 both marks Phase 1A "
+        "are catalogued asymmetrically: the one that needs a PDF renderer is described and the one "
+        "that needs nothing is not. M8 slice 2 implements the route against the permission's own "
+        "identifier, as M6 slice 4 did under this conflict, and this action name must be renamed "
+        "to whatever M0 approves. No outbox event: nothing outside the platform acts on evidence "
+        "arriving, and M9's confirmation is where anything downstream begins to care."
+    ),
+)
+
 
 # Every `CommandNames` defined above, and the gate that reads this tuple is the only thing
 # checking any of them against the catalogue. Three M5 entries — `BEGIN_REVIEW`,
@@ -701,6 +720,8 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     UPLOAD_BANK_RESULT_BUNDLE,
     LINK_BANK_RESULT_BUNDLE_TO_BATCH,
     CLOSE_BANK_RESULT_BUNDLE,
+    # M8 slice 2, added in the same edit that defines it.
+    ATTACH_EXTERNAL_EVIDENCE,
     # M4's file lifecycle. Defined since M4 and **left out of this tuple**, so their catalogue
     # position went unverified for two milestones — the same gap as M5's accountant three, found
     # by the same gate on the same run.

@@ -273,29 +273,58 @@ The evidence table exists and the creation method that needs no renderer works e
   — a `rotation_degrees` column doc 04 does not yet list.
 - `POST /bank-result-bundles/{id}/receipt-segments/external` (doc 05 `:1733`): the
   `manual_external_attachment` method, which attaches a whole file as evidence and crops nothing.
-- `GET` and `PATCH /receipt-segments/{id}` (doc 05 `:1791`), with `If-Match` and the finalization
-  rule at `:1795`.
+- `GET /receipt-segments/{id}` (doc 05 `:1791`). **Not `PATCH`** — see the amendment below.
+
+### Amended while building: the `PATCH` is forbidden, not merely unbuilt
+
+This section originally planned a guarded `PATCH /receipt-segments/{id}` with the finalization rule
+doc 05 `:1795` states. `permission_catalog.yaml` settles it the other way and says so in terms:
+`receipt_segment.update` carries `status: unresolved_no_exact_canonical_target`,
+`canonical_targets: []` and `resolution: deny until an explicitly scoped pre-finalization update
+permission is approved` — and its `m0_open_items` carries `receipt_segment_update_permission` with
+`conservative_effect: deny_update_until_action-specific_permission_is_approved`, citing the same doc
+05 lines this plan read.
+
+**That is an approved decision, not a silence.** It is unlike Q-6 and Q-7, which were gaps slice 1
+discovered and worked around on precedent: here M0 has already ruled, and shipping the route would
+have broken the ruling. A `correct_fields` command was written and deleted rather than left
+unexposed, because a command whose route is forbidden by governance is the most misleading form of
+the mechanism-with-no-caller defect — reviewed, tested, green, unreachable by design. Q-9.
+
+So two obligations become **absences**, and one is added for what the slice does instead.
 
 ### What proves it
 
-- `DB-SEGMENT-001` — doc 04 `:1240`'s CHECK, tested at each of its edges: all-null is allowed, a
-  zero width is not, and `x + width > 1` is not. The all-null case matters because a segment with
-  no rectangle is exactly what `manual_external_attachment` creates.
-- `DB-SEGMENT-002` — `creation_method` admits doc 04 `:1249`'s five names, and
-  `ai_auto_segmentation` is unreachable through every route this milestone adds. An enum value with
-  no writer is how a feature flag gets bypassed.
-- `SVC-SEGMENT-001` — a `PATCH` is refused once a segment is finalized, and the refusal names the
-  replacement path doc 05 `:1795` requires instead of a generic conflict.
-- `SVC-SEGMENT-002` — provenance and source coordinates cannot be rewritten by `PATCH` at all, at
-  any status. `:1795` allows editing manual fields; a route that let the bbox move would make every
-  earlier reproduction claim false retroactively.
-- `SEC-SEGMENT-001` — a trader cannot read an internal segment. §16 `:1069`.
+- `DB-SEGMENT-001` — doc 04 `:1240`'s CHECK at each of its edges, and this found a defect in the
+  specified constraint: **three coordinates with a NULL fourth satisfies it.** The all-null branch is
+  false, the in-bounds branch is NULL because a comparison against NULL is NULL, and a CHECK rejects
+  only on false — so a row claiming three quarters of a rectangle is accepted and can never be
+  reproduced. Closed with `num_nonnulls(...) IN (0, 4)`; **Q-11** owes doc 04 the correction. Eight
+  refusals and one positive control, because eight refusals with a malformed insert would be eight
+  false confirmations.
+- `DB-SEGMENT-002` — `creation_method` admits doc 04 `:1249`'s five names, parsed from the document,
+  and the automatic-segmentation method is unreachable through every route this milestone adds. An
+  enum value with no writer is how a feature flag gets bypassed.
+- `SVC-SEGMENT-001` — **no route mutates a segment**, asserted over the live route table for every
+  method, with a companion test that fails when the catalogue stops refusing. An absence whose reason
+  can expire needs the expiry to be a failure rather than a silence.
+- `SVC-SEGMENT-002` — provenance is unwritable **at every status**, which is stronger than the
+  original wording, in two independent ways: no request model accepts those fields, and the migration
+  grants UPDATE on none of them. Two reasons is the right number for a rule whose failure is silent.
+- `SVC-SEGMENT-003` — attaching evidence recomputes the bundle's cached counts in the same
+  transaction (doc 04 `:1179`), and a bundle with unresolved segments cannot be closed. Added because
+  slice 1 wrote both against a count that was always zero: this is the first slice in which either
+  claim can be distinguished from a hard-coded constant.
+- `SEC-SEGMENT-001` — a trader reads no internal segment, and a manager may read but not create.
+  §16 `:1069`.
 
 ### Negative controls
 
-Allow `bbox_x + bbox_width` to reach 1.000001: `DB-SEGMENT-001` must fail. Accept a bbox change in
-`PATCH`: `SVC-SEGMENT-002` must fail. Reach `ai_auto_segmentation` through the external route:
-`DB-SEGMENT-002` must fail.
+Allow `bbox_x + bbox_width` to reach 1.000001: `DB-SEGMENT-001` must fail. Drop the all-or-nothing
+constraint: `DB-SEGMENT-001` must fail on the partial rectangle §12.4 admits. Add a `PATCH` route:
+`SVC-SEGMENT-001` must fail. Accept a bbox field in the creation request: `SVC-SEGMENT-002` must
+fail. Reach the automatic-segmentation method through the external route: `DB-SEGMENT-002` must fail.
+Increment the count instead of recomputing: `SVC-SEGMENT-003` must fail.
 
 ## Slice 3 — The review queue, and M7's expired excuse
 
@@ -462,6 +491,9 @@ Add a publishable flag: `SVC-PRIVACY-002` must fail. Leave a verification attach
 | **Q-5** | **Does a bundle need a `bank_profile_id`?** doc 04 `:1170` makes it nullable and no document says when it is set. A bundle whose bank is unknown cannot be checked against the profile the export used, which is the one cross-check available at this stage. This plan sets it when a batch link supplies it and leaves it null otherwise. **Slice 1 built that**, and added one rule the question did not anticipate: a link fills the column only when it is empty, never overwrites it. A mistaken link must not be able to rewrite an established fact. | Slice 1's field list — **built** |
 | **Q-6** | **`bank_result_bundle.link_batch` authorises a command no catalogue describes.** The permission is in `permission_catalog.yaml:528` and seeded to `accountant` by `20260801_0008_seed_rbac_catalogue.py:143,208`; `command_catalog.yaml` has no row and `audit_outbox_catalog.yaml` names no action — its only two bundle actions are `uploaded` and `closed`. This is **DOC-CONFLICT-052's shape for the third time**, after `payment_batch.cancel_draft` and `payment_batch_version.invalidate_approval`. **Slice 1 implements the route against the permission's own identifier** and declares the audit action `catalogued=False` with its reason, which is what M6 slice 4 did under that same conflict. The owner owes a command row and a catalogued action, and the action name must be renamed to whatever M0 approves. | Nothing; slice 1 shipped under the precedent — **built** |
 | **Q-7** | **The route that moves a bundle into review has no permission at all.** doc 05 `:1693` defines `POST /{id}/start-review`; `permission_catalog.yaml` has no entry for it — not an ungranted permission but a missing one — so deny-by-default would answer `403` to every caller and a bundle left in `uploaded` could never leave it. Inventing a permission is not an implementer's decision, because a permission is a grant and grants are seeded and audited. **Slice 1's resolution: upload lands the bundle in `ready_for_manual_review` directly.** `06_Workflows_and_State_Machines.md:995` draws `uploaded --> ready_for_manual_review: direct manual mode`, and Phase 1A has no normalization job to take the `processing` branch — so upload *is* the direct manual mode, and this is the state machine's own label rather than a workaround. `uploaded` stays in the CHECK and stays meaningful for a future slice that adds the job. The owner decides whether `start-review` gains a permission or is dropped for Phase 1A. | Slice 6's workspace would have had nothing to review — **resolved in slice 1** |
+| **Q-9** | **A guarded segment `PATCH` is forbidden, not merely unbuilt.** doc 05 `:1792` defines it and `permission_catalog.yaml` resolves `receipt_segment.update` as `unresolved_no_exact_canonical_target`, `canonical_targets: []`, `resolution: deny until an explicitly scoped pre-finalization update permission is approved` — with `m0_open_items` carrying `receipt_segment_update_permission` and `conservative_effect: deny_update_until_action-specific_permission_is_approved`, citing the same doc 05 lines this plan read. **Unlike Q-6 and Q-7 this is not a silence but a decision M0 has already taken**, and this plan had not consulted it: slice 2's original wording would have shipped a route that breaks an approved rule. The route is absent, a written `correct_fields` command was deleted rather than left unexposed, and `SVC-SEGMENT-001` became an assertion that no route mutates a segment — with a companion test that fails when the catalogue stops refusing, so the absence cannot outlive its reason. **The owner decides** whether to approve a scoped pre-finalization update permission (and its command row and audit action), or to rule that corrections always create a replacement segment, which is what doc 05 `:1795` already says happens after finalization. | Nothing; the absence is the conservative reading — **resolved in slice 2** |
+| **Q-10** | **doc 04's index predicate names a segment status the catalogue does not have.** `:1672` writes `WHERE status IN ('unmatched','candidate_found','needs_review')` and `needs_review` is neither canonical nor an unresolved alias in `status_catalog.yaml`, so `ck_receipt_segments_status_value` makes that disjunct unreachable. Slice 2 **copies the predicate verbatim**: trimming it would make the index a differently-scoped object wearing the document's name, which `test_schema_matches_the_specification.py` refuses in those words. The divergence is therefore visible in the schema rather than hidden in a test exemption, and a test pins it so it cannot be tidied away. **The owner decides** whether the catalogue gains the state or doc 04 loses the word. | Nothing; recorded in the schema — **built** |
+| **Q-11** | **§12.4's own bbox CHECK accepts a partial rectangle.** Set three coordinates and leave the fourth NULL: the all-null branch is false, the in-bounds branch contains `bbox_height > 0` which is NULL, and `false OR NULL` is NULL — **which a CHECK accepts, because SQL rejects only on false.** A row claiming three quarters of a rectangle satisfies the documented constraint exactly as written, sits in the table looking like a crop, and can never be reproduced. Found by testing the documented constraint at its edges rather than by reading it. Closed with `num_nonnulls(bbox_x, bbox_y, bbox_width, bbox_height) IN (0, 4)`, which cannot be NULL and is therefore decidable. **The owner owes doc 04 the correction**; the code is already safe. | Nothing; closed in slice 2 — **built** |
 | **Q-8** | **The batch link's `status` is a lifecycle no catalogue governs.** `active` and `replaced`; doc 04 `:1197` gives the table a `status` and a `replaced_at` and names no aggregate, and `status_catalog.yaml` has none. `test_status_catalogue_drift.py` requires every enforced status CHECK to name an aggregate, so slice 1 added `LOCAL_LIFECYCLES` beside the existing `DELIBERATELY_UNCONSTRAINED` — the opposite case, a CHECK with no aggregate rather than an aggregate with no CHECK — with two tests that refuse a bare entry and refuse a column listed in both. The owner decides whether the catalogue gains a `bank_result_bundle_batch_link` aggregate. | Nothing; recorded with its reason — **built** |
 
 **Q-4 is the only one that blocks starting.** Slices 1, 2 and 3 — the bundle, the segment table with
@@ -475,11 +507,48 @@ set rather than by inventing governance — and each still owes the owner a deci
 are here rather than only in a code comment. The pattern is worth naming: **the catalogues and the
 specification disagree most often about the things neither of them thought were interesting.**
 
-**Q-4's recommendation stands and the dependency is deliberately not pinned yet.** Slice 4 is where
-it gets pinned, with the evidence M7 demanded of `openpyxl` — properties verified against a
-written-and-reread file before the version is fixed, not asserted in a comment. Pinning it now would
-add a production dependency to a slice that cannot exercise it, which is how a library arrives with
-nothing checking that it does what the plan assumed.
+---
+
+# 4.1 Decisions taken on the owner's instruction (2026-08-24)
+
+The owner asked for the simplest defensible answer to each open question rather than a queue of
+decisions. Each is recorded here as **taken, by whom, and reversible or not**, because a delegated
+decision that leaves no trail is worse than an open one.
+
+**Q-4 — renderer: `pypdfium2` with `Pillow`.** Taken. Apache-2.0 and HPND, both shipping manylinux
+wheels with their native code bundled, so nothing compiles on the target and both can be vendored
+for a network that cannot reach a registry. The alternative with better capability is PyMuPDF, and it
+is **AGPL-3.0 or paid** — so choosing it would commit this product to either a copyleft obligation or
+a purchase, and neither is a call an implementer should make quietly. Taking the permissive option is
+the decision that *needs* no owner sign-off; if the owner later wants PyMuPDF's capability, that is a
+licence purchase and slice 4's `renderer_name`/`renderer_version` columns are what make the swap
+recordable rather than invisible.
+
+Still not pinned in this slice. Slice 4 pins it with the evidence M7 demanded of `openpyxl` —
+properties verified against a written-and-reread file before the version is fixed, not asserted in a
+comment. A dependency added to a slice that cannot exercise it is how a library arrives with nothing
+checking it does what the plan assumed.
+
+**Q-9 — segment corrections create a replacement, and no update permission is requested.** Taken,
+and it is the simplest reading of what already exists: doc 05 `:1795` says a replacement segment is
+created after finalization, and the permission catalogue refuses a pre-finalization update until one
+is approved. Making replacement the *only* path removes the distinction entirely — no window in which
+evidence can be edited in place, one shape for every correction, and nothing new to authorise.
+Replacement itself belongs to M9, which owns `superseded`. Slice 2 ships the absence and the test
+that fails if the catalogue ever stops refusing.
+
+**Q-10 — the index predicate keeps doc 04's wording.** Taken, already built. The unreachable
+`needs_review` disjunct stays visible in the schema rather than hidden in a test exemption. Doc 04 or
+the catalogue owes an editorial fix and neither blocks anything.
+
+**Q-11 — the partial-rectangle hole is closed in code; doc 04 owes the correction.** Taken, already
+built. `num_nonnulls(...) IN (0, 4)` is decidable where the documented CHECK is not.
+
+**Q-1, Q-2, Q-3, Q-5, Q-6, Q-7, Q-8** were resolved in slices 1 and 2 as their rows describe.
+
+**What is still genuinely the owner's**, because no implementer can decide it: **G-5**, carried from
+M7 — an approved batch has no exit. M8 neither worsens nor fixes it, and it is the one open item on
+this project that is about money rather than about documents.
 
 ---
 
