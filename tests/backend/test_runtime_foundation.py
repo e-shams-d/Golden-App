@@ -55,6 +55,14 @@ EXPECTED_TABLES = frozenset(
         # export are the same rendering of the same version. `20260822_0021` likewise adds no
         # grant, which is what makes `export_type` unwritable and a preview unpromotable.
         "bank_excel_exports",
+        # M8 slice 1, §12.1-12.3. The bundle's lifecycle and its three cached counts are writable
+        # and its identity is not; `bank_result_bundle_files` has no UPDATE grant at all, because
+        # which file sits at which position in which role are three facts that do not change. The
+        # link table's only mutation is being replaced, which is how a corrected belief supersedes
+        # an earlier one instead of overwriting it.
+        "bank_result_bundles",
+        "bank_result_bundle_files",
+        "bank_result_bundle_batch_links",
         "payment_attempt_allocations",
         "payment_attempts",
         "payment_batch_items",

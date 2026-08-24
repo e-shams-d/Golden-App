@@ -232,6 +232,15 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     ("GET", "/api/v1/bank-exports/{export_id}"): PERMISSION,
     ("GET", "/api/v1/bank-exports/{export_id}/download"): PERMISSION,
     ("POST", "/api/v1/bank-exports/{export_id}/mark-sent-to-bank"): PERMISSION,
+    # M8 slice 1. `PERMISSION` throughout, and there is no `DUAL` candidate among them: a bundle
+    # is what a bank returned about the centre's own payments, so it has no owning trader to scope
+    # by. `15_Agent_Implementation_Plan.md:1069` lists "trader cannot access bundle or internal
+    # segment" among the milestone's own tests, which is this classification stated as a behaviour.
+    ("POST", "/api/v1/bank-result-bundles"): PERMISSION,
+    ("GET", "/api/v1/bank-result-bundles"): PERMISSION,
+    ("GET", "/api/v1/bank-result-bundles/{bundle_id}"): PERMISSION,
+    ("POST", "/api/v1/bank-result-bundles/{bundle_id}/batch-links"): PERMISSION,
+    ("POST", "/api/v1/bank-result-bundles/{bundle_id}/close"): PERMISSION,
     # M5 slice 8. The two reads the screens need, and which nothing had built: eleven
     # published operations and only the revision history read. Both are `DUAL` — a trader
     # sees their own through `scoped()`, an accountant sees the queue through
@@ -546,6 +555,27 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ),
     ("POST", "/api/v1/bank-exports/{export_id}/mark-sent-to-bank", "permission"): (
         "test_marking_sent_needs_the_mark_sent_permission"
+    ),
+    # M8 slice 1. Five entries, and one test covers the whole surface rather than five near-copies.
+    # `15_Agent_Implementation_Plan.md:1069` states the requirement as "trader cannot access bundle
+    # or internal segment" — a claim about the surface, not about a route — and five tests differing
+    # only in a path would let a sixth route be added with no test at all while the file still
+    # looked thorough. The test parametrises over the live route table, so a route added later is
+    # covered by construction.
+    ("POST", "/api/v1/bank-result-bundles", "permission"): (
+        "test_no_bundle_route_answers_a_caller_without_the_permission"
+    ),
+    ("GET", "/api/v1/bank-result-bundles", "permission"): (
+        "test_no_bundle_route_answers_a_caller_without_the_permission"
+    ),
+    ("GET", "/api/v1/bank-result-bundles/{bundle_id}", "permission"): (
+        "test_no_bundle_route_answers_a_caller_without_the_permission"
+    ),
+    ("POST", "/api/v1/bank-result-bundles/{bundle_id}/batch-links", "permission"): (
+        "test_no_bundle_route_answers_a_caller_without_the_permission"
+    ),
+    ("POST", "/api/v1/bank-result-bundles/{bundle_id}/close", "permission"): (
+        "test_no_bundle_route_answers_a_caller_without_the_permission"
     ),
     # M5 slice 8. The two reads, four entries because both are `DUAL`. The ownership pair
     # answers `404` and the permission pair `403`, and each is asserted in its own test

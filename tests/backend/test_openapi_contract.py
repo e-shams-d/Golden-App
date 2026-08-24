@@ -207,6 +207,19 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "getBankExport",
         "downloadBankExport",
         "markBankExportSent",
+        # M8 slice 1. `05_API_Specification.md:1642`, `:1676`, `:1685` and `:1700`.
+        #
+        # **Two operations that document 05 defines are absent, and the absence is the record.**
+        # `:1693`'s `start-review` has no permission in `permission_catalog.yaml` at all, so
+        # deny-by-default would answer 403 to every caller; the transition it performs happens at
+        # upload instead, per `06_Workflows_and_State_Machines.md:995`. `:1721`'s `ai-extraction`
+        # is Phase 1B+ and slice 7 asserts no AI path is reachable. This set is where somebody
+        # comparing the contract to document 05 will notice both.
+        "uploadBankResultBundle",
+        "listBankResultBundles",
+        "getBankResultBundle",
+        "linkBankResultBundleToBatch",
+        "closeBankResultBundle",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

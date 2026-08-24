@@ -447,6 +447,44 @@
         "title": "ApproveVersionRequest",
         "type": "object"
       },
+      "AttachFileRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "format": "uuid",
+            "title": "File Id",
+            "type": "string"
+          },
+          "file_role": {
+            "default": "source",
+            "title": "File Role",
+            "type": "string"
+          },
+          "page_count": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Count"
+          },
+          "sequence_number": {
+            "minimum": 1.0,
+            "title": "Sequence Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "file_id",
+          "sequence_number"
+        ],
+        "title": "AttachFileRequest",
+        "type": "object"
+      },
       "BackgroundProcessingResponse": {
         "additionalProperties": false,
         "properties": {
@@ -636,6 +674,92 @@
           "row_hash"
         ],
         "title": "BatchItemResponse",
+        "type": "object"
+      },
+      "BatchLinkEntry": {
+        "additionalProperties": false,
+        "description": "One recorded belief, and the field that keeps it honest.\n\n`proves_payment` is always `False` and is in the response on purpose. §12.3 at `:1199` says the\nassociation \"does not prove payment completion\"; a screen showing a batch beside a bundle will\nbe read as a claim unless something says otherwise, and the place to say it is the payload\nrather than a comment nobody renders.",
+        "properties": {
+          "batch_number": {
+            "title": "Batch Number",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "link_method": {
+            "title": "Link Method",
+            "type": "string"
+          },
+          "payment_batch_id": {
+            "format": "uuid",
+            "title": "Payment Batch Id",
+            "type": "string"
+          },
+          "payment_batch_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Batch Version Id"
+          },
+          "proves_payment": {
+            "default": false,
+            "title": "Proves Payment",
+            "type": "boolean"
+          },
+          "replaced_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaced At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "payment_batch_id",
+          "batch_number",
+          "payment_batch_version_id",
+          "link_method",
+          "status",
+          "created_by",
+          "created_at",
+          "replaced_at"
+        ],
+        "title": "BatchLinkEntry",
         "type": "object"
       },
       "BatchList": {
@@ -969,6 +1093,303 @@
         "title": "Body_uploadFile",
         "type": "object"
       },
+      "BundleDetail": {
+        "additionalProperties": false,
+        "description": "Everything §16's review workspace needs to open a bundle.\n\n`15_Agent_Implementation_Plan.md:1028` lists eleven items for that workspace and this carries\nthe ones that are facts about the bundle: its summary, its files, and what it is linked to.\nSegments arrive in slice 2 and previews in slice 5, and `API-BUNDLE-001` parses §16's list so\nthe API and slice 6's screen answer to one source rather than two copies of it.",
+        "properties": {
+          "accepted_file_roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Accepted File Roles",
+            "type": "array"
+          },
+          "accepted_link_methods": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Accepted Link Methods",
+            "type": "array"
+          },
+          "accepted_source_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Accepted Source Types",
+            "type": "array"
+          },
+          "bank": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank"
+          },
+          "batch_links": {
+            "items": {
+              "$ref": "#/components/schemas/BatchLinkEntry"
+            },
+            "title": "Batch Links",
+            "type": "array"
+          },
+          "bundle_number": {
+            "title": "Bundle Number",
+            "type": "string"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "closed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed By"
+          },
+          "file_count": {
+            "title": "File Count",
+            "type": "integer"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/BundleFileEntry"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "record_version": {
+            "title": "Record Version",
+            "type": "integer"
+          },
+          "resolved_segment_count": {
+            "title": "Resolved Segment Count",
+            "type": "integer"
+          },
+          "segment_count": {
+            "title": "Segment Count",
+            "type": "integer"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "unresolved_segment_count": {
+            "title": "Unresolved Segment Count",
+            "type": "integer"
+          },
+          "uploaded_at": {
+            "format": "date-time",
+            "title": "Uploaded At",
+            "type": "string"
+          },
+          "uploaded_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uploaded By"
+          }
+        },
+        "required": [
+          "id",
+          "bundle_number",
+          "status",
+          "source_type",
+          "bank",
+          "uploaded_by",
+          "uploaded_at",
+          "file_count",
+          "segment_count",
+          "resolved_segment_count",
+          "unresolved_segment_count",
+          "record_version",
+          "notes",
+          "closed_at",
+          "closed_by",
+          "files",
+          "batch_links",
+          "accepted_source_types",
+          "accepted_file_roles",
+          "accepted_link_methods"
+        ],
+        "title": "BundleDetail",
+        "type": "object"
+      },
+      "BundleFileEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "format": "uuid",
+            "title": "File Id",
+            "type": "string"
+          },
+          "file_name": {
+            "title": "File Name",
+            "type": "string"
+          },
+          "file_role": {
+            "title": "File Role",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "page_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Count"
+          },
+          "sequence_number": {
+            "title": "Sequence Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "file_id",
+          "file_name",
+          "sequence_number",
+          "file_role",
+          "page_count"
+        ],
+        "title": "BundleFileEntry",
+        "type": "object"
+      },
+      "BundleSummary": {
+        "additionalProperties": false,
+        "description": "One row of the bundle queue. `05_API_Specification.md:1676`.",
+        "properties": {
+          "bank": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank"
+          },
+          "bundle_number": {
+            "title": "Bundle Number",
+            "type": "string"
+          },
+          "file_count": {
+            "title": "File Count",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "record_version": {
+            "title": "Record Version",
+            "type": "integer"
+          },
+          "resolved_segment_count": {
+            "title": "Resolved Segment Count",
+            "type": "integer"
+          },
+          "segment_count": {
+            "title": "Segment Count",
+            "type": "integer"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "unresolved_segment_count": {
+            "title": "Unresolved Segment Count",
+            "type": "integer"
+          },
+          "uploaded_at": {
+            "format": "date-time",
+            "title": "Uploaded At",
+            "type": "string"
+          },
+          "uploaded_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uploaded By"
+          }
+        },
+        "required": [
+          "id",
+          "bundle_number",
+          "status",
+          "source_type",
+          "bank",
+          "uploaded_by",
+          "uploaded_at",
+          "file_count",
+          "segment_count",
+          "resolved_segment_count",
+          "unresolved_segment_count",
+          "record_version"
+        ],
+        "title": "BundleSummary",
+        "type": "object"
+      },
       "CancelBatchRequest": {
         "additionalProperties": false,
         "description": "`06_Workflows_and_State_Machines.md` §29.2, draft half.\n\n**No required reason.** §29.2 attaches \"with reason\" to the *ready-for-approval* case and not\nto the draft case, so demanding one here would be an unmandated refusal — the mirror of the\nunmandated side effect this milestone has been avoiding, and the mistake M5 slice 7 made by\nrequiring a cancellation reason §29.1 does not ask for.",
@@ -1075,6 +1496,23 @@
           "changed"
         ],
         "title": "ChangePasswordResponse",
+        "type": "object"
+      },
+      "CloseBundleRequest": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1705`.\n\n`unresolved_dispositions` is absent and slice 1 says why in the command: it needs segments,\nwhich slice 2 creates. A field accepted and ignored would be worse than one that is not there.",
+        "properties": {
+          "resolution_note": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Resolution Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resolution_note"
+        ],
+        "title": "CloseBundleRequest",
         "type": "object"
       },
       "CreateAccountRequest": {
@@ -2376,6 +2814,41 @@
           "stale_leases"
         ],
         "title": "JobHealth",
+        "type": "object"
+      },
+      "LinkBatchRequest": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1685`.",
+        "properties": {
+          "link_method": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Link Method",
+            "type": "string"
+          },
+          "payment_batch_id": {
+            "format": "uuid",
+            "title": "Payment Batch Id",
+            "type": "string"
+          },
+          "payment_batch_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Batch Version Id"
+          }
+        },
+        "required": [
+          "payment_batch_id",
+          "link_method"
+        ],
+        "title": "LinkBatchRequest",
         "type": "object"
       },
       "LivenessResponse": {
@@ -4177,6 +4650,56 @@
           "reason"
         ],
         "title": "UpdateRolePermissionsRequest",
+        "type": "object"
+      },
+      "UploadBundleRequest": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1642`.",
+        "properties": {
+          "bank_profile_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Profile Id"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/AttachFileRequest"
+            },
+            "minItems": 1,
+            "title": "Files",
+            "type": "array"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "source_type": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Source Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_type",
+          "files"
+        ],
+        "title": "UploadBundleRequest",
         "type": "object"
       },
       "UploadedFileResponse": {
@@ -6197,6 +6720,480 @@
         "summary": "Create Bank Profile",
         "tags": [
           "bank-configuration"
+        ]
+      }
+    },
+    "/api/v1/bank-result-bundles": {
+      "get": {
+        "description": "`GET /api/v1/bank-result-bundles`. `05_API_Specification.md:1676`.\n\n`awaiting_review` defaults to **true**, and the filtered set is exactly the predicate of\n`idx_bundle_review_queue` — the index `04_Database_Schema.md:1659` specifies for this query. A\nfilter that did not match its index would be a queue that reads the whole table.\n\nThe unfiltered list stays available, for M7 slice 1's reason: a history that becomes unreachable\nis a history nobody can audit.",
+        "operationId": "listBankResultBundles",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "awaiting_review",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Awaiting Review",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BundleSummary"
+                  },
+                  "title": "Response Listbankresultbundles",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the bundle permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such bundle, batch, version or file."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The bundle is closed, or a rule refuses the change."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "The bundle queue, or all of them.",
+        "tags": [
+          "bank-result-bundles"
+        ]
+      },
+      "post": {
+        "description": "`POST /api/v1/bank-result-bundles`.\n\n**The files must already exist.** `command_catalog.yaml:267` names both\n`bank_result_bundle.upload` and `file.upload` as this command's permissions, which is the\ncatalogue saying the same thing: the bytes arrive through M4's upload endpoint and this command\nrecords what they are part of. `08_Bank_File_and_Result_Processing.md:137` forbids overwriting\nan original, and never holding a second copy is the cheapest way to honour it.\n\n**`Idempotency-Key` is required** per `command_catalog.yaml:264`. A retried upload must not\nproduce two bundles claiming the same delivery.",
+        "operationId": "uploadBankResultBundle",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadBundleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundleDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the bundle permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such bundle, batch, version or file."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The bundle is closed, or a rule refuses the change."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Record a delivery of bank-returned evidence.",
+        "tags": [
+          "bank-result-bundles"
+        ]
+      }
+    },
+    "/api/v1/bank-result-bundles/{bundle_id}": {
+      "get": {
+        "description": "`GET /api/v1/bank-result-bundles/{bundle_id}`. `05_API_Specification.md:1677`.",
+        "operationId": "getBankResultBundle",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundleDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the bundle permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such bundle, batch, version or file."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The bundle is closed, or a rule refuses the change."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Everything needed to open a bundle for review.",
+        "tags": [
+          "bank-result-bundles"
+        ]
+      }
+    },
+    "/api/v1/bank-result-bundles/{bundle_id}/batch-links": {
+      "post": {
+        "description": "`POST /api/v1/bank-result-bundles/{bundle_id}/batch-links`. `05_API_Specification.md:1685`.\n\n**`:1688`: \"This association is operational context only and does not prove payment\ncompletion.\"** The response says so in a field, because a screen putting a batch number beside\na bundle will be read as a claim unless something contradicts it.\n\n**The permission is catalogued and the command is not.** `bank_result_bundle.link_batch` is in\n`permission_catalog.yaml:528` and seeded to `accountant`; `command_catalog.yaml` has no row and\n`audit_outbox_catalog.yaml` names no action. That is DOC-CONFLICT-052's shape for the third\ntime, and the route is implemented against the permission's own identifier because M6 slice 4\nset that precedent under the same conflict. `app/audit/registry.py` declares the audit action\n`catalogued=False` with its reason rather than pretending the catalogue covers it.\n\n**No `Idempotency-Key`.** No catalogue row means no idempotency contract to honour, and\n`uq_bundle_links_active_pair` makes a repeat harmless: the second call replaces the first link\nwith an identical one and leaves the old row as evidence. Recorded rather than assumed.",
+        "operationId": "linkBankResultBundleToBatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchLinkEntry"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the bundle permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such bundle, batch, version or file."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The bundle is closed, or a rule refuses the change."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Record that a bundle appears to relate to a batch. Not evidence of payment.",
+        "tags": [
+          "bank-result-bundles"
+        ]
+      }
+    },
+    "/api/v1/bank-result-bundles/{bundle_id}/close": {
+      "post": {
+        "description": "`POST /api/v1/bank-result-bundles/{bundle_id}/close`. `05_API_Specification.md:1700`.\n\n**The counts are recomputed before the decision.** Closing asserts that everything in the\nbundle has been dealt with, and asserting that from a cached number would be asserting it from\nsomething that may have drifted — `04_Database_Schema.md:1179` says these are not independent\ntruth.\n\n**No `If-Match`, and it is recorded rather than overlooked.** `:1702` shows one and\n`bank_result_bundles` does carry `record_version`, so unlike M7's mark-sent this could take\none. It does not yet because slice 1 is the only writer and there is nothing to race with;\nslice 2 gives segments a way to change a bundle underneath a reader, and that is the slice\nwhere the precondition earns its place. `Idempotency-Key` is required now, per\n`command_catalog.yaml:593`.",
+        "operationId": "closeBankResultBundle",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloseBundleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundleDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the bundle permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such bundle, batch, version or file."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The bundle is closed, or a rule refuses the change."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Record that everything in this bundle has been dealt with.",
+        "tags": [
+          "bank-result-bundles"
         ]
       }
     },

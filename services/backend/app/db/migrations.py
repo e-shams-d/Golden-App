@@ -74,4 +74,10 @@ from __future__ import annotations
 # `sent_to_bank_marked_at`, `sent_to_bank_marked_by_admin_user_id` — so an export can be
 # downloaded and marked sent. Column-level, so `export_type`, `batch_approval_id` and both hashes
 # stay unwritable and a preview stays unpromotable.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260822_0022"})
+# 20260823_0023 adds M8's three bundle tables. Grants UPDATE on the bundle's lifecycle and its
+# three cached counts, and on the link's two replacement columns — and **nothing at all** on
+# `bank_result_bundle_files`, because which file sits at which position in which role are three
+# facts that do not change. The bundle's own number, source type, uploader and upload time are
+# outside the grant too, so the runtime can move a bundle through its lifecycle and cannot rewrite
+# what it is.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260823_0023"})
