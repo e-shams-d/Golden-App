@@ -67,6 +67,11 @@ EXPECTED_TABLES = frozenset(
         # that a crop can be rebuilt from its own row — which is why every provenance column is
         # outside the UPDATE grant.
         "receipt_segments",
+        # M8 slice 3, §13.1. The queue M7's G-10 said did not exist. The first table here whose
+        # subject is *work* rather than money, and the only one with a generic entity reference —
+        # which `:1324` limits to queue navigation, so it carries no foreign key on that pair and no
+        # financial read joins through it.
+        "manual_review_tasks",
         "payment_attempt_allocations",
         "payment_attempts",
         "payment_batch_items",

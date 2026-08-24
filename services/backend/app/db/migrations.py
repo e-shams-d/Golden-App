@@ -87,4 +87,9 @@ from __future__ import annotations
 # `05_API_Specification.md:1795`
 # freezes those after finalization; this freezes them always, because a rectangle that could move
 # would retroactively falsify every reproduction claim already made from it.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260824_0024"})
+# 20260824_0025 adds `manual_review_tasks` — the queue M7's G-10 said did not exist, which
+# `04_Database_Schema.md:1314` had specified all along. Grants UPDATE on the lifecycle, the
+# assignee, the priority and the three resolution facts, and on nothing that identifies the work:
+# `task_type`, `entity_type`, `entity_id` and `title` are frozen after insert, so a queue item
+# cannot be quietly re-pointed at a different subject.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260824_0025"})

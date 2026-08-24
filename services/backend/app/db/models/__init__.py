@@ -27,6 +27,7 @@ from app.db.models.configuration import (
 from app.db.models.file_object import FileDerivation, FileLink, FileObject
 from app.db.models.idempotency_record import IdempotencyRecord
 from app.db.models.identity import AdminUser, TraderUser
+from app.db.models.manual_review_task import ManualReviewTask
 from app.db.models.outbox_event import OutboxEvent
 from app.db.models.payment_batch import (
     BatchApproval,
@@ -66,6 +67,7 @@ __all__ = [
     "FileObject",
     "IdempotencyRecord",
     "LegalHold",
+    "ManualReviewTask",
     "OutboxEvent",
     "PaymentAttempt",
     "PaymentAttemptAllocation",

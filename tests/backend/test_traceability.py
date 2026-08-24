@@ -185,10 +185,23 @@ PENDING: dict[str, str] = {
     # because a comparison against NULL is NULL, and a CHECK rejects only on false. A row claiming
     # three quarters of a rectangle satisfies the document exactly as written and can never be
     # reproduced. Closed with `num_nonnulls(...) IN (0, 4)`; Q-11 owes document 04 a correction.
-    "DB-TASK-001": "M8 slice 3 — manual_review_tasks and its partial index from the catalogue",
-    "SVC-TASK-001": "M8 slice 3 — four transitions and no other; resolve needs a code",
-    "SVC-TASK-002": "M8 slice 3 — entity ids are queue navigation, never a financial join",
-    "SVC-QUARANTINE-001": "M8 slice 3 — quarantining an export creates a task; M7's gap entry goes",
+    # Slice 3's four are discharged by `tests/backend/test_review_queue_shape.py`,
+    # `tests/integration/test_review_queue.py` and — for `SVC-QUARANTINE-001` —
+    # `tests/integration/test_export_download_and_sent.py`, which is where a real quarantine can be
+    # produced. The plan records why that one lives there rather than with its siblings.
+    #
+    # **This slice paid M7's debt and found the plan's own claim about it was wrong.** M7 recorded
+    # G-10 as "there is no task table in Phase 1A" and skipped §14.5's fifth requirement;
+    # `04_Database_Schema.md:1314` had specified the table all along. But the M8 plan said a
+    # `RECORDED_GAPS` entry excusing the absence would be removed here, and no such entry ever
+    # existed — the record was prose in the plan and a line in `_quarantine`'s docstring. A plan
+    # promising a cleanup with no target is the same defect as a gap entry nobody removes, pointing
+    # the other way, so the docstring was corrected and the plan says so.
+    #
+    # `SVC-TASK-002` is the one worth reading: §13.1 at `:1324` limits the generic entity reference
+    # to queue navigation, so there is no foreign key on it, no financial read joins through it, and
+    # the table carries no typed reference to an export, a bundle or an attempt — even though this
+    # slice's own caller would have found one convenient.
     "SVC-CROP-001": "M8 slice 4 — §16's ten crop requirements, one assertion each",
     "SVC-CROP-002": "M8 slice 4 — §16's three prohibitions, as absences",
     "SVC-CROP-003": "M8 slice 4 — the source file is byte-identical afterwards, measured",
