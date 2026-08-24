@@ -13,8 +13,13 @@ mode`, happens at upload instead — Phase 1A has no normalization job to take t
 upload *is* the direct manual mode. Q-7 in the M8 plan carries it.
 
 **No `ai-extraction` route.** `:1721` defines one and marks it Phase 1B+.
-`04_Database_Schema.md:1259` keeps `ai_auto_segmentation` feature-flagged, and slice 7 asserts no
-AI path is reachable at all.
+`04_Database_Schema.md:1259` keeps the automatic segmentation creation method feature-flagged for
+later phases, and slice 7 asserts no AI path is reachable at all.
+
+That method's name is deliberately not written here. `tests/backend/test_segment_surface.py` greps
+the command and API surface for it, on the argument that a module mentioning it at all is a module
+worth looking at — and this docstring failed that scan on its own explanation, which is the fifth
+time in this project that prose has broken a check the prose was describing.
 
 **A trader reaches none of this.** Every route declares a permission, and `ActorContext` refuses by
 invariant to give a trader actor any permission — so the refusal is structural rather than a check

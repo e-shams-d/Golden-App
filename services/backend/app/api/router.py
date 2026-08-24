@@ -15,6 +15,7 @@ from app.api.v1.metadata import router as metadata_router
 from app.api.v1.operations import router as operations_router
 from app.api.v1.payment_batches import router as payment_batches_router
 from app.api.v1.payment_requests import router as payment_requests_router
+from app.api.v1.receipt_segments import router as receipt_segments_router
 from app.api.v1.roles import router as roles_router
 from app.api.v1.trader_self_service import router as trader_self_service_router
 from app.api.v1.traders import router as traders_router
@@ -41,3 +42,6 @@ api_v1_router.include_router(bank_exports_router)
 # M8 slice 1. The other direction from everything above: `bank_exports` is what the centre sends a
 # bank, and this is what the bank sends back.
 api_v1_router.include_router(bank_result_bundles_router)
+# M8 slice 2. No prefix of its own: document 05 puts creation under the bundle and the read under
+# `/receipt-segments`, so the router declares both paths rather than pretending they share a root.
+api_v1_router.include_router(receipt_segments_router)

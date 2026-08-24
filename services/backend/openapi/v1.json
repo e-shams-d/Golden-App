@@ -447,6 +447,56 @@
         "title": "ApproveVersionRequest",
         "type": "object"
       },
+      "AttachExternalRequest": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1733`.",
+        "properties": {
+          "bank_result_bundle_file_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Result Bundle File Id"
+          },
+          "manual_fields": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ManualFieldsRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "page_number": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Number"
+          },
+          "source_file_id": {
+            "format": "uuid",
+            "title": "Source File Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_file_id"
+        ],
+        "title": "AttachExternalRequest",
+        "type": "object"
+      },
       "AttachFileRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2917,6 +2967,75 @@
         "title": "LoginResponse",
         "type": "object"
       },
+      "ManualFieldsRequest": {
+        "additionalProperties": false,
+        "description": "What a person read off the receipt. `05_API_Specification.md:1740`.\n\n`amount_irr` is a **string**. `MONEY_TIME_CONTRACT.md:17` makes base-10 integer strings the wire\nformat for monetary values and rule 9 forbids JavaScript `Number` for them; document 05's\nexample at `:1744` shows an unquoted number, which is DOC-CONFLICT-050 — the same disagreement\nM5 settled the same way, with the contract winning on encoding.",
+        "properties": {
+          "amount_irr": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Irr"
+          },
+          "beneficiary_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Beneficiary Name"
+          },
+          "destination_iban": {
+            "anyOf": [
+              {
+                "maxLength": 26,
+                "minLength": 26,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Iban"
+          },
+          "payment_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment At"
+          },
+          "tracking_number": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracking Number"
+          }
+        },
+        "title": "ManualFieldsRequest",
+        "type": "object"
+      },
       "MarkEligibleRequest": {
         "additionalProperties": false,
         "description": "`05_API_Specification.md:1223-1227`.",
@@ -4251,6 +4370,273 @@
           "matches"
         ],
         "title": "SchemaState",
+        "type": "object"
+      },
+      "SegmentDetail": {
+        "additionalProperties": false,
+        "description": "One piece of evidence, and everything needed to say where it came from.\n\n**The provenance fields are read-only for the whole life of the row** — no route writes them,\nand `20260824_0024` grants UPDATE on none of them. They are returned because reproduction is\nthe point: a reader who cannot see the rectangle, the rotation and the source dimensions cannot\ncheck that the crop is what it claims to be.\n\n`rotation_degrees` is here because of DOC-CONFLICT-057. Document 05's own response shape does\nnot list it; returning it is the same decision as storing it, for the same reason.",
+        "properties": {
+          "bank_result_bundle_file_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Result Bundle File Id"
+          },
+          "bank_result_bundle_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Result Bundle Id"
+          },
+          "bbox_height": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox Height"
+          },
+          "bbox_width": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox Width"
+          },
+          "bbox_x": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox X"
+          },
+          "bbox_y": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox Y"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_actor_type": {
+            "title": "Created By Actor Type",
+            "type": "string"
+          },
+          "creation_method": {
+            "title": "Creation Method",
+            "type": "string"
+          },
+          "extracted_amount_irr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extracted Amount Irr"
+          },
+          "extracted_beneficiary_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extracted Beneficiary Name"
+          },
+          "extracted_destination_iban": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extracted Destination Iban"
+          },
+          "extracted_payment_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extracted Payment At"
+          },
+          "extracted_tracking_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extracted Tracking Number"
+          },
+          "extraction_confidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extraction Confidence"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "page_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Number"
+          },
+          "record_version": {
+            "title": "Record Version",
+            "type": "integer"
+          },
+          "renderer_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Renderer Version"
+          },
+          "rotation_degrees": {
+            "title": "Rotation Degrees",
+            "type": "integer"
+          },
+          "segment_file_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segment File Id"
+          },
+          "source_file_id": {
+            "format": "uuid",
+            "title": "Source File Id",
+            "type": "string"
+          },
+          "source_pixel_height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Pixel Height"
+          },
+          "source_pixel_width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Pixel Width"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "bank_result_bundle_id",
+          "bank_result_bundle_file_id",
+          "source_file_id",
+          "segment_file_id",
+          "creation_method",
+          "status",
+          "page_number",
+          "bbox_x",
+          "bbox_y",
+          "bbox_width",
+          "bbox_height",
+          "rotation_degrees",
+          "source_pixel_width",
+          "source_pixel_height",
+          "renderer_version",
+          "extracted_beneficiary_name",
+          "extracted_destination_iban",
+          "extracted_amount_irr",
+          "extracted_tracking_number",
+          "extracted_payment_at",
+          "extraction_confidence",
+          "created_by_actor_type",
+          "record_version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SegmentDetail",
         "type": "object"
       },
       "SeparationOfDutyStatus": {
@@ -7194,6 +7580,116 @@
         "summary": "Record that everything in this bundle has been dealt with.",
         "tags": [
           "bank-result-bundles"
+        ]
+      }
+    },
+    "/api/v1/bank-result-bundles/{bundle_id}/receipt-segments/external": {
+      "post": {
+        "description": "`POST /api/v1/bank-result-bundles/{bundle_id}/receipt-segments/external`. `:1733`.\n\n**No rectangle and no rotation.** §12.4's bbox CHECK has an all-null branch for exactly this\nmethod: the evidence is the whole file. A segment with no coordinates is a complete record here,\nnot a partial one, and the `rotation_needs_a_rectangle` CHECK is what stops an angle being\nstored beside nothing.\n\n**`Idempotency-Key` required.** `:1734` shows one, and a retried attachment must not produce\ntwo segments claiming the same evidence — which would also double the bundle's segment count and\nput a bundle in the review queue for work that does not exist.",
+        "operationId": "attachExternalEvidence",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachExternalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the segment permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such bundle, file or segment."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The bundle is closed, or the file is not usable as evidence."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Attach an already-uploaded file as evidence, whole.",
+        "tags": [
+          "receipt-segments"
         ]
       }
     },
@@ -11075,6 +11571,90 @@
         "summary": "Hand a draft to the centre.",
         "tags": [
           "payment-requests"
+        ]
+      }
+    },
+    "/api/v1/receipt-segments/{segment_id}": {
+      "get": {
+        "description": "`GET /api/v1/receipt-segments/{segment_id}`. `05_API_Specification.md:1791`.\n\n`receipt_segment.read` goes to `accountant` and `manager`\n(`permission_catalog.yaml:540`), with `read_only_auditor` by explicit sensitive-read grant. A\ntrader reaches none of it: this is the bank's account of the centre's payments, and\n`15_Agent_Implementation_Plan.md:1069` lists \"trader cannot access bundle or internal segment\"\namong the milestone's own tests.",
+        "operationId": "getReceiptSegment",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "segment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Segment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the segment permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such bundle, file or segment."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The bundle is closed, or the file is not usable as evidence."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "One piece of evidence, with the provenance that lets it be checked.",
+        "tags": [
+          "receipt-segments"
         ]
       }
     },

@@ -405,42 +405,26 @@ def recount(session: Session, bundle: BankResultBundle, *, now: datetime) -> Non
     works on next. `:1179` requires them "recomputed/validated transactionally from
     segments/tasks", which is what this is.
 
-    Slice 1 has no `receipt_segments` table, so this counts nothing and writes zeros. It exists now
-    rather than in slice 2 because the shape of the alternative is three `+= 1` call sites, and by
-    the time slice 2 is written they would already be there.
+    **Slice 2 made this live.** Slice 1 wrote it against a table that did not exist yet, behind a
+    runtime `has_table` check, and returned zeros — written early on purpose, because the shape of
+    the alternative was three `+= 1` call sites that would already have been there by the time the
+    table arrived. `receipt_segments` now always exists, so the check is gone: an inspection that
+    can only answer one way is a branch nothing tests.
+
+    One query, two counts. `RESOLVED_SEGMENT_STATUSES` is the segment module's decision about which
+    statuses need no further work, so "resolved" has one definition rather than one here and another
+    on whatever screen reads the number.
     """
 
-    from sqlalchemy import inspect
+    from app.db.models.receipt_segment import RESOLVED_SEGMENT_STATUSES, ReceiptSegment
 
-    if not inspect(session.get_bind()).has_table("receipt_segments"):
-        # Slice 2 creates the table. Until then the honest count is zero, and
-        # `ck_bundles_counts_reconcile` still holds.
-        total = resolved = 0
-    else:  # pragma: no cover - exercised from slice 2 onward
-        from app.db.models.receipt_segment import (  # type: ignore[import-not-found]
-            RESOLVED_SEGMENT_STATUSES,
-            ReceiptSegment,
-        )
-
-        total = (
-            session.scalar(
-                select(func.count())
-                .select_from(ReceiptSegment)
-                .where(ReceiptSegment.bank_result_bundle_id == bundle.id)
-            )
-            or 0
-        )
-        resolved = (
-            session.scalar(
-                select(func.count())
-                .select_from(ReceiptSegment)
-                .where(
-                    ReceiptSegment.bank_result_bundle_id == bundle.id,
-                    ReceiptSegment.status.in_(RESOLVED_SEGMENT_STATUSES),
-                )
-            )
-            or 0
-        )
+    counted = session.execute(
+        select(
+            func.count(),
+            func.count().filter(ReceiptSegment.status.in_(RESOLVED_SEGMENT_STATUSES)),
+        ).where(ReceiptSegment.bank_result_bundle_id == bundle.id)
+    ).one()
+    total, resolved = int(counted[0]), int(counted[1])
 
     bundle.segment_count = total
     bundle.resolved_segment_count = resolved

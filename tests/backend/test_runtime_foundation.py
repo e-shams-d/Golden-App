@@ -63,6 +63,10 @@ EXPECTED_TABLES = frozenset(
         "bank_result_bundles",
         "bank_result_bundle_files",
         "bank_result_bundle_batch_links",
+        # M8 slice 2, §12.4. The smallest unit of evidence, and the table whose whole purpose is
+        # that a crop can be rebuilt from its own row — which is why every provenance column is
+        # outside the UPDATE grant.
+        "receipt_segments",
         "payment_attempt_allocations",
         "payment_attempts",
         "payment_batch_items",
