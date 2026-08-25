@@ -205,10 +205,11 @@ PENDING: dict[str, str] = {
     # M8 slice 4's seven are gone from this list because they are now cited. Left here for the next
     # reader: the crop is the only M8 command whose permission, command row and audit action all
     # exist in the approved catalogues, which is why none of its entries needed a provisional name.
-    "SVC-PREVIEW-001": "M8 slice 5 — multi-page PDFs and rotated images render",
-    "SVC-PREVIEW-002": "M8 slice 5 — previews are derived objects, never the original",
-    "SEC-PREVIEW-001": "M8 slice 5 — preview and download refused without the bundle permission",
-    "API-PREVIEW-001": "M8 slice 5 — page dimensions are returned; a client cannot invent them",
+    # M8 slice 5's four are cited now. The one worth remembering: `SEC-PREVIEW-001` needed a
+    # `warehouse_operator` — the only role holding `file.preview` without
+    # `file.read_sensitive_bundle` — because a trader is refused at the permission gate before the
+    # ownership resolver runs, so a test using only a trader would have passed with that resolver
+    # doing nothing at all.
     "UI-WORKSPACE-001": "M8 slice 6 — every item §16's workspace list names, parsed",
     "UI-CROP-001": "M8 slice 6 — the rectangle is keyboard-operable, not pointer-only",
     "UI-CROP-002": "M8 slice 6 — normalized coordinates and rotation are what the screen sends",

@@ -58,6 +58,10 @@ from app.db.models.bank_result_bundle import (
 from app.db.models.file_object import CLEAN_SCAN_STATUS, FileObject
 from app.db.models.payment_batch import PaymentBatch, PaymentBatchVersion
 from app.db.unit_of_work import SqlAlchemyUnitOfWork
+from app.exports.crop import CropRefused, is_pdf, page_count
+from app.files.download import FileBytesUnavailableError, open_stream
+from app.files.upload import PREVIEWABLE_MEDIA_TYPES
+from app.storage.interface import StorageBackend
 
 METADATA_SCHEMA = "audit.bank_result_bundle"
 METADATA_VERSION = 1
@@ -99,6 +103,7 @@ def upload_bundle(
     command: UploadBundle,
     *,
     uow: SqlAlchemyUnitOfWork,
+    storage: StorageBackend,
     policy: RedactionPolicy,
     actor: AuditActor,
     context: AuditContext,
@@ -125,6 +130,7 @@ def upload_bundle(
         )
 
     seen: set[uuid.UUID] = set()
+    counted: dict[uuid.UUID, int | None] = {}
     for attachment in command.files:
         if attachment.file_id in seen:
             # `uq_bundle_files_file` refuses this too. Caught here so the message names the file
@@ -142,6 +148,7 @@ def upload_bundle(
                 f"file {attachment.file_id} has scan status {record.scan_status!r}; a bundle may "
                 "only contain files that have been scanned clean"
             )
+        counted[attachment.file_id] = _pages_of(storage, record, attachment)
 
     bundle = BankResultBundle(
         bundle_number=_next_bundle_number(session, now),
@@ -170,7 +177,7 @@ def upload_bundle(
                 file_id=attachment.file_id,
                 sequence_number=attachment.sequence_number,
                 file_role=attachment.file_role,
-                page_count=attachment.page_count,
+                page_count=counted[attachment.file_id],
                 created_at=now,
             )
         )
@@ -453,6 +460,64 @@ def _bank_profile_of(session: Session, batch: PaymentBatch) -> uuid.UUID | None:
         .order_by(PaymentBatchVersion.version_number.desc())
         .limit(1)
     )
+
+
+def _pages_of(
+    storage: StorageBackend, record: FileObject, attachment: AttachedFile
+) -> int | None:
+    """How many pages this file has, counted from the bytes rather than taken on trust.
+
+    **This changed in M8 slice 5 and the change is a correction.** Slice 1 stored
+    `attachment.page_count` — a number the caller sent — because there was no renderer to check it
+    with. Slice 4 brought one, and slice 5 found the consequence: `SVC-PREVIEW-001` asserts that the
+    rendered page count matches this column, which against a client-supplied value compares the
+    renderer with a claim. Worse, every later feature that says "page 3 of 7" trusts this number,
+    and nothing in the system would ever have noticed it was wrong.
+
+    **A disagreement is refused rather than corrected.** If the caller says four pages and the
+    document has three, they are describing a file other than the one they referenced, and quietly
+    storing three would hide that. Same reasoning as slice 4's `client_source_dimensions` check.
+
+    **`None` for anything with no pages**, which is most bank results: an Excel workbook or a CSV
+    has no page to show, `PREVIEWABLE_MEDIA_TYPES` excludes them, and `BANK-VER-005` already
+    records that no deterministic row parser exists. A count sent for one of those is refused too —
+    it is a claim nothing can ever verify.
+    """
+
+    try:
+        document = b"".join(open_stream(storage, record).chunks)
+    except FileBytesUnavailableError as missing:
+        # The row says the object exists and storage disagrees — the state M2's
+        # `records_without_a_storage_object` reconciliation exists to find. **Refused rather than
+        # tolerated**, because a bundle referencing bytes nobody has is one an operator cannot
+        # review, and they would discover that when they opened page one instead of now. Left
+        # unhandled this reached the caller as a 500, which said nothing useful about a broken file.
+        raise BusinessRuleViolationError(
+            f"file {record.id} is recorded as available and its bytes are not in storage; it "
+            "cannot be attached to a bundle until that is repaired"
+        ) from missing
+    if not is_pdf(document) and record.mime_type_declared not in PREVIEWABLE_MEDIA_TYPES:
+        if attachment.page_count is not None:
+            raise BusinessRuleViolationError(
+                f"file {record.id} is {record.mime_type_declared!r} and has no pages to count; a "
+                "page count sent for it could never be checked"
+            )
+        return None
+
+    try:
+        actual = page_count(document)
+    except CropRefused as refused:
+        raise BusinessRuleViolationError(
+            f"file {record.id} is declared {record.mime_type_declared!r} and cannot be opened as "
+            f"one: {refused}"
+        ) from refused
+
+    if attachment.page_count is not None and attachment.page_count != actual:
+        raise BusinessRuleViolationError(
+            f"file {record.id} was attached claiming {attachment.page_count} pages and the "
+            f"document has {actual}; the file referenced is not the one described"
+        )
+    return actual
 
 
 def _next_bundle_number(session: Session, now: datetime) -> str:

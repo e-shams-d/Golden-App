@@ -500,12 +500,39 @@ cannot fail — the third meaning of NOT CAUGHT, arriving in a test rather than 
 
 ## Slice 5 — Preview: pages, zoom, rotation, and a download that stays internal
 
-**Blocked on Q-4.**
+**Done.**
 
 ### What it changes
 
 doc 08 `:979`'s list, minus the Excel row preview §1.4 explains: page images for image and text
 PDFs, page navigation, and the authorized internal download.
+
+**Mostly a connection, not a construction.** M4 built the preview *request* path —
+`PREVIEWABLE_MEDIA_TYPES`, the outbox dispatch on upload, and `GET /files/{id}/preview` — and left
+that route serving the **original bytes** with a comment saying a later milestone would resolve it.
+Slice 4 brought the renderer; this is the resolution. So the headline change is a removal: a preview
+permission stopped acting as a download permission, which is the separation doc 05 `:1045` asks for
+and the placeholder quietly broke for four milestones.
+
+**Rendered on demand, cached as a derivation, not pre-rendered on upload.** A bundle can be forty
+pages and an operator opens three. On demand is also the honest shape for the request — the operator
+is waiting for *this page*, so a job would only add a poll. `file_derivations`' own reproducibility
+unique turns the second view into an indexed lookup. The consequence is stated rather than hidden: a
+`GET` writes. It is a cache fill, it is idempotent, and when two operators open one page at once the
+loser of that race reads the winner's row.
+
+**Zoom and pan are the client's**, and that is a decision rather than an omission: they change no
+bytes. A viewer scales an image it already holds, so serving them would render the same page again at
+every zoom level and store a derivation for each.
+
+**An image is not a PDF and the difference needed measuring.** doc 08 `:983` lists images beside
+PDFs, so `_raster` gained an image path — placed *below* both `render_crop` and `render_page` rather
+than beside them, because a JPEG receipt must be croppable too and two render paths would eventually
+disagree about what the operator saw. Rotation there uses `transpose`, which permutes pixels, never
+`rotate`, which resamples; and `RENDER_SCALE` is deliberately not applied, because doubling a
+photograph invents pixels the scanner never recorded and the operator would draw a rectangle on an
+interpolation. Four properties were measured before the path was trusted: re-render equality, a
+lossless four-quarter round trip, the direction of a clockwise turn, and no upscaling.
 
 ### What proves it
 
@@ -522,6 +549,45 @@ PDFs, page navigation, and the authorized internal download.
 
 Serve the source file as the preview: `SVC-PREVIEW-002` must fail. Drop the permission check on the
 page route: `SEC-PREVIEW-001` must fail.
+
+`scripts/sabotage-m8-slice5.sh` runs those two and six more: trust the caller's page count again,
+resample the image rotation, reverse its direction, upscale an image by the render scale, stop
+swapping rotated dimensions, and never read the derivation cache. **Eight of eight caught.**
+
+### What slice 5 found
+
+**Three defects, none of them in the plan.**
+
+`bank_result_bundle_files.page_count` was **whatever the caller sent**, and nothing could check it
+until slice 4 shipped a renderer. `SVC-PREVIEW-001` asks that the rendered count match that column —
+against a client-supplied value, that compares the renderer with a claim, and every later screen
+saying "page 3 of 7" repeats it. Now counted from the document, with a disagreeing claim refused
+rather than corrected: a caller describing four pages of a three-page file is referencing a file
+other than the one they mean. For a document with no pages — an Excel result, a CSV — the column stays
+`NULL` and a count sent for it is refused too, because it could never be verified.
+
+**Every bundle fixture used a file category `app/files/ownership.py` has no resolver for**
+(`bank_result_bundle` where the registered purpose is `bank_result_bundle_source`), so those files
+were denied to *everybody*. It went unnoticed for three slices because no test had ever previewed or
+downloaded a bundle file; the first test that did found it immediately.
+
+**`a_clean_file` created a file row with no object in storage**, which is precisely the state M2's
+`records_without_a_storage_object` reconciliation exists to *find*. Harmless while nothing opened the
+bytes, and a hard failure the moment attach started counting pages.
+
+**And one test of mine was insensitive by construction.** `SEC-PREVIEW-001` written with a trader
+asserted the wrong status and, worse, tested nothing: a trader holds no `file.preview` at all, so the
+route's permission gate refuses them before the ownership resolver runs. `sensitive_internal_bundle`
+could have done nothing whatsoever and that test would have passed. It needs a `warehouse_operator` —
+the only role holding `file.preview` without `file.read_sensitive_bundle` — who gets past the gate and
+must be refused by the resolver, as a `404` rather than a `403`, because a `403` there confirms the id
+is real. The plan's own wording asked for both actors; only one of them exercises the code.
+
+**A control that missed taught something too.** Breaking the rotated-dimension swap was aimed at
+`API-PREVIEW-001` and caught by the *crop* tests instead: the preview headers are read off the
+rendered image, not computed from `page_size`, so no arithmetic error in that function can make them
+lie. `page_size` has exactly one caller that can be wrong about it, and it is the crop request's
+raster check.
 
 ## Slice 6 — The review workspace
 

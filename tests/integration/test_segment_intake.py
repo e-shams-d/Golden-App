@@ -17,13 +17,21 @@ near-duplicate fixture is where the second copy quietly stops matching the first
 What the crop adds is a source file with **real bytes in storage**. `a_clean_file` writes a row and
 no object, which is enough for a segment that only points at a file; a crop has to open one.
 
+**M8 slice 5's previews are here too**, and for a reason that only became clear once they were
+written: a preview is only meaningful against a bundle file, the bundle fixture is here, and the
+`page_count` assertion `SVC-PREVIEW-001` asks for runs through the bundle upload route this file
+already exercises. Two of slice 5's findings came out of that proximity: `a_clean_file` was
+creating a file with no bytes in storage, and every fixture here used a file category
+`app/files/ownership.py` has no resolver for, so those files were denied to everybody.
+
 Covers: DB-SEGMENT-001, SVC-SEGMENT-003, SEC-SEGMENT-001, SVC-CROP-001, SVC-CROP-003, SVC-CROP-004,
-SVC-CROP-005, SVC-CROP-006, AUD-CROP-001.
+SVC-CROP-005, SVC-CROP-006, AUD-CROP-001, SVC-PREVIEW-002, SEC-PREVIEW-001, API-PREVIEW-001.
 """
 
 from __future__ import annotations
 
 import hashlib
+import io
 import uuid
 from collections.abc import Iterator
 from typing import Any
@@ -97,6 +105,13 @@ def world(migrated: RuntimeIdentities, tmp_path_factory: Any) -> Iterator[dict[s
             # (`permission_catalog.yaml:534,540`), which is what makes the write negative prove the
             # route wants *that* grant rather than merely some segment grant.
             ("segment_manager", "manager"),
+            # M8 slice 5. The one role that holds `file.preview` (`:613`) and **not**
+            # `file.read_sensitive_bundle` (`:630`), which makes it the only way to test the
+            # ownership resolver rather than the route's permission gate. A trader is refused at the
+            # gate with a 403 before ownership is consulted; this actor gets past the gate and
+            # must be refused by the resolver — as a `404`, because a `403` there would confirm the
+            # file id is real.
+            ("segment_warehouse", "warehouse_operator"),
         ):
             connection.execute(
                 "INSERT INTO admin_users (username, full_name, password_hash, status) "
@@ -194,20 +209,20 @@ def rows(world: dict[str, Any], sql: str, *parameters: Any) -> list[tuple[Any, .
 
 
 def a_clean_file(world: dict[str, Any], name: str = "receipt.pdf") -> str:
-    file_id = uuid.uuid4()
-    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
-        connection.execute(
-            "INSERT INTO file_objects (id, storage_provider, storage_bucket, storage_key, "
-            "original_filename, mime_type_declared, size_bytes, sha256_hash, category, "
-            "visibility_scope, storage_status, scan_status, uploaded_by_actor_type, "
-            "original_or_derived_relation, metadata) "
-            "VALUES (%s, 'local', 'gold', %s, %s, 'application/pdf', 2048, %s, "
-            "'bank_result_bundle', 'internal', 'available', 'clean', 'admin_user', "
-            "'original', '{}')",
-            (file_id, f"segments/{file_id}", name, f"{uuid.uuid4().hex}{uuid.uuid4().hex}"[:64]),
-        )
-        connection.commit()
-    return str(file_id)
+    """A bundle source file with bytes actually in storage.
+
+    **This used to write a row and no object**, which was fine while nothing opened the bytes. M8
+    slice 5 made `upload_bundle` count a document's pages, so an attach now reads the file — and a
+    row whose object is missing is a state `records_without_a_storage_object` exists to *find*, not
+    one a fixture should manufacture. Writing the bytes makes the fixture describe something the
+    product can actually produce.
+
+    The category is `bank_result_bundle_source`, which is the one `app/files/ownership.py` has a
+    resolver for. The earlier spelling — `bank_result_bundle` — had none, so those files were denied
+    to everybody; it went unnoticed because no test in this file downloaded or previewed one.
+    """
+
+    return a_pdf_in_storage(world, name)
 
 
 def a_bundle(world: dict[str, Any]) -> dict[str, Any]:
@@ -653,7 +668,7 @@ def a_pdf_in_storage(world: dict[str, Any], name: str = "bundle.pdf") -> str:
             "visibility_scope, storage_status, scan_status, uploaded_by_actor_type, "
             "original_or_derived_relation, metadata) "
             "VALUES (%s, 'local', 'gold', %s, %s, 'application/pdf', %s, %s, "
-            "'bank_result_bundle', 'internal', 'available', 'clean', 'admin_user', "
+            "'bank_result_bundle_source', 'internal', 'available', 'clean', 'admin_user', "
             "'original', '{}')",
             (file_id, key, name, len(TWO_PAGES), hashlib.sha256(TWO_PAGES).hexdigest()),
         )
@@ -1351,3 +1366,343 @@ def test_a_renderer_upgrade_between_request_and_render_is_refused(
     assert "provenance" in (job[0][0] or ""), (
         f"the job does not say why it refused: {job[0][0]!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# M8 slice 5: previews. doc 08 `:983`, doc 05 `:1041-1042`.
+# ---------------------------------------------------------------------------
+
+# A one-page JPEG-like PNG with an off-centre mark, so a wrong rotation is visible rather than
+# plausible. Built here rather than imported from the renderer test: that file owns it as the
+# subject of a measurement and this one needs a fixture, and a shared constant would couple a
+# change made for one purpose to the other.
+def an_image_file(world: dict[str, Any]) -> str:
+    from PIL import Image
+
+    picture = Image.new("RGB", (40, 20), (255, 255, 255))
+    for x in range(10):
+        for y in range(5):
+            picture.putpixel((x, y), (255, 0, 0))
+    buffer = io.BytesIO()
+    picture.save(buffer, format="PNG")
+    return _stored_file(world, buffer.getvalue(), "receipt.png", "image/png")
+
+
+def a_pdf_file(world: dict[str, Any]) -> str:
+    return _stored_file(world, TWO_PAGES, "bundle.pdf", "application/pdf")
+
+
+def a_spreadsheet_file(world: dict[str, Any]) -> str:
+    """A file with no pages at all, which is most of what a bank actually sends."""
+
+    return _stored_file(
+        world,
+        b"account,amount\nIR000000000000000000000000,1000\n",
+        "results.csv",
+        "text/csv",
+    )
+
+
+def _stored_file(world: dict[str, Any], content: bytes, name: str, media_type: str) -> str:
+    file_id = uuid.uuid4()
+    key = f"previews/{file_id}"
+    target = world["storage_root"] / key
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(content)
+
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            "INSERT INTO file_objects (id, storage_provider, storage_bucket, storage_key, "
+            "original_filename, mime_type_declared, size_bytes, sha256_hash, category, "
+            "visibility_scope, storage_status, scan_status, uploaded_by_actor_type, "
+            "original_or_derived_relation, metadata) "
+            "VALUES (%s, 'local', 'gold', %s, %s, %s, %s, %s, "
+            "'bank_result_bundle_source', 'internal', 'available', 'clean', 'admin_user', "
+            "'original', '{}')",
+            (
+                file_id,
+                key,
+                name,
+                media_type,
+                len(content),
+                hashlib.sha256(content).hexdigest(),
+            ),
+        )
+        connection.commit()
+    return str(file_id)
+
+
+def preview(world: dict[str, Any], file_id: str, page: int = 1, **query: Any) -> Any:
+    suffix = "".join(f"&{k}={v}" for k, v in query.items())
+    return world["client"].get(f"/api/v1/files/{file_id}/pages/{page}/preview?x=1{suffix}")
+
+
+def test_a_multi_page_pdf_and_a_rotated_image_both_render(world: dict[str, Any]) -> None:
+    """`SVC-PREVIEW-001`. §16 `:1069`'s first test, both halves of it.
+
+    The two document kinds go through different renderers — PDFium for one, Pillow for the other —
+    so a test that only covered PDFs would leave the image path unexercised while looking complete.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+
+    document = a_pdf_file(world)
+    page_one = preview(world, document, 1)
+    assert page_one.status_code == 200, page_one.text
+    assert page_one.headers["content-type"] == "image/png"
+    assert page_one.content.startswith(b"\x89PNG")
+
+    page_two = preview(world, document, 2)
+    assert page_two.status_code == 200, page_two.text
+    assert page_two.content != page_one.content, "both pages rendered the same image"
+
+    # Page three of a two-page document is a mistake, not an empty picture.
+    assert preview(world, document, 3).status_code == 400
+
+    picture = an_image_file(world)
+    upright = preview(world, picture, 1)
+    assert upright.status_code == 200, upright.text
+    turned = preview(world, picture, 1, rotation_degrees=90)
+    assert turned.status_code == 200, turned.text
+    assert turned.content != upright.content, "rotation did not change the image"
+
+
+def test_the_page_count_on_the_bundle_is_the_documents_own(world: dict[str, Any]) -> None:
+    """`SVC-PREVIEW-001`'s other half, and the finding that made it worth writing.
+
+    §16 asks that the page count match `bank_result_bundle_files.page_count`. Until this slice that
+    column held whatever the caller sent, so the assertion would have compared the renderer against
+    a number a client made up. It is now counted from the document, and a claim that disagrees is
+    refused rather than quietly corrected — a caller describing four pages of a three-page file is
+    referencing a different file than they mean.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    document = a_pdf_file(world)
+
+    created = client.post(
+        "/api/v1/bank-result-bundles",
+        json={
+            "source_type": "bank_portal_download",
+            "files": [{"file_id": document, "sequence_number": 1, "file_role": "source"}],
+        },
+        headers={**csrf(client), "Idempotency-Key": str(uuid.uuid4())},
+    )
+    assert created.status_code == 201, created.text
+    entry = created.json()["files"][0]
+
+    assert entry["page_count"] == 2, "the count did not come from the document"
+    assert entry["preview_path"] == f"/api/v1/files/{document}/pages/1/preview"
+
+    # A claim that disagrees is refused.
+    wrong = client.post(
+        "/api/v1/bank-result-bundles",
+        json={
+            "source_type": "bank_portal_download",
+            "files": [
+                {
+                    "file_id": a_pdf_file(world),
+                    "sequence_number": 1,
+                    "file_role": "source",
+                    "page_count": 7,
+                }
+            ],
+        },
+        headers={**csrf(client), "Idempotency-Key": str(uuid.uuid4())},
+    )
+    assert wrong.status_code == 400, wrong.text
+    assert "claiming 7 pages" in wrong.json()["error"]["message"]
+
+
+def test_a_file_with_no_pages_offers_no_preview(world: dict[str, Any]) -> None:
+    """The honest answer for most bank results, and information a client cannot compute.
+
+    A CSV has no page. `preview_path` comes back `None` so the workspace can grey the file out
+    instead of offering a link that refuses. A page count sent for it is refused too, because it
+    is a claim nothing could ever check.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+
+    created = client.post(
+        "/api/v1/bank-result-bundles",
+        json={
+            "source_type": "bank_portal_download",
+            "files": [
+                {"file_id": a_spreadsheet_file(world), "sequence_number": 1, "file_role": "source"}
+            ],
+        },
+        headers={**csrf(client), "Idempotency-Key": str(uuid.uuid4())},
+    )
+    assert created.status_code == 201, created.text
+    entry = created.json()["files"][0]
+    assert entry["page_count"] is None
+    assert entry["preview_path"] is None
+
+    refused = client.post(
+        "/api/v1/bank-result-bundles",
+        json={
+            "source_type": "bank_portal_download",
+            "files": [
+                {
+                    "file_id": a_spreadsheet_file(world),
+                    "sequence_number": 1,
+                    "file_role": "source",
+                    "page_count": 3,
+                }
+            ],
+        },
+        headers={**csrf(client), "Idempotency-Key": str(uuid.uuid4())},
+    )
+    assert refused.status_code == 400, refused.text
+    assert "no pages to count" in refused.json()["error"]["message"]
+
+
+def test_a_preview_is_a_derived_file_and_never_the_original(world: dict[str, Any]) -> None:
+    """`SVC-PREVIEW-002`, and it is a correction rather than a new rule.
+
+    `GET /files/{id}/preview` served the *original bytes* from M4 until this slice, with a comment
+    saying a later milestone would resolve it to a derivation. That made the preview permission act
+    as a download permission — exactly the separation `05_API_Specification.md:1045` asks for.
+
+    Asserted three ways, because "it is derived" has three separate meanings: the bytes differ from
+    the source, a `file_derivations` row accounts for the output, and the derived row is marked
+    `derived` rather than `original`.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    document = a_pdf_file(world)
+
+    source_bytes = rows(
+        world, "SELECT storage_key FROM file_objects WHERE id = %s", document
+    )[0][0]
+    original = (world["storage_root"] / source_bytes).read_bytes()
+
+    response = client.get(f"/api/v1/files/{document}/preview")
+    assert response.status_code == 200, response.text
+
+    assert response.content != original, "the preview served the source file"
+    assert response.content.startswith(b"\x89PNG"), "a preview of a PDF is a page image"
+
+    derived = rows(
+        world,
+        "SELECT f.original_or_derived_relation, d.derivation_type, d.renderer_version "
+        "FROM file_derivations d JOIN file_objects f ON f.id = d.derived_file_id "
+        "WHERE d.source_file_id = %s",
+        document,
+    )
+    assert len(derived) == 1, f"expected one preview derivation, found {len(derived)}"
+    assert derived[0][0] == "derived"
+    assert derived[0][1] == "preview"
+    assert derived[0][2].startswith("pypdfium2/")
+
+
+def test_the_second_request_for_a_page_renders_nothing_new(world: dict[str, Any]) -> None:
+    """The cache, which is what makes rendering on demand affordable.
+
+    Two requests for one page must leave **one** derivation. A second row would mean two stored
+    images claiming to be the same page, and `file_derivations`' reproducibility unique exists to
+    make that impossible — matched on `parameters_hash`, which is why the parameters are hashed
+    rather than compared as JSONB.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    document = a_pdf_file(world)
+
+    first = preview(world, document, 1)
+    second = preview(world, document, 1)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.content == second.content, "the same page rendered differently twice"
+
+    stored = rows(
+        world,
+        "SELECT count(*) FROM file_derivations WHERE source_file_id = %s AND derivation_type = "
+        "'preview'",
+        document,
+    )
+    assert stored == [(1,)]
+
+    # A different rotation is a different derivation, not a cache hit on the same one.
+    preview(world, document, 1, rotation_degrees=180)
+    assert rows(
+        world,
+        "SELECT count(*) FROM file_derivations WHERE source_file_id = %s AND derivation_type = "
+        "'preview'",
+        document,
+    ) == [(2,)]
+
+
+def test_the_preview_returns_the_dimensions_a_client_cannot_invent(
+    world: dict[str, Any],
+) -> None:
+    """`API-PREVIEW-001`. doc 05 `:1773` makes the client send `client_source_dimensions`.
+
+    It has to get them from somewhere, and the crop route refuses a rectangle drawn against the
+    wrong raster — so a client guessing here is a client whose crops are all rejected. The numbers
+    swap on a quarter turn, which is why they come back per request rather than once per file.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    document = a_pdf_file(world)
+
+    upright = preview(world, document, 1)
+    assert upright.headers["X-Preview-Pixel-Width"] == "600"
+    assert upright.headers["X-Preview-Pixel-Height"] == "800"
+    assert upright.headers["X-Preview-Page-Number"] == "1"
+    assert upright.headers["X-Preview-Rotation-Degrees"] == "0"
+    assert upright.headers["X-Preview-Renderer-Version"].startswith("pypdfium2/")
+
+    turned = preview(world, document, 1, rotation_degrees=90)
+    assert turned.headers["X-Preview-Pixel-Width"] == "800"
+    assert turned.headers["X-Preview-Pixel-Height"] == "600"
+
+    # And the numbers describe the image actually returned, not a stored guess about it.
+    from PIL import Image
+
+    assert Image.open(io.BytesIO(turned.content)).size == (800, 600)
+
+
+def test_a_preview_is_refused_without_the_bundle_permission(world: dict[str, Any]) -> None:
+    """`SEC-PREVIEW-001`. doc 05 `:1045`: "A trader cannot preview an internal mixed bundle."
+
+    **Two different refusals, and the difference is the point.** A trader holds no `file.preview` at
+    all, so the route's permission gate stops them with a `403` before ownership is even consulted.
+    A `warehouse_operator` *does* hold `file.preview` and not `file.read_sensitive_bundle`, so they
+    get past the gate and must be refused by the ownership resolver, which answers `404`.
+
+    The first version asserted `404` for the trader and was simply wrong about the code. Only the
+    second actor tests the resolver; a test with the trader alone would have passed while
+    `sensitive_internal_bundle` did nothing at all.
+
+    **And no preview URL is guessable**, which is the requirement's other half: a refused page
+    answers exactly as a page of a file that does not exist, in both directions. A `403` where a
+    `404` belongs confirms the id is real, and the id is the only secret protecting an internal
+    bundle.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    document = a_pdf_file(world)
+    assert preview(world, document, 1).status_code == 200, "the control: an authorised read works"
+
+    # Past the permission gate, refused by the resolver — and indistinguishable from not found.
+    sign_in_admin(client, "segment_warehouse")
+    refused = preview(world, document, 1)
+    assert refused.status_code == 404, refused.text
+    assert preview(world, str(uuid.uuid4()), 1).status_code == 404, (
+        "a real file and an invented one answer differently, so the id space is enumerable"
+    )
+    assert client.get(f"/api/v1/files/{document}/preview").status_code == 404
+
+    # Stopped at the gate, before ownership. Both ids answer alike here too, so nothing leaks.
+    sign_in_trader(client)
+    assert preview(world, document, 1).status_code == 403
+    assert preview(world, str(uuid.uuid4()), 1).status_code == 403

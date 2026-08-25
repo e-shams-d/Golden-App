@@ -97,6 +97,19 @@ class Rectangle:
             )
 
 
+# A whole page, as a rectangle. M8 slice 5's preview is a crop of everything, and that is not a
+# trick: it means the page image an operator flips through and the evidence crop they cut out of it
+# come from one code path. Every property already proven for crops — byte-identical reproduction, no
+# timestamp in the PNG, rotation applied by the renderer instead of by resampling a bitmap — holds
+# for previews without being argued a second time.
+WHOLE_PAGE = Rectangle(
+    x=Decimal("0.000000"),
+    y=Decimal("0.000000"),
+    width=Decimal("1.000000"),
+    height=Decimal("1.000000"),
+)
+
+
 @dataclass(frozen=True, slots=True)
 class RenderedCrop:
     """The bytes and everything needed to make them again."""
@@ -111,9 +124,29 @@ class RenderedCrop:
     crop_pixel_height: int
 
 
-def page_count(document: bytes) -> int:
-    """How many pages, for `bank_result_bundle_files.page_count`."""
+def is_pdf(document: bytes) -> bool:
+    """Whether these bytes are a PDF, decided by looking at them.
 
+    **Sniffed, not read off `file_objects.mime_type_declared`.** That column holds what the uploader
+    said, and M4 named it `_declared` for exactly this reason. A JPEG announced as a PDF would
+    otherwise reach PDFium, fail, and be reported as a broken document rather than a
+    mislabelled one.
+    """
+
+    return document.startswith(b"%PDF-")
+
+
+def page_count(document: bytes) -> int:
+    """How many pages, for `bank_result_bundle_files.page_count`.
+
+    **An image is one page**, which is not a special case so much as the honest answer: doc 08
+    `:983` lists images alongside PDFs, `PREVIEWABLE_MEDIA_TYPES` admits JPEG and PNG, and a
+    photographed receipt has exactly one page to look at.
+    """
+
+    if not is_pdf(document):
+        _open_image(document)
+        return 1
     return len(pypdfium2.PdfDocument(document))
 
 
@@ -131,15 +164,25 @@ def page_size(document: bytes, page_number: int, *, rotation: int = 0) -> tuple[
     drifted from the rendered one would reject every crop as drawn against the wrong raster.
     """
 
-    pages = pypdfium2.PdfDocument(document)
-    if page_number < 1 or page_number > len(pages):
-        raise CropRefused(f"page {page_number} does not exist; the document has {len(pages)}")
     if rotation not in PERMITTED_ROTATIONS:
         raise CropRefused(f"rotation must be one of {PERMITTED_ROTATIONS}; received {rotation}")
 
-    width_points, height_points = pages[page_number - 1].get_size()
-    width = round(float(width_points) * RENDER_SCALE)
-    height = round(float(height_points) * RENDER_SCALE)
+    if not is_pdf(document):
+        # **An image is its own raster and `RENDER_SCALE` does not apply.** Scaling a photograph up
+        # by two invents pixels the camera never recorded, and the operator would be drawing a
+        # rectangle on an interpolation. A PDF has no pixels until something rasterises it, which is
+        # what the scale is for.
+        if page_number != 1:
+            raise CropRefused(f"an image has one page; page {page_number} does not exist")
+        width, height = _open_image(document).size
+    else:
+        pages = pypdfium2.PdfDocument(document)
+        if page_number < 1 or page_number > len(pages):
+            raise CropRefused(f"page {page_number} does not exist; the document has {len(pages)}")
+        width_points, height_points = pages[page_number - 1].get_size()
+        width = round(float(width_points) * RENDER_SCALE)
+        height = round(float(height_points) * RENDER_SCALE)
+
     # A quarter turn swaps them, which is the whole reason `client_source_dimensions` has to be read
     # together with the angle rather than on its own.
     return (height, width) if rotation in (90, 270) else (width, height)
@@ -168,11 +211,9 @@ def render_crop(
 
     if page_number < 1:
         raise CropRefused("page numbers are 1-based")
-
-    document_pages = pypdfium2.PdfDocument(document)
-    if page_number > len(document_pages):
+    if page_number > page_count(document):
         raise CropRefused(
-            f"page {page_number} does not exist; the document has {len(document_pages)}"
+            f"page {page_number} does not exist; the document has {page_count(document)}"
         )
 
     raster = _raster(document, page_number, rotation=rotation_degrees)
@@ -208,16 +249,46 @@ def render_crop(
     )
 
 
-def _raster(document: bytes, page_number: int, *, rotation: int) -> Image.Image:
-    """One page as a bitmap.
+def render_page(document: bytes, *, page_number: int, rotation_degrees: int = 0) -> RenderedCrop:
+    """One whole page as a deterministic PNG. doc 08 §15.2's "image-based and text PDFs".
 
-    Rotation goes to the renderer rather than to the image afterwards. Rotating a raster resamples
-    every pixel and would make a 90° crop differ from the same region rendered rotated — which is
-    exactly the reproduction failure this module exists to prevent.
+    **A crop of everything, deliberately.** Writing a second render path for pages would mean two
+    places that decide scale, two places that write PNG options, and two chances for a preview and
+    the crop taken from it to disagree about what the operator saw.
+    `client_source_dimensions`
+    at `05_API_Specification.md:1773` is exactly the value that disagreement would corrupt.
+
+    Zoom and pan — the other two items on doc 08 `:983`'s list — are the client's, and they are the
+    client's for a reason: they change nothing about the bytes. A viewer scales and translates an
+    image it already has, so putting them on the server would mean rendering the same page at every
+    zoom level and storing a derivation for each.
     """
+
+    return render_crop(
+        document,
+        page_number=page_number,
+        rectangle=WHOLE_PAGE,
+        rotation_degrees=rotation_degrees,
+    )
+
+
+def _raster(document: bytes, page_number: int, *, rotation: int) -> Image.Image:
+    """One page as a bitmap, whichever kind of document it came from.
+
+    **The single place that decides how bytes become pixels**, which is why images were added here
+    rather than in a second render path. `render_crop` and `render_page` both go through it, so a
+    JPEG receipt can be cropped and previewed by the same code that handles a PDF, and the two can
+    never disagree about what the operator was looking at.
+    """
+
+    if not is_pdf(document):
+        return _rotate_losslessly(_open_image(document), rotation)
 
     pages = pypdfium2.PdfDocument(document)
     page = pages[page_number - 1]
+    # Rotation goes to the renderer, not to the bitmap afterwards. Rotating a raster resamples
+    # every pixel and would make a 90-degree crop differ from the same region rendered rotated —
+    # exactly the reproduction failure this module exists to prevent.
     bitmap = page.render(scale=RENDER_SCALE, rotation=rotation)
 
     # Annotated, not returned straight through. `pypdfium2` ships no `py.typed`, so everything it
@@ -226,3 +297,43 @@ def _raster(document: bytes, page_number: int, *, rotation: int) -> Image.Image:
     # through every caller of `render_crop`.
     raster: Image.Image = bitmap.to_pil()
     return raster
+
+
+def _open_image(document: bytes) -> Image.Image:
+    """A raster image, or a refusal that says the bytes are not a document this can render."""
+
+    try:
+        image = Image.open(io.BytesIO(document))
+        image.load()
+    except Exception as error:
+        raise CropRefused(
+            "these bytes are neither a PDF nor an image this renderer can open"
+        ) from error
+    # Normalised to RGB so the PNG written from it has one predictable channel layout. A palette or
+    # CMYK original would otherwise produce a differently-encoded PNG for the same picture, and the
+    # byte-equality claim would depend on what the bank's scanner happened to emit.
+    return image.convert("RGB")
+
+
+def _rotate_losslessly(image: Image.Image, rotation: int) -> Image.Image:
+    """A quarter turn without resampling. The image counterpart of asking PDFium for a rotated page.
+
+    **`transpose`, never `rotate`.** `Image.rotate(90)` goes through the resampling machinery and
+    its
+    output depends on the filter and on floating-point arithmetic; `transpose(ROTATE_90)` permutes
+    pixels and nothing else. That distinction is what lets `SVC-CROP-004`'s byte-equality claim hold
+    for an image the same way it holds for a PDF — measured in
+    `tests/backend/test_crop_renderer.py`, not assumed from the documentation.
+    """
+
+    if rotation == 0:
+        return image
+    # Pillow's names are counter-clockwise; doc 08 `:985`'s control is clockwise. `ROTATE_90` turns
+    # the picture left, so a clockwise 90 is `ROTATE_270`. Getting this backwards would rotate every
+    # preview the wrong way and still pass a test that only compared two renders to each other.
+    turns = {
+        90: Image.Transpose.ROTATE_270,
+        180: Image.Transpose.ROTATE_180,
+        270: Image.Transpose.ROTATE_90,
+    }
+    return image.transpose(turns[rotation])
