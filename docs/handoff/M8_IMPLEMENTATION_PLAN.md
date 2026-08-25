@@ -141,6 +141,25 @@ rotation to be validated — which is impossible if it is never sent. Recorded a
 new conflict-register row; the migration adds `rotation_degrees` with a CHECK constraining it to
 the four right angles doc 08's preview supports.
 
+**Slice 4 found the governance answer, and it was there all along.** `command_catalog.yaml:277` — the
+approved command row for `receipt_segment.create_crop` — lists its preconditions as:
+
+    "preconditions": ["normalized_rectangle", "page", "rotation", "renderer_version",
+                      "derived_checksum"]
+    "status": "blocked_by_coordinate_rotation_contract"
+
+So M0 **requires the rotation** and names its absence from doc 05's request schema as the reason the
+command is blocked. Q-1 was decided correctly on the documents' own merits, but it did not have to be
+a judgement call: a sixth source settles it, and the row this milestone unblocks is the row that says
+so. Two lessons worth carrying: the command catalogue is a source of truth about *contracts* and not
+only about permissions, and a `status` field on a catalogue row can record a blocker that no
+conflict register mentions.
+
+**Demonstrated, not argued.** `tests/integration/test_segment_intake.py` re-renders a stored crop
+from the row alone and gets the byte-identical file back, then renders the same rectangle at 0° and
+gets a *different* image. The second assertion is the one that makes the first mean anything: if
+forgetting the angle produced the same picture, there would be no conflict to file.
+
 ## 2.2 A segment pending render rests in `created`, not in a new state (Q-2)
 
 doc 08 `:1031` has the segment created before its file exists: *save segment request → worker
@@ -367,7 +386,9 @@ second revalidation. Resolve without a code: `SVC-TASK-001` must fail. Join a fi
 
 ## Slice 4 — The renderer, the crop, and the job that does it
 
-**Blocked on Q-4.**
+**Done.** Q-4 answered (`pypdfium2` + `pillow`, §2.4), Q-1 settled by `command_catalog.yaml:277`
+rather than by judgement (§2.1), Q-3 answered by measurement: reproduction is byte equality, so
+§16.6's "approved tolerance" needs no value.
 
 ### Goal
 
@@ -410,6 +431,72 @@ A rectangle drawn on a page becomes a derived file whose provenance can rebuild 
 Store the bbox without the rotation: `SVC-CROP-004` must fail on the rotated page — this is the
 control that would have caught §2.1's gap had the documents been consistent. Write the crop over
 the source: `SVC-CROP-003` must fail. Let the render succeed twice: `SVC-CROP-005` must fail.
+
+`scripts/sabotage-m8-slice4.sh` runs those three and five more the code turned out to need: drop the
+client-raster check, accept any scan status, let the renderer version drift, change the render scale,
+and import `PaymentAttempt` into the crop command. **Eight of eight caught, each on its own named
+assertion** — but two of them only after the control turned out to be right and the test wrong:
+
+- **"Let the render succeed twice" reported NOT CAUGHT through the worker**, and the reason is that
+  the worker's idempotency does not come from the guard being sabotaged. After a success the job is
+  `succeeded`, so a second pass claims nothing and never reaches `render_pending_crop`'s
+  already-rendered return. Two independent protections, and the queue-level one was hiding the
+  command-level one. Fixed by calling the command directly, which is how slice 6 and any repair path
+  will call it.
+- **"Let the renderer version drift" could not be created by editing the source at all.**
+  `RENDERER_VERSION` is read both when the request stores the provenance and when the worker renders,
+  so changing the constant changes both and they still agree. Only a deploy between two moments
+  produces drift, which the test now simulates from the owner connection — the only writer that
+  *can*, since the runtime has no UPDATE grant on that column.
+
+Both are the third meaning of NOT CAUGHT: the sabotage did not break the property. Neither was a weak
+test and neither was a broken control; in both cases the control had found a guard whose reachable
+caller was somewhere other than where the test was looking.
+
+**The full suite found a defect the module could not.** Three of these tests passed run individually
+and failed in the full run: `render_crops` claims the oldest due job on the queue, and an earlier
+test requests a crop it never drains — so every later test was draining somebody else's work. Fixed
+with an autouse fixture that leaves nothing claimable on the `files` queue, which makes the
+precondition explicit instead of an accident of test order. This is the fourth time in this project
+that verifying with a narrower command than the gate has hidden something.
+
+### What slice 4 found
+
+**Two mechanisms with no caller, and this slice is the first for both.** `app/files/derivation.py`
+was written in M4 with `CROP` already in its `DERIVATION_TYPES`, and its own test says a preview "is
+rendered in M8, and when the renderer arrives it will record its output through `record_derivation`".
+Nothing outside tests had ever called it. `file_derivations.created_by_job_id` has existed since
+M4's migration with **no writer at all**. That is the twelfth and thirteenth instance of this
+repository's recurring shape — complete machinery nothing calls — and the useful thing is that both
+were found by looking for the helper before writing one, not afterwards.
+
+**The catalogue asymmetry is the sharp version of Q-12.** The crop is the **only** M8 command whose
+permission, command row *and* audit action all exist in the approved catalogues
+(`permission_catalog.yaml:537`, `command_catalog.yaml:277`, `audit_outbox_catalog.yaml:38`). Slices
+1, 2 and 3 implemented eight commands under DOC-CONFLICT-052 with provisional names. So
+`command_catalog.yaml` is not vaguely incomplete for the evidence path: it describes in full the one
+command that needs a PDF renderer and omits `link_batch`, `create_external` and the entire review
+queue. Q-12 should ask for the missing rows by name rather than for a general review.
+
+**Requirement 8 is a check here, not a write, and slice 2 is why.** `20260824_0024` grants the
+runtime no UPDATE on `renderer_version`, `source_pixel_width` or `source_pixel_height`. So
+`request_crop` records the provenance and the worker *confirms* it — and a deploy between the two
+makes the render refuse rather than produce a file whose row names software that did not make it.
+The first draft wrote those three columns and PostgreSQL would have refused it; the constraint found
+the design question.
+
+**A float cannot be hashed, and the render scale is recorded.** `app/core/hashing.py` refuses a
+float outright, so `parameters_hash` rejected `{"render_scale": 2.0}` on this slice's first
+integration run. `RENDER_SCALE_TEXT = "2.0"` exists for anything that records or hashes the scale,
+while the renderer keeps the float it needs. The rule generalises: `MONEY_TIME_CONTRACT.md`'s
+no-float rule is not only about money — it is about any value whose exact digits are load-bearing,
+and a crop's coordinates and scale are exactly that.
+
+**Only two of §16.5's three prohibitions can be broken at M8.** `PaymentAttempt` is importable
+today; `evidence_links` is M9's and trader publication is an empty queue module. The prohibition test
+asserts all three and a companion test records which are live, so three passing assertions are not
+read as three enforced rules. Without that companion, `SVC-CROP-002` would have been a test that
+cannot fail — the third meaning of NOT CAUGHT, arriving in a test rather than in a control.
 
 ## Slice 5 — Preview: pages, zoom, rotation, and a download that stays internal
 
@@ -524,6 +611,26 @@ The owner asked for the simplest defensible answer to each open question rather 
 decisions. Each is recorded here as **taken, by whom, and reversible or not**, because a delegated
 decision that leaves no trail is worse than an open one.
 
+**Q-4's renderer was measured before it was pinned (2026-08-25), and here are the numbers.**
+`pypdfium2==5.13.0` bundling pdfium `153.0.7999.0`, with `pillow==12.3.0`:
+
+| Question | Result |
+|---|---|
+| opens a multi-page PDF | 2 pages from a hand-written document |
+| reports page dimensions | `(300.0, 400.0)` points, so a client can normalise against them |
+| applies rotation | upright raster `600×800`, rotated 90° `800×600` |
+| **re-render is byte-identical** | **yes**, same rectangle twice → identical PNG; also identical when rotated |
+| rotation changes the crop | yes — which is DOC-CONFLICT-057's whole point, now demonstrated |
+| ships its native library | `pypdfium2_raw/libpdfium.so` in the wheel; nothing builds on the target |
+
+The fourth row is what `SVC-CROP-004` rests on and what settles **Q-3**: byte equality holds at a
+fixed version, DPI and rotation, so "approved tolerance" is unnecessary rather than merely
+unspecified.
+
+One correction worth keeping: the first native-library scan looked in the `pypdfium2` wrapper and
+reported "none found", which would have contradicted the licence-and-portability claim on the
+strength of a wrong glob. The library is in the sibling `pypdfium2_raw` package.
+
 **Q-4 — renderer: `pypdfium2` with `Pillow`.** Taken. Apache-2.0 and HPND, both shipping manylinux
 wheels with their native code bundled, so nothing compiles on the target and both can be vendored
 for a network that cannot reach a registry. The alternative with better capability is PyMuPDF, and it
@@ -555,9 +662,26 @@ built. `num_nonnulls(...) IN (0, 4)` is decidable where the documented CHECK is 
 
 **Q-1, Q-2, Q-3, Q-5, Q-6, Q-7, Q-8** were resolved in slices 1 and 2 as their rows describe.
 
-**What is still genuinely the owner's**, because no implementer can decide it: **G-5**, carried from
-M7 — an approved batch has no exit. M8 neither worsens nor fixes it, and it is the one open item on
-this project that is about money rather than about documents.
+**G-5 — an approved batch has no exit — was the one open item on this project about money rather
+than documents, and the owner decided it on 2026-08-25.** Authority is split by state: cancellation
+before a manager approves stays with the accountant under the existing `payment_batch.cancel_draft`,
+and cancellation after approval requires a **new manager-only permission**, because undoing a
+manager's decision is not an accountant's to make — the same separation-of-duties reasoning
+`FINANCIAL_INTEGRITY_BASELINE.md` §5 applies to finalizing and approving. So the permission check
+becomes a function of the batch's *state*, not of the route alone. DOC-CONFLICT-053 and -056 carry
+the decision and what M0 still owes: the permission's catalogue row, its seed, a `command_catalog.yaml`
+row for each of the two commands, and a catalogued cancellation action for the batch aggregate.
+
+**M6 had already left the seam for it**, which is worth noting because it is the inverse of this
+repository's recurring defect. `app/commands/payment_batch.py` carries two lists —
+`CANCELLABLE_BATCH_STATUSES` and `CANCELLABLE_BUT_UNAUTHORISED` — and the second produces a distinct
+refusal citing DOC-CONFLICT-056 by name. A mechanism that refuses and says why, rather than machinery
+nothing calls. Implementing the decision moves `ready_for_approval` between those two lists and adds
+`approved` behind the new permission; `_release_every_allocation_of` already returns the batch's
+requests to the pool, so nothing about the requests needs deciding.
+
+**Sequenced after M8's remaining slices**, because none of slices 5, 6 or 7 depends on it and a
+milestone abandoned mid-flight costs more than an ordered queue.
 
 ---
 

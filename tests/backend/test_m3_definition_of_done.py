@@ -247,6 +247,12 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
         "POST",
         "/api/v1/bank-result-bundles/{bundle_id}/receipt-segments/external",
     ): PERMISSION,
+    # M8 slice 4. `PERMISSION` for its sibling's reason, and this is the one segment route whose
+    # permission `command_catalog.yaml:277` actually describes.
+    (
+        "POST",
+        "/api/v1/bank-result-bundles/{bundle_id}/receipt-segments/crop",
+    ): PERMISSION,
     ("GET", "/api/v1/receipt-segments/{segment_id}"): PERMISSION,
     # M8 slice 3. Six routes, three permissions: the catalogue has no `.start` and no `.cancel`, so
     # `start` takes `manual_review.assign` and `cancel` takes `.resolve`. `PERMISSION` throughout —
@@ -597,6 +603,11 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     (
         "POST",
         "/api/v1/bank-result-bundles/{bundle_id}/receipt-segments/external",
+        "permission",
+    ): "test_no_segment_route_answers_a_caller_without_the_permission",
+    (
+        "POST",
+        "/api/v1/bank-result-bundles/{bundle_id}/receipt-segments/crop",
         "permission",
     ): "test_no_segment_route_answers_a_caller_without_the_permission",
     ("GET", "/api/v1/receipt-segments/{segment_id}", "permission"): (

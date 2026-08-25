@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header
@@ -41,13 +41,20 @@ from app.api.dependencies import get_runtime
 from app.api.v1.auth import authenticated_actor, requires
 from app.audit.redaction import RedactionPolicy
 from app.audit.writer import AuditActor, AuditContext
+from app.commands import receipt_crop as crop_commands
 from app.commands import receipt_segment as segment_commands
-from app.core.errors import ErrorEnvelope, NotFoundError, PreconditionRequiredError
+from app.core.errors import (
+    BusinessRuleViolationError,
+    ErrorEnvelope,
+    NotFoundError,
+    PreconditionRequiredError,
+)
 from app.core.money import parse_integer_string
 from app.core.request_context import get_request_id
 from app.core.runtime import RuntimeServices
 from app.core.time import utc_now
 from app.db.models.receipt_segment import ReceiptSegment
+from app.exports.crop import Rectangle
 from app.security.actor import ActorContext
 from app.security.permissions import declare
 
@@ -56,6 +63,15 @@ router = APIRouter(tags=["receipt-segments"])
 SEGMENT_REDACTION = RedactionPolicy(mask_iban=True)
 
 RESPONSES: dict[int | str, dict[str, object]] = {
+    # M8 slice 4 adds this, and it was missing rather than inapplicable: every domain refusal on
+    # this router is a `BusinessRuleViolationError`, which carries 400. The generated TypeScript
+    # client is built from this document, so an undeclared status has no branch in the panel.
+    400: {
+        "model": ErrorEnvelope,
+        "description": (
+            "The rectangle, rotation, page or client dimensions cannot produce a reproducible crop."
+        ),
+    },
     401: {"model": ErrorEnvelope, "description": "No valid session."},
     403: {"model": ErrorEnvelope, "description": "The caller lacks the segment permission."},
     404: {"model": ErrorEnvelope, "description": "No such bundle, file or segment."},
@@ -101,6 +117,63 @@ class AttachExternalRequest(BaseModel):
     manual_fields: ManualFieldsRequest | None = None
 
 
+class BoundingBoxRequest(BaseModel):
+    """`05_API_Specification.md:1763`, with the four values as strings.
+
+    **Strings, exactly as document 05 writes them** — `"0.105000"`, not `0.105`. The column is
+    `NUMERIC(10,6)` and these four numbers have to reproduce a crop; a JSON float would arrive as a
+    binary approximation of a decimal the database never held. The same reasoning
+    `MONEY_TIME_CONTRACT.md` applies to money, applied to the other kind of value in this system
+    where the exact digits are the point.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    x: str = Field(max_length=12)
+    y: str = Field(max_length=12)
+    width: str = Field(max_length=12)
+    height: str = Field(max_length=12)
+
+
+class ClientDimensionsRequest(BaseModel):
+    """`05_API_Specification.md:1770`. What the operator's screen was showing.
+
+    Sent so the server can disagree. Coordinates normalised against one raster and applied to
+    another describe a different region of the page while staying perfectly in range — the one
+    error a bounds check cannot see.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    width: int = Field(ge=1, le=100_000)
+    height: int = Field(ge=1, le=100_000)
+
+
+class CreateCropRequest(BaseModel):
+    """`05_API_Specification.md:1759`, plus the rotation.
+
+    **`rotation_degrees` is not in document 05's request body, and it is here.** DOC-CONFLICT-057
+    argued for it; `command_catalog.yaml:277` settles it — the approved command row lists the
+    preconditions of `receipt_segment.create_crop` as "normalized_rectangle, page, **rotation**,
+    renderer_version, derived_checksum" and marks the row
+    `status: blocked_by_coordinate_rotation_contract`. So M0 requires the angle and names its
+    absence from this schema as the blocker. Accepting it is what unblocks the row rather than a
+    liberty taken with the contract.
+
+    Defaulted to 0 so an unrotated crop — the common case — sends what document 05 shows.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    bank_result_bundle_file_id: uuid.UUID
+    source_file_id: uuid.UUID
+    page_number: int = Field(ge=1)
+    bbox: BoundingBoxRequest
+    client_source_dimensions: ClientDimensionsRequest
+    rotation_degrees: int = 0
+    manual_fields: ManualFieldsRequest | None = None
+
+
 class SegmentDetail(BaseModel):
     """One piece of evidence, and everything needed to say where it came from.
 
@@ -141,6 +214,51 @@ class SegmentDetail(BaseModel):
     record_version: int
     created_at: datetime
     updated_at: datetime
+
+
+class CropAccepted(BaseModel):
+    """`202`, and what the caller can do with it.
+
+    Document 05 at `:1786`: "Crop generation may return `202` with a processing job." The segment
+    comes back as well as the job, because the segment id is what the operator's panel needs in
+    order to show a placeholder that later becomes a picture — and `segment_file_id` being null is
+    the honest answer to "is it ready yet", which is why the whole detail is returned rather than a
+    summary.
+
+    Declared after `SegmentDetail` rather than beside its siblings: Pydantic resolves the nested
+    model at class creation, so a forward reference here would need an explicit rebuild for no gain.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    segment: SegmentDetail
+    processing_job_id: uuid.UUID
+    processing_job_status: str
+
+
+def _normalized(value: str, field: str) -> Decimal:
+    """One bbox string as the exact `Decimal` it spells.
+
+    **`Decimal(str)` and never `float(str)`.** `Decimal("0.105000")` is the value the
+    `NUMERIC(10,6)` column holds; `Decimal(float("0.105000"))` is
+    `0.10500000000000000610622663543836...`, which reproduces a slightly different rectangle every
+    time somebody re-renders from the row.
+
+    Rejected rather than coerced when it is not a number: an unparseable coordinate is a client bug,
+    and a silent 0 would crop the top-left corner of the page and call it evidence.
+    """
+
+    try:
+        parsed = Decimal(value)
+    except InvalidOperation as error:
+        raise BusinessRuleViolationError(
+            f"{field} must be a decimal number between 0 and 1; received {value!r}"
+        ) from error
+    if not parsed.is_finite():
+        raise BusinessRuleViolationError(
+            f"{field} must be a finite decimal; received {value!r}"
+        )
+    return parsed
 
 
 def _decimal(value: Decimal | None) -> str | None:
@@ -262,6 +380,88 @@ def attach_external_evidence(
             now=now,
         )
         rendered = _detail(segment)
+        uow.commit()
+
+    return rendered
+
+
+@router.post(
+    "/bank-result-bundles/{bundle_id}/receipt-segments/crop",
+    response_model=CropAccepted,
+    # 202, not 201. The segment row exists when this returns and its image does not, so the honest
+    # status is "accepted" — and `08_Bank_File_and_Result_Processing.md:1031` is explicit that the
+    # request is saved, then rendered, then verified. A 201 would tell the caller a thing was
+    # created that they cannot yet look at.
+    status_code=202,
+    operation_id="createReceiptCrop",
+    summary="Cut a rectangle out of a bundle page as evidence.",
+    responses=RESPONSES,
+    dependencies=[requires(declare("receipt_segment.create_crop"))],
+)
+def create_receipt_crop(
+    bundle_id: uuid.UUID,
+    payload: CreateCropRequest,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> CropAccepted:
+    """`POST /api/v1/bank-result-bundles/{bundle_id}/receipt-segments/crop`. §19.2 at `:1753`.
+
+    **`Idempotency-Key` required, and `command_catalog.yaml:277` says so** — `idempotency:
+    required`, not "recommended". A retried crop would otherwise produce a second segment claiming
+    the same rectangle, a second render job, and a bundle whose segment count double-counts one
+    piece of evidence.
+
+    **The rectangle is parsed here and validated in the command.** Turning `"0.105000"` into a
+    `Decimal` is transport; deciding whether the rectangle can be reproduced is a rule, and it
+    belongs where the renderer can be asked the same question.
+    """
+
+    if idempotency_key is None:
+        raise PreconditionRequiredError("Idempotency-Key")
+
+    supplied = payload.manual_fields or ManualFieldsRequest()
+    now = utc_now()
+    with runtime.uow_factory() as uow:
+        accepted = crop_commands.request_crop(
+            crop_commands.RequestCrop(
+                bank_result_bundle_id=bundle_id,
+                bank_result_bundle_file_id=payload.bank_result_bundle_file_id,
+                source_file_id=payload.source_file_id,
+                page_number=payload.page_number,
+                rectangle=Rectangle(
+                    x=_normalized(payload.bbox.x, "bbox.x"),
+                    y=_normalized(payload.bbox.y, "bbox.y"),
+                    width=_normalized(payload.bbox.width, "bbox.width"),
+                    height=_normalized(payload.bbox.height, "bbox.height"),
+                ),
+                rotation_degrees=payload.rotation_degrees,
+                client_source_width=payload.client_source_dimensions.width,
+                client_source_height=payload.client_source_dimensions.height,
+                fields=segment_commands.ManualFields(
+                    beneficiary_name=supplied.beneficiary_name,
+                    destination_iban=supplied.destination_iban,
+                    amount_irr=(
+                        parse_integer_string(supplied.amount_irr, field="amount_irr")
+                        if supplied.amount_irr is not None
+                        else None
+                    ),
+                    tracking_number=supplied.tracking_number,
+                    payment_at=supplied.payment_at,
+                ),
+            ),
+            uow=uow,
+            storage=runtime.storage,
+            policy=SEGMENT_REDACTION,
+            actor=_audit_actor(actor),
+            context=AuditContext(request_id=get_request_id()),
+            now=now,
+        )
+        rendered = CropAccepted(
+            segment=_detail(accepted.segment),
+            processing_job_id=accepted.job.id,
+            processing_job_status=accepted.job.status,
+        )
         uow.commit()
 
     return rendered

@@ -202,13 +202,9 @@ PENDING: dict[str, str] = {
     # to queue navigation, so there is no foreign key on it, no financial read joins through it, and
     # the table carries no typed reference to an export, a bundle or an attempt — even though this
     # slice's own caller would have found one convenient.
-    "SVC-CROP-001": "M8 slice 4 — §16's ten crop requirements, one assertion each",
-    "SVC-CROP-002": "M8 slice 4 — §16's three prohibitions, as absences",
-    "SVC-CROP-003": "M8 slice 4 — the source file is byte-identical afterwards, measured",
-    "SVC-CROP-004": "M8 slice 4 — provenance alone reproduces the crop, rotated page included",
-    "SVC-CROP-005": "M8 slice 4 — a retry duplicates nothing; a failed render leaves no evidence",
-    "SVC-CROP-006": "M8 slice 4 — a quarantined or unavailable source cannot be cropped",
-    "AUD-CROP-001": "M8 slice 4 — the audit and outbox records §16 requires",
+    # M8 slice 4's seven are gone from this list because they are now cited. Left here for the next
+    # reader: the crop is the only M8 command whose permission, command row and audit action all
+    # exist in the approved catalogues, which is why none of its entries needed a provisional name.
     "SVC-PREVIEW-001": "M8 slice 5 — multi-page PDFs and rotated images render",
     "SVC-PREVIEW-002": "M8 slice 5 — previews are derived objects, never the original",
     "SEC-PREVIEW-001": "M8 slice 5 — preview and download refused without the bundle permission",

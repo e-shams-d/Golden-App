@@ -28,6 +28,29 @@ dependencies = [
   # be rendered inert. `tests/backend/test_excel_writer.py` re-asserts each of those against the
   # written file, so this comment is not the evidence.
   "openpyxl==3.1.5",
+  # The crop renderer. Q-4 in `docs/handoff/M8_IMPLEMENTATION_PLAN.md`, decided 2026-08-24 on the
+  # owner's instruction to take the simplest defensible answer.
+  #
+  # **Chosen for its licence first.** `pypdfium2` is Apache-2.0/BSD-3 and wraps Google's PDFium. The
+  # more capable alternative is PyMuPDF, which is **AGPL-3.0 or paid** — choosing it would commit
+  # this product to either a copyleft obligation or a purchase, and neither is a decision an
+  # implementer should make quietly. The permissive option is the one that needs no sign-off; if the
+  # owner later wants PyMuPDF's capability that is a licence purchase, and `receipt_segments`'
+  # `renderer_version` is what makes the swap recordable rather than invisible.
+  #
+  # **Unlike `openpyxl`, both carry native code**, and the plan says so rather than glossing it. What
+  # is preserved is the property that mattered: manylinux wheels ship the compiled library, so
+  # nothing builds on the target and both can be vendored for a network that cannot reach a registry.
+  # What is lost is the audit simplicity of a dependency with no native code at all.
+  #
+  # **Verified before being pinned, not after.** A page renders, rotation is applied, and re-rendering
+  # the same rectangle at the same version and rotation is byte-identical — which is what
+  # `SVC-CROP-004` needs and what makes §16.6's "approved tolerance" unnecessary (Q-3).
+  # `tests/backend/test_crop_renderer.py` re-asserts each, so this comment is not the evidence.
+  "pypdfium2==5.13.0",
+  # Raster crop and rotation. HPND, and the only image library this project needs: PDFium produces a
+  # bitmap, Pillow cuts the rectangle out of it and writes the PNG.
+  "pillow==12.3.0",
   "pydantic==2.11.10",
   "pydantic-settings==2.10.1",
   "psycopg[binary]==3.2.12",
@@ -139,4 +162,15 @@ exclude = ["alembic/versions/"]
 
 [[tool.mypy.overrides]]
 module = ["celery.*", "kombu.*"]
+ignore_missing_imports = true
+
+# M8 slice 4. `pypdfium2` publishes no `py.typed` marker and no stub package exists, so unlike
+# `openpyxl` — where `types-openpyxl` let the override be refused — there is nothing to prefer over
+# this. The loss is real and is contained deliberately: `app/exports/crop.py` is the only module in
+# the tree that imports it, and `_raster` annotates the one value that crosses back into typed code
+# so the `Any` cannot spread to callers. Everything the library is trusted for — reproducible bytes,
+# rotation, page count, page size — is asserted against real output in
+# `tests/backend/test_crop_renderer.py`, which is where a type checker was never going to help.
+[[tool.mypy.overrides]]
+module = ["pypdfium2.*"]
 ignore_missing_imports = true

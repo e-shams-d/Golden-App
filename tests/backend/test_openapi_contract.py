@@ -224,10 +224,13 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         #
         # **`patchReceiptSegment` is absent and that is the record.** `:1792` defines it;
         # `permission_catalog.yaml` resolves `receipt_segment.update` as deny-until-approved with
-        # `canonical_targets: []`, and `m0_open_items` carries the same decision. `:1756`'s crop is
-        # slice 4's and needs the renderer question answered. This set is where somebody comparing
-        # the contract against document 05 will notice both.
+        # `canonical_targets: []`, and `m0_open_items` carries the same decision. This set is where
+        # somebody comparing the contract against document 05 will notice it.
         "attachExternalEvidence",
+        # M8 slice 4. `:1753`'s crop, now that the renderer question is answered — and it answers
+        # `202` rather than `201`, because `:1786` says the crop "may return `202` with a processing
+        # job" and the image does not exist when the response is written.
+        "createReceiptCrop",
         "getReceiptSegment",
         # M8 slice 3. `05_API_Specification.md:2058`'s six, all of them — the first M8 surface where
         # the document's route list and the contract agree exactly: for once no permission is
