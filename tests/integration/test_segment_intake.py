@@ -8,11 +8,22 @@ The edges tested are the ones §12.4's CHECK actually turns on: all-null, a zero
 that runs past the right edge, and the two constraints document 04 does not state — a rectangle
 without its page and a rotation without a rectangle.
 
-Covers: DB-SEGMENT-001, SVC-SEGMENT-003, SEC-SEGMENT-001.
+**M8 slice 4's crop tests live here too**, rather than in a file of their own. The crop is the other
+half of the same surface, its route's permission test is the one already in this file, and the
+world fixture it needs — a bundle, a clean file, an accountant and a manager — is the one already
+built here. Slice 3 made the same call for the opposite reason and it is the same reasoning: a
+near-duplicate fixture is where the second copy quietly stops matching the first.
+
+What the crop adds is a source file with **real bytes in storage**. `a_clean_file` writes a row and
+no object, which is enough for a segment that only points at a file; a crop has to open one.
+
+Covers: DB-SEGMENT-001, SVC-SEGMENT-003, SEC-SEGMENT-001, SVC-CROP-001, SVC-CROP-003, SVC-CROP-004,
+SVC-CROP-005, SVC-CROP-006, AUD-CROP-001.
 """
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from collections.abc import Iterator
 from typing import Any
@@ -110,12 +121,49 @@ def world(migrated: RuntimeIdentities, tmp_path_factory: Any) -> Iterator[dict[s
             "owner_url": migrated.owner_url,
             "storage_root": storage_root,
             "trader_id": trader_id,
+            # M8 slice 4. The crop worker takes a `RuntimeServices`, and this is the one the app is
+            # already using — so the worker's transactions go through the same roles and the same
+            # storage the routes do, rather than a second runtime that might be configured
+            # differently from the one under test.
+            "runtime": app.state.runtime,
         }
     app.state.runtime.close()
 
 
 def _psycopg(url: str) -> str:
     return url.replace("postgresql+psycopg://", "postgresql://", 1)
+
+
+@pytest.fixture(autouse=True)
+def a_quiet_files_queue(world: dict[str, Any]) -> Iterator[None]:
+    """Every test in this module starts with nothing claimable on the `files` queue.
+
+    **Found by the full suite, not by running these tests one at a time.** The crop tests each
+    assert a report count — "the worker rendered exactly one" — and `render_crops` claims the oldest
+    *due* job on the queue, not the one the test just made. `test_the_crop_writes_the_audit_row...`
+    requests a crop and never drains it, so every test after it was draining somebody else's work:
+    the reproduction tests found no file on their own segment, and the queue-ownership test watched
+    the worker render a leftover crop and report `rendered=1` where it expected zero.
+
+    Run individually all three passed, which is the trap. A shared queue is shared state, and a test
+    that assumes it is empty is asserting something no run guarantees.
+
+    **Cancelled rather than deleted**, because `file_derivations.created_by_job_id` points at
+    succeeded jobs — slice 4 is the first writer of that column — and deleting the rows would trip
+    the foreign key. Cancelling takes them out of `claimable_jobs` and leaves the history intact.
+    """
+
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            # `finished_at` too: `ck_processing_jobs_finished_at_matches_status` requires a terminal
+            # status to carry one, and it refused this fixture's first version for exactly that
+            # reason — a cancelled job with no finish time is a lie.
+            "UPDATE processing_jobs SET status = 'cancelled', locked_by = NULL, "
+            "heartbeat_at = NULL, finished_at = now() WHERE queue_name = 'files' "
+            "AND status IN ('queued', 'retry_scheduled', 'running')"
+        )
+        connection.commit()
+    yield
 
 
 def sign_in_admin(client: Any, username: str) -> None:
@@ -548,3 +596,758 @@ def test_the_runtime_cannot_rewrite_provenance(world: dict[str, Any]) -> None:
     # And it can write what a person typed, plus the file the crop worker attaches.
     assert "extracted_amount_irr" in writable
     assert "segment_file_id" in writable
+
+
+# ---------------------------------------------------------------------------
+# M8 slice 4: the in-panel crop.
+# ---------------------------------------------------------------------------
+
+# The same two-page PDF `tests/backend/test_crop_renderer.py` uses. Duplicated deliberately rather
+# than imported across the backend/integration boundary: the renderer test owns it as the subject of
+# a measurement, and this file needs it as a fixture. A shared constant would couple a change made
+# for one purpose to the other.
+TWO_PAGES = (
+    b"%PDF-1.4\n"
+    b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+    b"2 0 obj<</Type/Pages/Kids[3 0 R 5 0 R]/Count 2>>endobj\n"
+    b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 400]/Contents 4 0 R"
+    b"/Resources<</Font<</F1 7 0 R>>>>>>endobj\n"
+    b"4 0 obj<</Length 44>>stream\n"
+    b"BT /F1 24 Tf 20 300 Td (PAGE ONE) Tj ET\n"
+    b"endstream endobj\n"
+    b"5 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 400]/Contents 6 0 R"
+    b"/Resources<</Font<</F1 7 0 R>>>>>>endobj\n"
+    b"6 0 obj<</Length 44>>stream\n"
+    b"BT /F1 24 Tf 20 300 Td (PAGE TWO) Tj ET\n"
+    b"endstream endobj\n"
+    b"7 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n"
+    b"trailer<</Root 1 0 R>>\n"
+)
+
+# 300x400 points at scale 2.0, upright and quarter-turned. Written out rather than computed, because
+# a test that derived these from the same code under test would agree with a bug in it.
+UPRIGHT = (600, 800)
+TURNED = (800, 600)
+
+A_RECTANGLE = {"x": "0.105000", "y": "0.220000", "width": "0.500000", "height": "0.300000"}
+
+
+def a_pdf_in_storage(world: dict[str, Any], name: str = "bundle.pdf") -> str:
+    """A file row whose bytes are actually there, with the digest storage would measure.
+
+    `a_clean_file` above writes a row and no object, which is enough for a segment that only points
+    at a file. A crop has to open one — and the digest must be the real one, because `SVC-CROP-003`
+    compares it before and after.
+    """
+
+    file_id = uuid.uuid4()
+    key = f"segments/{file_id}"
+    target = world["storage_root"] / key
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(TWO_PAGES)
+
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            "INSERT INTO file_objects (id, storage_provider, storage_bucket, storage_key, "
+            "original_filename, mime_type_declared, size_bytes, sha256_hash, category, "
+            "visibility_scope, storage_status, scan_status, uploaded_by_actor_type, "
+            "original_or_derived_relation, metadata) "
+            "VALUES (%s, 'local', 'gold', %s, %s, 'application/pdf', %s, %s, "
+            "'bank_result_bundle', 'internal', 'available', 'clean', 'admin_user', "
+            "'original', '{}')",
+            (file_id, key, name, len(TWO_PAGES), hashlib.sha256(TWO_PAGES).hexdigest()),
+        )
+        connection.commit()
+    return str(file_id)
+
+
+def a_bundle_with_a_pdf(world: dict[str, Any]) -> dict[str, Any]:
+    client = world["client"]
+    file_id = a_pdf_in_storage(world)
+    created = client.post(
+        "/api/v1/bank-result-bundles",
+        json={
+            "source_type": "bank_portal_download",
+            "files": [{"file_id": file_id, "sequence_number": 1, "file_role": "source"}],
+        },
+        headers={**csrf(client), "Idempotency-Key": str(uuid.uuid4())},
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    return {"id": body["id"], "file_id": file_id, "bundle_file_id": body["files"][0]["id"]}
+
+
+def request_a_crop(world: dict[str, Any], bundle: dict[str, Any], **overrides: Any) -> Any:
+    client = world["client"]
+    body: dict[str, Any] = {
+        "source_file_id": bundle["file_id"],
+        "bank_result_bundle_file_id": bundle["bundle_file_id"],
+        "page_number": 1,
+        "bbox": dict(A_RECTANGLE),
+        "client_source_dimensions": {"width": UPRIGHT[0], "height": UPRIGHT[1]},
+        "rotation_degrees": 0,
+    }
+    body.update(overrides)
+    return client.post(
+        f"/api/v1/bank-result-bundles/{bundle['id']}/receipt-segments/crop",
+        json=body,
+        headers={**csrf(client), "Idempotency-Key": str(uuid.uuid4())},
+    )
+
+
+def run_the_worker(world: dict[str, Any], passes: int = 1) -> Any:
+    """The `files` queue, drained through the real task rather than by calling the command.
+
+    Going through `render_crops` is the point: it is what claims the job, what decides a failure is
+    retryable, and what escalates. Calling `render_pending_crop` directly would test the render and
+    none of the machinery that has to surround it.
+    """
+
+    from app.workers.tasks.files import render_crops
+
+    return render_crops(world["runtime"], limit=passes)
+
+
+def drain(world: dict[str, Any]) -> Any:
+    """Run the worker and insist it rendered, reporting the job's own error when it did not.
+
+    Written after the first run of these tests returned `failed=1` and nothing else. The worker
+    deliberately swallows every render exception — that is what keeps a failed crop from abandoning
+    its lease — so a test that only asserts a count leaves whoever reads it with no way to tell a
+    corrupt PDF from a missing grant. The error is already in the row; this reads it out.
+    """
+
+    report = run_the_worker(world)
+    if report.rendered != 1:
+        failures = rows(
+            world,
+            "SELECT status, last_error_code, last_error_message FROM processing_jobs "
+            "WHERE job_type = 'receipt_segment.render_crop' AND last_error_code IS NOT NULL "
+            "ORDER BY updated_at DESC LIMIT 3",
+        )
+        raise AssertionError(f"the worker rendered nothing: {report}; recent failures: {failures}")
+    return report
+
+
+def test_a_crop_is_requested_then_rendered(world: dict[str, Any]) -> None:
+    """`SVC-CROP-001`. The ten requirements, walked in the order they happen.
+
+    One test for the path that works and separate tests for each refusal below, because the
+    requirements that are *absences* cannot be asserted by the same run that proves a crop works.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    bundle = a_bundle_with_a_pdf(world)
+
+    accepted = request_a_crop(world, bundle)
+
+    # 202, not 201: the row exists and the image does not.
+    assert accepted.status_code == 202, accepted.text
+    body = accepted.json()
+    segment_id = body["segment"]["id"]
+
+    # Requirement 4: both records, and the segment carrying no file yet.
+    assert body["segment"]["segment_file_id"] is None
+    assert body["segment"]["creation_method"] == "manual_in_panel_crop"
+    assert body["processing_job_status"] == "queued"
+
+    # Requirement 8, recorded at request time because slice 2 froze these three columns.
+    assert body["segment"]["source_pixel_width"] == UPRIGHT[0]
+    assert body["segment"]["source_pixel_height"] == UPRIGHT[1]
+    assert body["segment"]["renderer_version"].startswith("pypdfium2/")
+    # The rectangle comes back as the exact decimals it was sent as, not as floats.
+    assert body["segment"]["bbox_x"] == A_RECTANGLE["x"]
+    assert body["segment"]["bbox_width"] == A_RECTANGLE["width"]
+
+    # Requirement 5: on the `files` queue, which is the queue this task routes to.
+    queued = rows(
+        world,
+        "SELECT job_type, queue_name, provider FROM processing_jobs WHERE id = %s",
+        body["processing_job_id"],
+    )
+    assert queued == [("receipt_segment.render_crop", "files", "pypdfium2")]
+
+    drain(world)
+
+    # Requirement 7: a derived file with storage's own checksum, and a derivation accounting for it.
+    linked = rows(
+        world,
+        "SELECT f.sha256_hash, f.mime_type_declared, f.original_or_derived_relation, "
+        "d.derivation_type, d.renderer_version, d.created_by_job_id "
+        "FROM receipt_segments s JOIN file_objects f ON f.id = s.segment_file_id "
+        "JOIN file_derivations d ON d.derived_file_id = f.id WHERE s.id = %s",
+        segment_id,
+    )
+    assert len(linked) == 1, "a rendered crop has exactly one derived file and one derivation"
+    digest, media_type, relation, derivation_type, renderer, job_id = linked[0]
+    assert media_type == "image/png"
+    assert relation == "derived"
+    assert derivation_type == "crop"
+    assert renderer.startswith("pypdfium2/")
+    assert len(digest) == 64
+    # The first row ever written to this column: it has existed since M4 with no writer at all.
+    assert str(job_id) == body["processing_job_id"]
+
+    # And the job says what it produced.
+    finished = rows(
+        world,
+        "SELECT status, output_payload FROM processing_jobs WHERE id = %s",
+        body["processing_job_id"],
+    )
+    assert finished[0][0] == "succeeded"
+    assert finished[0][1]["derived_file_id"]
+
+
+def test_the_source_file_is_untouched_by_its_own_crop(world: dict[str, Any]) -> None:
+    """`SVC-CROP-003`. `08_Bank_File_and_Result_Processing.md:137`, measured rather than assumed.
+
+    Both halves: the bytes on disk and the row's recorded digest. A test that only checked the row
+    would pass while the object had been overwritten, and one that only checked the bytes would pass
+    while the row had been edited to match a different file.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    bundle = a_bundle_with_a_pdf(world)
+
+    stored = rows(
+        world,
+        "SELECT storage_key, sha256_hash FROM file_objects WHERE id = %s",
+        bundle["file_id"],
+    )[0]
+    path = world["storage_root"] / stored[0]
+    before = path.read_bytes()
+
+    assert request_a_crop(world, bundle).status_code == 202
+    assert run_the_worker(world).rendered == 1
+
+    after = path.read_bytes()
+    assert after == before, "the source PDF changed while its crop was being taken"
+    assert hashlib.sha256(after).hexdigest() == stored[1], "the source no longer matches its row"
+    assert before == TWO_PAGES, (
+        "if the source were not the document this test wrote, the comparison above would be "
+        "comparing two copies of the wrong thing"
+    )
+
+
+def test_a_rectangle_drawn_against_the_wrong_raster_is_refused(world: dict[str, Any]) -> None:
+    """The check §16.4 does not name, and the only one a bounds test cannot make.
+
+    Every coordinate here is between 0 and 1, so the rectangle is valid; it was normalised against a
+    raster twice the size of the one the server renders. Accepting it would store a perfectly
+    well-formed rectangle describing a region the operator never selected.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    bundle = a_bundle_with_a_pdf(world)
+
+    refused = request_a_crop(
+        world, bundle, client_source_dimensions={"width": 1200, "height": 1600}
+    )
+
+    assert refused.status_code == 400, refused.text
+    assert "raster" in refused.json()["error"]["message"]
+    # And nothing was written. A refusal that left a segment behind would be worse than accepting.
+    assert rows(
+        world,
+        "SELECT count(*) FROM receipt_segments WHERE bank_result_bundle_id = %s",
+        bundle["id"],
+    ) == [(0,)]
+
+
+def test_a_rotated_crop_must_report_the_rotated_raster(world: dict[str, Any]) -> None:
+    """DOC-CONFLICT-057, from the outside.
+
+    The upright raster is 600x800 and the quarter-turned one is 800x600, so sending the angle
+    without the matching dimensions is refused. That is the same fact as "the rectangle means
+    nothing without the angle", observed from the direction a client experiences it.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    bundle = a_bundle_with_a_pdf(world)
+
+    wrong = request_a_crop(world, bundle, rotation_degrees=90)
+    assert wrong.status_code == 400, wrong.text
+
+    right = request_a_crop(
+        world,
+        bundle,
+        rotation_degrees=90,
+        client_source_dimensions={"width": TURNED[0], "height": TURNED[1]},
+    )
+    assert right.status_code == 202, right.text
+    assert right.json()["segment"]["rotation_degrees"] == 90
+    assert right.json()["segment"]["source_pixel_width"] == TURNED[0]
+
+    assert run_the_worker(world).rendered == 1
+
+
+def test_an_angle_no_preview_can_produce_is_refused(world: dict[str, Any]) -> None:
+    """The four permitted angles, at the route.
+
+    `08_...Processing.md:985` gives clockwise and counter-clockwise rotation and nothing else, so an
+    arbitrary angle could never have been produced by the control that is supposed to have created
+    it — nor reproduced by it later.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    bundle = a_bundle_with_a_pdf(world)
+
+    refused = request_a_crop(world, bundle, rotation_degrees=45)
+    assert refused.status_code == 400, refused.text
+
+
+def test_a_retry_renders_no_second_file(world: dict[str, Any]) -> None:
+    """`SVC-CROP-005`, first half. §16.4's ninth requirement at the worker.
+
+    Draining the queue twice is the realistic version of a redelivered message. The assertion is on
+    the *count* of derived files rather than on what the second call returned: a second file would
+    leave two objects in storage both claiming to be this segment's evidence.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    bundle = a_bundle_with_a_pdf(world)
+    segment_id = request_a_crop(world, bundle).json()["segment"]["id"]
+
+    assert run_the_worker(world).rendered == 1
+    second = run_the_worker(world)
+
+    assert second.rendered == 0, "the worker rendered the same crop twice"
+    derived = rows(
+        world,
+        "SELECT count(*) FROM file_derivations d JOIN receipt_segments s "
+        "ON s.segment_file_id = d.derived_file_id WHERE s.id = %s",
+        segment_id,
+    )
+    assert derived == [(1,)]
+
+
+def test_a_failed_render_leaves_no_evidence(world: dict[str, Any]) -> None:
+    """`SVC-CROP-005`, second half. `15_Agent_Implementation_Plan.md:1069`.
+
+    The source is replaced with bytes that are not a PDF *after* the request is accepted, which is
+    the only way to reach the render's failure path: the request path opens the document, so a file
+    that was never readable would have been refused before a job existed.
+
+    What matters is the pair of assertions. The job records the failure, and the segment still has
+    no file — a segment pointing at a half-written object is the artifact this lifecycle exists to
+    prevent.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    bundle = a_bundle_with_a_pdf(world)
+    accepted = request_a_crop(world, bundle).json()
+    segment_id = accepted["segment"]["id"]
+
+    key = rows(world, "SELECT storage_key FROM file_objects WHERE id = %s", bundle["file_id"])
+    (world["storage_root"] / key[0][0]).write_bytes(b"this is not a PDF")
+
+    report = run_the_worker(world)
+    assert report.failed == 1, f"a corrupt source rendered successfully: {report}"
+
+    segment = rows(
+        world, "SELECT segment_file_id, status FROM receipt_segments WHERE id = %s", segment_id
+    )
+    assert segment[0][0] is None, "a failed render left a file on the segment"
+    assert segment[0][1] == "created", "a failed render changed the segment status"
+
+    job = rows(
+        world,
+        "SELECT status, last_error_code FROM processing_jobs WHERE id = %s",
+        accepted["processing_job_id"],
+    )
+    assert job[0][0] in {"retry_scheduled", "dead_lettered"}
+    assert job[0][1], "the job records no error code, so nobody can tell why it failed"
+
+
+def test_a_quarantined_source_cannot_be_cropped(world: dict[str, Any]) -> None:
+    """`SVC-CROP-006`. §16.4's second requirement, at both ends.
+
+    Asserted twice on purpose. A source quarantined before the request is refused at the route, and
+    one quarantined after the request is refused at the worker. The second is the one that matters
+    operationally: a scanner verdict arriving between the two would otherwise produce a crop of a
+    file the platform has decided nobody may open.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+
+    early = a_bundle_with_a_pdf(world)
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            # Both columns, because `ck_file_objects_available_requires_clean_scan` refuses an
+            # `available` file that is not clean — the constraint being right: a quarantined file is
+            # one nobody may open *and* one storage should not serve.
+            "UPDATE file_objects SET scan_status = 'infected', storage_status = 'quarantined' "
+            "WHERE id = %s",
+            (early["file_id"],),
+        )
+        connection.commit()
+    refused = request_a_crop(world, early)
+    assert refused.status_code == 400, refused.text
+    assert "scan status" in refused.json()["error"]["message"]
+
+    late = a_bundle_with_a_pdf(world)
+    accepted = request_a_crop(world, late).json()
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            "UPDATE file_objects SET scan_status = 'infected', storage_status = 'quarantined' "
+            "WHERE id = %s",
+            (late["file_id"],),
+        )
+        connection.commit()
+
+    assert run_the_worker(world).failed == 1
+    assert rows(
+        world,
+        "SELECT segment_file_id FROM receipt_segments WHERE id = %s",
+        accepted["segment"]["id"],
+    ) == [(None,)]
+
+
+def test_the_crop_writes_the_audit_row_the_catalogue_names(world: dict[str, Any]) -> None:
+    """`AUD-CROP-001`. `audit_outbox_catalog.yaml:38` names the action; this is it.
+
+    **And no outbox event**, which the catalogue also says: nothing outside the platform acts on
+    evidence being cut out of a page. Asserted as an absence, because an event nobody consumes is
+    still an event somebody has to explain.
+
+    The rectangle is in `new_values` so the audit row alone reproduces the crop, which is why it is
+    there rather than only in `receipt_segments`.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    bundle = a_bundle_with_a_pdf(world)
+    segment_id = request_a_crop(world, bundle).json()["segment"]["id"]
+
+    entries = rows(
+        world,
+        "SELECT action, outcome, new_values, actor_type FROM audit_logs "
+        "WHERE entity_type = 'receipt_segment' AND entity_id = %s",
+        segment_id,
+    )
+    assert len(entries) == 1, f"expected one audit row for the crop, found {len(entries)}"
+    action, outcome, new_values, actor_type = entries[0]
+    assert action == "receipt_segment.crop_created"
+    assert outcome == "success"
+    assert actor_type == "admin_user"
+    assert new_values["rotation_degrees"] == 0
+    assert new_values["bbox"] == [
+        A_RECTANGLE["x"],
+        A_RECTANGLE["y"],
+        A_RECTANGLE["width"],
+        A_RECTANGLE["height"],
+    ]
+
+    events = rows(
+        world, "SELECT count(*) FROM outbox_events WHERE aggregate_id = %s", segment_id
+    )
+    assert events == [(0,)], "the catalogue gives this action no outbox event"
+
+
+def test_the_crop_route_needs_the_crop_permission(world: dict[str, Any]) -> None:
+    """`SEC-SEGMENT-001` for slice 4's route.
+
+    Separate from the surface test above rather than folded into it: that test builds a segment by
+    attaching a file, and a crop needs a PDF in storage. Folding them would make the older test
+    depend on the newer fixture for no gain.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    bundle = a_bundle_with_a_pdf(world)
+
+    # A manager may read evidence and may not cut it out.
+    sign_in_admin(client, "segment_manager")
+    assert request_a_crop(world, bundle).status_code == 403
+
+    sign_in_trader(client)
+    assert request_a_crop(world, bundle).status_code == 403
+
+
+def test_the_crop_route_requires_an_idempotency_key(world: dict[str, Any]) -> None:
+    """`command_catalog.yaml:277` says `idempotency: required`, not recommended.
+
+    Without one, a retried request produces a second segment claiming the same rectangle, a second
+    render job, and a bundle whose segment count double-counts one piece of evidence.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    bundle = a_bundle_with_a_pdf(world)
+
+    response = client.post(
+        f"/api/v1/bank-result-bundles/{bundle['id']}/receipt-segments/crop",
+        json={
+            "source_file_id": bundle["file_id"],
+            "bank_result_bundle_file_id": bundle["bundle_file_id"],
+            "page_number": 1,
+            "bbox": dict(A_RECTANGLE),
+            "client_source_dimensions": {"width": UPRIGHT[0], "height": UPRIGHT[1]},
+        },
+        headers=csrf(client),
+    )
+
+    assert response.status_code == 428, response.text
+
+
+def test_the_stored_row_alone_reproduces_the_crop(world: dict[str, Any]) -> None:
+    """`SVC-CROP-004`, and the strong form of it.
+
+    `tests/backend/test_crop_renderer.py` proves the renderer is deterministic. This proves the
+    *row* is sufficient: nothing is read from the job, the request or this test's own constants —
+    the five stored values are fetched back out of `receipt_segments` and fed to the renderer, and
+    the bytes are compared against the object storage actually holds.
+
+    **On a rotated page, deliberately.** DOC-CONFLICT-057 is only a real conflict if the angle
+    changes the result, so an upright crop would reproduce correctly even with the rotation
+    forgotten — which is exactly the negative control this slice runs. §16.6 asks for reproduction
+    "within approved tolerance" and no document approves one; equality holds, so Q-3 records that
+    there is nothing to approve.
+    """
+
+    from app.exports.crop import Rectangle, render_crop
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    bundle = a_bundle_with_a_pdf(world)
+
+    accepted = request_a_crop(
+        world,
+        bundle,
+        rotation_degrees=270,
+        client_source_dimensions={"width": TURNED[0], "height": TURNED[1]},
+    )
+    assert accepted.status_code == 202, accepted.text
+    segment_id = accepted.json()["segment"]["id"]
+    drain(world)
+
+    # Everything needed to render again, read back from the database rather than remembered.
+    stored = rows(
+        world,
+        "SELECT s.page_number, s.bbox_x, s.bbox_y, s.bbox_width, s.bbox_height, "
+        "s.rotation_degrees, s.renderer_version, f.storage_key, src.storage_key "
+        "FROM receipt_segments s "
+        "JOIN file_objects f ON f.id = s.segment_file_id "
+        "JOIN file_objects src ON src.id = s.source_file_id "
+        "WHERE s.id = %s",
+        segment_id,
+    )
+    assert len(stored) == 1, "the crop was not rendered, so there is nothing to reproduce"
+    page, x, y, width, height, rotation, renderer, crop_key, source_key = stored[0]
+
+    original = (world["storage_root"] / source_key).read_bytes()
+    again = render_crop(
+        original,
+        page_number=page,
+        rectangle=Rectangle(x=x, y=y, width=width, height=height),
+        rotation_degrees=rotation,
+    )
+
+    on_disk = (world["storage_root"] / crop_key).read_bytes()
+    assert again.content == on_disk, (
+        "the stored provenance does not reproduce the stored crop, so nobody can verify that this "
+        "image is the region the operator selected"
+    )
+    assert again.renderer_version == renderer
+    assert rotation == 270, "the rotated case is the only one that tests the angle at all"
+    assert len(on_disk) > 0
+
+
+def test_forgetting_the_rotation_would_reproduce_the_wrong_region(world: dict[str, Any]) -> None:
+    """DOC-CONFLICT-057's negative control, run in the product rather than in a sabotage script.
+
+    The plan's control for `SVC-CROP-004` is "store the bbox without the rotation". Rather than
+    breaking the code to watch a test fail, this asserts the fact the control depends on: the same
+    stored rectangle rendered at 0 degrees is **not** the crop that was stored at 270. If these were
+    equal, storing the angle would be optional and DOC-CONFLICT-057 would not exist.
+
+    Run as a test rather than a script because the property is permanent. A future renderer that
+    ignored rotation would make this fail, which is the moment somebody needs to know.
+    """
+
+    from app.exports.crop import Rectangle, render_crop
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    bundle = a_bundle_with_a_pdf(world)
+
+    accepted = request_a_crop(
+        world,
+        bundle,
+        rotation_degrees=270,
+        client_source_dimensions={"width": TURNED[0], "height": TURNED[1]},
+    )
+    segment_id = accepted.json()["segment"]["id"]
+    drain(world)
+
+    stored = rows(
+        world,
+        "SELECT s.bbox_x, s.bbox_y, s.bbox_width, s.bbox_height, f.storage_key, src.storage_key "
+        "FROM receipt_segments s "
+        "JOIN file_objects f ON f.id = s.segment_file_id "
+        "JOIN file_objects src ON src.id = s.source_file_id WHERE s.id = %s",
+        segment_id,
+    )
+    x, y, width, height, crop_key, source_key = stored[0]
+    original = (world["storage_root"] / source_key).read_bytes()
+    rectangle = Rectangle(x=x, y=y, width=width, height=height)
+
+    without_the_angle = render_crop(
+        original, page_number=1, rectangle=rectangle, rotation_degrees=0
+    )
+    with_the_angle = render_crop(
+        original, page_number=1, rectangle=rectangle, rotation_degrees=270
+    )
+    on_disk = (world["storage_root"] / crop_key).read_bytes()
+
+    assert with_the_angle.content == on_disk
+    assert without_the_angle.content != on_disk, (
+        "rendering without the stored rotation produced the same image, so the rotation column "
+        "records nothing and DOC-CONFLICT-057 is not a conflict after all"
+    )
+
+
+def test_the_worker_leaves_another_tasks_job_alone(world: dict[str, Any]) -> None:
+    """The `files` queue will not hold only crops, and this is the branch that matters when it does.
+
+    Slice 5 puts preview rendering on this queue. Until then the "claimed something I cannot run"
+    path has no caller in the product — the shape this repository has now hit thirteen times — so it
+    is exercised directly rather than left to be discovered by whoever adds the second task.
+
+    **Released, not failed.** Marking it failed would consume the attempts of a job this worker
+    never tried, so the preview worker would find one already halfway to dead-lettered for nothing.
+    """
+
+    other = uuid.uuid4()
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            "INSERT INTO processing_jobs (id, job_type, queue_name, status, input_payload) "
+            "VALUES (%s, 'file.render_preview', 'files', 'queued', '{}')",
+            (other,),
+        )
+        connection.commit()
+
+    report = run_the_worker(world)
+
+    assert report == report.__class__(rendered=0, failed=0, escalated=0), (
+        f"a job this task does not own was treated as work: {report}"
+    )
+    state = rows(
+        world,
+        "SELECT status, attempt_count, last_error_code FROM processing_jobs WHERE id = %s",
+        other,
+    )
+    assert state[0][0] == "retry_scheduled", "the job was not handed back to the queue"
+    assert state[0][2] is None, "an untried job was given an error code"
+    # The claim did consume an attempt, which is `claim_jobs` being deliberate: a worker that
+    # crashes mid-run must still have used one, or a poison job is retried forever.
+    assert state[0][1] == 1
+
+
+def test_rendering_one_segment_twice_makes_one_file(world: dict[str, Any]) -> None:
+    """`SVC-CROP-005` at the command, which is the only place the guard is reachable.
+
+    **Written because a negative control was right and the test was not.** Removing
+    `render_pending_crop`'s already-rendered early return reported NOT CAUGHT through the worker,
+    and the reason is that the worker's idempotency comes from somewhere else entirely: after a
+    success the job is `succeeded`, so a second pass claims nothing and never reaches the guard. Two
+    independent protections, and the queue-level one was hiding the command-level one.
+
+    The guard still matters, and this is where it is reachable: anything that renders a segment
+    without going through the queue — a re-render from the workspace, a repair script, slice 6 —
+    asks this function directly. So it is called directly here, twice, and one file must exist.
+    """
+
+    from app.commands.receipt_crop import render_pending_crop
+    from app.core.time import utc_now
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    bundle = a_bundle_with_a_pdf(world)
+    segment_id = uuid.UUID(request_a_crop(world, bundle).json()["segment"]["id"])
+
+    runtime = world["runtime"]
+    with runtime.uow_factory() as uow:
+        first = render_pending_crop(
+            segment_id, uow=uow, storage=runtime.storage, now=utc_now()
+        )
+        uow.commit()
+    with runtime.uow_factory() as uow:
+        second = render_pending_crop(
+            segment_id, uow=uow, storage=runtime.storage, now=utc_now()
+        )
+        uow.commit()
+
+    assert first == second, "the second render produced a different file for the same segment"
+    derived = rows(
+        world,
+        "SELECT count(*) FROM file_derivations d JOIN receipt_segments s "
+        "ON s.segment_file_id = d.derived_file_id WHERE s.id = %s",
+        segment_id,
+    )
+    assert derived == [(1,)]
+
+
+def test_a_renderer_upgrade_between_request_and_render_is_refused(
+    world: dict[str, Any],
+) -> None:
+    """The check requirement 8 became, once slice 2's grants made rewriting impossible.
+
+    A crop is requested, the platform is upgraded, and the worker then renders with a renderer the
+    row does not name. The row cannot be corrected — `20260824_0024` grants the runtime no UPDATE on
+    `renderer_version` — and it should not be: provenance that gets edited to match the file it is
+    supposed to describe describes nothing.
+
+    So the render refuses and the operator re-requests. Simulated from the owner connection, because
+    that is the only writer that *can* create this state — which is itself the point.
+
+    **This test exists because a negative control could not create the state.** Changing
+    `RENDERER_VERSION` in the source changes what `request_crop` stores *and* what the render
+    produces, so the two still agree and the sabotage reported NOT CAUGHT. The control was right: no
+    edit to that constant can produce drift, only a deploy between two moments can.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    bundle = a_bundle_with_a_pdf(world)
+    accepted = request_a_crop(world, bundle).json()
+    segment_id = accepted["segment"]["id"]
+
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            "UPDATE receipt_segments SET renderer_version = 'pypdfium2/4.0.0 pdfium/1.0.0.0' "
+            "WHERE id = %s",
+            (segment_id,),
+        )
+        connection.commit()
+
+    report = run_the_worker(world)
+    assert report.failed == 1, f"a crop rendered against provenance it does not match: {report}"
+
+    state = rows(
+        world,
+        "SELECT segment_file_id, renderer_version FROM receipt_segments WHERE id = %s",
+        segment_id,
+    )
+    assert state[0][0] is None, "a mismatched render still attached a file"
+    assert state[0][1] == "pypdfium2/4.0.0 pdfium/1.0.0.0", (
+        "the worker rewrote the provenance to match its own output, which is the failure this "
+        "refusal exists to prevent"
+    )
+
+    job = rows(
+        world,
+        "SELECT last_error_message FROM processing_jobs WHERE id = %s",
+        accepted["processing_job_id"],
+    )
+    assert "provenance" in (job[0][0] or ""), (
+        f"the job does not say why it refused: {job[0][0]!r}"
+    )

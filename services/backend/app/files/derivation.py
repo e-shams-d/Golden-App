@@ -53,6 +53,12 @@ class DerivationRequest:
     media_type: str
     filename: str
     body: BinaryIO
+    # Which job produced it, when a job did. `08_Bank_File_and_Result_Processing.md:431` counts the
+    # job among what a derivation records, and the column has existed unwritten since M4's
+    # migration: nothing derived anything until M8's renderer arrived. Optional because a
+    # derivation taken inline — a preview rendered on request — has no job to name, and a required
+    # field would force a caller to invent one.
+    created_by_job_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -137,6 +143,7 @@ def record_derivation(
         renderer_version=request.renderer_version,
         source_hash=source.sha256_hash,
         parameters=dict(request.parameters),
+        created_by_job_id=request.created_by_job_id,
     )
     uow.session.add(derivation)
     uow.flush()

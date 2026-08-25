@@ -59,6 +59,12 @@ TASK_TYPES: tuple[str, ...] = (
 )
 
 TASK_TYPE_EXPORT_INTEGRITY = "bank_export_integrity"
+# M8 slice 4. Naming a value the tuple above already holds rather than adding one. A crop that
+# cannot be rendered leaves a segment in a bundle with no file, which is precisely what
+# `bundle_unresolved_segment` describes — and it is the accurate type as well as the permitted one,
+# because what a person is left to deal with is an unresolved segment whatever made the render fail.
+# A `crop_failed` type would have been an invention, and the column's CHECK would have refused it.
+TASK_TYPE_UNRESOLVED_SEGMENT = "bundle_unresolved_segment"
 
 # How a task ended. `unresolved_with_reason` is the honest close for a task whose subject is still
 # not fixed, and the table requires it to carry prose — otherwise the honest option would also be
@@ -83,6 +89,7 @@ ENTITY_TYPES: tuple[str, ...] = (
 )
 
 ENTITY_BANK_EXPORT = "bank_excel_export"
+ENTITY_RECEIPT_SEGMENT = "receipt_segment"
 
 
 def _quoted(values: tuple[str, ...]) -> str:

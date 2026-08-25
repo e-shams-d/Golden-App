@@ -1158,6 +1158,40 @@
         "title": "Body_uploadFile",
         "type": "object"
       },
+      "BoundingBoxRequest": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1763`, with the four values as strings.\n\n**Strings, exactly as document 05 writes them** — `\"0.105000\"`, not `0.105`. The column is\n`NUMERIC(10,6)` and these four numbers have to reproduce a crop; a JSON float would arrive as a\nbinary approximation of a decimal the database never held. The same reasoning\n`MONEY_TIME_CONTRACT.md` applies to money, applied to the other kind of value in this system\nwhere the exact digits are the point.",
+        "properties": {
+          "height": {
+            "maxLength": 12,
+            "title": "Height",
+            "type": "string"
+          },
+          "width": {
+            "maxLength": 12,
+            "title": "Width",
+            "type": "string"
+          },
+          "x": {
+            "maxLength": 12,
+            "title": "X",
+            "type": "string"
+          },
+          "y": {
+            "maxLength": 12,
+            "title": "Y",
+            "type": "string"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height"
+        ],
+        "title": "BoundingBoxRequest",
+        "type": "object"
+      },
       "BundleDetail": {
         "additionalProperties": false,
         "description": "Everything §16's review workspace needs to open a bundle.\n\n`15_Agent_Implementation_Plan.md:1028` lists eleven items for that workspace and this carries\nthe ones that are facts about the bundle: its summary, its files, and what it is linked to.\nSegments arrive in slice 2 and previews in slice 5, and `API-BUNDLE-001` parses §16's list so\nthe API and slice 6's screen answer to one source rather than two copies of it.",
@@ -1544,6 +1578,30 @@
         "title": "ChangePasswordResponse",
         "type": "object"
       },
+      "ClientDimensionsRequest": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1770`. What the operator's screen was showing.\n\nSent so the server can disagree. Coordinates normalised against one raster and applied to\nanother describe a different region of the page while staying perfectly in range — the one\nerror a bounds check cannot see.",
+        "properties": {
+          "height": {
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "width": {
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "width",
+          "height"
+        ],
+        "title": "ClientDimensionsRequest",
+        "type": "object"
+      },
       "CloseBundleRequest": {
         "additionalProperties": false,
         "description": "`05_API_Specification.md:1705`.\n\n`unresolved_dispositions` is absent and slice 1 says why in the command: it needs segments,\nwhich slice 2 creates. A field accepted and ignored would be worse than one that is not there.",
@@ -1773,6 +1831,57 @@
           "iban"
         ],
         "title": "CreateBeneficiaryRequest",
+        "type": "object"
+      },
+      "CreateCropRequest": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1759`, plus the rotation.\n\n**`rotation_degrees` is not in document 05's request body, and it is here.** DOC-CONFLICT-057\nargued for it; `command_catalog.yaml:277` settles it — the approved command row lists the\npreconditions of `receipt_segment.create_crop` as \"normalized_rectangle, page, **rotation**,\nrenderer_version, derived_checksum\" and marks the row\n`status: blocked_by_coordinate_rotation_contract`. So M0 requires the angle and names its\nabsence from this schema as the blocker. Accepting it is what unblocks the row rather than a\nliberty taken with the contract.\n\nDefaulted to 0 so an unrotated crop — the common case — sends what document 05 shows.",
+        "properties": {
+          "bank_result_bundle_file_id": {
+            "format": "uuid",
+            "title": "Bank Result Bundle File Id",
+            "type": "string"
+          },
+          "bbox": {
+            "$ref": "#/components/schemas/BoundingBoxRequest"
+          },
+          "client_source_dimensions": {
+            "$ref": "#/components/schemas/ClientDimensionsRequest"
+          },
+          "manual_fields": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ManualFieldsRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "page_number": {
+            "minimum": 1.0,
+            "title": "Page Number",
+            "type": "integer"
+          },
+          "rotation_degrees": {
+            "default": 0,
+            "title": "Rotation Degrees",
+            "type": "integer"
+          },
+          "source_file_id": {
+            "format": "uuid",
+            "title": "Source File Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bank_result_bundle_file_id",
+          "source_file_id",
+          "page_number",
+          "bbox",
+          "client_source_dimensions"
+        ],
+        "title": "CreateCropRequest",
         "type": "object"
       },
       "CreateDraftRequest": {
@@ -2046,6 +2155,31 @@
           "amount"
         ],
         "title": "CreateRevisionRequest",
+        "type": "object"
+      },
+      "CropAccepted": {
+        "additionalProperties": false,
+        "description": "`202`, and what the caller can do with it.\n\nDocument 05 at `:1786`: \"Crop generation may return `202` with a processing job.\" The segment\ncomes back as well as the job, because the segment id is what the operator's panel needs in\norder to show a placeholder that later becomes a picture — and `segment_file_id` being null is\nthe honest answer to \"is it ready yet\", which is why the whole detail is returned rather than a\nsummary.\n\nDeclared after `SegmentDetail` rather than beside its siblings: Pydantic resolves the nested\nmodel at class creation, so a forward reference here would need an explicit rebuild for no gain.",
+        "properties": {
+          "processing_job_id": {
+            "format": "uuid",
+            "title": "Processing Job Id",
+            "type": "string"
+          },
+          "processing_job_status": {
+            "title": "Processing Job Status",
+            "type": "string"
+          },
+          "segment": {
+            "$ref": "#/components/schemas/SegmentDetail"
+          }
+        },
+        "required": [
+          "segment",
+          "processing_job_id",
+          "processing_job_status"
+        ],
+        "title": "CropAccepted",
         "type": "object"
       },
       "DeactivateBeneficiaryRequest": {
@@ -7801,6 +7935,126 @@
         ]
       }
     },
+    "/api/v1/bank-result-bundles/{bundle_id}/receipt-segments/crop": {
+      "post": {
+        "description": "`POST /api/v1/bank-result-bundles/{bundle_id}/receipt-segments/crop`. §19.2 at `:1753`.\n\n**`Idempotency-Key` required, and `command_catalog.yaml:277` says so** — `idempotency:\nrequired`, not \"recommended\". A retried crop would otherwise produce a second segment claiming\nthe same rectangle, a second render job, and a bundle whose segment count double-counts one\npiece of evidence.\n\n**The rectangle is parsed here and validated in the command.** Turning `\"0.105000\"` into a\n`Decimal` is transport; deciding whether the rectangle can be reproduced is a rule, and it\nbelongs where the renderer can be asked the same question.",
+        "operationId": "createReceiptCrop",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCropRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CropAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The rectangle, rotation, page or client dimensions cannot produce a reproducible crop."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the segment permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such bundle, file or segment."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The bundle is closed, or the file is not usable as evidence."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Cut a rectangle out of a bundle page as evidence.",
+        "tags": [
+          "receipt-segments"
+        ]
+      }
+    },
     "/api/v1/bank-result-bundles/{bundle_id}/receipt-segments/external": {
       "post": {
         "description": "`POST /api/v1/bank-result-bundles/{bundle_id}/receipt-segments/external`. `:1733`.\n\n**No rectangle and no rotation.** §12.4's bbox CHECK has an all-null branch for exactly this\nmethod: the evidence is the whole file. A segment with no coordinates is a complete record here,\nnot a partial one, and the `rotation_needs_a_rectangle` CHECK is what stops an angle being\nstored beside nothing.\n\n**`Idempotency-Key` required.** `:1734` shows one, and a retried attachment must not produce\ntwo segments claiming the same evidence — which would also double the bundle's segment count and\nput a bundle in the review queue for work that does not exist.",
@@ -7853,6 +8107,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The rectangle, rotation, page or client dimensions cannot produce a reproducible crop."
           },
           "401": {
             "content": {
@@ -12522,6 +12786,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The rectangle, rotation, page or client dimensions cannot produce a reproducible crop."
           },
           "401": {
             "content": {

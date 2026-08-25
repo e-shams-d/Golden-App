@@ -674,6 +674,25 @@ ATTACH_EXTERNAL_EVIDENCE = CommandNames(
     ),
 )
 
+CREATE_RECEIPT_CROP = CommandNames(
+    audit_action="receipt_segment.crop_created",
+    # `audit_outbox_catalog.yaml:38` names the action and gives it no event, which is right: nothing
+    # outside the platform acts on evidence being cut out of a page. M9's confirmation is where
+    # anything downstream begins to care.
+    outbox_event_type=None,
+    # **True — and the only M8 command for which it is.** `permission_catalog.yaml:537` approves and
+    # seeds `receipt_segment.create_crop`; `command_catalog.yaml:277` carries the row with this
+    # exact path, `idempotency: required`, and preconditions naming the normalized rectangle, page,
+    # rotation, renderer version and derived checksum; `audit_outbox_catalog.yaml:38` names the
+    # audit action. Nothing here is provisional.
+    #
+    # Read against slices 1, 2 and 3, this is what makes Q-12 precise rather than a complaint. The
+    # catalogues are not vaguely incomplete for the evidence path — they describe in full the one
+    # command that needs a PDF renderer, and omit `link_batch`, `create_external` and the entire
+    # review queue. That asymmetry is the finding, and it is worth reporting as an asymmetry.
+    catalogued=True,
+)
+
 # M8 slice 3. Five names for the review queue, and the fifth instance of DOC-CONFLICT-052's shape —
 # the broadest one yet, so the reason is written once here and the four below refer to it.
 #
@@ -782,6 +801,8 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     CLOSE_BANK_RESULT_BUNDLE,
     # M8 slice 2, added in the same edit that defines it.
     ATTACH_EXTERNAL_EVIDENCE,
+    # M8 slice 4, likewise. The only M8 name that is fully catalogued.
+    CREATE_RECEIPT_CROP,
     # M8 slice 3, likewise added in the edit that defines them.
     OPEN_REVIEW_TASK,
     ASSIGN_REVIEW_TASK,
