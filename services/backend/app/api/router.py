@@ -11,6 +11,7 @@ from app.api.v1.beneficiaries import router as beneficiaries_router
 from app.api.v1.center_profile import router as center_profile_router
 from app.api.v1.files import router as files_router
 from app.api.v1.health import router as health_router
+from app.api.v1.manual_review_tasks import router as manual_review_tasks_router
 from app.api.v1.metadata import router as metadata_router
 from app.api.v1.operations import router as operations_router
 from app.api.v1.payment_batches import router as payment_batches_router
@@ -45,3 +46,6 @@ api_v1_router.include_router(bank_result_bundles_router)
 # M8 slice 2. No prefix of its own: document 05 puts creation under the bundle and the read under
 # `/receipt-segments`, so the router declares both paths rather than pretending they share a root.
 api_v1_router.include_router(receipt_segments_router)
+# M8 slice 3. The queue M7's G-10 said did not exist, and the first surface in this project that is
+# about *work* rather than about money.
+api_v1_router.include_router(manual_review_tasks_router)

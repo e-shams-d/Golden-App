@@ -59,11 +59,14 @@ from app.audit.registry import (
     QUARANTINE_EXPORT_ON_INTEGRITY_FAILURE,
 )
 from app.audit.writer import AuditActor, AuditContext, AuditEntry, AuditWriter
+from app.commands.manual_review_task import OpenTask as OpenReviewTask
+from app.commands.manual_review_task import open_task as open_review_task
 from app.core.errors import BusinessRuleViolationError, ConflictError, NotFoundError
 from app.core.time import to_business_time
 from app.db.locking import LockScope, LockTarget, lock_rows
 from app.db.models.bank_export import EXPORT_FINAL, EXPORT_PREVIEW, BankExcelExport
 from app.db.models.file_object import CLEAN_SCAN_STATUS, FileObject
+from app.db.models.manual_review_task import ENTITY_BANK_EXPORT, TASK_TYPE_EXPORT_INTEGRITY
 from app.db.models.payment_batch import (
     BatchApproval,
     PaymentBatch,
@@ -866,9 +869,14 @@ def _quarantine(
     excludes `quarantined`, so keeping it does not block the next attempt — the index was written
     with this case in it.
 
-    **§15.5 asks for a "high-priority task/security event" and Phase 1A has neither channel.**
-    G-10 already records the missing task table. Writing this slice found the other half, and it
-    is recorded rather than worked around:
+    **§15.5 asks for a "high-priority task/security event". M8 slice 3 supplied the task; the
+    security event is still absent.**
+
+    The task half is done and this function creates one — see the call at the end. M7 recorded G-10
+    as "there is no task table in Phase 1A", which was wrong: `04_Database_Schema.md:1314` specified
+    `manual_review_tasks` all along and it was unbuilt work rather than a design gap. That half of
+    the paragraph below is now history, kept because the reasoning about the *other* half still
+    holds:
 
     `auth_events.event_class` admits six values — `authentication`, `authorization`, `session`,
     `credential`, `account_state`, `administrative` — which are doc 12's twenty security event
@@ -909,6 +917,37 @@ def _quarantine(
         ),
         actor=actor,
         context=context,
+    )
+
+    # **§14.5's fifth requirement, finally buildable.** M7 recorded G-10 — "there is no task table
+    # in Phase 1A" — and used it to excuse leaving "create/link urgent review task" undone.
+    # `04_Database_Schema.md:1314` specifies `manual_review_tasks` with no later-phase marker, so
+    # that was unbuilt work rather than a design gap. M8 slice 3 built it and this is the caller.
+    #
+    # **Highest priority, because of what this is.** A quarantined export is a file whose contents
+    # disagree with the record of what the centre approved, and nothing downstream can act on it
+    # until a person decides why. `open_task` is idempotent on the open queue, so a second
+    # revalidation of the same export finds this task instead of adding another identical item.
+    #
+    # It does not un-quarantine anything and cannot: §13.1 keeps financial truth in explicit
+    # tables, and the export's status is one of them.
+    open_review_task(
+        OpenReviewTask(
+            task_type=TASK_TYPE_EXPORT_INTEGRITY,
+            entity_type=ENTITY_BANK_EXPORT,
+            entity_id=export.id,
+            title=f"Integrity failure on export {export.export_number}",
+            priority=5,
+            description=(
+                "The stored file disagrees with the record of the approved version. "
+                + "; ".join(failure.describe() for failure in failures)
+            ),
+        ),
+        session=session,
+        policy=policy,
+        actor=actor,
+        context=context,
+        now=now,
     )
 
 

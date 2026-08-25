@@ -229,6 +229,15 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # the contract against document 05 will notice both.
         "attachExternalEvidence",
         "getReceiptSegment",
+        # M8 slice 3. `05_API_Specification.md:2058`'s six, all of them — the first M8 surface where
+        # the document's route list and the contract agree exactly: for once no permission is
+        # missing and no approved rule forbids one of them.
+        "listManualReviewTasks",
+        "getManualReviewTask",
+        "assignManualReviewTask",
+        "startManualReviewTask",
+        "resolveManualReviewTask",
+        "cancelManualReviewTask",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

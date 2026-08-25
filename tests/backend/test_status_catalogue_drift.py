@@ -98,6 +98,9 @@ STATUS_COLUMN_TO_AGGREGATE: dict[tuple[str, str], str] = {
     # catalogue and neither is admitted. Q-2 records why a segment awaiting its crop rests in
     # `created` rather than in an invented `processing`: the *job* carries the render's progress.
     ("receipt_segments", "status"): "receipt_segment",
+    # M8 slice 3. The only M8 aggregate the catalogue settles completely — four canonical states and
+    # no unresolved aliases at all, which after three slices of the opposite is worth noting.
+    ("manual_review_tasks", "status"): "manual_review_task",
 }
 
 # Status columns whose value set is **local to one relation** and is not a lifecycle the catalogue

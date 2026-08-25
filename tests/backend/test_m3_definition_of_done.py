@@ -248,6 +248,15 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
         "/api/v1/bank-result-bundles/{bundle_id}/receipt-segments/external",
     ): PERMISSION,
     ("GET", "/api/v1/receipt-segments/{segment_id}"): PERMISSION,
+    # M8 slice 3. Six routes, three permissions: the catalogue has no `.start` and no `.cancel`, so
+    # `start` takes `manual_review.assign` and `cancel` takes `.resolve`. `PERMISSION` throughout —
+    # a queue item is internal work and has no owning trader to scope by.
+    ("GET", "/api/v1/manual-review-tasks"): PERMISSION,
+    ("GET", "/api/v1/manual-review-tasks/{task_id}"): PERMISSION,
+    ("POST", "/api/v1/manual-review-tasks/{task_id}/assign"): PERMISSION,
+    ("POST", "/api/v1/manual-review-tasks/{task_id}/start"): PERMISSION,
+    ("POST", "/api/v1/manual-review-tasks/{task_id}/resolve"): PERMISSION,
+    ("POST", "/api/v1/manual-review-tasks/{task_id}/cancel"): PERMISSION,
     # M5 slice 8. The two reads the screens need, and which nothing had built: eleven
     # published operations and only the revision history read. Both are `DUAL` — a trader
     # sees their own through `scoped()`, an accountant sees the queue through
@@ -592,6 +601,25 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ): "test_no_segment_route_answers_a_caller_without_the_permission",
     ("GET", "/api/v1/receipt-segments/{segment_id}", "permission"): (
         "test_no_segment_route_answers_a_caller_without_the_permission"
+    ),
+    # M8 slice 3. One test over the surface, for the reason the two families above give.
+    ("GET", "/api/v1/manual-review-tasks", "permission"): (
+        "test_no_review_route_answers_a_caller_without_the_permission"
+    ),
+    ("GET", "/api/v1/manual-review-tasks/{task_id}", "permission"): (
+        "test_no_review_route_answers_a_caller_without_the_permission"
+    ),
+    ("POST", "/api/v1/manual-review-tasks/{task_id}/assign", "permission"): (
+        "test_no_review_route_answers_a_caller_without_the_permission"
+    ),
+    ("POST", "/api/v1/manual-review-tasks/{task_id}/start", "permission"): (
+        "test_no_review_route_answers_a_caller_without_the_permission"
+    ),
+    ("POST", "/api/v1/manual-review-tasks/{task_id}/resolve", "permission"): (
+        "test_no_review_route_answers_a_caller_without_the_permission"
+    ),
+    ("POST", "/api/v1/manual-review-tasks/{task_id}/cancel", "permission"): (
+        "test_no_review_route_answers_a_caller_without_the_permission"
     ),
     # M5 slice 8. The two reads, four entries because both are `DUAL`. The ownership pair
     # answers `404` and the permission pair `403`, and each is asserted in its own test

@@ -418,6 +418,44 @@ def test_integrity_is_revalidated_before_every_download(world: dict[str, Any]) -
         world, "SELECT status FROM bank_excel_exports WHERE id = %s", target["export_id"]
     ) == [("quarantined",)]
 
+    # `SVC-QUARANTINE-001`, M8 slice 3. §14.5's fifth requirement — "create/link urgent review
+    # task" — which M7 left undone on the strength of G-10's claim that Phase 1A had no task table.
+    # `04_Database_Schema.md:1314` had specified `manual_review_tasks` all along, so that was
+    # unbuilt work rather than a design gap, and this is the assertion that it is now built.
+    #
+    # Asserted here rather than in `test_review_queue.py` because a real quarantine needs this
+    # module's whole chain: a request batched, finalized, approved, exported and then tampered with.
+    tasks = rows(
+        world,
+        "SELECT task_type, priority, status FROM manual_review_tasks "
+        "WHERE entity_type = 'bank_excel_export' AND entity_id = %s",
+        target["export_id"],
+    )
+    assert len(tasks) == 1, f"quarantine produced {len(tasks)} tasks"
+    assert tasks[0] == ("bank_export_integrity", 5, "open")
+
+    # A third download is refused too, and **not by re-running the checks**: `SEC-DOWNLOAD-001`'s
+    # guard in the route sees `quarantined` and refuses before revalidation, so this call never
+    # reaches `_quarantine` and never calls `open_task`.
+    #
+    # Worth writing down, because the first version of this test claimed otherwise. It asserted the
+    # second refusal named the failed comparison, and it does not — the guard raises with an empty
+    # failure list. So `open_task`'s idempotency is **not** what keeps the count at one here; the
+    # short-circuit is. Its idempotency is covered by `uq_review_task_open_per_entity` and by the
+    # early return the model tests pin, which is where a repeat can actually be provoked.
+    repeated = download(world, target["export_id"])
+    assert repeated.status_code == 409, repeated.text
+    assert (
+        len(
+            rows(
+                world,
+                "SELECT id FROM manual_review_tasks WHERE entity_id = %s",
+                target["export_id"],
+            )
+        )
+        == 1
+    ), "a second revalidation raised a duplicate task"
+
 
 def test_a_quarantined_export_cannot_be_downloaded_or_marked_sent(
     world: dict[str, Any],

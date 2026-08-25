@@ -85,7 +85,8 @@ M7 recorded G-10 as "there is no task table in Phase 1A", and used it to justify
 routes. The table was never a design gap; it was unbuilt work, and M8 is where it is scheduled.
 
 So slice 3 owes a debt: once the queue exists, M7's quarantine path should create a task, and the
-`RECORDED_GAPS` entry that excused it has to go. A recorded gap whose reason has expired is worse
+record of it has to go — which turned out to be a docstring rather than a `RECORDED_GAPS` entry, and
+slice 3 records the correction. A recorded gap whose reason has expired is worse
 than no gap at all — it reads as considered.
 
 ## 1.3 The worker has never run a real job
@@ -347,14 +348,22 @@ Work that needs a person has somewhere to be, and the gap M7 recorded closes.
 - `SVC-TASK-002` — `entity_type`/`entity_id` are **queue navigation only** (doc 04 `:1324`): no
   financial read joins through them, asserted by walking the query surface for a join on those two
   columns.
-- `SVC-QUARANTINE-001` — quarantining a bank export creates an open task naming that export, and
-  M7's `RECORDED_GAPS` entry excusing its absence is **removed in the same commit**. The gate that
-  fails an obligation both pending and covered is what makes that not optional.
+- `SVC-QUARANTINE-001` — quarantining a bank export creates an open task naming that export, and a
+  second revalidation of the same export finds that task rather than raising a duplicate.
+
+  **This section originally claimed M7's `RECORDED_GAPS` entry would be removed here. There is no
+  such entry.** M7 recorded the missing task in the plan's prose and in `_quarantine`'s docstring as
+  G-10, and never added one to `RECORDED_GAPS` — so the cleanup this plan promised had no target.
+  What was actually stale was the docstring, which said "G-10 already records the missing task
+  table"; it now says the task half is built and the security-event half is not. Written down
+  because a plan that claims a cleanup nobody can find is the same defect as a gap entry nobody
+  removes, pointing the other way.
 
 ### Negative controls
 
-Leave the `RECORDED_GAPS` entry in place: the traceability gate must fail. Resolve without a code:
-`SVC-TASK-001` must fail. Join a financial read through `entity_id`: `SVC-TASK-002` must fail.
+Make `open_task` raise instead of returning the existing row: `SVC-QUARANTINE-001` must fail on the
+second revalidation. Resolve without a code: `SVC-TASK-001` must fail. Join a financial read through
+`entity_id`: `SVC-TASK-002` must fail. Permit `resolved → in_progress`: `SVC-TASK-001` must fail.
 
 ## Slice 4 — The renderer, the crop, and the job that does it
 

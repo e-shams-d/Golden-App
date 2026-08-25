@@ -447,6 +447,21 @@
         "title": "ApproveVersionRequest",
         "type": "object"
       },
+      "AssignRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "assignee_admin_user_id": {
+            "format": "uuid",
+            "title": "Assignee Admin User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "assignee_admin_user_id"
+        ],
+        "title": "AssignRequest",
+        "type": "object"
+      },
       "AttachExternalRequest": {
         "additionalProperties": false,
         "description": "`05_API_Specification.md:1733`.",
@@ -1458,25 +1473,6 @@
           }
         },
         "title": "CancelBatchRequest",
-        "type": "object"
-      },
-      "CancelRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "reason": {
-            "anyOf": [
-              {
-                "maxLength": 500,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          }
-        },
-        "title": "CancelRequest",
         "type": "object"
       },
       "CenterProfileResponse": {
@@ -4170,6 +4166,35 @@
         "title": "RenameCenterProfileRequest",
         "type": "object"
       },
+      "ResolveRequest": {
+        "additionalProperties": false,
+        "description": "`:2065`'s explicit disposition.\n\n`resolution_code` is required and constrained to the catalogue of codes: a free-text resolution\nis one nothing can group, and the whole value of a queue is being able to ask what happened to\nthe items in it.",
+        "properties": {
+          "resolution_code": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Resolution Code",
+            "type": "string"
+          },
+          "resolution_note": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Note"
+          }
+        },
+        "required": [
+          "resolution_code"
+        ],
+        "title": "ResolveRequest",
+        "type": "object"
+      },
       "ReturnForCorrectionRequest": {
         "additionalProperties": false,
         "description": "`05_API_Specification.md:1203-1211`.\n\n`reason_code` and `message_to_trader` are required because the document says \"Reason\nand trader notification are required\" — so they are required in the schema, where a\ncaller finds out before the command runs, rather than checked in the handler.",
@@ -4760,6 +4785,164 @@
         "title": "StateChangeResponse",
         "type": "object"
       },
+      "TaskDetail": {
+        "additionalProperties": false,
+        "description": "One queue item.\n\n**`entity_type`/`entity_id` are returned for navigation and nothing else** — §13.1 at `:1324`.\nA screen uses them to open the subject; no read here joins through them, and\n`SVC-TASK-002` asserts that over the query surface.",
+        "properties": {
+          "accepted_resolution_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Accepted Resolution Codes",
+            "type": "array"
+          },
+          "assigned_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned To"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "due_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due At"
+          },
+          "entity_id": {
+            "format": "uuid",
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "integer"
+          },
+          "record_version": {
+            "title": "Record Version",
+            "type": "integer"
+          },
+          "resolution_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Code"
+          },
+          "resolution_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Note"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "resolved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved By"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "task_type": {
+            "title": "Task Type",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "task_type",
+          "priority",
+          "status",
+          "entity_type",
+          "entity_id",
+          "assigned_to",
+          "title",
+          "description",
+          "due_at",
+          "resolved_by",
+          "resolved_at",
+          "resolution_code",
+          "resolution_note",
+          "record_version",
+          "created_at",
+          "updated_at",
+          "accepted_resolution_codes"
+        ],
+        "title": "TaskDetail",
+        "type": "object"
+      },
       "TraderListResponse": {
         "additionalProperties": false,
         "description": "The centre's view of the businesses it has been asked to approve.\n\nUnpaged, and recorded as a decision rather than an omission: the population is the\nbusinesses one gold centre deals with, which is tens rather than thousands, and the\nlist-convention envelope M2 built would be a contract change to introduce. When the\ncount justifies paging, that envelope is what it should use.",
@@ -5286,6 +5469,41 @@
           "workers"
         ],
         "title": "WorkersResponse",
+        "type": "object"
+      },
+      "app__api__v1__manual_review_tasks__CancelRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "CancelRequest",
+        "type": "object"
+      },
+      "app__api__v1__payment_requests__CancelRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "CancelRequest",
         "type": "object"
       }
     },
@@ -8680,6 +8898,710 @@
         ]
       }
     },
+    "/api/v1/manual-review-tasks": {
+      "get": {
+        "description": "`GET /api/v1/manual-review-tasks`. `05_API_Specification.md:2058`.\n\n**The default ordering is the index's**: priority descending, then oldest first. §13.1 specifies\nthat index and a query that ordered differently would either not use it or would present the\nqueue in an order nobody chose.\n\n`open_only` defaults to true for M7 slice 1's reason — a queue shows what is waiting — and the\nunfiltered list stays available: a history nobody can read is a history nobody can audit.",
+        "operationId": "listManualReviewTasks",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "open_only",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Open Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "assigned_to_me",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Assigned To Me",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TaskDetail"
+                  },
+                  "title": "Response Listmanualreviewtasks",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the review permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such task or assignee."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The task moved first, or the transition is not permitted."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match or Idempotency-Key is required."
+          }
+        },
+        "summary": "The open queue, in the order a person works it.",
+        "tags": [
+          "manual-review-tasks"
+        ]
+      }
+    },
+    "/api/v1/manual-review-tasks/{task_id}": {
+      "get": {
+        "description": "`GET /api/v1/manual-review-tasks/{task_id}`.",
+        "operationId": "getManualReviewTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the review permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such task or assignee."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The task moved first, or the transition is not permitted."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match or Idempotency-Key is required."
+          }
+        },
+        "summary": "One queue item.",
+        "tags": [
+          "manual-review-tasks"
+        ]
+      }
+    },
+    "/api/v1/manual-review-tasks/{task_id}/assign": {
+      "post": {
+        "description": "`POST /api/v1/manual-review-tasks/{task_id}/assign`.",
+        "operationId": "assignManualReviewTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the review permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such task or assignee."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The task moved first, or the transition is not permitted."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match or Idempotency-Key is required."
+          }
+        },
+        "summary": "Say who is responsible for this item.",
+        "tags": [
+          "manual-review-tasks"
+        ]
+      }
+    },
+    "/api/v1/manual-review-tasks/{task_id}/cancel": {
+      "post": {
+        "description": "`POST /api/v1/manual-review-tasks/{task_id}/cancel`.\n\n**Guarded by `manual_review.resolve`**, because the catalogue has no `.cancel` and both commands\nend a queue item. **Not** resolution though: nothing is decided about the subject, so no\n`resolution_code` is written and the table refuses one.",
+        "operationId": "cancelManualReviewTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__api__v1__manual_review_tasks__CancelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the review permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such task or assignee."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The task moved first, or the transition is not permitted."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match or Idempotency-Key is required."
+          }
+        },
+        "summary": "Withdraw an item that should not have been raised.",
+        "tags": [
+          "manual-review-tasks"
+        ]
+      }
+    },
+    "/api/v1/manual-review-tasks/{task_id}/resolve": {
+      "post": {
+        "description": "`POST /api/v1/manual-review-tasks/{task_id}/resolve`.\n\n**Both preconditions.** `:2065` requires `If-Match` on the transition and idempotency on\n\"sensitive resolution commands\" — this is one, because a resolution is the record that a person\nlooked and decided, and a retry must not produce two of them.\n\nResolving changes nothing about the subject. A task about a quarantined export does not\nun-quarantine it: §13.1 keeps financial truth in explicit tables.",
+        "operationId": "resolveManualReviewTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the review permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such task or assignee."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The task moved first, or the transition is not permitted."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match or Idempotency-Key is required."
+          }
+        },
+        "summary": "Record what was decided about this item.",
+        "tags": [
+          "manual-review-tasks"
+        ]
+      }
+    },
+    "/api/v1/manual-review-tasks/{task_id}/start": {
+      "post": {
+        "description": "`POST /api/v1/manual-review-tasks/{task_id}/start`.\n\n**Guarded by `manual_review.assign`**, because the catalogue has no `.start` and beginning work\nis the same authority as deciding who does it. Recorded here rather than resolved by inventing a\npermission.",
+        "operationId": "startManualReviewTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the review permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such task or assignee."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The task moved first, or the transition is not permitted."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match or Idempotency-Key is required."
+          }
+        },
+        "summary": "Record that work has begun.",
+        "tags": [
+          "manual-review-tasks"
+        ]
+      }
+    },
     "/api/v1/me/trader/profile": {
       "get": {
         "operationId": "getOwnTraderProfile",
@@ -10752,7 +11674,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CancelRequest"
+                "$ref": "#/components/schemas/app__api__v1__payment_requests__CancelRequest"
               }
             }
           },

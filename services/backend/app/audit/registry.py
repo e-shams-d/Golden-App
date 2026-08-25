@@ -674,6 +674,66 @@ ATTACH_EXTERNAL_EVIDENCE = CommandNames(
     ),
 )
 
+# M8 slice 3. Five names for the review queue, and the fifth instance of DOC-CONFLICT-052's shape —
+# the broadest one yet, so the reason is written once here and the four below refer to it.
+#
+# `permission_catalog.yaml:640,646,652` approves `manual_review.read`, `.assign` and `.resolve`, all
+# seeded. `command_catalog.yaml` has **no row for any of them**, and `audit_outbox_catalog.yaml` has
+# **no manual-review action at all**, while `05_API_Specification.md:2058` defines six routes. So an
+# entire operator-facing surface is approved at the permission layer and undescribed at the command
+# layer.
+#
+# Read with `link_batch` (slice 1) and `create_external` (slice 2), the pattern is no longer
+# incidental: `command_catalog.yaml` is systematically incomplete for the evidence path, and
+# `audit_outbox_catalog.yaml`'s own `m0_open_items` says its event set is incomplete. M8 needs one
+# catalogue update, not five separate rows — recorded as Q-12 in the plan. Every name below must be
+# renamed to whatever M0 approves.
+_REVIEW_QUEUE_REASON = (
+    "M8 slice 3. Fifth instance of DOC-CONFLICT-052: permission_catalog.yaml:640,646,652 approve "
+    "and seed manual_review.read/.assign/.resolve, command_catalog.yaml has no row for any of "
+    "them, and audit_outbox_catalog.yaml names no manual-review action at all — while "
+    "05_API_Specification.md:2058 defines six routes. Implemented against the permissions' own "
+    "identifiers, as M6 slice 4 did under this conflict. Q-12 asks for one catalogue update for "
+    "the whole evidence path rather than five rows; until then this name is provisional and must "
+    "be renamed to whatever M0 approves. No outbox event: a queue item is internal work, and "
+    "nothing outside the platform acts on somebody being asked to look at something."
+)
+
+OPEN_REVIEW_TASK = CommandNames(
+    audit_action="manual_review_task.opened",
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=_REVIEW_QUEUE_REASON,
+)
+
+ASSIGN_REVIEW_TASK = CommandNames(
+    audit_action="manual_review_task.assigned",
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=_REVIEW_QUEUE_REASON,
+)
+
+START_REVIEW_TASK = CommandNames(
+    audit_action="manual_review_task.started",
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=_REVIEW_QUEUE_REASON,
+)
+
+RESOLVE_REVIEW_TASK = CommandNames(
+    audit_action="manual_review_task.resolved",
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=_REVIEW_QUEUE_REASON,
+)
+
+CANCEL_REVIEW_TASK = CommandNames(
+    audit_action="manual_review_task.cancelled",
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=_REVIEW_QUEUE_REASON,
+)
+
 
 # Every `CommandNames` defined above, and the gate that reads this tuple is the only thing
 # checking any of them against the catalogue. Three M5 entries — `BEGIN_REVIEW`,
@@ -722,6 +782,12 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     CLOSE_BANK_RESULT_BUNDLE,
     # M8 slice 2, added in the same edit that defines it.
     ATTACH_EXTERNAL_EVIDENCE,
+    # M8 slice 3, likewise added in the edit that defines them.
+    OPEN_REVIEW_TASK,
+    ASSIGN_REVIEW_TASK,
+    START_REVIEW_TASK,
+    RESOLVE_REVIEW_TASK,
+    CANCEL_REVIEW_TASK,
     # M4's file lifecycle. Defined since M4 and **left out of this tuple**, so their catalogue
     # position went unverified for two milestones — the same gap as M5's accountant three, found
     # by the same gate on the same run.
