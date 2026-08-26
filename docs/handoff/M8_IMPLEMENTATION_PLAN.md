@@ -591,11 +591,27 @@ raster check.
 
 ## Slice 6 — The review workspace
 
-**Blocked on Q-4.**
+**Done.**
 
 ### What it changes
 
-§16 `:1028`'s eleven items, as a desktop-first admin screen.
+§16 `:1028`'s eleven items, as a desktop-first admin screen — **seven of them built, four recorded
+absent against the contract.**
+
+Attempt search needs `GET /api/v1/payment-attempts`, which doc 05 `:1553` specifies and nobody has
+built; the candidate, evidence and history drawers need matching, evidence links and segment
+history, all M9's. Four panels with nothing behind them would be worse than four absences: an empty
+drawer reads as "no candidates found" rather than "this does not work yet". So the record is a live
+one — `workspace-screens.test.ts` reads the generated OpenAPI contract and fails the day one of
+those routes appears, which is exactly when somebody needs to be told a panel became buildable. Slice
+4 used the same shape for §16.5's prohibitions; a control on it asserts every one of the eleven items
+is accounted for exactly once, present or absent, so an item cannot fall out of both lists unnoticed.
+
+**A queue screen was not in the plan and the slice needed one.** `UI-REQ-004` found
+`/bank-result-bundles/[bundleId]` reachable only by typing a URL. That is not tidiness: nobody
+memorises a bundle id, so a workspace with no queue is a workspace nobody opens. It sorts by
+outstanding work rather than arrival, because §16.3's first item is *unresolved* navigation and the
+question an operator opens it with is "what still needs me".
 
 ### What proves it
 
@@ -615,6 +631,40 @@ raster check.
 
 Make the crop pointer-only: `UI-CROP-001` must fail. Send pixel coordinates: `UI-CROP-002` must
 fail. Remove the fallback: `UI-EVIDENCE-001` must fail.
+
+`scripts/sabotage-m8-slice6.sh` runs those three and five more: hide the fallback behind a failed
+preview, invent the raster instead of reading it, cycle rotation by arithmetic, let a nudge leave the
+page, and drop the queue from navigation. **Eight of eight caught — after the first run caught six.**
+
+### What slice 6 found
+
+**The two controls that missed were the plan's own two, and both found a weak test rather than a
+weak control.**
+
+Making the crop pointer-only reported NOT CAUGHT because the tests asserted that `onKeyDown` and the
+four labelled number inputs *existed in the source*. Deleting `onKeyDown={onKeyDown}` from the JSX
+leaves the `useCallback` in place, and hiding the fieldset leaves every label string in the file —
+so a keyboard handler that nothing attaches and controls nobody can see both passed. That is this
+repository's recurring defect wearing a frontend costume: complete machinery with no caller. The
+tests now assert the handler is *attached*, the element can hold focus, and the fieldset is not
+hidden.
+
+Sending pixel coordinates reported NOT CAUGHT because every normalisation assertion called
+`normalizeRectangle` directly, so `buildCropRequest` could stop calling it and nothing noticed — and
+`typeof "60" === "string"` is true of a pixel as well as a decimal. The test now asserts the
+request's own bbox equals the helper's output, that every value is between 0 and 1, and that each
+matches the column's scale.
+
+**Two more defects, both caught by gates that already existed.** `UI-REQ-004` refused the workspace
+for having nothing link to it, and the a11y sweep refused it for not being swept — which is how the
+queue screen came to be built. Neither was in the plan.
+
+**And the seventh instance of a scan defeated by its own explanation.** `UI-EVIDENCE-001` first
+searched the fallback section for the words "failed" and "isPreviewable"; the comment above that
+section explaining why neither belongs there broke it immediately. It now matches the guard itself —
+`{selected ? (` immediately before the section — which is both prose-proof and the stronger claim,
+since what the requirement says is that the fallback is conditioned on a file being selected and on
+nothing else.
 
 ## Slice 7 — Privacy review and the Definition of Done
 

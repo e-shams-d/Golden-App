@@ -11,7 +11,14 @@
  * client-side, target a batch, show fewer than ten fields — and a rendering test proves the path it
  * exercises rather than the absence of another.
  *
- * Covers: UI-DOWNLOAD-001, UI-SENT-001, UI-SENT-002, UI-SENT-003, TRACE-SCREENS-001.
+ * **`TRACE-M8-001` is discharged by the sweep check already in this file**, not by anything M8
+ * added. That obligation asks that every screen be in the a11y sweep's fixed list, compared against
+ * the routes that *exist* rather than the ones a plan added — which is what the check does, and it
+ * proved it by refusing M8 slice 6's workspace the moment the page appeared and the sweep entry did
+ * not. It had simply never carried the id, which is the inverse of the usual failure: a gate that
+ * enforces a requirement without naming it is invisible to `tests/backend/test_traceability.py`.
+ *
+ * Covers: UI-DOWNLOAD-001, UI-SENT-001, UI-SENT-002, UI-SENT-003, TRACE-SCREENS-001, TRACE-M8-001.
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";

@@ -80,4 +80,19 @@ export const adminNavigation = [
     permission: "payment_batch_version.read_approval_view",
     icon: "requests",
   },
+  // M8 slice 6. The bank-result queue, and the one place this docstring's action rule needs its
+  // exception stated again.
+  //
+  // `bank_result_bundle.read` rather than an acting permission. The actions here are
+  // `receipt_segment.create_crop` and `.create_external`, both held by `accountant` alone — gating
+  // on either would hide the queue from `manager`, whose job includes seeing what the bank actually
+  // sent, and from `read_only_auditor`, whose entire role is looking at evidence they may not
+  // touch. The read is also what the list route itself is guarded on, so the item appears to
+  // exactly the people whose click will not end in a 403.
+  {
+    href: "/bank-result-bundles",
+    label: t("admin.nav.bankResults"),
+    permission: "bank_result_bundle.read",
+    icon: "requests",
+  },
 ] as const satisfies readonly NavigationItem[];
