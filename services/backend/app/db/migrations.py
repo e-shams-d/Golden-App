@@ -92,4 +92,11 @@ from __future__ import annotations
 # assignee, the priority and the three resolution facts, and on nothing that identifies the work:
 # `task_type`, `entity_type`, `entity_id` and `title` are frozen after insert, so a queue item
 # cannot be quietly re-pointed at a different subject.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260824_0025"})
+# 20260826_0026 adds `manual_review_tasks.entity_record_version` — which version of its subject a
+# task is about. §16.5 requires a privacy verification and names no table for it; M0's own task-type
+# list already contains `segment_privacy_review`, so the review queue is where it belongs, and the
+# one fact a resolved task could not state was the version it verified. Written at resolution rather
+# than at opening, because that is when a person actually looks — so it carries an UPDATE grant, and
+# the protection against a second write is `PERMITTED_TRANSITIONS`, which draws no arrow out of
+# `resolved`.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260826_0026"})

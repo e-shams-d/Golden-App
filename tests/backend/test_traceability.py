@@ -100,9 +100,18 @@ RECORDED_GAPS: dict[str, str] = {
         "exists: `BankStatementParser` and its siblings are interfaces M8 implements, so "
         "'the mappings parse' is a claim nothing can currently evaluate. The alternative "
         "was a validation step that always passes, which is worse than an absent one "
-        "because it reads as a check and would be cited as coverage. M8 adds the parser "
-        "and this becomes a real gate; until then activation is refused to every role "
-        "anyway under DOC-CONFLICT-045, so nothing can be activated unvalidated."
+        "because it reads as a check and would be cited as coverage. Activation is "
+        "refused to every role anyway under DOC-CONFLICT-045, so nothing can be "
+        "activated unvalidated. "
+        "**Corrected at M8's close: M8 did not add the parser, and this entry said it "
+        "would.** M8's own plan §1.4 excludes the Excel row preview because doc 08 asks "
+        "for it 'where a deterministic parser exists' and none does — the milestone built "
+        "a PDF and image renderer for evidence, which is a different thing from a "
+        "statement parser that can say whether a bank profile's mappings fit a file. So "
+        "the gap outlived the milestone named for it, and naming the wrong milestone is "
+        "how a recorded gap starts reading as considered. No milestone is named here now: "
+        "this becomes a real gate when a deterministic parser is built and approved, and "
+        "whoever builds one owns removing this entry."
     ),
     "SEC-FILEDL-008": (
         "M4 issues no signed URLs, so there is no expiry to test. The milestone's "
@@ -215,10 +224,13 @@ PENDING: dict[str, str] = {
     # sweep — and it simply had no obligation id written on it. A gate that enforces a requirement
     # and does not name it is invisible to this file, which is the opposite failure to the usual one
     # and just as easy to miss.
-    "SVC-PRIVACY-001": "M8 slice 7 — the privacy verification is per segment version",
-    "SVC-PRIVACY-002": "M8 slice 7 — no route this milestone adds can mark a segment publishable",
-    "TRACE-M8-002": "M8 slice 7 — §16's Definition of Done as one journey, not nine steps",
-    "TRACE-M8-003": "M8 slice 7 — no AI path is reachable at all",
+    # M8 slice 7's four are cited, which completes M8's obligation set. `TRACE-M8-003` is worth a
+    # note: it asked for `ai_usage_logs` to be *empty* after the journey and the truth is stronger —
+    # `04_Database_Schema.md:1381` specifies the table and no migration builds it, because
+    # nothing in Phase 1A uses a model. The assertion is its absence, because `SELECT count(*)` on
+    # a missing
+    # table raises, and a test that caught that and called it success would pass equally well with a
+    # misspelled query against a table that did exist.
     # M7's screens — `docs/handoff/M7_SCREENS_IMPLEMENTATION_PLAN.md`. Four slices, nineteen
     # obligations, implementing `21_UI_Design_System_and_Screen_Specification.md` §13-14 field by
     # field. G-7 in the M7 plan asked whether these were owed and never got an answer; the

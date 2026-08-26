@@ -668,9 +668,41 @@ nothing else.
 
 ## Slice 7 — Privacy review and the Definition of Done
 
+**Done. M8 is complete.**
+
 ### What it changes
 
 The §16 `:1065` verification as a recorded fact, and the milestone gate.
+
+**M0's own catalogue said where the verification goes, and it needed no new table.** §16.5 asks for a
+verification and names nothing to hold it; `04_Database_Schema.md` has no review or verification
+table at all. But `manual_review_tasks.task_type` already admits `segment_privacy_review` — one of
+exactly four types slice 3 took from the approved list — so the review queue is where M0 expects the
+work to live. A resolved task already recorded three of the four facts `SVC-PRIVACY-001` asks for:
+the actor, the time and the subject.
+
+The fourth was missing: **which version of the subject**. `record_version` on that table is the
+task's own. So slice 7 is one nullable column, `entity_record_version`, copied from
+`audit_logs.entity_record_version` which has held exactly this since M2 — a smaller change than a
+table with a new permission, a new command row and a new audit action, and `manual_review.resolve` is
+already seeded.
+
+**Written at resolution, not at opening**, because that is when a person actually judges. The version
+they were *asked* about is a different fact and the wrong one if the segment was re-rendered in
+between. That needs an UPDATE grant, which this migration's first draft withheld on the grounds that
+the value never moves; it moves once, and the protection against twice is `PERMITTED_TRANSITIONS`,
+which draws no arrow out of `resolved`.
+
+**`privacy_verified` is a comparison, never a stored flag.** A resolved task carries the version its
+reviewer looked at, and the check applies only while the segment still has that version — so a crop
+re-rendered afterwards is unverified again with nothing to remember to reset. That is the only form of
+"per segment version" that cannot rot, and `SegmentDetail` returning it is what stops the record being
+a mechanism with no caller. There is deliberately no setter: §2.5 explains why no publication guard is
+written here.
+
+**`request_crop` raises the task**, giving `open_task` its third caller. A crop is the moment §16.5's
+obligation attaches, so the task exists then rather than depending on somebody remembering at
+publication time — by which point the person who drew the rectangle has moved on.
 
 ### What proves it
 
@@ -689,6 +721,42 @@ The §16 `:1065` verification as a recorded fact, and the milestone gate.
 
 Add a publishable flag: `SVC-PRIVACY-002` must fail. Leave a verification attached across an edit:
 `SVC-PRIVACY-001` must fail. Register the AI extraction route: `TRACE-M8-003` must fail.
+
+`scripts/sabotage-m8-slice7.sh` runs those three and five more: stop recording the version, treat an
+unresolved close as a pass, stop raising the task on a crop, write the AI creation method, and return
+the privacy state as a constant. **Eight of eight caught.**
+
+### What slice 7 found
+
+**`ai_usage_logs` does not exist, which is stronger than empty.** `TRACE-M8-003` asked for the table
+to be empty after the journey; `04_Database_Schema.md:1381` specifies it and no migration builds it,
+because nothing in Phase 1A uses a model. The assertion is therefore its *absence*, and the
+distinction has teeth: `SELECT count(*)` against a missing table raises, so a test that caught the
+exception and called it success would pass equally well with a misspelled query against a table that
+did exist.
+
+**`BankExcelExport` has no `record_version`.** The first draft of `_subject_version` handled exports
+too, arguing that an integrity task should say which version was signed off. M7 made an export
+immutable — a new file is a new row, not a new version — so there was nothing to record, and the
+draft would have failed on an attribute that does not exist.
+
+**A control reported NOT CAUGHT because its sabotage had never applied.** Two source files held CRLF
+in the working tree, so `perl -0pe 's/…\n…/'` matched nothing. The cause was mine: rewrapping helpers
+run through the *Windows-side* Python, whose text mode translates `\n` to `\r\n`. Git normalises on
+commit, so the repository looked clean and nothing pointed at it. The procedural lesson is the
+valuable part — when a control reports NOT CAUGHT, confirm the sabotage applied before concluding
+anything about the test. Patterns are now `\r?\n`.
+
+**Two API facts the tests taught rather than the documents**: a task transition needs an
+`Idempotency-Key` as well as `If-Match`, and `If-Match` takes the form `rv-<n>` rather than a bare
+number — the platform gave the token a shape so a client cannot send something that merely happens to
+parse.
+
+**And an eighth registry.** `EXPECTED_MIGRATION_HEADS` in `app/db/migrations.py` pins the head the
+readiness probe expects, and its failure message says to update it in the same commit as the revision
+or the probe reports a correctly migrated database as unavailable. Eight registries touched across
+M8 — the list is longer than anybody memorises, which is exactly why these tests exist rather than a
+convention.
 
 ---
 
