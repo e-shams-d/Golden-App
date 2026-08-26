@@ -175,6 +175,34 @@ def main() -> int:
         dockerfile_text = path.read_text(encoding="utf-8")
         if not re.search(r"(?im)^USER\s+\S+", dockerfile_text):
             errors.append(f"Docker runtime user is not explicit: {path.relative_to(ROOT)}")
+
+        # **A shipped image must not carry the package manager its base ships with.**
+        #
+        # The node images have dropped npm since M1; the python image had not dropped pip, and that
+        # asymmetry was found by an image scan rather than by reading either file. The finding class
+        # is worth naming because it is invisible to every other gate: pip and npm are *language*
+        # packages the base provides and no lockfile mentions, so `trivy fs` over the repository
+        # sees nothing while `trivy image` reports a HIGH with a published fix — and the remedy
+        # is deleting something unused rather than upgrading anything.
+        #
+        # Matched on the base name rather than per stage, because a multi-stage file's builder
+        # legitimately uses pip to install uv. The removal only has to appear somewhere here; what
+        # proves it took effect is the Dockerfile's own `! python -c "import pip"`, which runs where
+        # this check cannot — inside the build.
+        bases = re.findall(r"(?im)^FROM\s+(\S+)", dockerfile_text)
+        if any(base.startswith("python:") for base in bases) and (
+            "site-packages/pip" not in dockerfile_text
+        ):
+            errors.append(
+                f"python-based image ships pip into the runtime: {path.relative_to(ROOT)}"
+            )
+        if any(base.startswith("node:") for base in bases) and (
+            "node_modules/npm" not in dockerfile_text
+        ):
+            errors.append(
+                f"node-based image ships npm into the runtime: {path.relative_to(ROOT)}"
+            )
+
         for line_number, line in enumerate(dockerfile_text.splitlines(), 1):
             if not line.upper().startswith("FROM "):
                 continue
