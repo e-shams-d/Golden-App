@@ -18,7 +18,18 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, Header, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    Path,
+    Query,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
@@ -35,6 +46,7 @@ from app.db.models.file_object import FileObject
 from app.files import upload
 from app.files.download import FileBytesUnavailableError, open_stream
 from app.files.ownership import FileFacts, may_access
+from app.files.preview import PreviewRaceLost, preview_page
 from app.files.states import AVAILABLE
 from app.security.actor import ActorContext
 from app.security.permissions import declare
@@ -295,24 +307,142 @@ def download_file(
     return _stream(runtime, _authorized_file(runtime, actor, file_id))
 
 
+PREVIEW_RESPONSES: dict[int | str, dict[str, object]] = {
+    400: {"model": ErrorEnvelope, "description": "No such page, or an unsupported rotation."},
+    404: {"model": ErrorEnvelope},
+    **VALIDATION_ERROR_RESPONSE,
+}
+
+
 @router.get(
     "/{file_id}/preview",
     operation_id="previewFile",
     dependencies=[requires(declare("file.preview"))],
-    responses={404: {"model": ErrorEnvelope}, **VALIDATION_ERROR_RESPONSE},
-    response_class=StreamingResponse,
+    responses=PREVIEW_RESPONSES,
+    response_class=Response,
 )
 def preview_file(
     file_id: uuid.UUID,
     runtime: Annotated[RuntimeServices, Depends(get_runtime)],
     actor: Annotated[ActorContext, Depends(authenticated_actor)],
-) -> StreamingResponse:
+    rotation_degrees: Annotated[int, Query(ge=0, le=270)] = 0,
+) -> Response:
     """`05_API_Specification.md:1045`: preview is authorized separately from download.
 
     Separately, not more weakly. It carries its own permission, so holding one grant does
-    not confer the other — `SEC-FILEDL-007` asserts both directions. In M4 a preview
-    serves the original bytes because no derivation exists yet; slice 6 introduces derived
-    previews and this route resolves to one when it does.
+    not confer the other — `SEC-FILEDL-007` asserts both directions.
+
+    **This served the original bytes until M8 slice 5**, with a note saying a later milestone would
+    resolve it to a derived preview. It now does: page one, rendered, recorded as a
+    `file_derivations` row. `SVC-PREVIEW-002` is what makes the change checkable — a preview that
+    returns the source is a preview grant that acts as a download grant, which is exactly the
+    separation `:1045` asks for and the placeholder quietly broke.
     """
 
-    return _stream(runtime, _authorized_file(runtime, actor, file_id))
+    return _preview(runtime, actor, file_id, page_number=1, rotation_degrees=rotation_degrees)
+
+
+@router.get(
+    "/{file_id}/pages/{page_number}/preview",
+    operation_id="previewFilePage",
+    dependencies=[requires(declare("file.preview"))],
+    responses=PREVIEW_RESPONSES,
+    response_class=Response,
+)
+def preview_file_page(
+    file_id: uuid.UUID,
+    page_number: Annotated[int, Path(ge=1)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    rotation_degrees: Annotated[int, Query(ge=0, le=270)] = 0,
+) -> Response:
+    """`05_API_Specification.md:1042`, and doc 08 `:983`'s "PDF page navigation".
+
+    **The rotation is a query parameter, not a stored preference.** doc 08 `:985` gives the operator
+    a rotation control, and what they turn is their *view* — nothing about the file changes. Storing
+    it would let one operator's straightening decide what the next one sees.
+
+    **Zoom and pan are the client's**, and deliberately absent. They change no bytes: a viewer
+    scales and translates an image it already holds, so serving them would mean rendering the same
+    page at every zoom level and storing a derivation for each.
+    """
+
+    return _preview(
+        runtime, actor, file_id, page_number=page_number, rotation_degrees=rotation_degrees
+    )
+
+
+def _preview(
+    runtime: RuntimeServices,
+    actor: ActorContext,
+    file_id: uuid.UUID,
+    *,
+    page_number: int,
+    rotation_degrees: int,
+) -> Response:
+    """Render or fetch one page image, and answer with the bytes plus its dimensions.
+
+    **`Response`, not `StreamingResponse`.** A page image is one small object, already whole in
+    memory by the time the renderer returns; wrapping it in a generator would add machinery around
+    bytes that are already there. Downloads stream because a bundle PDF can be tens of megabytes.
+
+    **The dimensions travel as headers**, which is `API-PREVIEW-001`: a client that must send
+    `client_source_dimensions` (`05_API_Specification.md:1773`) cannot invent them, and it needs the
+    raster *of this rotation* — the two numbers swap on a quarter turn. Headers rather than a JSON
+    envelope because the body is the image, and wrapping it would make every viewer decode base64 to
+    show a picture.
+    """
+
+    # Authorized first, by the same helper the download uses. `SEC-PREVIEW-001`'s "no preview URL is
+    # guessable" is this call: a file the actor may not reach is reported exactly as one that does
+    # not exist, so a page URL cannot be used to learn that an id is real.
+    record = _authorized_file(runtime, actor, file_id)
+
+    # **404, and the status matters more than the check.** `_previewable_source` refuses a
+    # quarantined file with a 400 that names its state, which is right for a command and wrong for a
+    # route: a 400 saying "file X is quarantined" confirms the id is real and leaks the verdict.
+    # `_stream` has answered 404 here since M4 and this route lost it in a refactor —
+    # `test_a_quarantined_file_is_not_downloadable_by_its_own_uploader` is what noticed.
+    if record.storage_status != AVAILABLE:
+        raise NotFoundError()
+
+    try:
+        return _rendered(runtime, record.id, page_number, rotation_degrees)
+    except PreviewRaceLost:
+        # Somebody else rendered this page between the cache miss and the write. That transaction is
+        # already rolled back, so a second attempt finds their row — and the caller gets the picture
+        # rather than an error about a race they did not cause.
+        return _rendered(runtime, record.id, page_number, rotation_degrees)
+
+
+def _rendered(
+    runtime: RuntimeServices, file_id: uuid.UUID, page_number: int, rotation_degrees: int
+) -> Response:
+    with runtime.uow_factory() as uow:
+        page = preview_page(
+            file_id,
+            page_number=page_number,
+            rotation_degrees=rotation_degrees,
+            uow=uow,
+            storage=runtime.storage,
+            now=utc_now(),
+        )
+        uow.commit()
+
+    return Response(
+        content=page.content,
+        media_type=page.media_type,
+        headers={
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+            # `attachment`, on the download route's reasoning: an image rendered in this origin's
+            # context is still content this origin did not author.
+            "Content-Disposition": f'attachment; filename="page-{page.page_number}.png"',
+            # `API-PREVIEW-001`. The raster this image actually is, at this rotation.
+            "X-Preview-Page-Number": str(page.page_number),
+            "X-Preview-Pixel-Width": str(page.pixel_width),
+            "X-Preview-Pixel-Height": str(page.pixel_height),
+            "X-Preview-Rotation-Degrees": str(page.rotation_degrees),
+            "X-Preview-Renderer-Version": page.renderer_version,
+        },
+    )

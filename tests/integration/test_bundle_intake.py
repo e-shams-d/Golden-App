@@ -13,6 +13,7 @@ Covers: SVC-BUNDLE-001, SVC-BUNDLE-002, SVC-BUNDLE-003, API-BUNDLE-001, SEC-BUND
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -217,26 +218,55 @@ def rows(world: dict[str, Any], sql: str, *parameters: Any) -> list[tuple[Any, .
         return connection.execute(sql, parameters).fetchall()
 
 
+# A one-page PDF. `upload_bundle` opens the bytes as of M8 slice 5 to count the document's pages, so
+# a fixture that writes only a row now describes a file the product treats as broken.
+ONE_PAGE_PDF = (
+    b"%PDF-1.4\n"
+    b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+    b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+    b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 400]>>endobj\n"
+    b"trailer<</Root 1 0 R>>\n"
+)
+
+
 def a_clean_file(world: dict[str, Any], name: str = "statement.pdf") -> str:
-    """A `file_objects` row in the state a bundle may reference.
+    """A `file_objects` row in the state a bundle may reference, **with its bytes in storage**.
 
     Inserted directly: M4's upload endpoint is a separate surface with its own tests, and what
     slice 1 needs is a file that exists and is scanned clean. `scan_status = 'clean'` is the whole
     point — `upload_bundle` refuses anything else, and the negative below relies on being able to
     produce a file that is not.
+
+    **The bytes were missing until M8 slice 5** and that mattered as soon as `upload_bundle` began
+    counting pages: eleven tests here failed at once. Writing only a row manufactured exactly the
+    state M2's `records_without_a_storage_object` reconciliation exists to *find* — available,
+    checksummed, and with nothing behind the key. The category was wrong too: `bank_result_bundle`
+    has no resolver in `app/files/ownership.py`, so those files were denied to everybody, which no
+    test in this module ever noticed because none of them opened one.
     """
 
     file_id = uuid.uuid4()
+    key = f"bundles/{file_id}"
+    target = world["storage_root"] / key
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(ONE_PAGE_PDF)
+
     with psycopg.connect(_psycopg(world["owner_url"])) as connection:
         connection.execute(
             "INSERT INTO file_objects (id, storage_provider, storage_bucket, storage_key, "
             "original_filename, mime_type_declared, size_bytes, sha256_hash, category, "
             "visibility_scope, storage_status, scan_status, uploaded_by_actor_type, "
             "original_or_derived_relation, metadata) "
-            "VALUES (%s, 'local', 'gold', %s, %s, 'application/pdf', 1024, %s, "
-            "'bank_result_bundle', 'internal', 'available', 'clean', 'admin_user', "
+            "VALUES (%s, 'local', 'gold', %s, %s, 'application/pdf', %s, %s, "
+            "'bank_result_bundle_source', 'internal', 'available', 'clean', 'admin_user', "
             "'original', '{}')",
-            (file_id, f"bundles/{file_id}", name, f"{uuid.uuid4().hex}{uuid.uuid4().hex}"[:64]),
+            (
+                file_id,
+                key,
+                name,
+                len(ONE_PAGE_PDF),
+                hashlib.sha256(ONE_PAGE_PDF).hexdigest(),
+            ),
         )
         connection.commit()
     return str(file_id)

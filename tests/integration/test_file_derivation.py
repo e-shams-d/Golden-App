@@ -406,10 +406,20 @@ def test_the_preview_route_reports_processing_rather_than_failing(
 ) -> None:
     """JOB-PREVIEW-002.
 
-    Nothing consumes the dispatched event in M4 — the renderer is M8 — so a preview
-    request arrives before any derivative exists. It must be a stated outcome rather than
-    a 500 or an empty body. Today the original bytes are served, which is a truthful
-    answer for an image and is what the route documents.
+    **Rewritten in M8 slice 5, and the old assertion is why this test mattered.** M4 had nothing to
+    render with, so the route served the original bytes and this test pinned exactly that:
+    `response.content == PNG`. It was a truthful answer then and it was also the thing slice 5 had
+    to remove — while the route served the source, a `file.preview` grant acted as a `file.download`
+    grant, which is the separation `05_API_Specification.md:1045` asks for.
+
+    The requirement is unchanged; its answer is not. A preview request still produces a stated
+    outcome rather than a 500 or an empty body, and that outcome is now a *derived* page image.
+    Asserted as an inequality against the uploaded bytes, because that is the form with teeth: an
+    equality would pass again the moment somebody reintroduced the passthrough.
+
+    Even for a PNG source the preview differs — the page is rasterised and re-encoded, so the bytes
+    are the renderer's rather than the uploader's. The `file_derivations` row accounting for it is
+    asserted in `tests/integration/test_segment_intake.py`.
     """
 
     client = world["client"]
@@ -418,5 +428,9 @@ def test_the_preview_route_reports_processing_rather_than_failing(
 
     response = client.get(f"/api/v1/files/{file_id}/preview")
     assert response.status_code == 200, response.text
-    assert response.content == PNG
+    assert response.content != PNG, "the preview served the uploaded file rather than a derivative"
+    assert response.content.startswith(b"\x89PNG"), "a preview is a page image"
     assert response.headers["Cache-Control"] == "no-store"
+    # The dimensions a client needs before it can send `client_source_dimensions`.
+    assert response.headers["X-Preview-Pixel-Width"]
+    assert response.headers["X-Preview-Renderer-Version"].startswith("pypdfium2/")

@@ -1357,6 +1357,7 @@
       },
       "BundleFileEntry": {
         "additionalProperties": false,
+        "description": "One file in the bundle, and how to look at it.\n\n`05_API_Specification.md:1680` asks the detail response for \"authorized preview endpoints, page\ninformation\", and M8 slice 5 is where both become answerable.\n\n**`preview_path` is `None` for a file with nothing to show**, which is the part a client cannot\nwork out for itself. Constructing the URL is trivial; knowing whether it will produce a picture\nis not — an Excel bank result has no page, `PREVIEWABLE_MEDIA_TYPES` excludes it, and\n`BANK-VER-005` records that no deterministic row parser exists. Returning the path only when it\nresolves means the workspace can grey out a file instead of offering a preview that 400s.\n\n**The dimensions are not here, deliberately.** They belong to a page *at a rotation* — a quarter\nturn swaps them — so a single pair on this row would be right for one view of one page and wrong\nfor the rest. The preview response carries them per request in its `X-Preview-Pixel-*` headers,\nwhich is what a client needs before it can send `client_source_dimensions` (`:1773`). Putting a\nstale copy here as well would give the workspace two sources for one fact.",
         "properties": {
           "file_id": {
             "format": "uuid",
@@ -1387,6 +1388,17 @@
             ],
             "title": "Page Count"
           },
+          "preview_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preview Path"
+          },
           "sequence_number": {
             "title": "Sequence Number",
             "type": "integer"
@@ -1398,7 +1410,8 @@
           "file_name",
           "sequence_number",
           "file_role",
-          "page_count"
+          "page_count",
+          "preview_path"
         ],
         "title": "BundleFileEntry",
         "type": "object"
@@ -8961,9 +8974,88 @@
         ]
       }
     },
+    "/api/v1/files/{file_id}/pages/{page_number}/preview": {
+      "get": {
+        "description": "`05_API_Specification.md:1042`, and doc 08 `:983`'s \"PDF page navigation\".\n\n**The rotation is a query parameter, not a stored preference.** doc 08 `:985` gives the operator\na rotation control, and what they turn is their *view* — nothing about the file changes. Storing\nit would let one operator's straightening decide what the next one sees.\n\n**Zoom and pan are the client's**, and deliberately absent. They change no bytes: a viewer\nscales and translates an image it already holds, so serving them would mean rendering the same\npage at every zoom level and storing a derivation for each.",
+        "operationId": "previewFilePage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "page_number",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Page Number",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rotation_degrees",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 270,
+              "minimum": 0,
+              "title": "Rotation Degrees",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such page, or an unsupported rotation."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Preview File Page",
+        "tags": [
+          "files"
+        ]
+      }
+    },
     "/api/v1/files/{file_id}/preview": {
       "get": {
-        "description": "`05_API_Specification.md:1045`: preview is authorized separately from download.\n\nSeparately, not more weakly. It carries its own permission, so holding one grant does\nnot confer the other — `SEC-FILEDL-007` asserts both directions. In M4 a preview\nserves the original bytes because no derivation exists yet; slice 6 introduces derived\npreviews and this route resolves to one when it does.",
+        "description": "`05_API_Specification.md:1045`: preview is authorized separately from download.\n\nSeparately, not more weakly. It carries its own permission, so holding one grant does\nnot confer the other — `SEC-FILEDL-007` asserts both directions.\n\n**This served the original bytes until M8 slice 5**, with a note saying a later milestone would\nresolve it to a derived preview. It now does: page one, rendered, recorded as a\n`file_derivations` row. `SVC-PREVIEW-002` is what makes the change checkable — a preview that\nreturns the source is a preview grant that acts as a download grant, which is exactly the\nseparation `:1045` asks for and the placeholder quietly broke.",
         "operationId": "previewFile",
         "parameters": [
           {
@@ -8975,11 +9067,33 @@
               "title": "File Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "rotation_degrees",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 270,
+              "minimum": 0,
+              "title": "Rotation Degrees",
+              "type": "integer"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such page, or an unsupported rotation."
           },
           "404": {
             "content": {

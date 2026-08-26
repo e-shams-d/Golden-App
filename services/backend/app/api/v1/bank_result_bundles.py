@@ -125,6 +125,24 @@ class CloseBundleRequest(BaseModel):
 
 
 class BundleFileEntry(BaseModel):
+    """One file in the bundle, and how to look at it.
+
+    `05_API_Specification.md:1680` asks the detail response for "authorized preview endpoints, page
+    information", and M8 slice 5 is where both become answerable.
+
+    **`preview_path` is `None` for a file with nothing to show**, which is the part a client cannot
+    work out for itself. Constructing the URL is trivial; knowing whether it will produce a picture
+    is not — an Excel bank result has no page, `PREVIEWABLE_MEDIA_TYPES` excludes it, and
+    `BANK-VER-005` records that no deterministic row parser exists. Returning the path only when it
+    resolves means the workspace can grey out a file instead of offering a preview that 400s.
+
+    **The dimensions are not here, deliberately.** They belong to a page *at a rotation* — a quarter
+    turn swaps them — so a single pair on this row would be right for one view of one page and wrong
+    for the rest. The preview response carries them per request in its `X-Preview-Pixel-*` headers,
+    which is what a client needs before it can send `client_source_dimensions` (`:1773`). Putting a
+    stale copy here as well would give the workspace two sources for one fact.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     id: uuid.UUID
@@ -133,6 +151,7 @@ class BundleFileEntry(BaseModel):
     sequence_number: int
     file_role: str
     page_count: int | None
+    preview_path: str | None
 
 
 class BatchLinkEntry(BaseModel):
@@ -268,6 +287,15 @@ def _detail(session: Session, bundle: BankResultBundle) -> BundleDetail:
                 sequence_number=row.sequence_number,
                 file_role=row.file_role,
                 page_count=row.page_count,
+                # Derived from `page_count` rather than from the media type. The count is `NULL`
+                # exactly when the command could not open the file as a document — one decision,
+                # made once at attach time by the code that has the bytes, rather than a second
+                # media-type judgement here that could disagree with it.
+                preview_path=(
+                    f"/api/v1/files/{row.file_id}/pages/1/preview"
+                    if row.page_count is not None
+                    else None
+                ),
             )
             for row, name in files
         ],
@@ -341,6 +369,9 @@ def upload_bank_result_bundle(
                         file_id=entry.file_id,
                         sequence_number=entry.sequence_number,
                         file_role=entry.file_role,
+                        # Still accepted from the caller, and no longer stored on trust: the command
+                        # counts the document's pages and refuses a claim that disagrees. See
+                        # `_pages_of` for why slice 5 had to change this.
                         page_count=entry.page_count,
                     )
                     for entry in payload.files
@@ -349,6 +380,7 @@ def upload_bank_result_bundle(
                 bank_profile_id=payload.bank_profile_id,
             ),
             uow=uow,
+            storage=runtime.storage,
             policy=BUNDLE_REDACTION,
             actor=_audit_actor(actor),
             context=AuditContext(request_id=get_request_id()),

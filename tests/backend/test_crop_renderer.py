@@ -7,11 +7,17 @@ to a version number. These are those tests.
 Pure functions over bytes, so no database and no fixtures on disk: the PDF is built in memory,
 because a binary fixture is a thing nobody reads and the point is to measure the library.
 
-Covers: SVC-CROP-004.
+**M8 slice 5 added the image half**, because doc 08 `:983` lists images beside PDFs and
+`SVC-PREVIEW-001` requires both to render. An image cannot hand its rotation to PDFium, so that path
+uses `transpose` — a pixel permutation — where `rotate` would resample. The round-trip assertion is
+what settles the difference; the documentation's word for it was not enough to pin a dependency on.
+
+Covers: SVC-CROP-004, SVC-PREVIEW-001.
 """
 
 from __future__ import annotations
 
+import io
 from decimal import Decimal
 
 import pytest
@@ -20,12 +26,15 @@ from app.exports.crop import (
     PERMITTED_ROTATIONS,
     RENDER_SCALE,
     RENDERER_VERSION,
+    WHOLE_PAGE,
     CropRefused,
     Rectangle,
     page_count,
     page_size,
     render_crop,
+    render_page,
 )
+from PIL import Image
 
 # A two-page PDF, written by hand. Small enough to read, and it exercises the only two things the
 # crop path needs from a document: more than one page, and a known page size.
@@ -253,3 +262,134 @@ def test_the_page_size_of_a_page_that_is_not_there_is_refused() -> None:
         page_size(TWO_PAGES, 9)
     with pytest.raises(CropRefused):
         page_size(TWO_PAGES, 1, rotation=45)
+
+
+# ---------------------------------------------------------------------------
+# M8 slice 5: the image path. doc 08 `:983` lists images beside PDFs.
+# ---------------------------------------------------------------------------
+
+
+def an_image() -> bytes:
+    """A 40x20 PNG with a red block in the top-left corner.
+
+    **Asymmetric in both axes on purpose.** A square with a centred mark rotates to something
+    indistinguishable, so a test using one would pass with the direction reversed. The block
+    is off-centre in both directions, which makes a wrong quarter turn visible.
+    """
+
+    picture = Image.new("RGB", (40, 20), (255, 255, 255))
+    for x in range(10):
+        for y in range(5):
+            picture.putpixel((x, y), (255, 0, 0))
+    buffer = io.BytesIO()
+    picture.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def test_an_image_is_one_page_and_is_not_upscaled() -> None:
+    """Two claims that only apply to the image path.
+
+    A photograph is its own raster, so `RENDER_SCALE` must not touch it: doubling a scan invents
+    pixels the camera never recorded, and the operator would be drawing a rectangle on an
+    interpolation. And an image has exactly one page — asserted because `page_count` feeds
+    `bank_result_bundle_files.page_count`, which the review workspace uses to say "page 1 of N".
+    """
+
+    image = an_image()
+
+    assert page_count(image) == 1
+    assert page_size(image, 1) == (40, 20)
+    assert page_size(image, 1, rotation=90) == (20, 40)
+
+    rendered = render_page(image, page_number=1)
+    assert (rendered.source_pixel_width, rendered.source_pixel_height) == (40, 20), (
+        "the image was rescaled; a preview must show the pixels the scanner produced"
+    )
+
+    with pytest.raises(CropRefused):
+        page_size(image, 2)
+
+
+def test_an_image_renders_reproducibly_and_losslessly() -> None:
+    """`SVC-PREVIEW-001` for the image half, and the reason it can claim byte equality.
+
+    Rotation of an image cannot be handed to PDFium, so it is done with `transpose`, which permutes
+    pixels, and never with `rotate`, which resamples them. The round trip is the assertion that
+    settles it: four quarter turns must return the *exact* original pixels. A resampling rotate
+    would blur the block's edges and fail this, while still passing a test that only compared two
+    renders to each other.
+    """
+
+    image = an_image()
+    original = Image.open(io.BytesIO(image)).convert("RGB")
+
+    first = render_page(image, page_number=1)
+    second = render_page(image, page_number=1)
+    assert first.content == second.content
+    assert first.media_type == CROP_MEDIA_TYPE
+
+    turned = render_page(image, page_number=1, rotation_degrees=90)
+    assert turned.content != first.content
+    assert (turned.source_pixel_width, turned.source_pixel_height) == (20, 40)
+
+    # A quarter clockwise, then three more, is the identity — if the turn is lossless.
+    once = Image.open(io.BytesIO(turned.content))
+    back = once.transpose(Image.Transpose.ROTATE_270).transpose(Image.Transpose.ROTATE_180)
+    # `tobytes`, not `getdata`: the latter is deprecated for removal in Pillow 14, and raw bytes are
+    # the stricter comparison anyway — every channel of every pixel, in order.
+    assert back.tobytes() == original.tobytes(), (
+        "four quarter turns did not return the original pixels, so the rotation resamples and no "
+        "rotated preview is reproducible"
+    )
+
+
+def test_a_clockwise_turn_goes_clockwise() -> None:
+    """The assertion no self-comparison can make.
+
+    Pillow's `ROTATE_90` turns counter-clockwise and doc 08 `:985`'s control is clockwise, so the
+    mapping is deliberately crossed in `_rotate_losslessly`. Every other rotation test here compares
+    one render against another and would pass with the direction reversed — this one looks at where
+    the red block actually landed.
+    """
+
+    turned = render_page(an_image(), page_number=1, rotation_degrees=90)
+    picture = Image.open(io.BytesIO(turned.content))
+    width, _ = picture.size
+
+    assert picture.getpixel((width - 1, 0)) == (255, 0, 0), (
+        "a clockwise quarter turn must move the top-left corner to the top-right"
+    )
+    assert picture.getpixel((0, 0)) == (255, 255, 255)
+
+
+def test_bytes_that_are_neither_a_pdf_nor_an_image_are_refused() -> None:
+    """A refusal, not a traceback.
+
+    `mime_type_declared` is what the uploader said, so this path is reachable with any content at
+    all. The message says what the renderer can accept rather than reporting a Pillow internal.
+    """
+
+    with pytest.raises(CropRefused):
+        render_page(b"this is not a document", page_number=1)
+    with pytest.raises(CropRefused):
+        page_count(b"")
+
+
+def test_a_whole_page_is_a_valid_rectangle() -> None:
+    """The constant `render_page` is built on.
+
+    If `WHOLE_PAGE` failed `Rectangle.validate()` every preview would be refused — and the check it
+    has to survive is the boundary one: `x + width` is exactly 1, which the rule permits and an
+    off-by-one reading of it would not.
+    """
+
+    WHOLE_PAGE.validate()
+    assert WHOLE_PAGE.x + WHOLE_PAGE.width == Decimal("1")
+    assert WHOLE_PAGE.y + WHOLE_PAGE.height == Decimal("1")
+
+    # And a page render really is the crop of everything, not a separate path that happens to agree.
+    document_page = render_page(TWO_PAGES, page_number=2)
+    same_by_crop = render_crop(
+        TWO_PAGES, page_number=2, rectangle=WHOLE_PAGE, rotation_degrees=0
+    )
+    assert document_page.content == same_by_crop.content

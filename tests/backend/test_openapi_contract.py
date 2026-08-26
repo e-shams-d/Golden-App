@@ -126,6 +126,11 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "getFileMetadata",
         "downloadFile",
         "previewFile",
+        # M8 slice 5. `05_API_Specification.md:1042`'s second preview endpoint, which M4 could not
+        # build without a renderer. Its sibling above stops serving the original bytes in the same
+        # slice, and the test that proves it names the obligation — an id written here would make
+        # this file the thing claiming it.
+        "previewFilePage",
         # M4 slice 8. Creation only: activation needs two permissions that do not exist
         # yet (DOC-CONFLICT-045), and a route guarded by an unapproved identifier denies
         # everyone — shipping it before the guard is reviewable ships a decision as an

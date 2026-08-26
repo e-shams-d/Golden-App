@@ -149,6 +149,13 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     ("GET", "/api/v1/files/{file_id}"): OWNERSHIP,
     ("GET", "/api/v1/files/{file_id}/download"): OWNERSHIP,
     ("GET", "/api/v1/files/{file_id}/preview"): OWNERSHIP,
+    # M8 slice 5. `OWNERSHIP`, matching its sibling above rather than the permission the route also
+    # carries: both go through `_authorized_file`, which reports a file the actor may not reach
+    # exactly as one that does not exist. A page of a file is not a different resource from the
+    # file, so a page URL must not become a way to learn that an id is real — the guessable-URL half
+    # of the milestone's preview security requirement, named in the test that discharges it rather
+    # than here, because an id written in this map counts as this file claiming it.
+    ("GET", "/api/v1/files/{file_id}/pages/{page_number}/preview"): OWNERSHIP,
     # M4 slice 8. PERMISSION rather than OWNERSHIP: bank configuration is centre-wide and
     # belongs to no trader, so there is no owner to compare an actor against. A trader
     # session is refused at the audience boundary before any of this is reached.
@@ -442,6 +449,9 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
         "test_staff_without_the_sensitive_grant_cannot_reach_a_bundle_either"
     ),
     ("GET", "/api/v1/files/{file_id}/preview", "ownership"): (
+        "test_a_trader_cannot_reach_an_internal_bank_bundle"
+    ),
+    ("GET", "/api/v1/files/{file_id}/pages/{page_number}/preview", "ownership"): (
         "test_a_trader_cannot_reach_an_internal_bank_bundle"
     ),
     ("GET", "/api/v1/bank-profiles", "permission"): (
