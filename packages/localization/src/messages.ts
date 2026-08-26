@@ -544,6 +544,85 @@ export const faMessages = {
   "admin.request.actionFailed": "این عملیات انجام نشد.",
   "admin.request.notManagerApproval": "این مرحله تأیید مدیر نیست.",
   "admin.request.history": "تاریخچهٔ نسخه‌ها",
+  // The bank-result queue, `05_API_Specification.md:1676`. The workspace's way in: nobody
+  // memorises a bundle id, so a review screen with no queue is a review screen nobody opens.
+  "admin.bundles.title": "نتایج بانکی",
+  "admin.bundles.explanation":
+    "فایل‌هایی که بانک فرستاده و باید بررسی شوند. آن‌هایی که کار حل‌نشدهٔ بیشتری دارند بالاتر می‌آیند.",
+  "admin.bundles.loading": "در حال دریافت فهرست…",
+  "admin.bundles.empty": "بستهٔ بازبینی‌نشده‌ای نیست",
+  "admin.bundles.emptyExplanation": "هر نتیجه‌ای که بانک فرستاده بررسی شده است.",
+  "admin.nav.bankResults": "نتایج بانکی",
+  // §16.3 — the bank-result review workspace. The screen where a person looks at what the bank
+  // sent and cuts out the part that proves one payment.
+  "admin.workspace.title": "بررسی نتیجهٔ بانک",
+  "admin.workspace.loading": "در حال دریافت اطلاعات بسته…",
+  "admin.workspace.forbiddenTitle": "دسترسی به نتایج بانکی ندارید",
+  "admin.workspace.forbidden":
+    "خواندن نتیجهٔ بانک مجوز جداگانه دارد، چون این پرونده حساب کامل پرداخت‌های مرکز است.",
+  "admin.workspace.missingTitle": "این بسته پیدا نشد",
+  "admin.workspace.missing": "بسته‌ای با این شناسه وجود ندارد یا دیگر در دسترس شما نیست.",
+  "admin.workspace.failedTitle": "اطلاعات بسته دریافت نشد",
+  "admin.workspace.failed": "ارتباط با سرور برقرار نشد. دوباره تلاش کنید.",
+  "admin.workspace.summary": "خلاصهٔ بسته",
+  "admin.workspace.reference": "شمارهٔ بسته",
+  "admin.workspace.state": "وضعیت",
+  "admin.workspace.sourceType": "منبع",
+  "admin.workspace.segments": "قطعه‌ها",
+  "admin.workspace.resolved": "حل‌شده",
+  "admin.workspace.unresolved": "حل‌نشده",
+  "admin.workspace.gotoUnresolved": "رفتن به حل‌نشدهٔ بعدی",
+  "admin.workspace.noUnresolved": "قطعهٔ حل‌نشده‌ای نمانده است.",
+  "admin.workspace.files": "فایل‌های بسته",
+  "admin.workspace.selectFile": "انتخاب فایل",
+  // The honest answer for a spreadsheet. §1.4 of the M8 plan: doc 08 asks for an Excel row preview
+  // "where a deterministic parser exists" and none does, so the screen says so rather than showing
+  // an empty frame that looks broken.
+  "admin.workspace.noPreview": "این فایل صفحه‌ای برای نمایش ندارد",
+  "admin.workspace.noPreviewExplanation":
+    "پیش‌نمایش سطرهای فایل‌های صفحه‌گسترده هنوز ساخته نشده، چون خوانندهٔ قطعی‌ای برای قالب آن‌ها تأیید نشده است. برای این فایل می‌توانید کل آن را به‌عنوان مدرک پیوست کنید.",
+  "admin.workspace.page": "صفحه",
+  "admin.workspace.ofPages": "از",
+  "admin.workspace.previousPage": "صفحهٔ قبل",
+  "admin.workspace.nextPage": "صفحهٔ بعد",
+  "admin.workspace.rotateClockwise": "چرخش ساعتگرد",
+  "admin.workspace.rotateAnticlockwise": "چرخش پادساعتگرد",
+  "admin.workspace.rotation": "زاویهٔ نمایش",
+  "admin.workspace.zoomIn": "بزرگ‌نمایی",
+  "admin.workspace.zoomOut": "کوچک‌نمایی",
+  "admin.workspace.zoomReset": "اندازهٔ اصلی",
+  "admin.workspace.zoomLevel": "بزرگ‌نمایی",
+  // The crop. §16.3's "rectangular crop selection" and "keyboard-accessible controls" — the second
+  // is why every edge has a number input beside it.
+  "admin.workspace.crop": "انتخاب ناحیه",
+  "admin.workspace.cropLeft": "فاصله از لبهٔ چپ تصویر (X)",
+  "admin.workspace.cropTop": "فاصله از لبهٔ بالا (Y)",
+  "admin.workspace.cropWidth": "عرض",
+  "admin.workspace.cropHeight": "ارتفاع",
+  "admin.workspace.cropHint":
+    "با کلیدهای جهت‌دار ناحیه را جابه‌جا کنید؛ با Shift ده برابر، و با Alt لبهٔ مربوط تغییر اندازه می‌دهد.",
+  "admin.workspace.normalized": "مختصات نرمال‌شده",
+  "admin.workspace.normalizedExplanation":
+    "این چهار عدد بین صفر و یک هستند و همراه زاویهٔ نمایش ذخیره می‌شوند، تا همین ناحیه بعداً دقیقاً دوباره ساخته شود.",
+  "admin.workspace.rasterSize": "اندازهٔ تصویر رندرشده",
+  "admin.workspace.createCrop": "ثبت این ناحیه به‌عنوان مدرک",
+  "admin.workspace.cropAccepted": "ناحیه ثبت شد و تصویرش در حال ساخته شدن است.",
+  "admin.workspace.cropFailed": "ثبت ناحیه انجام نشد.",
+  // Selected-segment fields: what a person read off the receipt, typed by them.
+  "admin.workspace.fields": "اطلاعات خواندنی از رسید",
+  "admin.workspace.beneficiary": "نام ذی‌نفع",
+  "admin.workspace.iban": "شبا مقصد",
+  "admin.workspace.amount": "مبلغ (ریال)",
+  "admin.workspace.tracking": "کد پیگیری",
+  "admin.workspace.fieldsOptional": "پر کردن این فیلدها اختیاری است؛ مدرک ناقص هم مدرک است.",
+  // The fallback. §16.3's last item, and §16 :1069's last test.
+  "admin.workspace.external": "پیوست کل فایل به‌عنوان مدرک",
+  "admin.workspace.externalExplanation":
+    "اگر این فایل قابل نمایش نیست یا ناحیه‌ای از آن جدا نمی‌شود، می‌توانید کل فایل را به‌عنوان مدرک ثبت کنید.",
+  "admin.workspace.externalConfirm": "ثبت کل فایل",
+  "admin.workspace.externalAccepted": "کل فایل به‌عنوان مدرک ثبت شد.",
+  "admin.workspace.externalFailed": "ثبت مدرک انجام نشد.",
+  "admin.workspace.cancel": "انصراف",
 } as const;
 
 export type MessageKey = keyof typeof faMessages;

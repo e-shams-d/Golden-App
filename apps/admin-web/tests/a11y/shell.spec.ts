@@ -52,6 +52,15 @@ const paths = [
   // most: somebody following a link to an export that was voided and replaced lands on exactly
   // this page, and they need to be told which of the two things happened.
   "/bank-exports/00000000-0000-4000-8000-000000000002",
+  // M8 slice 6. The bank-result queue and the review workspace.
+  //
+  // The workspace matters more than most entries here: it is the only screen in this application
+  // built around a pointer gesture, and §16 `:1039` requires its controls to be keyboard-operable.
+  // A sweep that skipped it would leave that claim resting entirely on `workspace-screens.test.ts`
+  // reading source — which can see that a labelled number input exists and cannot see whether a
+  // person can reach it.
+  "/bank-result-bundles",
+  "/bank-result-bundles/00000000-0000-4000-8000-000000000003",
 ] as const;
 
 for (const path of paths) {

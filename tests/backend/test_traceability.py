@@ -210,11 +210,11 @@ PENDING: dict[str, str] = {
     # `file.read_sensitive_bundle` — because a trader is refused at the permission gate before the
     # ownership resolver runs, so a test using only a trader would have passed with that resolver
     # doing nothing at all.
-    "UI-WORKSPACE-001": "M8 slice 6 — every item §16's workspace list names, parsed",
-    "UI-CROP-001": "M8 slice 6 — the rectangle is keyboard-operable, not pointer-only",
-    "UI-CROP-002": "M8 slice 6 — normalized coordinates and rotation are what the screen sends",
-    "UI-EVIDENCE-001": "M8 slice 6 — the external-evidence fallback stays reachable",
-    "TRACE-M8-001": "M8 slice 6 — every screen is in the a11y sweep, compared against what exists",
+    # M8 slice 6's five are cited now. `TRACE-M8-001` is worth a note: the check that discharges it
+    # already existed and already worked — it is what refused the workspace for not being in the
+    # sweep — and it simply had no obligation id written on it. A gate that enforces a requirement
+    # and does not name it is invisible to this file, which is the opposite failure to the usual one
+    # and just as easy to miss.
     "SVC-PRIVACY-001": "M8 slice 7 — the privacy verification is per segment version",
     "SVC-PRIVACY-002": "M8 slice 7 — no route this milestone adds can mark a segment publishable",
     "TRACE-M8-002": "M8 slice 7 — §16's Definition of Done as one journey, not nine steps",
