@@ -189,6 +189,13 @@ def main() -> int:
         # legitimately uses pip to install uv. The removal only has to appear somewhere here; what
         # proves it took effect is the Dockerfile's own `! python -c "import pip"`, which runs where
         # this check cannot — inside the build.
+        #
+        # **The patterns are paths, and that is deliberate.** A whole-file text search can be
+        # satisfied by the comment explaining the thing it looks for, which has defeated scans in
+        # this repository seven times. `site-packages/pip` and `node_modules/npm` appear only in the
+        # `RUN rm -rf` lines and never in prose about them — `scripts/control-pip-rule.py` asserts
+        # exactly that by deleting the RUN and leaving the comment, and expects a failure. Do not
+        # loosen these to `pip` or `npm`.
         bases = re.findall(r"(?im)^FROM\s+(\S+)", dockerfile_text)
         if any(base.startswith("python:") for base in bases) and (
             "site-packages/pip" not in dockerfile_text
