@@ -1,12 +1,12 @@
 """Negative control for the pip-removal rule in validate_repository.py.
 
-Written in Python rather than perl-through-a-shell because the pattern needs to survive two levels of
-quoting otherwise, and two attempts at that produced sabotages that never applied — a NOT CAUGHT
-that says nothing about the rule.
+Written in Python rather than perl-through-a-shell because the pattern needs to survive two
+levels of quoting otherwise, and two attempts at that produced sabotages that never applied — a
+NOT CAUGHT that says nothing about the rule.
 
-Two sabotages. The second is the one that matters: a gate reading whole-file text can be satisfied by
-the comment that explains the thing it looks for, which has defeated scans in this repository seven
-times. This rule was written the same way, so it needs asking.
+Two sabotages. The second is the one that matters: a gate reading whole-file text can be
+satisfied by the comment that explains the thing it looks for, which has defeated scans in this
+repository seven times. This rule was written the same way, so it needed asking.
 """
 
 from __future__ import annotations

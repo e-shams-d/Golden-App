@@ -316,6 +316,20 @@ jobs:
               --format table --exit-code 1 "$img" || status=1
             echo "::endgroup::"
           done
+          # **The summary is printed outside every group, and only on failure.**
+          #
+          # The table above is inside `::group::`, which GitHub collapses. That made a red gate say
+          # only "Process completed with exit code 1" in the plain log — and diagnosing it twice from
+          # that cost two full CI cycles of inference, one of which fixed something real and did not
+          # fix the gate. A gate that cannot say what it found is a gate that gets guessed at.
+          #
+          # Read from the JSON the first pass already wrote, so this adds no scan. `--ignore-unfixed`
+          # is reproduced as `FixedVersion` being present, because that is exactly what that flag
+          # means and the summary has to name the same findings the gate failed on rather than a
+          # wider set.
+          if [ "${status}" -ne 0 ]; then
+            python3 infra/scripts/summarise_image_findings.py scan-reports/*.json
+          fi
           exit "${status}"
       - name: SBOM per application image (gate 7)
         run: |
