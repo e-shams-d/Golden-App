@@ -10654,7 +10654,7 @@
     },
     "/api/v1/payment-batches/{batch_id}/cancel": {
       "post": {
-        "description": "`POST /api/v1/payment-batches/{batch_id}/cancel`, per `05_API_Specification.md:1539`.\n\n**Draft only, and the reason is a missing permission rather than a missing arrow.** §29.2\npermits cancelling a ready-for-approval batch with a reason;\n`permission_catalog.yaml` holds one batch cancellation permission and it is\n`payment_batch.cancel_draft`. Inventing a second is not an implementer's decision, so the\ncommand refuses that state and its message names `DOC-CONFLICT-056` — an implementer who hits\nit should learn that the rule exists and the grant does not.\n\n**`command_catalog.yaml` has no row for this command at all** (G-4), so its concurrency and\nidempotency contract is inferred from its neighbours: every other batch command in that file\ncarries `\"idempotency\": \"required\"`, and cancelling twice on a retry would release\nallocations a second time and overwrite the first reason. Both headers are required for that\nreason rather than by citation, and G-4 is where the citation is owed.",
+        "description": "`POST /api/v1/payment-batches/{batch_id}/cancel`, per `05_API_Specification.md:1539`.\n\n**Three of §29.2's four origins, and the fourth is still a missing permission rather than a\nmissing arrow.** `draft`, `ready_for_approval` and `approved` are cancellable here; `rejected`\nis refused by the command with a message naming `DOC-CONFLICT-056`, because nobody has decided\nwhether a rejected batch is cancelled or simply left rejected.\n\n**The route admits either grant and decides nothing.** `authority_for_cancelling` picks the\npermission from the loaded batch's status, which is a fact no dependency can have — see\n`either_cancellation_permission`. A caller holding only `cancel_draft` who aims at an approved\nbatch passes this guard and is refused by the command, which is where the separation belongs.\n\n**`command_catalog.yaml` has no row for this command at all** (G-4), so its concurrency and\nidempotency contract is inferred from its neighbours: every other batch command in that file\ncarries `\"idempotency\": \"required\"`, and cancelling twice on a retry would release\nallocations a second time and overwrite the first reason. Both headers are required for that\nreason rather than by citation, and G-4 is where the citation is owed.",
         "operationId": "cancelPaymentBatch",
         "parameters": [
           {
@@ -10802,7 +10802,7 @@
             "description": "If-Match and Idempotency-Key are both required."
           }
         },
-        "summary": "Cancel a draft batch and release every allocation it holds.",
+        "summary": "Cancel a batch and release every allocation it holds.",
         "tags": [
           "payment-batches"
         ]

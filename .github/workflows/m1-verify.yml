@@ -251,6 +251,15 @@ jobs:
         with:
           name: docker-stack-diagnostics
           path: .verify-diagnostics/
+          # **The directory is hidden, and the default skips hidden files.** Without
+          # this the artifact uploaded empty every time, leaving only a `warn`
+          # annotation — so the step written to make a docker failure diagnosable
+          # from the run itself produced nothing on the first occasion it was
+          # needed, and the failure had to be reproduced locally anyway.
+          # `if-no-files-found` stays `warn` rather than `error`: a failure before
+          # the stack starts legitimately writes no diagnostics, and turning that
+          # into a second red step would bury the first.
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 7
       # Scanners run as runner-local pinned binaries. The repository forbids

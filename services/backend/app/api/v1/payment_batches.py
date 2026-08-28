@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -47,6 +47,7 @@ from app.commands import payment_batch_approval as approval_commands
 from app.core.errors import (
     ConflictError,
     ErrorEnvelope,
+    ForbiddenError,
     NotFoundError,
     PreconditionRequiredError,
     VersionConflictError,
@@ -1015,13 +1016,47 @@ def create_replacement_version(
     return rendered
 
 
+def either_cancellation_permission(
+    draft_permission: str, approved_permission: str
+) -> Any:
+    """Admit a caller holding either cancellation grant, and hand back the ones they hold.
+
+    **A route dependency runs before the batch is loaded**, so it can only answer "may this caller
+    cancel batches at all". The owner's 2026-08-25 decision is that cancelling an *approved* batch
+    needs a permission that cancelling a draft does not — a question only the loaded status answers.
+    So this admits either and `commands.cancel_batch` refuses on the state, which puts the
+    separation where the state is known and out of reach of route configuration.
+
+    Listing only `cancel_draft` would lock the manager out entirely: the catalogue grants that one
+    to `accountant`, so the role holding `cancel_approved` would never reach the handler. Listing
+    only `cancel_approved` would stop an accountant cancelling their own draft.
+
+    **Both names are read inside the closure**, following `owned_or_permitted` in
+    `app/api/v1/payment_requests.py` and for the reason its comment records: the gate in
+    `test_permission_guards.py` finds a route's permissions by walking this closure for approved
+    codes, so a name the closure does not carry is a name the gate cannot see.
+    """
+
+    declared_draft = declare(draft_permission)
+    declared_approved = declare(approved_permission)
+
+    def guard(
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    ) -> frozenset[str]:
+        held = frozenset({declared_draft, declared_approved} & set(actor.permissions))
+        if not held:
+            raise ForbiddenError()
+        return held
+
+    return Depends(guard)
+
+
 @router.post(
     "/{batch_id}/cancel",
     response_model=BatchSummary,
     operation_id="cancelPaymentBatch",
-    summary="Cancel a draft batch and release every allocation it holds.",
+    summary="Cancel a batch and release every allocation it holds.",
     responses=CANCEL_RESPONSES,
-    dependencies=[requires(declare("payment_batch.cancel_draft"))],
 )
 def cancel_batch(
     batch_id: uuid.UUID,
@@ -1029,17 +1064,26 @@ def cancel_batch(
     response: Response,
     actor: Annotated[ActorContext, Depends(authenticated_actor)],
     runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    held: Annotated[
+        frozenset[str],
+        either_cancellation_permission(
+            "payment_batch.cancel_draft", "payment_batch.cancel_approved"
+        ),
+    ],
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> BatchSummary:
     """`POST /api/v1/payment-batches/{batch_id}/cancel`, per `05_API_Specification.md:1539`.
 
-    **Draft only, and the reason is a missing permission rather than a missing arrow.** §29.2
-    permits cancelling a ready-for-approval batch with a reason;
-    `permission_catalog.yaml` holds one batch cancellation permission and it is
-    `payment_batch.cancel_draft`. Inventing a second is not an implementer's decision, so the
-    command refuses that state and its message names `DOC-CONFLICT-056` — an implementer who hits
-    it should learn that the rule exists and the grant does not.
+    **Three of §29.2's four origins, and the fourth is still a missing permission rather than a
+    missing arrow.** `draft`, `ready_for_approval` and `approved` are cancellable here; `rejected`
+    is refused by the command with a message naming `DOC-CONFLICT-056`, because nobody has decided
+    whether a rejected batch is cancelled or simply left rejected.
+
+    **The route admits either grant and decides nothing.** `authority_for_cancelling` picks the
+    permission from the loaded batch's status, which is a fact no dependency can have — see
+    `either_cancellation_permission`. A caller holding only `cancel_draft` who aims at an approved
+    batch passes this guard and is refused by the command, which is where the separation belongs.
 
     **`command_catalog.yaml` has no row for this command at all** (G-4), so its concurrency and
     idempotency contract is inferred from its neighbours: every other batch command in that file
@@ -1060,6 +1104,7 @@ def cancel_batch(
             commands.CancelBatch(
                 payment_batch_id=batch_id,
                 expected_batch_record_version=expected,
+                held_permissions=held,
                 reason=payload.reason,
             ),
             uow=uow,

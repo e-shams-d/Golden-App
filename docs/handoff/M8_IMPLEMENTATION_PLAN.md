@@ -867,6 +867,32 @@ requests to the pool, so nothing about the requests needs deciding.
 **Sequenced after M8's remaining slices**, because none of slices 5, 6 or 7 depends on it and a
 milestone abandoned mid-flight costs more than an ordered queue.
 
+**Built on 2026-08-28, and three things came out of it that the paragraphs above did not predict.**
+
+- **The rule about a sent export was already enforced, by the status machine.** §29.2 at `:1381`
+  permits cancelling an approved batch "only before valid final export is sent", and the obvious
+  implementation queries `bank_excel_exports`. That query cannot fire: `mark_sent_to_bank` sets the
+  batch to `sent_to_bank`, so a batch whose file has gone to the bank is never `approved`. The
+  guard was written, an integration test proved it unreachable, and it was deleted — **the
+  fifteenth mechanism with no caller in this repository**, and the first found by a test rather
+  than by asking where the callers are. A unit test would have passed it, by constructing a state
+  production cannot reach. What replaced it is a refusal message for `sent_to_bank` that names the
+  rule instead of only listing the cancellable statuses.
+- **A gate was asking a question that had been equivalent until now.** M6's Definition of Done
+  forbade a batch route *naming* a manager-only permission, which was the same as *requiring* one
+  while every guard held exactly one grant. The cancel route admits either grant, so the old
+  reading failed on a route that keeps the property perfectly — and the two ways out of that would
+  have been to delete the gate or exempt the route. `guards_admitting_only` asks the real question
+  — is there a guard whose every alternative is restricted — and
+  `test_a_guard_offering_only_manager_grants_is_caught` is the control proving the new reading
+  still catches a genuinely unreachable route.
+- **The route still has no screen, and now two roles need one.** `POST /{batch_id}/cancel` has had
+  no admin screen since M6 built it, and `M7_SCREENS_IMPLEMENTATION_PLAN.md` does not mention
+  cancellation at all. The owner's decision authorises a manager to cancel an approved batch and
+  there is nowhere for them to do it, so the capability is reachable only through the API.
+  Recorded rather than built, because a screen is a slice with its own reachability tests — and
+  recorded at all because "routes with no screen" is this project's oldest recurring shape.
+
 ---
 
 # 5. What this plan carries forward

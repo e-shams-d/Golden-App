@@ -569,22 +569,62 @@ assert_authentication_completes() {
     # A fresh identity per run. The verifier keeps its data volumes across runs, so a
     # fixed number would find a trader already registered under an earlier run's
     # password and fail for a reason that has nothing to do with the stack.
-    phone="09$(od -An -N4 -tu4 /dev/urandom | tr -d ' \n' | cut -c1-9)"
-    phone=$(printf '%s' "$phone" | cut -c1-11)
+    #
+    # **Exactly nine digits after the `09`, and the arithmetic is what guarantees it.**
+    # The earlier form took `cut -c1-9` of a uint32's decimal text, whose length is 1
+    # to 10 digits, so a value below 10^8 produced a short number — 10^8/2^32, about
+    # one run in forty-three. That failed CI on 2026-08-28 and the message blamed
+    # AUTH_CSRF_KEY_SECRET, which was present and correct.
+    #
+    # **Three deliberate behaviours combined to hide it, and none of them is wrong.**
+    # `normalize_mobile` refuses a short number. `POST /traders/register` answers
+    # `accepted=true` anyway (`app/api/v1/traders.py`, the `InvalidIdentifier`
+    # branch), because distinguishing "not a valid Iranian mobile" from "already
+    # registered" would make a public endpoint an enumeration oracle. And a login
+    # refusal is a generic 401 by design — `12_Security_RBAC_Audit.md:403` forbids
+    # separating "not a valid number" from "wrong password".
+    #
+    # So registration reported success against an account that was never created, the
+    # wrong-password probe got its expected 401 for entirely the wrong reason, and
+    # only the correct-password probe failed. A stage that cannot tell "no such
+    # account" from "the stack is broken" has to make its own inputs valid, which is
+    # what the arithmetic and the assertion below do.
+    random_national=$(od -An -N4 -tu4 /dev/urandom | tr -d ' \n')
+    phone=$(printf '09%09d' "$((random_national % 1000000000))")
     password="Verify-$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
+
+    # The identifier is asserted well-formed *before* it is used. The arithmetic above
+    # makes this unreachable, which is the point: it is the assertion that keeps the
+    # generator honest if anybody rewrites it, and a malformed identifier fails this
+    # stage in a way that reads like a broken stack.
+    if ! printf '%s' "$phone" | grep -Eq '^09[0-9]{9}$'; then
+        printf '%s\n' \
+            "The verifier generated the identifier $phone, which is not an Iranian" \
+            "mobile number. This stage cannot say anything about the stack until the" \
+            "identifier it uses is well-formed." >&2
+        return 1
+    fi
 
     # Piped rather than passed as an argument: a --data value is visible in the
     # process table to every user on the machine.
-    if ! printf '%s' "{\"display_name\":\"Docker Verification\",\"primary_phone\":\"$phone\",\"contact_full_name\":\"Verification Contact\",\"password\":\"$password\"}" \
-        | curl --fail --silent --show-error --max-time 15 \
-            --header "Host: trader.localhost" \
-            --header 'Content-Type: application/json' \
-            --data @- \
-            --output /dev/null \
-            "http://127.0.0.1:$port/api/v1/traders/register"; then
-        printf '%s\n' "Public trader registration failed against the running stack." >&2
-        return 1
-    fi
+    registered=$(
+        printf '%s' "{\"display_name\":\"Docker Verification\",\"primary_phone\":\"$phone\",\"contact_full_name\":\"Verification Contact\",\"password\":\"$password\"}" \
+            | curl --silent --show-error --max-time 15 \
+                --header "Host: trader.localhost" \
+                --header 'Content-Type: application/json' \
+                --data @- \
+                --output /dev/null \
+                --write-out '%{http_code}' \
+                "http://127.0.0.1:$port/api/v1/traders/register"
+    )
+    case "$registered" in
+        2*) ;;
+        *)
+            printf '%s\n' \
+                "Public trader registration returned $registered against the running stack." >&2
+            return 1
+            ;;
+    esac
 
     refused=$(
         printf '%s' "{\"identifier\":\"$phone\",\"password\":\"wrong-$password\"}" \
@@ -614,10 +654,20 @@ assert_authentication_completes() {
                 "http://127.0.0.1:$port/api/v1/auth/trader/login"
     )
     if ! printf '%s' "$accepted" | grep -q 'STATUS=200'; then
+        # **The observed status, before the hypothesis.** This message named
+        # AUTH_CSRF_KEY_SECRET as the cause and nothing else, which sent one
+        # investigation after a secret that was present: the real failure was a
+        # malformed identifier the generator above now cannot produce. A 500 does
+        # point at the secret; a 401 points at the identifier or the password; a 429
+        # points at the rate limiter. Printing the code lets the next reader tell
+        # those apart instead of inheriting a guess.
         printf '%s\n' \
             "A correct password did not complete authentication against the stack." \
-            "This is the shape of the defect this stage was written for: check that" \
-            "the backend container receives AUTH_CSRF_KEY_SECRET." >&2
+            "Observed: $(printf '%s' "$accepted" | tr -d '\r' | grep -o 'STATUS=[0-9]*')" \
+            "401 means the identifier or password did not match — check the" \
+            "identifier this stage generated. 500 is the defect this stage was" \
+            "written for: check that the backend container receives" \
+            "AUTH_CSRF_KEY_SECRET. 429 means the rate limiter, not the credential." >&2
         return 1
     fi
 

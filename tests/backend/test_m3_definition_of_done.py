@@ -548,8 +548,11 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ("POST", "/api/v1/payment-batches/{batch_id}/versions", "permission"): (
         "test_replacing_needs_the_version_create_permission"
     ),
+    # G-5 renamed this. The route now admits either cancellation grant and the command picks
+    # between them on the batch's status, so "cancelling needs cancel_draft" was true only of a
+    # draft — which is the case the negative it names actually asserts.
     ("POST", "/api/v1/payment-batches/{batch_id}/cancel", "permission"): (
-        "test_cancelling_needs_the_cancel_draft_permission"
+        "test_cancelling_a_draft_needs_the_cancel_draft_permission"
     ),
     # M7 slice 1. Each negative signs in holding every *other* batch grant, so it proves the
     # route wants this particular one — which for approve and reject is the whole separation

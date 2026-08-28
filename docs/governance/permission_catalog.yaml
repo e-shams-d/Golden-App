@@ -466,6 +466,21 @@ permission_groups:
       payment_batch.cancel_draft:
         default_roles: [accountant]
         constraints: [authenticated_active, internal_business_scope, state_guarded_command]
+      # Added on the workspace owner's decision of 2026-08-25, recorded in CONFLICT_REGISTER.md
+      # under DOC-CONFLICT-056. Evidence: workspace owner approval via conversation; legal name and
+      # organizational role not supplied — the evidence statement that register's approved
+      # resolutions all carry.
+      #
+      # Cancelling an approved batch undoes a manager's decision, so an accountant must not hold it:
+      # the same separation FINANCIAL_INTEGRITY_BASELINE.md section 5 makes non-configurable between
+      # finalizing and approving. Cancellation before approval stays on cancel_draft above, where
+      # the accountant is undoing their own work and nothing has been decided yet.
+      #
+      # Not business_admin: it holds user and role management and no payment authority, and widening
+      # an administrative role into the money path is not what was decided.
+      payment_batch.cancel_approved:
+        default_roles: [manager]
+        constraints: [authenticated_active, internal_business_scope, state_guarded_command]
       payment_batch_version.create:
         default_roles: [accountant]
         constraints: [authenticated_active, internal_business_scope, state_guarded_command]

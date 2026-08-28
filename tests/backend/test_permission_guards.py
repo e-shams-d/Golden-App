@@ -114,18 +114,66 @@ UNGUARDED_ROUTES: dict[tuple[str, str], str] = {
 }
 
 
-def declared_permissions(route: object) -> set[str]:
-    """Permissions a route declares, read from its dependency graph."""
+def permission_alternatives(route: object) -> list[set[str]]:
+    """One set per guard, and each set is an **alternative** rather than a conjunction.
 
-    found: set[str] = set()
+    A route's guards compose with AND — every dependency must pass — while the permissions
+    *inside* one guard compose with OR. `requires(declare(x))` admits only a holder of `x`, so its
+    set is `{x}`. `owned_or_permitted` and `either_cancellation_permission` each admit a holder of
+    either of two, so their sets have two members and neither member is individually required.
+
+    **The grouping is the whole information, and flattening it loses the distinction that
+    matters.** Until G-5 every guard held exactly one permission, so a flat set could not be wrong;
+    the moment a route admitted either of two, "the route mentions a manager-only permission" and
+    "the route requires one" stopped being the same claim, and M6's prohibition is about the
+    second.
+    """
+
+    groups: list[set[str]] = []
     dependant = getattr(route, "dependant", None)
     for dependency in getattr(dependant, "dependencies", []) or []:
         call = getattr(dependency, "call", None)
-        for value in getattr(call, "__closure__", None) or ():
-            contents = value.cell_contents
-            if isinstance(contents, str) and contents in APPROVED_PERMISSIONS:
-                found.add(contents)
+        group = {
+            value.cell_contents
+            for value in getattr(call, "__closure__", None) or ()
+            if isinstance(value.cell_contents, str)
+            and value.cell_contents in APPROVED_PERMISSIONS
+        }
+        if group:
+            groups.append(group)
+    return groups
+
+
+def declared_permissions(route: object) -> set[str]:
+    """Every permission a route names, whether required or merely admitted."""
+
+    found: set[str] = set()
+    for group in permission_alternatives(route):
+        found |= group
     return found
+
+
+def guards_admitting_only(route: object, restricted: frozenset[str]) -> list[set[str]]:
+    """Guards a caller cannot pass without holding one of `restricted`. Empty means reachable.
+
+    The predicate every "role X must still be able to reach this" prohibition actually wants, and
+    it is **not** "the route names one of these". A guard offends when *every* alternative it
+    offers is restricted, because that is when holding none of them ends the request.
+
+    Two readings this replaces, both of which are wrong in one direction:
+
+    - *Names one* — fails on `either_cancellation_permission`, which admits a manager-only grant
+      as an **alternative** to an accountant's. An accountant reaches that handler holding only
+      `cancel_draft`, so the prohibition holds and a mention-based gate would say otherwise.
+    - *Requires one* (a permission alone in its guard) — passes a guard offering a choice between
+      two restricted permissions, where the caller is refused whichever they lack. `{approve,
+      reject}` is the shape, and `test_a_guard_offering_only_manager_grants_is_caught` is the
+      control that this reading catches it.
+    """
+
+    return [
+        group for group in permission_alternatives(route) if group and group <= restricted
+    ]
 
 
 def routes_of(app: object) -> list[tuple[str, str, object]]:
