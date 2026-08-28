@@ -26,6 +26,7 @@ infra/scripts/m0_manifest.py
 infra/scripts/bridge-demo-port.py
 infra/scripts/summarise_image_findings.py
 
-# `scripts/` holds the negative-control harnesses. Only the Python one is listed: the
-# rest are shell, which this linter does not read.
+# `scripts/` holds the negative-control harnesses and the plan-citation checker. Only the
+# Python ones are listed: the rest are shell, which this linter does not read.
 scripts/control-pip-rule.py
+scripts/check-plan-citations.py

@@ -669,6 +669,187 @@ PENDING: dict[str, str] = {
     # `tests/backend/test_m7_definition_of_done.py`. **`PENDING` now holds no M7 obligation**,
     # which is the milestone's own closing gate rather than a claim made here — that gate parses
     # the plan for the ids it states and fails on any of them still in this dictionary.
+    # M9 - `docs/handoff/M9_IMPLEMENTATION_PLAN.md`. Matching candidates, confirmed evidence,
+    # payment results and publication: seven slices, thirty-two obligations,
+    # `15_Agent_Implementation_Plan.md` section 17.
+    #
+    # **This milestone opens with its governance already complete**, which no earlier one did.
+    # Every permission is approved and seeded, every status of all three new aggregates is
+    # catalogued, and the audit actions and outbox events are named. So no entry below needed a
+    # provisional name, and a slice that finds itself wanting one has drifted rather than
+    # discovered a gap.
+    #
+    # The plan's three open items are recorded there rather than here, because none is an
+    # obligation this file can track: whether an evidence-free paid confirmation needs a second
+    # person, which task type the overpayment case opens with, and the `revoked`/`voided`
+    # spelling documents 04 and 05 still disagree with 06 and 08 about.
+    # Slice 1 - matching candidates; acceptance must not touch money.
+    "DB-CANDIDATE-001": (
+        "M9 slice 1 - matching candidates; acceptance must not touch money. Stated by the plan and "
+        "not yet built; the slice's own pull request discharges it and removes this entry in the "
+        "same commit."
+    ),
+    "SVC-CANDIDATE-001": (
+        "M9 slice 1 - matching candidates; acceptance must not touch money. Stated by the plan and "
+        "not yet built; the slice's own pull request discharges it and removes this entry in the "
+        "same commit."
+    ),
+    "SVC-CANDIDATE-002": (
+        "M9 slice 1 - matching candidates; acceptance must not touch money. Stated by the plan and "
+        "not yet built; the slice's own pull request discharges it and removes this entry in the "
+        "same commit."
+    ),
+    "SEC-CANDIDATE-001": (
+        "M9 slice 1 - matching candidates; acceptance must not touch money. Stated by the plan and "
+        "not yet built; the slice's own pull request discharges it and removes this entry in the "
+        "same commit."
+    ),
+    "AUD-CANDIDATE-001": (
+        "M9 slice 1 - matching candidates; acceptance must not touch money. Stated by the plan and "
+        "not yet built; the slice's own pull request discharges it and removes this entry in the "
+        "same commit."
+    ),
+    # Slice 2 - confirmed evidence links; two partial uniques and an atomic replacement.
+    "DB-EVIDENCE-001": (
+        "M9 slice 2 - confirmed evidence links; two partial uniques and an atomic replacement. "
+        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+    ),
+    "CON-EVIDENCE-001": (
+        "M9 slice 2 - confirmed evidence links; two partial uniques and an atomic replacement. "
+        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+    ),
+    "SVC-EVIDENCE-001": (
+        "M9 slice 2 - confirmed evidence links; two partial uniques and an atomic replacement. "
+        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+    ),
+    "SVC-EVIDENCE-002": (
+        "M9 slice 2 - confirmed evidence links; two partial uniques and an atomic replacement. "
+        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+    ),
+    "AUD-EVIDENCE-001": (
+        "M9 slice 2 - confirmed evidence links; two partial uniques and an atomic replacement. "
+        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+    ),
+    # Slice 3 - confirm paid and confirm failed; seven validations, each separately provoked.
+    "SVC-CONFIRM-001": (
+        "M9 slice 3 - confirm paid and confirm failed; seven validations, each separately "
+        "provoked. Stated by the plan and not yet built; the slice's own pull request discharges "
+        "it and removes this entry in the same commit."
+    ),
+    "SVC-CONFIRM-002": (
+        "M9 slice 3 - confirm paid and confirm failed; seven validations, each separately "
+        "provoked. Stated by the plan and not yet built; the slice's own pull request discharges "
+        "it and removes this entry in the same commit."
+    ),
+    "SVC-CONFIRM-003": (
+        "M9 slice 3 - confirm paid and confirm failed; seven validations, each separately "
+        "provoked. Stated by the plan and not yet built; the slice's own pull request discharges "
+        "it and removes this entry in the same commit."
+    ),
+    "SVC-CONFIRM-004": (
+        "M9 slice 3 - confirm paid and confirm failed; seven validations, each separately "
+        "provoked. Stated by the plan and not yet built; the slice's own pull request discharges "
+        "it and removes this entry in the same commit."
+    ),
+    "SVC-CONFIRM-005": (
+        "M9 slice 3 - confirm paid and confirm failed; seven validations, each separately "
+        "provoked. Stated by the plan and not yet built; the slice's own pull request discharges "
+        "it and removes this entry in the same commit."
+    ),
+    "SVC-CONFIRM-006": (
+        "M9 slice 3 - confirm paid and confirm failed; seven validations, each separately "
+        "provoked. Stated by the plan and not yet built; the slice's own pull request discharges "
+        "it and removes this entry in the same commit."
+    ),
+    "SEC-CONFIRM-001": (
+        "M9 slice 3 - confirm paid and confirm failed; seven validations, each separately "
+        "provoked. Stated by the plan and not yet built; the slice's own pull request discharges "
+        "it and removes this entry in the same commit."
+    ),
+    "AUD-CONFIRM-001": (
+        "M9 slice 3 - confirm paid and confirm failed; seven validations, each separately "
+        "provoked. Stated by the plan and not yet built; the slice's own pull request discharges "
+        "it and removes this entry in the same commit."
+    ),
+    # Slice 4 - the request aggregate under lock; overpayment opens a task and blocks closure.
+    "SVC-AGGREGATE-001": (
+        "M9 slice 4 - the request aggregate under lock; overpayment opens a task and blocks "
+        "closure. Stated by the plan and not yet built; the slice's own pull request discharges it "
+        "and removes this entry in the same commit."
+    ),
+    "SVC-AGGREGATE-002": (
+        "M9 slice 4 - the request aggregate under lock; overpayment opens a task and blocks "
+        "closure. Stated by the plan and not yet built; the slice's own pull request discharges it "
+        "and removes this entry in the same commit."
+    ),
+    "CON-AGGREGATE-001": (
+        "M9 slice 4 - the request aggregate under lock; overpayment opens a task and blocks "
+        "closure. Stated by the plan and not yet built; the slice's own pull request discharges it "
+        "and removes this entry in the same commit."
+    ),
+    # Slice 5 - payment result publications; immutable, hashed, one active per request.
+    "DB-PUBLICATION-001": (
+        "M9 slice 5 - payment result publications; immutable, hashed, one active per request. "
+        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+    ),
+    "SVC-PUBLICATION-001": (
+        "M9 slice 5 - payment result publications; immutable, hashed, one active per request. "
+        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+    ),
+    "SEC-PUBLICATION-001": (
+        "M9 slice 5 - payment result publications; immutable, hashed, one active per request. "
+        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+    ),
+    "FILE-PUBLICATION-001": (
+        "M9 slice 5 - payment result publications; immutable, hashed, one active per request. "
+        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+    ),
+    # Slice 6 - the trader surface; read, acknowledge and dispute, none of which moves money.
+    "API-PUBLICATION-001": (
+        "M9 slice 6 - the trader surface; read, acknowledge and dispute, none of which moves "
+        "money. Stated by the plan and not yet built; the slice's own pull request discharges it "
+        "and removes this entry in the same commit."
+    ),
+    "SVC-DISPUTE-001": (
+        "M9 slice 6 - the trader surface; read, acknowledge and dispute, none of which moves "
+        "money. Stated by the plan and not yet built; the slice's own pull request discharges it "
+        "and removes this entry in the same commit."
+    ),
+    "AUD-PUBLICATION-001": (
+        "M9 slice 6 - the trader surface; read, acknowledge and dispute, none of which moves "
+        "money. Stated by the plan and not yet built; the slice's own pull request discharges it "
+        "and removes this entry in the same commit."
+    ),
+    # Slice 7 - correction and publication N+1; the old version survives, and the gate.
+    "SVC-CORRECTION-001": (
+        "M9 slice 7 - correction and publication N+1; the old version survives, and the gate. "
+        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+    ),
+    "SVC-CORRECTION-002": (
+        "M9 slice 7 - correction and publication N+1; the old version survives, and the gate. "
+        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+    ),
+    "OPS-NOTIFY-001": (
+        "M9 slice 7 - correction and publication N+1; the old version survives, and the gate. "
+        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+    ),
+    "TRACE-M9-001": (
+        "M9 slice 7 - correction and publication N+1; the old version survives, and the gate. "
+        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+    ),
 }
 
 
