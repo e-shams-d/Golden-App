@@ -99,4 +99,8 @@ from __future__ import annotations
 # than at opening, because that is when a person actually looks — so it carries an UPDATE grant, and
 # the protection against a second write is `PERMITTED_TRANSITIONS`, which draws no arrow out of
 # `resolved`.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260826_0026"})
+# 20260828_0027 seeds `payment_batch.cancel_approved` and grants it to `manager`, on the owner's
+# 2026-08-25 decision under DOC-CONFLICT-056: an approved batch had a documented cancellation rule
+# and no permission to authorise it, so it had no exit. The first later revision that seeds a
+# *grant* as well as a permission — `20260816_0014` deliberately seeded neither role.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260828_0027"})

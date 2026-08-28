@@ -29,6 +29,13 @@ MIGRATION = (
 ACTIVATION_MIGRATION = (
     BACKEND_ROOT / "alembic" / "versions" / "20260816_0014_activation_permissions.py"
 )
+# The third, and the first later revision that also seeds a **grant**. `_0014` seeded its two
+# permissions with no `role_permissions` rows deliberately, so the grant-reproduction test
+# had never needed to look past `_0008`. `payment_batch.cancel_approved` arrives on the owner's
+# 2026-08-25 decision under DOC-CONFLICT-056 and is granted to `manager`, so it does now.
+CANCELLATION_MIGRATION = (
+    BACKEND_ROOT / "alembic" / "versions" / "20260828_0027_cancel_approved_permission.py"
+)
 
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
@@ -54,6 +61,12 @@ def load_activation_seed() -> object:
     """The second seeding revision. See `ACTIVATION_MIGRATION`."""
 
     return _load(ACTIVATION_MIGRATION, "seed_activation_permissions")
+
+
+def load_cancellation_seed() -> object:
+    """The third seeding revision. See `CANCELLATION_MIGRATION`."""
+
+    return _load(CANCELLATION_MIGRATION, "seed_cancellation_permission")
 
 
 def _load(path: Path, name: str) -> object:
@@ -99,22 +112,37 @@ class TestSeedMatchesCatalogue:
         """
 
         activation = load_activation_seed()
+        cancellation = load_cancellation_seed()
         catalogue_codes = {permission.code for permission in permissions()}
         seeded_codes = {code for code, _domain in seed.PERMISSIONS}  # type: ignore[attr-defined]
         seeded_codes |= {
             code
             for code, _domain in activation.ACTIVATION_PERMISSIONS  # type: ignore[attr-defined]
         }
+        seeded_codes |= {
+            code
+            for code, _domain in cancellation.CANCELLATION_PERMISSIONS  # type: ignore[attr-defined]
+        }
 
         assert seeded_codes == catalogue_codes
 
     def test_every_default_grant_is_reproduced(self, seed: object) -> None:
+        """The union again, and this is the assertion that made a third revision necessary.
+
+        `_0014` seeds permissions and grants none, so this read only `_0008` for two milestones and
+        was right to. `payment_batch.cancel_approved` is granted to `manager`, so a comparison
+        against `_0008` alone would report the catalogue as ahead of the schema when both are
+        correct — the same false alarm the docstring above records for the permission set.
+        """
+
+        cancellation = load_cancellation_seed()
         expected = {
             (role_code, permission.code)
             for permission in permissions()
             for role_code in permission.default_roles
         }
         seeded = set(seed.ROLE_PERMISSIONS)  # type: ignore[attr-defined]
+        seeded |= set(cancellation.CANCELLATION_GRANTS)  # type: ignore[attr-defined]
 
         assert seeded == expected
 

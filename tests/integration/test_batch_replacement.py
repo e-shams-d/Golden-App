@@ -560,16 +560,23 @@ def test_a_draft_batch_can_be_cancelled_and_its_allocations_are_released(
     )
 
 
-def test_a_finalized_batch_cannot_be_cancelled_and_the_refusal_names_the_conflict(
+def test_a_finalized_batch_is_cancellable_by_the_accountant_and_releases_its_allocations(
     world: dict[str, Any],
 ) -> None:
-    """`SVC-BATCH-006`, the origin §29.2 permits and no permission authorises.
+    """`SVC-BATCH-006`'s second origin, opened by G-5.
 
-    This is the one place in M6 where a documented rule is deliberately not implemented, so the
-    refusal has to be legible: it names the state, names the rule, and names
-    `DOC-CONFLICT-056`. An implementer who hits it should learn that the gap is a missing grant
-    rather than a missing arrow — otherwise the natural next step is to widen `cancel_draft`,
-    which is a grant decision nobody has made.
+    Until the owner's 2026-08-25 decision this was refused and the refusal named
+    DOC-CONFLICT-056: §29.2 permits cancelling a ready-for-approval batch "with reason" and
+    `permission_catalog.yaml` held no permission that authorised it, so the rule was unreachable
+    under deny-by-default. It stays with the **accountant** — nothing has been decided yet, so
+    they are undoing their own work — which is why the assertion here is a 200 for the same
+    caller the old refusal was written against.
+
+    The release is asserted for the reason this whole module exists: a cancellation that kept its
+    allocations would leave the trader's request permanently unbatchable.
+
+    `tests/integration/test_batch_cancellation.py` carries the rest — the approved origin, both
+    directions of the permission split, and the `rejected` origin that is still refused.
     """
 
     batch = a_batch(world)
@@ -578,19 +585,24 @@ def test_a_finalized_batch_cannot_be_cancelled_and_the_refusal_names_the_conflic
     assert finalized.status_code == 200, finalized.text
 
     response = cancel(world, batch, etag=finalized.headers["ETag"])
-    assert response.status_code == 400, response.text
-    assert "ready_for_approval" in response.text
-    assert "DOC-CONFLICT-056" in response.text, (
-        "the refusal does not say why the rule is unimplemented, so the next reader will assume "
-        "the state machine forbids it"
-    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "cancelled"
 
-    unchanged = rows(
+    changed = rows(
         world,
         "SELECT status, cancelled_at FROM payment_batches WHERE id = %s",
         batch["batch_id"],
     )
-    assert unchanged[0] == ("ready_for_approval", None)
+    assert changed[0][0] == "cancelled"
+    assert changed[0][1] is not None
+
+    released = rows(
+        world,
+        "SELECT released_at FROM payment_attempt_allocations WHERE payment_batch_version_id = %s",
+        batch["version_id"],
+    )
+    assert released, "the cancelled batch had no allocations to release"
+    assert all(released_at is not None for (released_at,) in released)
 
 
 def test_a_cancelled_batch_takes_no_replacement(world: dict[str, Any]) -> None:
@@ -633,12 +645,17 @@ def test_replacing_needs_the_version_create_permission(world: dict[str, Any]) ->
     assert replace(world, batch, etag=etag, selection=selection).status_code == 201
 
 
-def test_cancelling_needs_the_cancel_draft_permission(world: dict[str, Any]) -> None:
-    """`payment_batch.cancel_draft` is `accountant`-only (`:466`).
+def test_cancelling_a_draft_needs_the_cancel_draft_permission(world: dict[str, Any]) -> None:
+    """`payment_batch.cancel_draft` is `accountant`-only (`:466`), and still is after G-5.
 
-    `manager` is the interesting refusal: the role that will approve cannot cancel, which is the
-    separation of duties showing up in the permission catalogue before M7 writes any approval
-    code.
+    **The two refusals now happen at different layers, and that is the point.**
+    `replace_business_admin` holds neither cancellation grant, so the route's dependency refuses
+    before the batch is read. `replace_manager` holds `cancel_approved` and reaches the handler,
+    where `authority_for_cancelling` sees a draft and refuses on the state.
+
+    Same status code, different mechanism — which is why
+    `tests/integration/test_batch_cancellation.py` asserts the manager case again with the
+    catalogue read back, so a 403 that arrived for the wrong reason cannot pass for this one.
     """
 
     batch = a_batch(world)

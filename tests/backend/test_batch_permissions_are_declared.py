@@ -71,9 +71,19 @@ EXPECTED: dict[tuple[str, str], set[str]] = {
     # container's for the reason `FINANCIAL_INTEGRITY_BASELINE.md` §5 gives: the
     # version-level actors are the ones a manager's approval is checked against.
     REPLACE: {"payment_batch_version.create"},
-    # `cancel_draft` is the only batch cancellation permission that exists, which is
-    # why cancellation is draft-only. DOC-CONFLICT-056.
-    CANCEL: {"payment_batch.cancel_draft"},
+    # **The one route that declares two, and the equality above is what keeps that honest.**
+    # G-5: the owner's 2026-08-25 decision under DOC-CONFLICT-056 split cancellation authority
+    # by the batch's *state* — `cancel_draft` before a manager has decided, `cancel_approved`
+    # after. A route dependency runs before the batch is loaded and so cannot choose between
+    # them; `either_cancellation_permission` admits a caller holding either and
+    # `commands.authority_for_cancelling` refuses on the status.
+    #
+    # Declaring only one would break a role outright rather than tighten anything: only
+    # `cancel_draft` locks the manager out of the route entirely, only `cancel_approved` stops
+    # an accountant cancelling their own draft. `required_permissions` is what the
+    # manager-only prohibition reads, and it sees neither of these as required — which is the
+    # distinction between an alternative and a requirement.
+    CANCEL: {"payment_batch.cancel_draft", "payment_batch.cancel_approved"},
     # M7 slice 1. Three separate grants for three different authorities, and the
     # separation is the milestone's whole subject.
     #

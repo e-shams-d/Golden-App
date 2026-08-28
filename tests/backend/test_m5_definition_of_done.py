@@ -239,8 +239,16 @@ def test_the_manager_only_set_is_real(manager_only: frozenset[str]) -> None:
 
     Equality rather than non-emptiness because the set is what the whole gate turns on. The
     catalogue has eleven permissions granted to nobody, and `retention.approve` is described
-    as manager authority — seeded as written it becomes a fourth entry here. That must be a
+    as manager authority — seeded as written it becomes a fifth entry here. That must be a
     loud failure asking a person to look, not a silent widening of what this gate polices.
+
+    **The fourth entry arrived exactly that way, and this is the record of having looked.**
+    `payment_batch.cancel_approved` was added on the owner's 2026-08-25 decision under
+    DOC-CONFLICT-056, and it belongs in this set for the reason the set exists: cancelling an
+    approved batch undoes a manager's decision, so an accountant holding it would defeat the
+    same separation `FINANCIAL_INTEGRITY_BASELINE.md` §5 makes non-configurable between
+    finalizing and approving. The other three are the approval verbs; this is the verb that
+    unmakes them, which is why it sits here rather than beside `payment_batch.cancel_draft`.
     """
 
     assert manager_only == frozenset(
@@ -248,6 +256,7 @@ def test_the_manager_only_set_is_real(manager_only: frozenset[str]) -> None:
             "payment_batch_version.approve",
             "payment_batch_version.reject",
             "payment_batch_version.invalidate_approval",
+            "payment_batch.cancel_approved",
         }
     ), sorted(manager_only)
 
@@ -262,12 +271,17 @@ def test_the_seed_grants_the_manager_only_set_to_manager_alone(
     gate protect a property the running system does not have.
     """
 
-    seed = (
-        BACKEND
-        / "alembic"
-        / "versions"
-        / "20260801_0008_seed_rbac_catalogue.py"
-    ).read_text(encoding="utf-8")
+    # **Every seeding revision, not the first one.** `_0008` was the only one that granted
+    # anything until `payment_batch.cancel_approved` arrived in `_0027` on the owner's 2026-08-25
+    # decision; reading `_0008` alone found no holder for it and reported the seed as failing to
+    # grant a permission it grants elsewhere. The property is about the seeded state of the
+    # database, which is the union of the revisions that build it.
+    versions = BACKEND / "alembic" / "versions"
+    seed = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted(versions.glob("*.py"))
+        if "role_permissions" in path.read_text(encoding="utf-8")
+    )
 
     for code in sorted(manager_only):
         holders = set(re.findall(rf'\("([a-z_]+)", "{re.escape(code)}"\)', seed))

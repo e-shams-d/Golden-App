@@ -32,9 +32,10 @@ Covers: TRACE-DOD-012, SEC-BATCH-004, TRACE-M6-001.
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -52,7 +53,7 @@ from test_m5_definition_of_done import (  # noqa: F401
     manager_only,
     request_prefix,
 )
-from test_permission_guards import declared_permissions, routes_of
+from test_permission_guards import declared_permissions, guards_admitting_only, routes_of
 from test_traceability import PENDING
 
 BATCH_PREFIX = "/api/v1/payment-batches"
@@ -60,6 +61,12 @@ BATCH_PREFIX = "/api/v1/payment-batches"
 # The commands M6 built, by module. Named so that a module added later without an entry here
 # fails the completeness check at the bottom rather than escaping the scan.
 M6_COMMAND_MODULES = ("payment_batch.py",)
+
+# The one manager-only permission an M6 command may name, by the owner's 2026-08-25 decision under
+# DOC-CONFLICT-056. Spelled here rather than derived from the catalogue, because the exception is a
+# decision about *this* permission: a derived rule would widen itself the moment another
+# manager-only grant arrived.
+CANCEL_APPROVED = "payment_batch.cancel_approved"
 
 # Batch command modules a later milestone owns, which the manager-only prohibition therefore does
 # **not** apply to. `payment_batch_approval.py` names `payment_batch_version.approve` because
@@ -165,16 +172,121 @@ def test_no_batch_route_requires_a_manager_only_permission(
         "stopped seeing them and this assertion would prove nothing"
     )
 
+    # **`guards_admitting_only`, not `declared_permissions`**, and G-5 is what forced the
+    # distinction. The cancel route admits a caller holding *either* cancellation grant and lets
+    # `authority_for_cancelling` choose on the batch's status, so it names `cancel_approved`
+    # without an accountant ever needing it — they reach the handler on `cancel_draft` alone.
+    # Reading the flat declared set here would fail on a route that keeps this gate's property
+    # perfectly, and the two ways out of that are to delete the gate or to exempt the route: both
+    # give up the claim.
+    #
+    # The prohibition is unchanged for every guard naming one permission, which is all of the
+    # others: for those the two readings are identical.
     offenders = {
-        f"{method} {path}": sorted(declared_permissions(route) & manager_only)
+        f"{method} {path}": [sorted(group) for group in blocked]
         for method, path, route in m6_routes
-        if declared_permissions(route) & manager_only
+        if (blocked := guards_admitting_only(route, manager_only))
     }
 
     assert offenders == {}, (
         "these M6 routes require a manager-only permission, so an accountant cannot reach them "
         f"and the actor who finalizes is an actor who may approve: {offenders}"
     )
+
+
+def test_a_guard_offering_only_manager_grants_is_caught(
+    manager_only: frozenset[str],  # noqa: F811
+) -> None:
+    """The control for the reading above, and the reason it is not simply weaker.
+
+    `guards_admitting_only` deliberately tolerates a manager-only permission *alongside* an
+    accountant's, because that is an alternative rather than a requirement. The failure that
+    tolerance could hide is a guard offering a choice between two manager-only grants — a caller
+    holding neither is refused whichever way they turn, so the accountant is locked out exactly as
+    if one had been named alone.
+
+    Built here rather than mounted, because the application does not contain such a route and
+    should not: the claim is about the *reader*, and a reader that stopped catching this would
+    make the prohibition above pass over the one shape it cannot see.
+
+    The three cases are asserted together on purpose. A control that only proved the catch would
+    be satisfied by a reader that flagged everything.
+    """
+
+    restricted = sorted(manager_only)
+    assert len(restricted) >= 2, (
+        f"fewer than two manager-only permissions in the catalogue ({restricted}), so the "
+        "offending shape below cannot be built and this control proves nothing"
+    )
+    approve, reject = restricted[0], restricted[1]
+    accountant_grant = "payment_batch.cancel_draft"
+    assert accountant_grant not in manager_only, (
+        "the catalogue now makes cancel_draft manager-only, which would make the tolerated case "
+        "below indistinguishable from the caught one"
+    )
+
+    both_restricted = _route_with_guards([{approve, reject}])
+    assert guards_admitting_only(both_restricted, manager_only) == [{approve, reject}], (
+        "a guard whose every alternative is manager-only was not caught; the prohibition above "
+        "would then pass over a route no accountant can reach"
+    )
+
+    mixed = _route_with_guards([{accountant_grant, approve}])
+    assert guards_admitting_only(mixed, manager_only) == [], (
+        "a guard offering an accountant grant as an alternative was flagged, which would fail the "
+        "prohibition on the cancel route that keeps its property"
+    )
+
+    conjunction = _route_with_guards([{accountant_grant}, {approve}])
+    assert guards_admitting_only(conjunction, manager_only) == [{approve}], (
+        "two separate guards compose with AND, so a manager-only one among them is required and "
+        "must be caught however many others there are"
+    )
+
+
+def _guard_holding(permissions: set[str]) -> Any:
+    """A dependency shaped the way `permission_alternatives` reads them.
+
+    **Real closures**, because the reader walks `call.__closure__` and inspects each cell for an
+    approved permission string. A stand-in object with a `permissions` attribute would exercise a
+    reader this codebase does not have, and `__closure__` cannot be assigned onto a function — so
+    the cells are made the only way they can be: by capturing one free variable each.
+    """
+
+    captured = sorted(permissions)
+    assert 1 <= len(captured) <= 2, "the control needs guards of one or two permissions"
+
+    if len(captured) == 1:
+        (only,) = captured
+
+        def one() -> str:  # pragma: no cover - inspected, never called
+            return only
+
+        call: Any = one
+    else:
+        first, second = captured
+
+        def two() -> tuple[str, str]:  # pragma: no cover - inspected, never called
+            return first, second
+
+        call = two
+
+    class _Dependency:
+        pass
+
+    dependency = _Dependency()
+    dependency.call = call  # type: ignore[attr-defined]
+    return dependency
+
+
+def _route_with_guards(groups: list[set[str]]) -> Any:
+    class _Dependant:
+        dependencies: ClassVar[list[Any]] = [_guard_holding(group) for group in groups]
+
+    class _Route:
+        dependant: ClassVar[Any] = _Dependant()
+
+    return _Route()
 
 
 def test_no_request_level_route_gained_a_manager_only_permission(
@@ -211,18 +323,32 @@ def test_no_m6_command_declares_a_manager_only_permission(
     """The same prohibition one layer down, read from the source.
 
     A route is not the only place a permission can be required: a command could check one
-    directly. Scanned as text rather than through the route table, because the failure being
-    prevented is precisely a check the route table cannot see.
+    directly, and the failure being prevented is precisely a check the route table cannot see.
+
+    **One manager-only permission is now allowed here, and it is named.** The owner's 2026-08-25
+    decision under DOC-CONFLICT-056 made cancelling an *approved* batch require
+    `payment_batch.cancel_approved` — a manager-only grant that `payment_batch.py` must be able to
+    name, because `authority_for_cancelling` chooses it from the batch's status. Everything this
+    gate was actually written about is untouched: `payment_batch_version.approve` and every other
+    manager-only permission stay prohibited outright, so a finalization path that required the
+    grant that approves still fails here.
+
+    The companion test below is what keeps the exception from becoming a hole.
     """
 
     commands = Path(__file__).resolve().parents[2] / "services" / "backend" / "app" / "commands"
     modules = [commands / name for name in M6_COMMAND_MODULES]
+    prohibited = manager_only - {CANCEL_APPROVED}
+    assert prohibited, (
+        f"the only manager-only permission in the catalogue is {CANCEL_APPROVED}, so subtracting "
+        "it leaves this scan with nothing to look for and the prohibition asserts nothing"
+    )
 
     problems: list[str] = []
     for module in modules:
         assert module.exists(), f"{module} is missing; M6's command module moved"
         text = module.read_text(encoding="utf-8")
-        for permission in sorted(manager_only):
+        for permission in sorted(prohibited):
             if permission in text:
                 problems.append(f"{module.name} names {permission}")
 
@@ -230,6 +356,81 @@ def test_no_m6_command_declares_a_manager_only_permission(
         "an M6 command names a manager-only permission, so finalization would require the grant "
         f"that approves: {problems}"
     )
+
+
+def test_the_cancellation_permission_is_never_named_inside_a_command_function() -> None:
+    """What makes the exception above narrow rather than a hole.
+
+    `payment_batch.cancel_approved` exists in `payment_batch.py` exactly once, as the module-level
+    constant `CANCEL_APPROVED_OPERATION`, and reaches the decision through
+    `authority_for_cancelling` — which returns *which* permission the transition needs and leaves
+    the comparison to `cancel_batch`, against `command.held_permissions`. So no function body
+    contains the literal, and that absence is the assertable form of "no command hard-codes a
+    permission check on itself".
+
+    A function that spelled the string inline would be a check the route table cannot see and the
+    scan above no longer catches — which is the precise shape this gate was written to forbid, one
+    permission later.
+
+    **An AST walk over string constants, skipping docstrings**, for the reason this repository has
+    now hit eight times: a prose explanation of a prohibition collides with a text scan for it, and
+    the prose is what loses.
+    """
+
+    module = (
+        Path(__file__).resolve().parents[2]
+        / "services" / "backend" / "app" / "commands" / "payment_batch.py"
+    )
+    tree = ast.parse(module.read_text(encoding="utf-8"))
+
+    functions = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    ]
+    assert functions, "no functions parsed out of payment_batch.py; the walk sees nothing"
+
+    offenders = sorted(
+        node.name
+        for node in functions
+        if any(
+            isinstance(literal, ast.Constant)
+            and literal.value == CANCEL_APPROVED
+            and literal is not _docstring_node(node)
+            for literal in ast.walk(node)
+        )
+    )
+    assert offenders == [], (
+        f"{offenders} name {CANCEL_APPROVED} inline. The permission belongs in "
+        "`CANCEL_APPROVED_OPERATION` and reaches a caller's grants through "
+        "`authority_for_cancelling`; a literal inside a function is a permission check the route "
+        "table cannot see."
+    )
+
+    # The control. Without it an AST walk that found no constants at all would pass, which is the
+    # same green as a prohibition that holds.
+    module_level = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and node.value == CANCEL_APPROVED
+    ]
+    assert module_level, (
+        f"{CANCEL_APPROVED} appears nowhere in payment_batch.py, so the walk above is looking for "
+        "something that is not there and would pass however the module were written"
+    )
+
+
+def _docstring_node(function: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.AST | None:
+    """The function's docstring expression, so the walk above can skip it.
+
+    A docstring is an `ast.Constant` like any other, so a function explaining why it must not name
+    a permission would be caught for explaining it.
+    """
+
+    first = function.body[0] if function.body else None
+    if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant):
+        return first.value
+    return None
 
 
 def test_every_m6_command_module_is_in_the_scan(

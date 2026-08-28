@@ -580,7 +580,10 @@ CANCEL_PAYMENT_BATCH = CommandNames(
         "unaudited, so the name follows the aggregate's existing dotted convention and must be "
         "renamed to whatever M0 approves. No outbox event: nothing outside the platform acts on "
         "an accountant abandoning a draft, which is the same reasoning "
-        "`CANCEL_PAYMENT_REQUEST` applies one aggregate down."
+        "`CANCEL_PAYMENT_REQUEST` applies one aggregate down. G-5 widened the command to the "
+        "ready-for-approval and approved origins §29.2 also permits and that conclusion still "
+        "holds — cancelling an approved batch refuses outright once a final export is marked "
+        "sent, so no cancellation can reach a state anything outside the platform acted on."
     ),
 )
 

@@ -55,7 +55,18 @@ from app.audit.registry import (
 )
 from app.audit.writer import AuditActor, AuditContext, AuditEntry, AuditWriter
 from app.batching.splitting import SplittingRules, split
-from app.core.errors import BusinessRuleViolationError, ConflictError, NotFoundError
+
+# M7 named these and this module now needs them. Imported rather than redefined: two spellings of
+# `"approved"` in two command modules is the drift this codebase spends its gates catching, and the
+# dependency runs one way — `payment_batch_approval` imports nothing from here.
+from app.commands.bank_export import BATCH_SENT
+from app.commands.payment_batch_approval import BATCH_APPROVED, BATCH_REJECTED
+from app.core.errors import (
+    BusinessRuleViolationError,
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+)
 from app.core.hashing import unversioned_digest
 from app.core.time import to_business_time
 from app.db.concurrency import compare_and_swap
@@ -1125,26 +1136,88 @@ VERSION_SUPERSEDED = "superseded"
 BATCH_CANCELLED = "cancelled"
 
 CREATE_VERSION_OPERATION = "payment_batch_version.create"
+
+# **Two roles for one string, and G-5 separated them without renaming it.** This is both the
+# permission a draft cancellation requires *and* the operation every cancellation claims its
+# idempotency key under — one route, one command, so one idempotency namespace whatever the
+# origin. Deriving the operation from the status instead would let the same key be claimed twice,
+# once per spelling, which is exactly the retry the claim exists to make safe.
+#
+# The value keeps the draft name because it is a component of persisted `idempotency_records`
+# rows; renaming it would orphan every in-flight key for the sake of a tidier constant.
 CANCEL_BATCH_OPERATION = "payment_batch.cancel_draft"
 
-# `06_Workflows_and_State_Machines.md` §29.2 lists three cancellation origins for a batch:
-# "Draft/rejected batch may be cancelled" and "Ready-for-approval may be cancelled with reason".
-#
-# **M6 implements one of them, and the reason is a permission rather than a preference.**
-# `permission_catalog.yaml` holds exactly one batch cancellation permission — `cancel_draft` at
-# `:466` — and no second entry. `rejected` needs M7's rejection to reach, so it is out of scope
-# either way. `ready_for_approval` M6 *does* reach as of slice 3, and §29.2 permits cancelling it
-# with a reason, and nothing authorises that: inventing a permission is not an implementer's
-# decision, because a permission is a grant and grants are seeded and audited.
-#
-# `DOC-CONFLICT-056` records it, including the consequence — a finalized batch has no exit until
-# the owner settles whether `cancel_draft` covers it or a second permission is needed.
-CANCELLABLE_BATCH_STATUSES: tuple[str, ...] = (BATCH_DRAFT,)
+# The owner's 2026-08-25 decision under DOC-CONFLICT-056. A permission only, never an operation,
+# for the reason above. See `authority_for_cancelling`.
+CANCEL_APPROVED_OPERATION = "payment_batch.cancel_approved"
 
-# The states §29.2 permits and M6 does not implement, kept beside the tuple above so the
-# difference is visible rather than discovered. `SVC-BATCH-006` asserts both: that the permitted
-# set is exactly the first, and that the second is absent *for a recorded reason*.
-CANCELLABLE_BUT_UNAUTHORISED: tuple[str, ...] = (BATCH_READY,)
+# `06_Workflows_and_State_Machines.md` §29.2 lists the cancellation origins for a batch:
+# "Draft/rejected batch may be cancelled", "Ready-for-approval may be cancelled with reason", and
+# at `:1381` "Approved batch may be replaced/cancelled only before valid final export is sent".
+#
+# **M6 implemented one of them, because a permission was missing rather than because a rule was.**
+# `permission_catalog.yaml` held exactly one batch cancellation permission — `cancel_draft` — so the
+# other origins were unreachable under deny-by-default, and inventing a second was not an
+# implementer's decision: a permission is a grant, and grants are seeded and audited.
+#
+# **The owner settled it on 2026-08-25** (DOC-CONFLICT-056 and -053): authority splits by state.
+# Before a manager has approved, the accountant is undoing their own work and keeps `cancel_draft`.
+# After approval, cancelling *unmakes a manager's decision*, which an accountant must not be able to
+# do — the same separation `FINANCIAL_INTEGRITY_BASELINE.md` §5 makes non-configurable between
+# finalizing and approving. So `payment_batch.cancel_approved` exists, granted to `manager` alone by
+# `20260828_0027`.
+CANCELLABLE_BATCH_STATUSES: tuple[str, ...] = (BATCH_DRAFT, BATCH_READY)
+
+# States whose cancellation needs the manager-only permission. Its own tuple rather than a flag on
+# the one above, because "may this be cancelled" and "by whom" are different questions, and
+# collapsing them is how an accountant ends up holding a manager's verb.
+CANCELLABLE_BY_MANAGER_ONLY: tuple[str, ...] = (BATCH_APPROVED,)
+
+# What §29.2 permits and this codebase still does not implement, kept beside the tuples above so
+# the difference stays visible rather than being discovered. `SVC-BATCH-006` asserts all three.
+#
+# `rejected` is here because M7 built rejection and nothing has decided whether a rejected batch is
+# cancelled or simply left rejected. §29.2 pairs it with `draft`, which would make it accountant
+# work — but the batch has by then been in front of a manager, and that pairing predates M7's
+# rejection existing at all. A third decision nobody has made.
+CANCELLABLE_BUT_UNAUTHORISED: tuple[str, ...] = (BATCH_REJECTED,)
+
+# §29.2 at `:1381` permits cancelling an approved batch "only before valid final export is sent",
+# and **the status machine already enforces that** — which is why there is no query against
+# `bank_excel_exports` anywhere in this command.
+#
+# `mark_sent_to_bank` sets `batch.status = BATCH_SENT` (`app/commands/bank_export.py:667`), so a
+# batch whose final export has gone to the bank is never in `approved` and never reaches the
+# authority check. A `_refuse_if_a_final_export_was_sent` helper was written and removed the same
+# hour: an integration test proved it could not fire, and an unreachable guard is the defect this
+# repository has now found fifteen times.
+#
+# The status still needs its own refusal, because the generic "only draft, ready_for_approval,
+# approved may be cancelled" message names the list without naming the rule — and here the reason
+# is that a real payment instruction has left the building, which is worth saying out loud.
+CANCELLED_TOO_LATE: tuple[str, ...] = (BATCH_SENT,)
+
+
+def authority_for_cancelling(status: str) -> str:
+    """Which permission a cancellation from `status` requires.
+
+    **The route cannot answer this, and that is why the function exists.** A permission listed in
+    `dependencies=[requires(...)]` is decided before the batch is loaded, so it cannot depend on the
+    batch's state — and the owner's decision is precisely that it does. So the route admits either
+    permission and the command decides, which puts the separation in the command where no route
+    configuration can weaken it.
+
+    Raises rather than returning a default for an uncancellable state: a default here would quietly
+    authorise a transition nobody permitted.
+    """
+
+    if status in CANCELLABLE_BY_MANAGER_ONLY:
+        return CANCEL_APPROVED_OPERATION
+    if status in CANCELLABLE_BATCH_STATUSES:
+        return CANCEL_BATCH_OPERATION
+    raise BusinessRuleViolationError(
+        f"a batch in {status} cannot be cancelled, so no permission authorises it"
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1163,10 +1236,19 @@ class CreateReplacementVersion:
 
 @dataclass(frozen=True, slots=True)
 class CancelBatch:
-    """`06_Workflows_and_State_Machines.md` §29.2, restricted to what a permission authorises."""
+    """`06_Workflows_and_State_Machines.md` §29.2, with the authority the owner's decision sets."""
 
     payment_batch_id: uuid.UUID
     expected_batch_record_version: int
+    # **What the caller actually holds**, passed in rather than looked up, because the command must
+    # not reach for a session's identity: every other command in this module takes the actor as an
+    # argument for the same reason, and a command that could read the caller's grants could read a
+    # different caller's.
+    #
+    # A frozenset rather than a list so the command cannot mutate it, and required rather than
+    # defaulted to empty: a default would let a caller constructed without it cancel nothing, which
+    # looks like a permission failure and is a programming error.
+    held_permissions: frozenset[str]
     reason: str | None = None
 
 
@@ -1529,16 +1611,35 @@ def cancel_batch(
     idempotency_key: str,
     now: datetime,
 ) -> CancelResult:
-    """`draft --> cancelled`, and only that, for the reason `CANCELLABLE_BATCH_STATUSES` gives.
+    """`draft`, `ready_for_approval` or `approved` `--> cancelled`, by whoever may.
 
-    §29.2 permits cancelling a ready-for-approval batch with a reason and no permission authorises
-    it — `DOC-CONFLICT-056`. So this refuses anything but a draft, and the refusal names the
-    conflict rather than pretending the state machine forbids it: an implementer reading the error
-    should learn that the rule exists and the grant does not.
+    §29.2 lists three cancellation origins; M6 implemented one, because `permission_catalog.yaml`
+    held one cancellation permission and the other two were unreachable under deny-by-default. The
+    owner's 2026-08-25 decision under DOC-CONFLICT-056 supplied the second permission, so the other
+    two origins open here. `rejected` stays refused and the refusal still names the conflict, so an
+    implementer reading the error learns the rule exists and the grant does not.
+
+    **Authority is a function of the batch's status**, resolved by `authority_for_cancelling`
+    against `command.held_permissions` once the row is loaded. The route cannot do it: a
+    `dependencies=[requires(...)]` guard is decided before the batch is read.
 
     **No reason is required.** §29.2 attaches "with reason" to the ready-for-approval case and not
     to the draft case, so requiring one here would be a stricter refusal than any document states.
     One is recorded if given.
+
+    **A sent final export makes the batch uncancellable, and the status machine is what says so.**
+    §29.2 at `:1381` permits cancelling an approved batch "only before valid final export is sent";
+    marking sent moves the batch to `sent_to_bank`, so such a batch is never `approved` and is
+    refused above by `CANCELLED_TOO_LATE` — see that constant for why no export query exists here.
+
+    **An approved batch's approval stops being operational, and that is audited separately.** The
+    same `payment_batch_approval.invalidated` row a replacement writes, for the same reason: the
+    batch's own row says the batch is cancelled, and a reader asking "why is the approval I
+    remember no longer in force" needs the answer keyed by the approval's id.
+
+    Covers: SVC-BATCH-006, extended. G-5 has no obligation ids of its own and none are
+    invented here — `tests/integration/test_batch_cancellation.py` is the evidence, and
+    the M8 plan's own rule is to name an absent obligation rather than its id.
 
     **Every allocation is released.** A cancelled batch that kept its allocations would hold its
     attempts hostage: the partial unique index would refuse to allocate them anywhere else, so a
@@ -1580,25 +1681,55 @@ def cancel_batch(
     if batch is None:
         raise NotFoundError()
 
-    if batch.status not in CANCELLABLE_BATCH_STATUSES:
+    cancellable = (*CANCELLABLE_BATCH_STATUSES, *CANCELLABLE_BY_MANAGER_ONLY)
+    if batch.status not in cancellable:
         if batch.status in CANCELLABLE_BUT_UNAUTHORISED:
             raise BusinessRuleViolationError(
-                f"batch {batch.batch_number} is {batch.status}. §29.2 permits cancelling it with "
-                "a reason and no permission authorises that — the only batch cancellation "
-                "permission is payment_batch.cancel_draft. See DOC-CONFLICT-056."
+                f"batch {batch.batch_number} is {batch.status}. §29.2 permits cancelling it and no "
+                "permission authorises that — the owner's 2026-08-25 decision covers the draft, "
+                "ready-for-approval and approved cases and not this one. See DOC-CONFLICT-056."
+            )
+        if batch.status in CANCELLED_TOO_LATE:
+            raise BusinessRuleViolationError(
+                f"batch {batch.batch_number} is {batch.status}: its final export is already "
+                "marked sent to the bank. §29.2 permits cancelling an approved batch only before "
+                "a valid final export is sent."
             )
         raise BusinessRuleViolationError(
             f"batch {batch.batch_number} is {batch.status}; only "
-            f"{', '.join(CANCELLABLE_BATCH_STATUSES)} may be cancelled"
+            f"{', '.join(cancellable)} may be cancelled"
         )
+
+    # **The authority check is here rather than on the route, because it depends on the batch.**
+    # A route's `dependencies=[requires(...)]` runs before this row is loaded, so it can only ask
+    # "may this caller cancel batches at all". The owner's decision is that cancelling an approved
+    # batch takes a permission cancelling a draft does not, and only the loaded status answers that.
+    #
+    # `required_permission` is passed in by the route from the caller's own grants, so this compares
+    # what the transition needs against what the caller actually holds. A caller who holds
+    # `cancel_draft` and not `cancel_approved` reaches this line and is refused here — which is the
+    # whole separation, enforced where the state is known.
+    required = authority_for_cancelling(batch.status)
+    if required not in command.held_permissions:
+        raise ForbiddenError()
 
     version = session.get(PaymentBatchVersion, batch.current_version_id)
     if version is None:  # pragma: no cover - the composite key guarantees it
         raise NotFoundError()
 
+    # Read **before** the status change, because it is the fact the audit row needs and the change
+    # destroys it. Until this slice the audit row wrote the literal `BATCH_DRAFT` here — correct
+    # while draft was the only cancellable status, and a false statement about every other one.
+    previous_status = batch.status
+
     released = _release_every_allocation_of(
         session, version, reason="the batch was cancelled", actor=actor, now=now
     )
+
+    # The version is going nowhere, so an export still inside `uq_active_final_export_per_version`'s
+    # predicate must not stay valid — the same reasoning, and the same helper, as replacement. Only
+    # an approved batch can have one at all, so this is empty for the other two origins.
+    voided = _void_active_final_exports(session, version, now=now)
 
     compare_and_swap(
         session,
@@ -1623,11 +1754,19 @@ def cancel_batch(
             entity_type="payment_batch",
             entity_id=batch.id,
             entity_record_version=batch.record_version,
-            previous_values={"status": BATCH_DRAFT},
+            previous_values={"status": previous_status},
             new_values={
                 "status": batch.status,
                 "released_allocations": released,
                 "current_version_id": str(version.id),
+                # Named on the row rather than left to be correlated with an export's status
+                # change, for the reason `_void_active_final_exports` gives: otherwise the only
+                # trace is a status nobody joined back to its cause.
+                "voided_final_exports": voided,
+                # Which permission actually authorised this. Two roles can reach this command and
+                # an audit reader cannot tell which rule applied from the status alone once the
+                # batch has moved on.
+                "authorised_by": authority_for_cancelling(previous_status),
             },
             reason=command.reason,
             occurred_at=now,
@@ -1636,6 +1775,17 @@ def cancel_batch(
         actor=actor,
         context=context,
     )
+
+    if previous_status in CANCELLABLE_BY_MANAGER_ONLY:
+        _audit_approval_invalidated_by_cancellation(
+            session,
+            policy,
+            batch=batch,
+            cancelled=version,
+            actor=actor,
+            context=context,
+            now=now,
+        )
 
     resolver.complete(
         claim,
@@ -1647,6 +1797,69 @@ def cancel_batch(
     )
 
     return CancelResult(batch=batch)
+
+
+def _audit_approval_invalidated_by_cancellation(
+    session: Session,
+    policy: RedactionPolicy,
+    *,
+    batch: PaymentBatch,
+    cancelled: PaymentBatchVersion,
+    actor: AuditActor,
+    context: AuditContext,
+    now: datetime,
+) -> None:
+    """The manager's approval stops being operational, recorded under its own catalogued action.
+
+    **The same action a replacement writes, and not a new one.**
+    `payment_batch_approval.invalidated` is catalogued at `audit_outbox_catalog.yaml:31` for the
+    fact that a decision ceased to authorise anything, and a cancellation ends it exactly as a
+    replacement does. Inventing `payment_batch_approval.cancelled` would have added an uncatalogued
+    name for a fact the catalogue already has a name for.
+
+    **Separate from the batch's own row**, for the reason `_audit_invalidation` gives: an
+    investigator asking about a *decision* looks it up by the approval's id, and the batch row is
+    keyed by the batch.
+
+    A batch can reach `approved` only through `batch_approvals`, so a missing row here would be a
+    broken invariant rather than a case to handle — but the query is by version id and returns
+    `None` for a shape the database should not hold, so it is checked instead of asserted.
+    """
+
+    approval = session.scalar(
+        select(BatchApproval).where(BatchApproval.payment_batch_version_id == cancelled.id)
+    )
+    if approval is None:  # pragma: no cover - `approved` implies an approval row
+        return
+
+    AuditWriter(session, policy).record(
+        AuditEntry(
+            action=INVALIDATE_BATCH_APPROVAL.audit_action,
+            outcome="success",
+            metadata_schema=METADATA_SCHEMA,
+            metadata_version=METADATA_VERSION,
+            entity_type="batch_approval",
+            entity_id=approval.id,
+            entity_record_version=batch.record_version,
+            previous_values={
+                "operational": True,
+                "approved_version_id": str(cancelled.id),
+                "approved_version_number": cancelled.version_number,
+                "approved_content_hash": approval.approved_content_hash,
+            },
+            new_values={
+                # No `replacement_version_id`: there is no replacement, and the difference between
+                # the two ways an approval dies is readable from that absence alone.
+                "operational": False,
+                "batch_status": batch.status,
+            },
+            reason="the approved batch was cancelled; the approval remains historical",
+            occurred_at=now,
+            metadata={"operation": INVALIDATE_BATCH_APPROVAL.audit_action},
+        ),
+        actor=actor,
+        context=context,
+    )
 
 
 def _release_every_allocation_of(

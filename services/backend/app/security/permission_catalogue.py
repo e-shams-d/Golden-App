@@ -91,6 +91,7 @@ APPROVED_PERMISSIONS: frozenset[str] = frozenset(
         "payment_attempt.correct_result",
         "payment_attempt.create_retry",
         "payment_attempt.read",
+        "payment_batch.cancel_approved",
         "payment_batch.cancel_draft",
         "payment_batch.create",
         "payment_batch.read",
