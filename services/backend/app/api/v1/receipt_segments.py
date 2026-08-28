@@ -35,6 +35,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.orm import Session
 
 from app.api.contract import VALIDATION_ERROR_RESPONSE
 from app.api.dependencies import get_runtime
@@ -43,6 +44,7 @@ from app.audit.redaction import RedactionPolicy
 from app.audit.writer import AuditActor, AuditContext
 from app.commands import receipt_crop as crop_commands
 from app.commands import receipt_segment as segment_commands
+from app.commands.manual_review_task import privacy_verification
 from app.core.errors import (
     BusinessRuleViolationError,
     ErrorEnvelope,
@@ -210,6 +212,20 @@ class SegmentDetail(BaseModel):
     extracted_tracking_number: str | None
     extracted_payment_at: datetime | None
     extraction_confidence: str | None
+    # §16.5, as a fact rather than a promise. M8 slice 7.
+    #
+    # **`privacy_verified` compares versions, it does not read a flag.** A resolved
+    # `segment_privacy_review` task carries the segment version its reviewer actually looked at, and
+    # this is true only when that matches the segment's version now. So a segment re-rendered after
+    # its check is unverified again automatically, with nothing to remember to reset — which is what
+    # `SVC-PRIVACY-001`'s "per segment version" means and the only form of it that cannot rot.
+    #
+    # There is deliberately no setter. §2.5 of the M8 plan: publication is M9's, and a guard on a
+    # path that does not exist would be untestable. What this field does is let the workspace show
+    # the state, which is also what stops it being a mechanism with no caller.
+    privacy_verified: bool
+    privacy_verified_at: datetime | None
+    privacy_review_task_id: uuid.UUID | None
     created_by_actor_type: str
     record_version: int
     created_at: datetime
@@ -272,8 +288,19 @@ def _decimal(value: Decimal | None) -> str | None:
     return None if value is None else str(value)
 
 
-def _detail(segment: ReceiptSegment) -> SegmentDetail:
+def _detail(segment: ReceiptSegment, session: Session) -> SegmentDetail:
+    """The segment, plus whether its privacy check still applies.
+
+    **The session is a parameter rather than the segment carrying the answer**, because the answer
+    depends on a *different* row — the latest resolved privacy task — and a property on the model
+    would have made every read of a segment silently issue a second query.
+    """
+
+    verification = privacy_verification(session, segment.id)
     return SegmentDetail(
+        privacy_verified=verification.verified,
+        privacy_verified_at=verification.verified_at,
+        privacy_review_task_id=verification.task_id,
         id=segment.id,
         bank_result_bundle_id=segment.bank_result_bundle_id,
         bank_result_bundle_file_id=segment.bank_result_bundle_file_id,
@@ -379,7 +406,7 @@ def attach_external_evidence(
             context=AuditContext(request_id=get_request_id()),
             now=now,
         )
-        rendered = _detail(segment)
+        rendered = _detail(segment, uow.session)
         uow.commit()
 
     return rendered
@@ -458,7 +485,7 @@ def create_receipt_crop(
             now=now,
         )
         rendered = CropAccepted(
-            segment=_detail(accepted.segment),
+            segment=_detail(accepted.segment, uow.session),
             processing_job_id=accepted.job.id,
             processing_job_status=accepted.job.status,
         )
@@ -494,4 +521,4 @@ def get_receipt_segment(
         segment = uow.session.get(ReceiptSegment, segment_id)
         if segment is None:
             raise NotFoundError()
-        return _detail(segment)
+        return _detail(segment, uow.session)

@@ -65,6 +65,10 @@ TASK_TYPE_EXPORT_INTEGRITY = "bank_export_integrity"
 # because what a person is left to deal with is an unresolved segment whatever made the render fail.
 # A `crop_failed` type would have been an invention, and the column's CHECK would have refused it.
 TASK_TYPE_UNRESOLVED_SEGMENT = "bundle_unresolved_segment"
+# M8 slice 7. §16.5's verification, and the third value named from the tuple above rather than added
+# to it. That the approved list already contains this type is M0 saying the privacy check belongs in
+# the review queue — which is why slice 7 needed no new table, no new permission and no new command.
+TASK_TYPE_PRIVACY_REVIEW = "segment_privacy_review"
 
 # How a task ended. `unresolved_with_reason` is the honest close for a task whose subject is still
 # not fixed, and the table requires it to carry prose — otherwise the honest option would also be
@@ -113,6 +117,18 @@ class ManualReviewTask(Base):
     # The generic reference. No foreign key, by design and by necessity.
     entity_type: Mapped[str] = mapped_column(String(64), nullable=False)
     entity_id: Mapped[uuid.UUID] = mapped_column(PostgresUUID(as_uuid=True), nullable=False)
+    # **Which version of that entity the task is about.** M8 slice 7, for §16.5: a privacy
+    # verification has to be per segment version, because a segment edited after being verified is
+    # unverified again and the record would otherwise attest to something that no longer exists.
+    #
+    # Not the same as `record_version` below, which is this task's own. The pattern is
+    # `audit_logs.entity_record_version`, which has held exactly this since M2 — moved here rather
+    # than invented, and useful beyond privacy: an export-integrity task should also be able to say
+    # which version of the export it was raised against.
+    #
+    # Nullable because a task about something with no version — a bundle, an attempt — honestly has
+    # none, and because tasks opened before this column existed cannot claim one retroactively.
+    entity_record_version: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     assigned_to_admin_user_id: Mapped[uuid.UUID | None] = mapped_column(
         PostgresUUID(as_uuid=True),
@@ -142,6 +158,13 @@ class ManualReviewTask(Base):
         named_check(f"task_type IN ({_quoted(TASK_TYPES)})", name="task_type_value"),
         named_check(f"entity_type IN ({_quoted(ENTITY_TYPES)})", name="entity_type_value"),
         named_check("priority BETWEEN 1 AND 5", name="priority_in_range"),
+        # Positive when present. `record_version` starts at 1 everywhere in this schema, so a zero
+        # or negative version is not a row anybody wrote — admitting one would let a task claim a
+        # subject version that cannot exist.
+        named_check(
+            "entity_record_version IS NULL OR entity_record_version > 0",
+            name="entity_record_version_is_positive",
+        ),
         named_check(
             f"resolution_code IS NULL OR resolution_code IN ({_quoted(RESOLUTION_CODES)})",
             name="resolution_code_value",

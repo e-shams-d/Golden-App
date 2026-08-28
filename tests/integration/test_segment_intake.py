@@ -24,8 +24,14 @@ already exercises. Two of slice 5's findings came out of that proximity: `a_clea
 creating a file with no bytes in storage, and every fixture here used a file category
 `app/files/ownership.py` has no resolver for, so those files were denied to everybody.
 
+**M8 slice 7 ends here too**, and it belongs here for the same reason slice 5 did: the Definition of
+Done is a claim about a *sequence* — inspect a mixed bundle, crop it reproducibly, continue without
+AI — and every step of that sequence is already built in this file. A journey test in a module
+of its own would have rebuilt the fixture and then diverged from it.
+
 Covers: DB-SEGMENT-001, SVC-SEGMENT-003, SEC-SEGMENT-001, SVC-CROP-001, SVC-CROP-003, SVC-CROP-004,
-SVC-CROP-005, SVC-CROP-006, AUD-CROP-001, SVC-PREVIEW-002, SEC-PREVIEW-001, API-PREVIEW-001.
+SVC-CROP-005, SVC-CROP-006, AUD-CROP-001, SVC-PREVIEW-002, SEC-PREVIEW-001, API-PREVIEW-001,
+SVC-PRIVACY-001, TRACE-M8-002.
 """
 
 from __future__ import annotations
@@ -1706,3 +1712,302 @@ def test_a_preview_is_refused_without_the_bundle_permission(world: dict[str, Any
     sign_in_trader(client)
     assert preview(world, document, 1).status_code == 403
     assert preview(world, str(uuid.uuid4()), 1).status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# M8 slice 7: privacy review and the Definition of Done.
+# ---------------------------------------------------------------------------
+
+
+def resolve_privacy_task(world: dict[str, Any], segment_id: str, code: str = "no_action_required",
+                         note: str | None = None) -> Any:
+    """Find the segment's open privacy task and resolve it, as an operator would."""
+
+    client = world["client"]
+    task = rows(
+        world,
+        "SELECT id, record_version FROM manual_review_tasks WHERE entity_id = %s AND task_type = "
+        "'segment_privacy_review' AND status IN ('open', 'in_progress')",
+        segment_id,
+    )
+    assert len(task) == 1, f"expected one open privacy task, found {len(task)}"
+    task_id, version = task[0]
+
+    body: dict[str, Any] = {"resolution_code": code}
+    if note is not None:
+        body["resolution_note"] = note
+    # Both headers. `05_API_Specification.md:2065` requires `If-Match` on every task transition —
+    # two people working one queue is the normal case, not the edge case — and slice 3 made the
+    # command idempotent too, so a retried resolve does not record a second decision.
+    return client.post(
+        f"/api/v1/manual-review-tasks/{task_id}/resolve",
+        json=body,
+        headers={
+            **csrf(client),
+            # `rv-<n>`, not a bare number: the ETag is an opaque token and the platform gave it a
+            # shape so a client cannot accidentally send something else that happens to parse.
+            "If-Match": f"rv-{version}",
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
+    )
+
+
+def test_a_crop_raises_a_privacy_task_nobody_has_to_remember(world: dict[str, Any]) -> None:
+    """§16.5, attached at the moment the obligation arises.
+
+    "Before evidence can be included in publication, the operator must verify that the crop does not
+    reveal unrelated names, IBANs, amounts, tracking references, or transactions." A crop is when
+    that obligation starts, so the task is raised there — not left for somebody to remember, and not
+    invented at publication time when the person who drew the rectangle has moved on.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    bundle = a_bundle_with_a_pdf(world)
+    segment_id = request_a_crop(world, bundle).json()["segment"]["id"]
+
+    task = rows(
+        world,
+        "SELECT task_type, status, priority, entity_type, entity_record_version "
+        "FROM manual_review_tasks WHERE entity_id = %s",
+        segment_id,
+    )
+    assert len(task) == 1
+    assert task[0][0] == "segment_privacy_review"
+    assert task[0][1] == "open"
+    # Priority 3, not the quarantine path's 5: evidence waiting to be checked is ordinary work.
+    assert task[0][2] == 3
+    assert task[0][3] == "receipt_segment"
+    # Nothing verified yet, so nothing claimed. The version arrives when a person resolves it.
+    assert task[0][4] is None
+
+
+def test_the_verification_records_who_when_and_which_version(world: dict[str, Any]) -> None:
+    """`SVC-PRIVACY-001`. All four facts, and the fourth is the one that took a migration.
+
+    A resolved task already carried actor, time and subject. `entity_record_version` is what makes
+    the record *about a version* rather than about a segment in general — and that is the difference
+    between a verification and a wish.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    bundle = a_bundle_with_a_pdf(world)
+    segment_id = request_a_crop(world, bundle).json()["segment"]["id"]
+
+    before = rows(
+        world, "SELECT record_version FROM receipt_segments WHERE id = %s", segment_id
+    )[0][0]
+
+    resolved = resolve_privacy_task(world, segment_id)
+    assert resolved.status_code == 200, resolved.text
+
+    record = rows(
+        world,
+        "SELECT resolved_by_admin_user_id, resolved_at, entity_id, entity_record_version, "
+        "resolution_code FROM manual_review_tasks WHERE entity_id = %s",
+        segment_id,
+    )[0]
+    assert record[0] is not None, "no actor recorded, so nobody is accountable for the check"
+    assert record[1] is not None, "no time recorded"
+    assert str(record[2]) == segment_id
+    assert record[3] == before, "the version verified is not the version the segment had"
+    assert record[4] == "no_action_required"
+
+    detail = client.get(f"/api/v1/receipt-segments/{segment_id}")
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["privacy_verified"] is True
+    assert detail.json()["privacy_verified_at"] is not None
+
+
+def test_a_segment_changed_after_its_check_is_unverified_again(world: dict[str, Any]) -> None:
+    """`SVC-PRIVACY-001`'s per-version half, and the reason it is a comparison and not a flag.
+
+    The crop is verified, then rendered — which bumps `record_version` — and the verification stops
+    applying with nothing to remember to reset. A stored boolean would still say `true`, and it
+    would be attesting to an image nobody looked at.
+
+    Rendering is the realistic way this happens: a queued crop verified before its worker ran.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    bundle = a_bundle_with_a_pdf(world)
+    segment_id = request_a_crop(world, bundle).json()["segment"]["id"]
+
+    assert resolve_privacy_task(world, segment_id).status_code == 200
+    assert client.get(f"/api/v1/receipt-segments/{segment_id}").json()["privacy_verified"] is True
+
+    # The worker renders, `record_version` moves, and the check no longer describes this segment.
+    drain(world)
+
+    after = client.get(f"/api/v1/receipt-segments/{segment_id}").json()
+    assert after["privacy_verified"] is False, (
+        "a segment re-rendered after its privacy check still claims to be verified"
+    )
+    # And the task is still named, because "checked at version 1, now version 2" is a different
+    # situation from "never checked" and an operator has to tell them apart.
+    assert after["privacy_review_task_id"] is not None
+
+
+def test_an_unresolved_disposition_verifies_nothing(world: dict[str, Any]) -> None:
+    """The honest close must not be the dangerous one.
+
+    `unresolved_with_reason` exists to close a task whose subject was *not* put right. Treating
+    it as a pass would mean an operator who wrote "this crop shows another customer's IBAN" had
+    thereby marked it publishable.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+    bundle = a_bundle_with_a_pdf(world)
+    segment_id = request_a_crop(world, bundle).json()["segment"]["id"]
+
+    resolved = resolve_privacy_task(
+        world,
+        segment_id,
+        code="unresolved_with_reason",
+        note="the image includes a second transaction belonging to another customer",
+    )
+    assert resolved.status_code == 200, resolved.text
+
+    detail = client.get(f"/api/v1/receipt-segments/{segment_id}").json()
+    assert detail["privacy_verified"] is False
+    assert detail["privacy_review_task_id"] is None, (
+        "a task closed as unresolved is being offered as the segment's verification"
+    )
+
+
+def test_the_definition_of_done_as_one_journey(world: dict[str, Any]) -> None:
+    """`TRACE-M8-002`. §16.7, in the order §16.7 puts it.
+
+    "M8 is complete when an accountant can securely inspect a mixed bank bundle, create a
+    reproducible internal rectangular crop, and continue the workflow without OCR or AI."
+
+    **One test for the sequence, because nine steps proved separately can all pass while the
+    sequence is impossible.** M5 slice 5 shipped exactly that: every command worked and no operator
+    could get from the first to the last. So this walks the whole path through the API with one
+    session, in order, and asserts at each step only what that step establishes.
+    """
+
+    client = world["client"]
+    sign_in_admin(client, "segment_accountant")
+
+    # 1. A mixed bundle: a document with pages beside a spreadsheet with none. "Mixed" is §16.7's
+    #    word and this is what it means operationally — the bundle a bank actually sends.
+    pdf = a_pdf_file(world)
+    sheet = a_spreadsheet_file(world)
+    created = client.post(
+        "/api/v1/bank-result-bundles",
+        json={
+            "source_type": "bank_portal_download",
+            "files": [
+                {"file_id": pdf, "sequence_number": 1, "file_role": "source"},
+                {"file_id": sheet, "sequence_number": 2, "file_role": "source"},
+            ],
+        },
+        headers={**csrf(client), "Idempotency-Key": str(uuid.uuid4())},
+    )
+    assert created.status_code == 201, created.text
+    bundle = created.json()
+    assert bundle["status"] == "ready_for_manual_review", (
+        "the bundle needs a permission that does not exist to reach review; slice 1's Q-7"
+    )
+
+    # 2. Inspect it: the page count came from the document, and the file with no pages says so.
+    document = next(f for f in bundle["files"] if f["file_id"] == pdf)
+    spreadsheet = next(f for f in bundle["files"] if f["file_id"] == sheet)
+    assert document["page_count"] == 2
+    assert document["preview_path"] is not None
+    assert spreadsheet["page_count"] is None
+    assert spreadsheet["preview_path"] is None, "a file with no pages must not offer a preview"
+
+    # 3. Look at a page. This is the "securely" in §16.7 — the same route refuses a trader and an
+    #    admin without the sensitive grant, asserted in this file's security tests.
+    page = client.get(f"/api/v1/files/{pdf}/pages/2/preview")
+    assert page.status_code == 200, page.text
+    raster = (
+        int(page.headers["X-Preview-Pixel-Width"]),
+        int(page.headers["X-Preview-Pixel-Height"]),
+    )
+
+    # 4. Draw a rectangle on it and submit, using the raster the server just reported.
+    accepted = client.post(
+        f"/api/v1/bank-result-bundles/{bundle['id']}/receipt-segments/crop",
+        json={
+            "source_file_id": pdf,
+            "bank_result_bundle_file_id": document["id"],
+            "page_number": 2,
+            "bbox": dict(A_RECTANGLE),
+            "client_source_dimensions": {"width": raster[0], "height": raster[1]},
+            "rotation_degrees": 0,
+            "manual_fields": {"amount_irr": "2000000000", "tracking_number": "998877"},
+        },
+        headers={**csrf(client), "Idempotency-Key": str(uuid.uuid4())},
+    )
+    assert accepted.status_code == 202, accepted.text
+    segment_id = accepted.json()["segment"]["id"]
+
+    # 5. The worker renders it.
+    drain(world)
+
+    # 6. Reproducible: the stored row alone rebuilds the stored image, byte for byte.
+    from app.exports.crop import Rectangle, render_crop
+
+    stored = rows(
+        world,
+        "SELECT s.page_number, s.bbox_x, s.bbox_y, s.bbox_width, s.bbox_height, "
+        "s.rotation_degrees, f.storage_key, src.storage_key "
+        "FROM receipt_segments s JOIN file_objects f ON f.id = s.segment_file_id "
+        "JOIN file_objects src ON src.id = s.source_file_id WHERE s.id = %s",
+        segment_id,
+    )
+    assert len(stored) == 1, "the crop was not rendered, so there is nothing reproducible"
+    page_no, x, y, w, h, rotation, crop_key, source_key = stored[0]
+    again = render_crop(
+        (world["storage_root"] / source_key).read_bytes(),
+        page_number=page_no,
+        rectangle=Rectangle(x=x, y=y, width=w, height=h),
+        rotation_degrees=rotation,
+    )
+    assert again.content == (world["storage_root"] / crop_key).read_bytes()
+
+    # 7. Continue the workflow: the privacy check §16.5 requires is in front of a person, and
+    #    resolving it is what "continue" means at this stage — M9 reads the result.
+    assert resolve_privacy_task(world, segment_id).status_code == 200
+    assert client.get(f"/api/v1/receipt-segments/{segment_id}").json()["privacy_verified"] is True
+
+    # 8. Without OCR or AI. Nothing in the journey touched either, and the segment says by which
+    #    method it was made.
+    method = rows(
+        world, "SELECT creation_method FROM receipt_segments WHERE id = %s", segment_id
+    )[0][0]
+    assert method == "manual_in_panel_crop"
+
+    # `TRACE-M8-003` asked for `ai_usage_logs` to be empty after this journey, and the stronger fact
+    # is that **the table does not exist**. `04_Database_Schema.md:1381` specifies it and no
+    # migration has built it, because nothing in Phase 1A uses a model — so there is no row to
+    # count and no writer to have written one.
+    #
+    # Asserted as absence rather than emptiness on purpose: `SELECT count(*)` against a missing
+    # table raises, and a test that caught that exception and called it success would pass equally
+    # well if the table existed and the query were misspelled.
+    present = rows(
+        world,
+        "SELECT count(*) FROM information_schema.tables WHERE table_name = %s",
+        "ai_usage_logs",
+    )
+    assert present == [(0,)], (
+        "ai_usage_logs now exists, so this assertion has to become the emptiness check "
+        "TRACE-M8-003 originally described"
+    )
+
+    # 9. And the fallback stayed available throughout, which §16.6's last test asks for: the
+    #    spreadsheet nothing can render is still workable as whole-file evidence.
+    fallback = client.post(
+        f"/api/v1/bank-result-bundles/{bundle['id']}/receipt-segments/external",
+        json={"source_file_id": sheet, "bank_result_bundle_file_id": spreadsheet["id"]},
+        headers={**csrf(client), "Idempotency-Key": str(uuid.uuid4())},
+    )
+    assert fallback.status_code == 201, fallback.text
+    assert fallback.json()["creation_method"] == "manual_external_attachment"

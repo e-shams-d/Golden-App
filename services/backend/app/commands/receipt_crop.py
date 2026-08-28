@@ -52,11 +52,13 @@ from sqlalchemy.orm import Session
 from app.audit.redaction import RedactionPolicy
 from app.audit.registry import CREATE_RECEIPT_CROP
 from app.audit.writer import AuditActor, AuditContext, AuditEntry, AuditWriter
+from app.commands.manual_review_task import OpenTask, open_task
 from app.commands.receipt_segment import ManualFields
 from app.core.errors import BusinessRuleViolationError, NotFoundError
 from app.db.claiming import new_job
 from app.db.models.bank_result_bundle import BUNDLE_CLOSED, BankResultBundle, BankResultBundleFile
 from app.db.models.file_object import CLEAN_SCAN_STATUS, FileObject
+from app.db.models.manual_review_task import ENTITY_RECEIPT_SEGMENT, TASK_TYPE_PRIVACY_REVIEW
 from app.db.models.processing_job import ProcessingJob
 from app.db.models.receipt_segment import METHOD_CROP, SEGMENT_CREATED, ReceiptSegment
 from app.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -247,6 +249,38 @@ def request_crop(
     job.provider_version = RENDERER_VERSION
     session.add(job)
     uow.flush()
+
+    # §16.5, and slice 7's whole point. "Before evidence can be included in publication, the
+    # operator must verify that the crop does not reveal unrelated names, IBANs, amounts, tracking
+    # references, or transactions." A crop is the moment that obligation attaches, so the task is
+    # raised here rather than waiting for somebody to remember.
+    #
+    # **Raised, not satisfied.** This records that a person must look; only `resolve` records that
+    # one did, and only then is the segment's version pinned. M9's publication path reads the
+    # resolved task — §2.5 of the M8 plan explains why no publication guard is written here: a guard
+    # on a path that does not exist yet would be untestable and would be this repository's eighth
+    # mechanism with no caller.
+    #
+    # Priority 3 rather than the quarantine path's 5: evidence waiting to be checked is ordinary
+    # work, where a bank file that failed its integrity check is somebody's emergency.
+    open_task(
+        OpenTask(
+            task_type=TASK_TYPE_PRIVACY_REVIEW,
+            entity_type=ENTITY_RECEIPT_SEGMENT,
+            entity_id=segment.id,
+            title="A crop needs a privacy check before it can be published",
+            description=(
+                "Confirm the image shows only this payment: no unrelated names, IBANs, amounts, "
+                "tracking references or transactions."
+            ),
+            priority=3,
+        ),
+        session=session,
+        policy=policy,
+        actor=actor,
+        context=context,
+        now=now,
+    )
 
     AuditWriter(session, policy).record(
         AuditEntry(

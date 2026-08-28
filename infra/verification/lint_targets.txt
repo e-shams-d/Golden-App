@@ -24,3 +24,8 @@ infra/scripts/validate_repository.py
 infra/scripts/scan_secrets.py
 infra/scripts/m0_manifest.py
 infra/scripts/bridge-demo-port.py
+infra/scripts/summarise_image_findings.py
+
+# `scripts/` holds the negative-control harnesses. Only the Python one is listed: the
+# rest are shell, which this linter does not read.
+scripts/control-pip-rule.py

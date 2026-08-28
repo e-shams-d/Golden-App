@@ -41,12 +41,14 @@ from app.audit.writer import AuditActor, AuditContext, AuditEntry, AuditWriter
 from app.core.errors import BusinessRuleViolationError, ConflictError, NotFoundError
 from app.db.models.identity import AdminUser
 from app.db.models.manual_review_task import (
+    ENTITY_RECEIPT_SEGMENT,
     OPEN_STATUSES,
     RESOLUTION_UNRESOLVED,
     TASK_CANCELLED,
     TASK_IN_PROGRESS,
     TASK_OPEN,
     TASK_RESOLVED,
+    TASK_TYPE_PRIVACY_REVIEW,
     ManualReviewTask,
 )
 from app.db.unit_of_work import SqlAlchemyUnitOfWork
@@ -308,6 +310,15 @@ def resolve(
     task.resolved_by_admin_user_id = actor.actor_id
     task.resolution_code = command.resolution_code
     task.resolution_note = note or None
+    # **Which version of the subject was actually looked at.** M8 slice 7, for §16.5: a privacy
+    # verification has to be per segment version, because a segment edited after being verified is
+    # unverified again. Captured here rather than when the task was raised, because this is the
+    # moment a person judged — the version they were *asked* about is a different fact, and the
+    # wrong one if the segment was re-rendered in between.
+    #
+    # Every task type gets it, not only privacy: an export-integrity task should also be able to say
+    # which version of the export somebody signed off.
+    task.entity_record_version = _subject_version(session, task)
     _touch(task, now)
 
     _record(
@@ -368,6 +379,92 @@ def cancel(
         now=now,
     )
     return task
+
+
+@dataclass(frozen=True, slots=True)
+class PrivacyVerification:
+    """Whether a segment's privacy check still applies to the segment as it is now.
+
+    §16.5, and `SVC-PRIVACY-001`'s "per segment version". `verified` is a comparison rather than a
+    stored flag: a resolved `segment_privacy_review` task records the version its reviewer looked
+    at, and the check applies only while the segment still has that version. A crop re-rendered
+    afterwards is unverified again, with nothing to remember to reset.
+
+    **`task_id` is returned even when unverified**, because "somebody checked version 2 and this is
+    version 3" is a different situation from "nobody has checked this at all", and an operator needs
+    to tell them apart.
+    """
+
+    verified: bool
+    verified_at: datetime | None
+    task_id: uuid.UUID | None
+
+
+def privacy_verification(session: Session, segment_id: uuid.UUID) -> PrivacyVerification:
+    """The most recent resolved privacy review for a segment, and whether it still holds.
+
+    **Most recent by resolution time.** A segment can be verified, edited and verified again, and
+    `uq_review_task_open_per_entity` only prevents two *open* tasks — the history is deliberately
+    kept, so the question "does a check apply now" has to pick the latest one rather than assume
+    there is one.
+
+    A task resolved as `unresolved_with_reason` does not verify anything: that disposition exists
+    precisely to close a task whose subject was *not* put right, and treating it as a pass would
+    make the honest option the dangerous one.
+    """
+
+    from app.db.models.receipt_segment import ReceiptSegment
+
+    segment = session.get(ReceiptSegment, segment_id)
+    if segment is None:
+        raise NotFoundError()
+
+    task = session.scalar(
+        select(ManualReviewTask)
+        .where(
+            ManualReviewTask.entity_type == ENTITY_RECEIPT_SEGMENT,
+            ManualReviewTask.entity_id == segment_id,
+            ManualReviewTask.task_type == TASK_TYPE_PRIVACY_REVIEW,
+            ManualReviewTask.status == TASK_RESOLVED,
+            ManualReviewTask.resolution_code != RESOLUTION_UNRESOLVED,
+        )
+        .order_by(ManualReviewTask.resolved_at.desc())
+        .limit(1)
+    )
+    if task is None:
+        return PrivacyVerification(verified=False, verified_at=None, task_id=None)
+
+    return PrivacyVerification(
+        verified=task.entity_record_version == segment.record_version,
+        verified_at=task.resolved_at,
+        task_id=task.id,
+    )
+
+
+def _subject_version(session: Session, task: ManualReviewTask) -> int | None:
+    """The current `record_version` of whatever this task is about, or `None`.
+
+    **`entity_type` is a generic reference with no foreign key**, which §13.1 at `:1324` limits to
+    queue navigation — so there is no relationship to follow and this dispatches on the type name.
+    Explicit rather than generic on purpose: an entity kind added later without an entry here gets
+    `None` and a verification that claims nothing, which is the honest failure. A clever lookup by
+    table name would attach whatever number it found.
+
+    **`receipt_segment` is the only entry, and the other three are absent for a reason worth
+    recording.** `bank_excel_export` was in the first draft on the argument that an integrity task
+    should say which version was signed off — and the model has **no `record_version` at all**,
+    because M7 made an export immutable: a new file is a new row, not a new version. So there is
+    nothing to record, and the draft would have failed on an attribute that does not exist.
+    `bank_result_bundle` does carry a version, but nothing in this milestone verifies a bundle
+    *version*, and claiming one would be a fact nobody checks. `payment_attempt` is M9's.
+    """
+
+    from app.db.models.receipt_segment import ReceiptSegment
+
+    if task.entity_type == ENTITY_RECEIPT_SEGMENT:
+        segment = session.get(ReceiptSegment, task.entity_id)
+        return segment.record_version if segment else None
+    return None
 
 
 def _live(session: Session, task_id: uuid.UUID, expected: int) -> ManualReviewTask:

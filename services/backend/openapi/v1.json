@@ -4712,6 +4712,34 @@
             ],
             "title": "Page Number"
           },
+          "privacy_review_task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Privacy Review Task Id"
+          },
+          "privacy_verified": {
+            "title": "Privacy Verified",
+            "type": "boolean"
+          },
+          "privacy_verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Privacy Verified At"
+          },
           "record_version": {
             "title": "Record Version",
             "type": "integer"
@@ -4803,6 +4831,9 @@
           "extracted_tracking_number",
           "extracted_payment_at",
           "extraction_confidence",
+          "privacy_verified",
+          "privacy_verified_at",
+          "privacy_review_task_id",
           "created_by_actor_type",
           "record_version",
           "created_at",
