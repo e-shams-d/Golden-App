@@ -96,6 +96,13 @@ NON_MONETARY_NUMERIC: dict[tuple[str, str], str] = {
         "A confidence between 0 and 1 for a later phase that guesses. "
         "04_Database_Schema.md:1228 specifies NUMERIC(5,4). Never money, and never a rial."
     ),
+    ("matching_candidate.py", "score"): (
+        "A match score between 0 and 1, bounded by 04_Database_Schema.md:1268's own CHECK. It "
+        "ranks a suggestion and cannot become a payment: :1274 says accepting a candidate does "
+        "not set an attempt to paid, and 20260829_0028 grants the runtime nothing at all on "
+        "payment_attempts, so no arithmetic on this column can reach money. NUMERIC rather than "
+        "a float because the CHECK's bounds have to hold exactly at 0 and at 1."
+    ),
 }
 
 # Any column whose name suggests money. Deliberately broad: this decides what the exemption above

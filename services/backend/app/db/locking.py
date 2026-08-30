@@ -67,6 +67,16 @@ class LockScope(IntEnum):
     EXPORT_MARK_SENT = 450
     PAYMENT_ATTEMPT_CREATE = 500
     PAYMENT_ATTEMPT_CONFIRM = 550
+    # M9 slice 1. A candidate decision touches `matching_candidates` and the segment's status and
+    # **nothing else** — its migration grants no privilege on `payment_attempts` at all — so this
+    # scope rarely meets another. It takes an unused number between the attempt and the evidence
+    # link because that is where a suggestion sits in the flow of value: after the attempt exists,
+    # before anything authoritative is written about it.
+    #
+    # It exists at all because `command_catalog.yaml:295` requires `candidate_version_revalidated`
+    # and §12.5 gives the table no `record_version` to revalidate. Locking the row and re-reading
+    # its status is the same guarantee for a row whose only mutable field is that status.
+    MATCHING_CANDIDATE_DECIDE = 575
     EVIDENCE_LINK_REPLACE = 600
     RESULT_PUBLISH = 700
 

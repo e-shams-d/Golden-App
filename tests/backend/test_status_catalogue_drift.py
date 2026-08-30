@@ -101,6 +101,10 @@ STATUS_COLUMN_TO_AGGREGATE: dict[tuple[str, str], str] = {
     # M8 slice 3. The only M8 aggregate the catalogue settles completely — four canonical states and
     # no unresolved aliases at all, which after three slices of the opposite is worth noting.
     ("manual_review_tasks", "status"): "manual_review_task",
+    # M9 slice 1. Five canonical states, no unresolved aliases, and four of the five terminal —
+    # the catalogue settles this aggregate completely. That is M9's pattern rather than its
+    # exception: the milestone opened with every status, permission and audit action approved.
+    ("matching_candidates", "status"): "matching_candidate",
 }
 
 # Status columns whose value set is **local to one relation** and is not a lifecycle the catalogue

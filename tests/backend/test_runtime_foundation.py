@@ -72,6 +72,11 @@ EXPECTED_TABLES = frozenset(
         # which `:1324` limits to queue navigation, so it carries no foreign key on that pair and no
         # financial read joins through it.
         "manual_review_tasks",
+        # M9 slice 1, §12.5. "Suggestions only" — the first table here that is deliberately not
+        # authoritative about anything. Its migration grants nothing at all on `payment_attempts`,
+        # which is what makes "accepting a candidate does not mark paid" a privilege the runtime
+        # does not hold rather than a branch somebody could delete.
+        "matching_candidates",
         "payment_attempt_allocations",
         "payment_attempts",
         "payment_batch_items",
