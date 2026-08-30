@@ -807,6 +807,45 @@ REJECT_MATCHING_CANDIDATE = CommandNames(
     provisional_reason=_CANDIDATE_DECISION_REASON,
 )
 
+# --- M9 slice 2: confirmed evidence links --------------------------------------
+#
+# **All three are catalogued, and this is the first slice in the project where that is true of
+# every command in it.** `audit_outbox_catalog.yaml:40-42` names the three actions, `:76` names the
+# one outbox event, `command_catalog.yaml` carries a row for each with its permission, idempotency
+# and concurrency rule, and `20260801_0008:218-220` seeds all three permissions to `accountant`.
+# Nothing here is provisional — which is what the M9 plan claimed of the whole milestone and turns
+# out to be true of this slice rather than of slice 1.
+
+CONFIRM_EVIDENCE_LINK = CommandNames(
+    audit_action="evidence_link.confirmed",
+    # `command_catalog.yaml` gives it `outbox_event: null`. Right: confirming evidence settles what
+    # a segment *means*, and nothing outside the platform acts on that until a result is published.
+    outbox_event_type=None,
+    catalogued=True,
+)
+
+REPLACE_EVIDENCE_LINK = CommandNames(
+    audit_action="evidence_link.replaced",
+    # **The only M9 command so far with an outbox event**, and the asymmetry is the point.
+    # `05_API_Specification.md:1854`: when a published result materially changes, a corrected
+    # publication and a trader notification are required. Replacement is where evidence stops
+    # agreeing with what a trader was shown, so it is the one a consumer must hear about.
+    outbox_event_type="EvidenceLinkReplaced",
+    catalogued=True,
+)
+
+REVOKE_EVIDENCE_LINK = CommandNames(
+    audit_action="evidence_link.revoked",
+    outbox_event_type=None,
+    # Catalogued — **and its command row carries
+    # `status: blocked_by_voided_vs_revoked_status_conflict`**, the catalogue flagging the
+    # `revoked`/`voided` disagreement between documents 06/08 and 04/05 before anybody wrote code
+    # against it. The audit action itself is not in doubt: `audit_outbox_catalog.yaml:42` spells it
+    # `revoked`, the canonical side. `20260830_0029`'s docstring records how the stored status and
+    # the route path were settled.
+    catalogued=True,
+)
+
 
 # Every `CommandNames` defined above, and the gate that reads this tuple is the only thing
 # checking any of them against the catalogue. Three M5 entries — `BEGIN_REVIEW`,
@@ -889,4 +928,8 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     CREATE_MATCHING_CANDIDATE,
     ACCEPT_MATCHING_CANDIDATE,
     REJECT_MATCHING_CANDIDATE,
+    # M9 slice 2, same commit as the entries. All three catalogued.
+    CONFIRM_EVIDENCE_LINK,
+    REPLACE_EVIDENCE_LINK,
+    REVOKE_EVIDENCE_LINK,
 )

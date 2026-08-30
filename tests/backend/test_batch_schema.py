@@ -26,6 +26,7 @@ Covers: DB-BATCH-001, DB-ATTEMPT-001.
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -296,24 +297,99 @@ def test_nothing_in_the_application_writes_a_lineage_column() -> None:
 
     A future milestone that legitimately writes one of these will fail here, which is the
     intent: widening the set is a decision, and it should be made by editing this list.
+
+    **Two of the eight names are not unique to `payment_attempts`, which the first version of
+    this scan did not allow for.** `confirmed_by_admin_user_id` and `confirmed_at` are also
+    §12.6 columns on `confirmed_evidence_links`, so M9 slice 2 writing its *own* table tripped a
+    check about a different table entirely. A textual scan for a bare name cannot tell those
+    apart.
+
+    So the walk is an AST one and asks what is being written rather than which words appear:
+
+    - `something.confirmed_at = ...` — an attribute write, conservative about the object,
+      because an instance's class is not decidable here and `attempt.confirmed_at` is exactly
+      the shape this test exists to catch;
+    - `PaymentAttempt(confirmed_at=...)` — a keyword argument **to that constructor only**.
+
+    A keyword argument to any other call is not a write to this table. That removes the false
+    positive without an exclusion list, which is the same move M8 made three times when prose
+    collided with a grep.
     """
 
     application = Path(__file__).resolve().parents[2] / "services" / "backend" / "app"
+    lineage = set(LINEAGE_COLUMNS)
     offenders: list[str] = []
 
     for source in sorted(application.rglob("*.py")):
-        text = source.read_text(encoding="utf-8")
-        for name in LINEAGE_COLUMNS:
-            # An assignment or a keyword argument. A mention in a comment or a docstring is not
-            # a write, and the migration and the model both have to name the columns to create
-            # them — the ninth false positive of this shape this session, avoided by pattern
-            # rather than by an exclusion list.
-            if re.search(rf"^\s*{name}\s*=|[(,]\s*{name}\s*=", text, re.M):
-                if source.name in {"payment_batch.py"} and "models" in str(source):
-                    continue  # the model declares the column; declaring is not writing
-                offenders.append(f"{source.relative_to(application)} assigns {name}")
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        where = source.relative_to(application)
 
-    assert offenders == [], (
-        "a lineage column is written somewhere in M6, and `DB-ATTEMPT-001` claims none is:\n"
-        + "\n".join(f"  {offender}" for offender in offenders)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Attribute) and target.attr in lineage:
+                        offenders.append(f"{where} assigns {target.attr}")
+            elif isinstance(node, ast.Call):
+                callee = node.func
+                callee_name = (
+                    callee.attr
+                    if isinstance(callee, ast.Attribute)
+                    else getattr(callee, "id", None)
+                )
+                if callee_name != "PaymentAttempt":
+                    continue
+                for keyword in node.keywords:
+                    if keyword.arg in lineage:
+                        offenders.append(f"{where} constructs an attempt with {keyword.arg}")
+
+    assert sorted(set(offenders)) == [], (
+        "a lineage column is written somewhere in the application, and `DB-ATTEMPT-001` claims "
+        "none is:\n" + "\n".join(f"  {offender}" for offender in sorted(set(offenders)))
+    )
+
+
+def test_the_lineage_scan_catches_both_shapes_and_ignores_the_third(tmp_path: Path) -> None:
+    """Guard the guard, on the two shapes it looks for and the two it must ignore.
+
+    Without this the AST walk could quietly match nothing — the failure mode that made the
+    textual version worth replacing is the one that would make its replacement useless, and a
+    scan reporting a clean application is indistinguishable from a scan looking for the wrong
+    node type.
+    """
+
+    planted = tmp_path / "writer.py"
+    planted.write_text(
+        "def f(attempt, now, who):\n"
+        "    attempt.confirmed_at = now\n"
+        "    PaymentAttempt(confirmed_by_admin_user_id=who)\n"
+        "    ConfirmedEvidenceLink(confirmed_at=now)\n"
+        "    return {'confirmed_at': now}\n",
+        encoding="utf-8",
+    )
+
+    lineage = set(LINEAGE_COLUMNS)
+    found: list[str] = []
+    for node in ast.walk(ast.parse(planted.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Attribute) and target.attr in lineage:
+                    found.append(f"attribute:{target.attr}")
+        elif isinstance(node, ast.Call):
+            callee = node.func
+            callee_name = (
+                callee.attr if isinstance(callee, ast.Attribute) else getattr(callee, "id", None)
+            )
+            if callee_name != "PaymentAttempt":
+                continue
+            for keyword in node.keywords:
+                if keyword.arg in lineage:
+                    found.append(f"constructor:{keyword.arg}")
+
+    assert sorted(found) == [
+        "attribute:confirmed_at",
+        "constructor:confirmed_by_admin_user_id",
+    ], (
+        f"the walk found {sorted(found)}. It must catch the attribute write and the "
+        "PaymentAttempt keyword, and must not catch the same keyword on another constructor or "
+        "a dictionary key."
     )

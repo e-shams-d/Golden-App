@@ -24,6 +24,7 @@ from app.db.models.configuration import (
     RetentionPolicy,
     SystemSetting,
 )
+from app.db.models.confirmed_evidence_link import ConfirmedEvidenceLink
 from app.db.models.file_object import FileDerivation, FileLink, FileObject
 from app.db.models.idempotency_record import IdempotencyRecord
 from app.db.models.identity import AdminUser, TraderUser
@@ -62,6 +63,7 @@ __all__ = [
     "BatchApproval",
     "Beneficiary",
     "CenterProfile",
+    "ConfirmedEvidenceLink",
     "FeatureFlag",
     "FileDerivation",
     "FileLink",

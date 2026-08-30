@@ -105,6 +105,12 @@ STATUS_COLUMN_TO_AGGREGATE: dict[tuple[str, str], str] = {
     # the catalogue settles this aggregate completely. That is M9's pattern rather than its
     # exception: the milestone opened with every status, permission and audit action approved.
     ("matching_candidates", "status"): "matching_candidate",
+    # M9 slice 2. Three canonical states, and the aggregate the catalogue itself flags as
+    # unsettled: `voided` is recorded there as a **provisional alias** for `revoked`, because
+    # documents 04 and 05 spell it one way and 06 and 08 the other. The CHECK admits the canonical
+    # three only — this gate holds a constraint to its aggregate exactly, which is what makes the
+    # alias a decision somebody records rather than a spelling that leaks into a column.
+    ("confirmed_evidence_links", "status"): "confirmed_evidence_link",
 }
 
 # Status columns whose value set is **local to one relation** and is not a lifecycle the catalogue

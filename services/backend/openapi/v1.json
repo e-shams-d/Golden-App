@@ -1709,6 +1709,47 @@
         "title": "CloseBundleRequest",
         "type": "object"
       },
+      "ConfirmRequest": {
+        "additionalProperties": false,
+        "description": "§19.7's body, verbatim in its field names.",
+        "properties": {
+          "confirmation_note": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Note"
+          },
+          "link_type": {
+            "default": "primary",
+            "maxLength": 24,
+            "minLength": 1,
+            "title": "Link Type",
+            "type": "string"
+          },
+          "payment_attempt_id": {
+            "format": "uuid",
+            "title": "Payment Attempt Id",
+            "type": "string"
+          },
+          "receipt_segment_id": {
+            "format": "uuid",
+            "title": "Receipt Segment Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "payment_attempt_id",
+          "receipt_segment_id"
+        ],
+        "title": "ConfirmRequest",
+        "type": "object"
+      },
       "CreateAccountRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2619,6 +2660,100 @@
           "error"
         ],
         "title": "ErrorEnvelope",
+        "type": "object"
+      },
+      "EvidenceLinkDetail": {
+        "additionalProperties": false,
+        "description": "What a confirmed link is.\n\nNo `payment_status` and no `paid` field: a link says a segment is evidence for an attempt and\nsays nothing about whether that attempt was paid. Slice 3's command decides that, and a\nresponse carrying both would invite a screen to read one as the other.",
+        "properties": {
+          "confirmed_at": {
+            "format": "date-time",
+            "title": "Confirmed At",
+            "type": "string"
+          },
+          "confirmed_by_admin_user_id": {
+            "format": "uuid",
+            "title": "Confirmed By Admin User Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "link_type": {
+            "title": "Link Type",
+            "type": "string"
+          },
+          "payment_attempt_id": {
+            "format": "uuid",
+            "title": "Payment Attempt Id",
+            "type": "string"
+          },
+          "published_to_trader_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published To Trader At"
+          },
+          "receipt_segment_id": {
+            "format": "uuid",
+            "title": "Receipt Segment Id",
+            "type": "string"
+          },
+          "replacement_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replacement Reason"
+          },
+          "replaces_link_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaces Link Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "payment_attempt_id",
+          "receipt_segment_id",
+          "link_type",
+          "status",
+          "confirmed_by_admin_user_id",
+          "confirmed_at",
+          "replaces_link_id",
+          "replacement_reason",
+          "published_to_trader_at",
+          "created_at"
+        ],
+        "title": "EvidenceLinkDetail",
         "type": "object"
       },
       "ExportDetail": {
@@ -4417,6 +4552,29 @@
         "title": "RenameCenterProfileRequest",
         "type": "object"
       },
+      "ReplaceRequest": {
+        "additionalProperties": false,
+        "description": "§19.8's body. The reason is required by the schema *and* by the command.\n\nBoth, deliberately: `min_length=1` gives a client a 422 naming the field, and the command's\ncheck gives the same refusal to any caller that does not come through this schema — a worker,\na test, a later route. `command_catalog.yaml` states `reason_required` as a precondition on\nthe command, not on the request body.",
+        "properties": {
+          "new_receipt_segment_id": {
+            "format": "uuid",
+            "title": "New Receipt Segment Id",
+            "type": "string"
+          },
+          "replacement_reason": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Replacement Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "new_receipt_segment_id",
+          "replacement_reason"
+        ],
+        "title": "ReplaceRequest",
+        "type": "object"
+      },
       "ResolveRequest": {
         "additionalProperties": false,
         "description": "`:2065`'s explicit disposition.\n\n`resolution_code` is required and constrained to the catalogue of codes: a free-text resolution\nis one nothing can group, and the whole value of a queue is being able to ask what happened to\nthe items in it.",
@@ -5687,6 +5845,22 @@
           "validation_summary"
         ],
         "title": "VersionSummary",
+        "type": "object"
+      },
+      "VoidRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "VoidRequest",
         "type": "object"
       },
       "WorkerStatus": {
@@ -8978,6 +9152,356 @@
         "summary": "Rename the center profile",
         "tags": [
           "center-profile"
+        ]
+      }
+    },
+    "/api/v1/evidence-links": {
+      "post": {
+        "description": "`POST /api/v1/evidence-links`, per `:1824`.\n\n**\"The command enforces one active primary link per attempt and one active primary attempt per\nsegment\"** (`:1836`) — and it is enforced by two partial unique indexes rather than by a read\nin the handler, because two accountants on two screens would both pass a read.",
+        "operationId": "confirmEvidenceLink",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceLinkDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the evidence permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such link, attempt or segment."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "An active primary link already exists for this attempt or segment."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Idempotency-Key is required."
+          }
+        },
+        "summary": "Confirm that a receipt segment is evidence for a payment attempt.",
+        "tags": [
+          "evidence-links"
+        ]
+      }
+    },
+    "/api/v1/evidence-links/{link_id}/replace": {
+      "post": {
+        "description": "`POST /api/v1/evidence-links/{link_id}/replace`, per `:1844`.\n\n**201, because the response is the new link.** `:1848` describes the old link becoming\n`replaced` and the new one becoming active in one transaction; the resource a client should\nhold afterwards is the replacement, and returning the retired row would hand back something\nalready historical.",
+        "operationId": "replaceEvidenceLink",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "link_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Link Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceLinkDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the evidence permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such link, attempt or segment."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "An active primary link already exists for this attempt or segment."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Idempotency-Key is required."
+          }
+        },
+        "summary": "Retire a link and put another in its place, in one transaction.",
+        "tags": [
+          "evidence-links"
+        ]
+      }
+    },
+    "/api/v1/evidence-links/{link_id}/void": {
+      "post": {
+        "description": "`POST /api/v1/evidence-links/{link_id}/void`, per `:1860`.\n\n**Supplementary only.** `:1864`: \"Primary links use the replacement/correction workflow unless\nthe entire result is formally revoked.\" The command refuses a primary link and its message\nnames the workflow to use instead — the exception is the correction command M9's last slice\nbuilds, not this route.\n\n**The path says `void` and the stored status is `revoked`**, which is the conflict the module\ndocstring and `20260830_0029` record.",
+        "operationId": "voidEvidenceLink",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "link_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Link Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoidRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceLinkDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the evidence permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such link, attempt or segment."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "An active primary link already exists for this attempt or segment."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Idempotency-Key is required."
+          }
+        },
+        "summary": "Withdraw a supplementary link, with a reason.",
+        "tags": [
+          "evidence-links"
         ]
       }
     },

@@ -77,6 +77,11 @@ EXPECTED_TABLES = frozenset(
         # which is what makes "accepting a candidate does not mark paid" a privilege the runtime
         # does not hold rather than a branch somebody could delete.
         "matching_candidates",
+        # M9 slice 2, §12.6. The authoritative counterpart to the table above: a candidate
+        # suggests, this decides. Its two partial unique indexes are what make §17's cardinality a
+        # refusal rather than a sentence, and they are the reason this table needs a database and
+        # not a service check — two accountants on two screens would both pass a read-then-insert.
+        "confirmed_evidence_links",
         "payment_attempt_allocations",
         "payment_attempts",
         "payment_batch_items",

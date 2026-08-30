@@ -287,6 +287,13 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
         "/api/v1/matching-candidates/{candidate_id}/accept-for-confirmation",
     ): PERMISSION,
     ("POST", "/api/v1/matching-candidates/{candidate_id}/reject"): PERMISSION,
+    # M9 slice 2. Three routes, three permissions — `evidence_link.confirm`, `.replace` and
+    # `.revoke`, all seeded to `accountant` alone. `PERMISSION` for the same reason as the
+    # candidate and segment families: evidence about the centre's own payments has no owning
+    # trader to scope by.
+    ("POST", "/api/v1/evidence-links"): PERMISSION,
+    ("POST", "/api/v1/evidence-links/{link_id}/replace"): PERMISSION,
+    ("POST", "/api/v1/evidence-links/{link_id}/void"): PERMISSION,
     # M5 slice 8. The two reads the screens need, and which nothing had built: eleven
     # published operations and only the revision history read. Both are `DUAL` — a trader
     # sees their own through `scoped()`, an accountant sees the queue through
@@ -685,6 +692,19 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ): "test_accepting_needs_the_review_permission",
     ("POST", "/api/v1/matching-candidates/{candidate_id}/reject", "permission"): (
         "test_rejecting_needs_the_review_permission"
+    ),
+    # M9 slice 2. **One test over the surface here, unlike slice 1's one per route**, and the
+    # difference is not laziness: `20260801_0008:218-220` seeds all three evidence permissions to
+    # `accountant` and to nobody else, so no role holds a proper subset and a sharper negative
+    # does not exist. The test asserts that fact rather than implying a sharpness it cannot have.
+    ("POST", "/api/v1/evidence-links", "permission"): (
+        "test_no_evidence_route_answers_a_caller_without_the_permission"
+    ),
+    ("POST", "/api/v1/evidence-links/{link_id}/replace", "permission"): (
+        "test_no_evidence_route_answers_a_caller_without_the_permission"
+    ),
+    ("POST", "/api/v1/evidence-links/{link_id}/void", "permission"): (
+        "test_no_evidence_route_answers_a_caller_without_the_permission"
     ),
     # M5 slice 8. The two reads, four entries because both are `DUAL`. The ownership pair
     # answers `404` and the permission pair `403`, and each is asserted in its own test

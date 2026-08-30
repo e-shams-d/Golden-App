@@ -254,6 +254,12 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "listMatchingCandidates",
         "acceptMatchingCandidate",
         "rejectMatchingCandidate",
+        # M9 slice 2. Document 05's three at `:1824`, `:1844` and `:1860`. The last keeps its
+        # `/void` path while storing the canonical `revoked` — renaming a path is a breaking
+        # change the oasdiff gate refuses, and the conflict is recorded in `20260830_0029`.
+        "confirmEvidenceLink",
+        "replaceEvidenceLink",
+        "voidEvidenceLink",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas
