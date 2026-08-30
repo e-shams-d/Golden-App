@@ -705,32 +705,38 @@ PENDING: dict[str, str] = {
     # table no `record_version`. The row is locked and its status re-read inside the
     # transaction instead, which is the same guarantee for a row whose only mutable field is
     # that status — rather than inventing a column document 04 does not list.
-    # Slice 2 - confirmed evidence links; two partial uniques and an atomic replacement.
-    "DB-EVIDENCE-001": (
-        "M9 slice 2 - confirmed evidence links; two partial uniques and an atomic replacement. "
-        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-    ),
-    "CON-EVIDENCE-001": (
-        "M9 slice 2 - confirmed evidence links; two partial uniques and an atomic replacement. "
-        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-    ),
-    "SVC-EVIDENCE-001": (
-        "M9 slice 2 - confirmed evidence links; two partial uniques and an atomic replacement. "
-        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-    ),
-    "SVC-EVIDENCE-002": (
-        "M9 slice 2 - confirmed evidence links; two partial uniques and an atomic replacement. "
-        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-    ),
-    "AUD-EVIDENCE-001": (
-        "M9 slice 2 - confirmed evidence links; two partial uniques and an atomic replacement. "
-        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-    ),
+    # Slice 2's five are cited now, by `tests/backend/test_evidence_link_schema.py` and
+    # `tests/integration/test_evidence_links.py`, and their entries left in the same commit.
+    #
+    # **The first slice in this project whose every command was already catalogued.** Three
+    # audit actions, one outbox event, three command rows, three seeded permissions —
+    # nothing provisional. That is what the M9 plan claimed of the whole milestone and is
+    # true of this slice rather than of slice 1.
+    #
+    # **The catalogue had already flagged G-1 itself.** `command_catalog.yaml`'s
+    # `evidence_link.revoke` row carries `status:
+    # blocked_by_voided_vs_revoked_status_conflict` — M0 recording the `revoked`/`voided`
+    # disagreement before anybody wrote code against it. Settled the way M8 slice 4 settled
+    # its own blocked row: the column takes the canonical `revoked`, the route keeps document
+    # 05's `/void` path because renaming it is a contract break, and documents 04 and 05 are
+    # owed an editorial fix. A `status` field on a catalogue row names a blocker, not a
+    # prohibition.
+    #
+    # **Two of the tests could not be written any other way.** `CON-EVIDENCE-001` runs two
+    # connections at one attempt, because a single-threaded test proves the partial unique
+    # index exists and only a race proves it constrains. `SVC-EVIDENCE-001` is a failure
+    # injection: a replacement that retires the old link and then cannot insert the new one
+    # leaves an attempt with no primary evidence at all, and no happy-path test sees that
+    # ordering. It is also why the command retires *before* inserting — the other order
+    # fails against the very index the invariant depends on.
+    #
+    # **A gate caught a false positive of its own.** M6's lineage scan forbade the
+    # application writing any `payment_attempts` lineage column, by searching source text for
+    # the column names — and two of those eight names are also §12.6 columns on
+    # `confirmed_evidence_links`. Writing this slice's own table tripped a check about a
+    # different table. Replaced with an AST walk that asks what is being written: an
+    # attribute assignment, or a keyword argument to `PaymentAttempt` specifically. No
+    # exclusion list.
     # Slice 3 - confirm paid and confirm failed; seven validations, each separately provoked.
     "SVC-CONFIRM-001": (
         "M9 slice 3 - confirm paid and confirm failed; seven validations, each separately "

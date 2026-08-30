@@ -9,6 +9,7 @@ from app.api.v1.bank_exports import router as bank_exports_router
 from app.api.v1.bank_result_bundles import router as bank_result_bundles_router
 from app.api.v1.beneficiaries import router as beneficiaries_router
 from app.api.v1.center_profile import router as center_profile_router
+from app.api.v1.evidence_links import router as evidence_links_router
 from app.api.v1.files import router as files_router
 from app.api.v1.health import router as health_router
 from app.api.v1.manual_review_tasks import router as manual_review_tasks_router
@@ -58,3 +59,7 @@ api_v1_router.include_router(manual_review_tasks_router)
 # shared prefix would put a route at an address no approved document defines.
 api_v1_router.include_router(matching_candidates_router)
 api_v1_router.include_router(matching_candidates_segment_router)
+# M9 slice 2. The authoritative half: a candidate suggests, an evidence link decides. Its own
+# prefix, because document 05 gives it one (`:1824`) rather than nesting it under either side of
+# the relationship it records.
+api_v1_router.include_router(evidence_links_router)

@@ -349,14 +349,22 @@ def test_accepting_a_candidate_changes_nothing_about_the_attempt(
         "confirmation command is what does that, and it does not exist until slice 3."
     )
 
-    # And no evidence link either — `command_catalog.yaml:296`'s other precondition. The table
-    # arrives in slice 2, so today the strongest available assertion is that nothing created one.
+    # And no evidence link either — `command_catalog.yaml:296`'s other precondition,
+    # `does_not_confirm_evidence`.
+    #
+    # **This assertion was a structural absence and is now a count.** Slice 1 could only check
+    # that `confirmed_evidence_links` did not exist, and said so in a message that fired the day
+    # slice 2 created it. That is the shape M8's screens work settled on: when an absence stops
+    # being literal, the claim becomes reachability, and the guard that notices is written at the
+    # same time as the weaker assertion rather than remembered later.
     assert rows(
         world,
-        "SELECT to_regclass('public.confirmed_evidence_links') IS NOT NULL",
-    ) == [(False,)], (
-        "confirmed_evidence_links now exists, so this assertion has become vacuous — replace it "
-        "with a count of links for this attempt"
+        "SELECT count(*) FROM confirmed_evidence_links WHERE payment_attempt_id = %s",
+        attempt_id,
+    ) == [(0,)], (
+        "accepting a candidate created a confirmed evidence link. `command_catalog.yaml:296` "
+        "names `does_not_confirm_evidence` as a precondition of this command, and slice 2's "
+        "`POST /evidence-links` is what a human uses instead."
     )
 
 

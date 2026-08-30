@@ -109,4 +109,12 @@ from __future__ import annotations
 # different link. It also grants **nothing on `payment_attempts`**, which is what makes "accepting
 # a candidate does not mark paid" a privilege the runtime does not hold rather than a branch
 # somebody could delete. Slice 3 adds that grant, column by column and deliberately.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260829_0028"})
+# 20260830_0029 adds `confirmed_evidence_links`, §12.6's authoritative segment-to-attempt
+# relationship, with the two partial unique indexes that carry §17's cardinality: one active
+# primary per attempt, one active primary target per segment, and supplementary unbounded by there
+# being no third index. Grants UPDATE on `status` and `published_to_trader_at` alone — replacement
+# "never deletes or overwrites the old relationship", so the row's subject is frozen and the chain
+# stays readable. The status column admits the catalogue's canonical `revoked`; document 05's
+# `/void` path is kept because it is the API contract, and the migration records the conflict the
+# command catalogue's own row already flags.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260830_0029"})
