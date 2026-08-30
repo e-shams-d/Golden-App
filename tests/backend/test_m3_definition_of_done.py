@@ -299,6 +299,10 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # attempt belongs to the centre's payment run, and a trader never confirms a bank result.
     ("POST", "/api/v1/payment-attempts/{attempt_id}/confirm-paid"): PERMISSION,
     ("POST", "/api/v1/payment-attempts/{attempt_id}/confirm-failed"): PERMISSION,
+    # M9 slice 3B. Both take `payment_attempt.create_retry`: the catalogue has no
+    # `mark_retry_required`, and deciding a retry is needed is the same authority as making one.
+    ("POST", "/api/v1/payment-attempts/{attempt_id}/mark-retry-required"): PERMISSION,
+    ("POST", "/api/v1/payment-attempts/{attempt_id}/retry"): PERMISSION,
     # M5 slice 8. The two reads the screens need, and which nothing had built: eleven
     # published operations and only the revision history read. Both are `DUAL` — a trader
     # sees their own through `scoped()`, an accountant sees the queue through
@@ -719,6 +723,14 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ),
     ("POST", "/api/v1/payment-attempts/{attempt_id}/confirm-failed", "permission"): (
         "test_confirming_failed_needs_the_confirm_failed_permission"
+    ),
+    # M9 slice 3B. One test over both, because they share a permission — and `manager` is still
+    # the sharp negative, holding `payment_attempt.read` and not `create_retry`.
+    ("POST", "/api/v1/payment-attempts/{attempt_id}/mark-retry-required", "permission"): (
+        "test_no_retry_route_answers_a_caller_without_the_permission"
+    ),
+    ("POST", "/api/v1/payment-attempts/{attempt_id}/retry", "permission"): (
+        "test_no_retry_route_answers_a_caller_without_the_permission"
     ),
     # M5 slice 8. The two reads, four entries because both are `DUAL`. The ownership pair
     # answers `404` and the permission pair `403`, and each is asserted in its own test

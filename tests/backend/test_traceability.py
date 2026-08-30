@@ -777,34 +777,28 @@ PENDING: dict[str, str] = {
     # The first version of this note spelled one of the old values out and failed the same check
     # for the same reason, which is the rule stated once more: an id-shaped string in a test file
     # is a citation, including inside the comment explaining that it is not.
-    # Slice 3B - retry, which the plan first forgot.
+    # Slice 3B's three are cited now, by `tests/integration/test_payment_retry.py`, and their
+    # entries left in the same commit.
     #
-    # **A plan-level instance of this repository's most-repeated shape.** §17 `:1121` names five
+    # **The slice existed because the plan forgot it.** §17 `:1121` names five
     # payment-result commands; the plan assigned two to slice 3 and one to slice 7 and never
-    # mentioned the other two. Meanwhile `permission_catalog.yaml` approves and seeds
-    # `payment_attempt.create_retry`, `audit_outbox_catalog.yaml:45` names
-    # `payment_attempt.retry_created`, and document 05 defines both routes at §17.4 and §17.5 — an
-    # approved permission and a catalogued action with no slice that builds them, found by reading
-    # the command list again at the top of slice 3 rather than by any gate.
+    # mentioned these, while `permission_catalog.yaml` seeds `payment_attempt.create_retry`
+    # and `audit_outbox_catalog.yaml:45` names `payment_attempt.retry_created`. An approved
+    # permission and a catalogued action with no slice that builds them — found by re-reading
+    # the command list at the top of slice 3, not by any gate.
     #
-    # Its own slice rather than slice 3's tail, following M7's rule that a slice splits when its
-    # parts have different dependencies: marking retry-required moves a status, while creating a
-    # retry attempt inserts a row with a fresh `attempt_number` and a lineage pointer.
-    "SVC-RETRY-001": (
-        "M9 slice 3B - retry; the plan omitted both commands and this entry is the correction. "
-        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-    ),
-    "SVC-RETRY-002": (
-        "M9 slice 3B - retry; the plan omitted both commands and this entry is the correction. "
-        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-    ),
-    "AUD-RETRY-001": (
-        "M9 slice 3B - retry; the plan omitted both commands and this entry is the correction. "
-        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-    ),
+    # **The decision route has no command row either.** `05_API_Specification.md:1608`
+    # defines mark-retry-required and `command_catalog.yaml` carries nothing for it; the
+    # audit name is declared uncatalogued with its reason, and the route takes
+    # `payment_attempt.create_retry` because the catalogue has no closer permission to
+    # borrow. Seventh instance of DOC-CONFLICT-052.
+    #
+    # **The lineage prohibition narrowed rather than lifted.** M6's scan said the application
+    # writes no `payment_attempts` lineage column; a retry legitimately writes
+    # `retry_of_attempt_id`. Deleting the column from the list would have lost two guarantees,
+    # so it stays there for the nullable check, comes out of the prohibition scan, and gains
+    # its own assertion that exactly one module writes it. A second writer anywhere now fails
+    # rather than inheriting the exemption.
     # Slice 5 - payment result publications; immutable, hashed, one active per request.
     "DB-PUBLICATION-001": (
         "M9 slice 5 - payment result publications; immutable, hashed, one active per request. "
