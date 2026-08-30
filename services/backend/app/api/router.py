@@ -12,6 +12,10 @@ from app.api.v1.center_profile import router as center_profile_router
 from app.api.v1.files import router as files_router
 from app.api.v1.health import router as health_router
 from app.api.v1.manual_review_tasks import router as manual_review_tasks_router
+from app.api.v1.matching_candidates import router as matching_candidates_router
+from app.api.v1.matching_candidates import (
+    segment_scoped_router as matching_candidates_segment_router,
+)
 from app.api.v1.metadata import router as metadata_router
 from app.api.v1.operations import router as operations_router
 from app.api.v1.payment_batches import router as payment_batches_router
@@ -49,3 +53,8 @@ api_v1_router.include_router(receipt_segments_router)
 # M8 slice 3. The queue M7's G-10 said did not exist, and the first surface in this project that is
 # about *work* rather than about money.
 api_v1_router.include_router(manual_review_tasks_router)
+# M9 slice 1. Two routers for one concept, because document 05 puts the proposal under the segment
+# (`:1798`) and both decisions under the candidate (`:1806`, `:1816`). Rewriting either path onto a
+# shared prefix would put a route at an address no approved document defines.
+api_v1_router.include_router(matching_candidates_router)
+api_v1_router.include_router(matching_candidates_segment_router)

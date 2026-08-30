@@ -270,6 +270,23 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     ("POST", "/api/v1/manual-review-tasks/{task_id}/start"): PERMISSION,
     ("POST", "/api/v1/manual-review-tasks/{task_id}/resolve"): PERMISSION,
     ("POST", "/api/v1/manual-review-tasks/{task_id}/cancel"): PERMISSION,
+    # M9 slice 1. Four routes, two permissions: the catalogue approves `matching_candidate.create`
+    # and `.review` and has no `.accept`, `.reject` or `.read`, so both decisions and the list take
+    # `.review`. `PERMISSION` throughout — a candidate is a suggestion about the centre's own
+    # payment, and like the evidence it points at it has no owning trader to scope by.
+    (
+        "POST",
+        "/api/v1/receipt-segments/{segment_id}/matching-candidates",
+    ): PERMISSION,
+    (
+        "GET",
+        "/api/v1/receipt-segments/{segment_id}/matching-candidates",
+    ): PERMISSION,
+    (
+        "POST",
+        "/api/v1/matching-candidates/{candidate_id}/accept-for-confirmation",
+    ): PERMISSION,
+    ("POST", "/api/v1/matching-candidates/{candidate_id}/reject"): PERMISSION,
     # M5 slice 8. The two reads the screens need, and which nothing had built: eleven
     # published operations and only the revision history read. Both are `DUAL` — a trader
     # sees their own through `scoped()`, an accountant sees the queue through
@@ -644,6 +661,30 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ),
     ("POST", "/api/v1/manual-review-tasks/{task_id}/cancel", "permission"): (
         "test_no_review_route_answers_a_caller_without_the_permission"
+    ),
+    # M9 slice 1. **One test per route rather than one over the surface**, because the two
+    # permissions are not interchangeable here and a single sweep would hide that. The decision
+    # routes are negated with `system_worker`, which holds `matching_candidate.create` and not
+    # `.review` (`20260801_0008:354`) — an actor that gets past any "some candidate grant" guard
+    # and must still be refused. A role holding neither, which is what a surface sweep uses,
+    # would be refused by a guard asking for the wrong permission entirely.
+    (
+        "POST",
+        "/api/v1/receipt-segments/{segment_id}/matching-candidates",
+        "permission",
+    ): "test_proposing_needs_the_create_permission",
+    (
+        "GET",
+        "/api/v1/receipt-segments/{segment_id}/matching-candidates",
+        "permission",
+    ): "test_listing_needs_the_review_permission",
+    (
+        "POST",
+        "/api/v1/matching-candidates/{candidate_id}/accept-for-confirmation",
+        "permission",
+    ): "test_accepting_needs_the_review_permission",
+    ("POST", "/api/v1/matching-candidates/{candidate_id}/reject", "permission"): (
+        "test_rejecting_needs_the_review_permission"
     ),
     # M5 slice 8. The two reads, four entries because both are `DUAL`. The ownership pair
     # answers `404` and the permission pair `403`, and each is asserted in its own test

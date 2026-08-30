@@ -683,32 +683,28 @@ PENDING: dict[str, str] = {
     # obligation this file can track: whether an evidence-free paid confirmation needs a second
     # person, which task type the overpayment case opens with, and the `revoked`/`voided`
     # spelling documents 04 and 05 still disagree with 06 and 08 about.
-    # Slice 1 - matching candidates; acceptance must not touch money.
-    "DB-CANDIDATE-001": (
-        "M9 slice 1 - matching candidates; acceptance must not touch money. Stated by the plan and "
-        "not yet built; the slice's own pull request discharges it and removes this entry in the "
-        "same commit."
-    ),
-    "SVC-CANDIDATE-001": (
-        "M9 slice 1 - matching candidates; acceptance must not touch money. Stated by the plan and "
-        "not yet built; the slice's own pull request discharges it and removes this entry in the "
-        "same commit."
-    ),
-    "SVC-CANDIDATE-002": (
-        "M9 slice 1 - matching candidates; acceptance must not touch money. Stated by the plan and "
-        "not yet built; the slice's own pull request discharges it and removes this entry in the "
-        "same commit."
-    ),
-    "SEC-CANDIDATE-001": (
-        "M9 slice 1 - matching candidates; acceptance must not touch money. Stated by the plan and "
-        "not yet built; the slice's own pull request discharges it and removes this entry in the "
-        "same commit."
-    ),
-    "AUD-CANDIDATE-001": (
-        "M9 slice 1 - matching candidates; acceptance must not touch money. Stated by the plan and "
-        "not yet built; the slice's own pull request discharges it and removes this entry in the "
-        "same commit."
-    ),
+    # Slice 1's five are cited now, by `tests/backend/test_candidate_schema.py` and
+    # `tests/integration/test_matching_candidates.py`, and their entries left in the same
+    # commit. Three things the slice found that the plan had not:
+    #
+    # **The plan's headline was too broad.** It said M9's governance is complete before its
+    # code, which is true of acceptance — permission, command row and audit action all
+    # approved — and not of the other two. `command_catalog.yaml` has no row for proposing or
+    # rejecting a candidate and `audit_outbox_catalog.yaml` names neither action, while
+    # document 05 defines both routes. Sixth instance of DOC-CONFLICT-052; both names are
+    # declared `catalogued=False` with the reason in `app/audit/registry.py`.
+    #
+    # **The model was stricter than document 05 and had to be corrected.** The first
+    # `PERMITTED_TRANSITIONS` made `accepted_for_confirmation` terminal;
+    # `05_API_Specification.md:1820` requires a reason when overriding a previously accepted
+    # candidate, which only means something if acceptance can be undone. Being stricter than
+    # an approved document is still deviation.
+    #
+    # **The catalogue asks for a revalidation the table cannot carry.**
+    # `command_catalog.yaml:295` requires `candidate_version_revalidated` and §12.5 gives the
+    # table no `record_version`. The row is locked and its status re-read inside the
+    # transaction instead, which is the same guarantee for a row whose only mutable field is
+    # that status — rather than inventing a column document 04 does not list.
     # Slice 2 - confirmed evidence links; two partial uniques and an atomic replacement.
     "DB-EVIDENCE-001": (
         "M9 slice 2 - confirmed evidence links; two partial uniques and an atomic replacement. "

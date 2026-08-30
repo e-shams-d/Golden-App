@@ -1522,6 +1522,83 @@
         "title": "CancelBatchRequest",
         "type": "object"
       },
+      "CandidateDetail": {
+        "additionalProperties": false,
+        "description": "What a suggestion is. Advisory, and the response says so in its own shape.\n\nThere is no `payment_status` field and no `confirmed` field, because a candidate knows\nnothing about either — `04_Database_Schema.md:1274`. A response that carried one would invite\na screen to read it as a result.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "payment_attempt_id": {
+            "format": "uuid",
+            "title": "Payment Attempt Id",
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "receipt_segment_id": {
+            "format": "uuid",
+            "title": "Receipt Segment Id",
+            "type": "string"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "receipt_segment_id",
+          "payment_attempt_id",
+          "method",
+          "score",
+          "reasons",
+          "status",
+          "created_at",
+          "resolved_at"
+        ],
+        "title": "CandidateDetail",
+        "type": "object"
+      },
       "CenterProfileResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2239,26 +2316,6 @@
           "version"
         ],
         "title": "DecisionRecorded",
-        "type": "object"
-      },
-      "DecisionRequest": {
-        "additionalProperties": false,
-        "description": "`reason` is required for reject and suspend, per `05_API_Specification.md:894-895`.\n\nOptional in the model and enforced per route, because the same shape serves\nfour commands and two of them do not require it — a required field on all four\nwould make approval carry a reason nobody has.",
-        "properties": {
-          "reason": {
-            "anyOf": [
-              {
-                "maxLength": 1000,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          }
-        },
-        "title": "DecisionRequest",
         "type": "object"
       },
       "DependenciesResponse": {
@@ -3907,6 +3964,53 @@
           "version_id"
         ],
         "title": "ProfileCreatedResponse",
+        "type": "object"
+      },
+      "ProposeRequest": {
+        "additionalProperties": false,
+        "description": "§19.4's body.\n\n`method` defaults to `manual` because Phase 1A has no engine: §12.5 says a candidate \"may be\nmanually created in Phase 1A and AI-assisted later\", and the column is the third member of the\nunique that lets a later engine suggest the same pair without colliding with a person.\n\n`score` is optional and stays `None` for a manual proposal. A default of 1.0 would make a\nhuman guess indistinguishable from a certainty something computed.",
+        "properties": {
+          "method": {
+            "default": "manual",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Method",
+            "type": "string"
+          },
+          "payment_attempt_id": {
+            "format": "uuid",
+            "title": "Payment Attempt Id",
+            "type": "string"
+          },
+          "reasons": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          }
+        },
+        "required": [
+          "payment_attempt_id"
+        ],
+        "title": "ProposeRequest",
         "type": "object"
       },
       "ProposedRowResponse": {
@@ -5665,6 +5769,26 @@
         "title": "CancelRequest",
         "type": "object"
       },
+      "app__api__v1__matching_candidates__DecisionRequest": {
+        "additionalProperties": false,
+        "description": "The body both decisions share.\n\n`reason` is optional here and required by the *command* for a rejection. The rule lives there\nrather than in the schema because it is a business rule with a citation and a deviation\nrecorded against it, and a `min_length` on a field cannot carry either.",
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "DecisionRequest",
+        "type": "object"
+      },
       "app__api__v1__payment_requests__CancelRequest": {
         "additionalProperties": false,
         "properties": {
@@ -5682,6 +5806,26 @@
           }
         },
         "title": "CancelRequest",
+        "type": "object"
+      },
+      "app__api__v1__traders__DecisionRequest": {
+        "additionalProperties": false,
+        "description": "`reason` is required for reject and suspend, per `05_API_Specification.md:894-895`.\n\nOptional in the model and enforced per route, because the same shape serves\nfour commands and two of them do not require it — a required field on all four\nwould make approval carry a reason nobody has.",
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "DecisionRequest",
         "type": "object"
       }
     },
@@ -10011,6 +10155,246 @@
         ]
       }
     },
+    "/api/v1/matching-candidates/{candidate_id}/accept-for-confirmation": {
+      "post": {
+        "description": "`POST /api/v1/matching-candidates/{candidate_id}/accept-for-confirmation`, per `:1806`.\n\n**\"This does not mark an attempt paid\"** — `:1810`, and the summary above repeats it because\nthe route name is the one place a reader looks before the specification. `:1274` and\n`15_Agent_Implementation_Plan.md:1102` say it twice more, and\n`command_catalog.yaml:296` names both prohibitions as preconditions on this exact row.\n\nWhat acceptance does is open the confirmation context. What closes it is slice 3's\n`confirm-paid`, which requires a bank tracking number, a result timestamp and an actor — none\nof which a candidate carries.",
+        "operationId": "acceptMatchingCandidate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__api__v1__matching_candidates__DecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the candidate permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such candidate, segment or attempt."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The candidate already exists, or its status moved first."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Idempotency-Key is required."
+          }
+        },
+        "summary": "Accept a suggestion for confirmation. Does not mark anything paid.",
+        "tags": [
+          "matching-candidates"
+        ]
+      }
+    },
+    "/api/v1/matching-candidates/{candidate_id}/reject": {
+      "post": {
+        "description": "`POST /api/v1/matching-candidates/{candidate_id}/reject`, per `:1816`.\n\n**A reason is always required, which is stricter than `:1820`.** That line asks for one \"when\nrejecting a high-confidence candidate or overriding a previously accepted candidate\". The\nsecond case is exact; the first has no approved threshold anywhere, so implementing\n\"sometimes\" would mean inventing the boundary. The command explains the choice and the owner\nowes the threshold.",
+        "operationId": "rejectMatchingCandidate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__api__v1__matching_candidates__DecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the candidate permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such candidate, segment or attempt."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The candidate already exists, or its status moved first."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Idempotency-Key is required."
+          }
+        },
+        "summary": "Refuse a suggestion, with a reason.",
+        "tags": [
+          "matching-candidates"
+        ]
+      }
+    },
     "/api/v1/me/trader/profile": {
       "get": {
         "operationId": "getOwnTraderProfile",
@@ -12999,6 +13383,222 @@
         ]
       }
     },
+    "/api/v1/receipt-segments/{segment_id}/matching-candidates": {
+      "get": {
+        "description": "The read the two decision routes need, and document 05 does not define.\n\n**Added because a decision route with no list is a mechanism with no caller**, which is this\nrepository's most-repeated defect — fifteen instances. Both decisions take a candidate id, and\nwithout this route the only way to obtain one is the 201 from a proposal in the same session.\nA reviewer coming back to a segment tomorrow would have nowhere to look.\n\nGuarded by `matching_candidate.review` rather than by a read permission of its own: the\ncatalogue has no `matching_candidate.read`, and reviewing is the authority that acts on this\nlist.",
+        "operationId": "listMatchingCandidates",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "segment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Segment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CandidateDetail"
+                  },
+                  "title": "Response Listmatchingcandidates",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the candidate permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such candidate, segment or attempt."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The candidate already exists, or its status moved first."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Idempotency-Key is required."
+          }
+        },
+        "summary": "Every suggestion recorded against this segment.",
+        "tags": [
+          "matching-candidates"
+        ]
+      },
+      "post": {
+        "description": "`POST /api/v1/receipt-segments/{segment_id}/matching-candidates`, per `:1798`.\n\n**\"Response candidates are advisory\"** (`:1802`), and the 201 says only that a suggestion was\nrecorded. The segment may move to `candidate_found` —\n`06_Workflows_and_State_Machines.md:1061-1062` draws that arrow — and the attempt does not\nmove at all, because nothing in this path holds a privilege that could move it.",
+        "operationId": "proposeMatchingCandidate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "segment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Segment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the candidate permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such candidate, segment or attempt."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The candidate already exists, or its status moved first."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Idempotency-Key is required."
+          }
+        },
+        "summary": "Suggest that this segment is evidence for a payment attempt.",
+        "tags": [
+          "matching-candidates"
+        ]
+      }
+    },
     "/api/v1/roles": {
       "get": {
         "operationId": "listRoles",
@@ -13588,7 +14188,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DecisionRequest"
+                "$ref": "#/components/schemas/app__api__v1__traders__DecisionRequest"
               }
             }
           },
@@ -13733,7 +14333,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DecisionRequest"
+                "$ref": "#/components/schemas/app__api__v1__traders__DecisionRequest"
               }
             }
           },
@@ -13878,7 +14478,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DecisionRequest"
+                "$ref": "#/components/schemas/app__api__v1__traders__DecisionRequest"
               }
             }
           },
@@ -14023,7 +14623,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DecisionRequest"
+                "$ref": "#/components/schemas/app__api__v1__traders__DecisionRequest"
               }
             }
           },

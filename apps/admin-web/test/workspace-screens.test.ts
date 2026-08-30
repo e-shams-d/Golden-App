@@ -6,17 +6,18 @@
  * for `export-screens.test.ts`'s reason: two copies of a list disagree the day the document gains a
  * twelfth, and neither copy says which one is wrong.
  *
- * **Four items have no route to talk to.** Attempt search needs `GET /api/v1/payment-attempts`,
- * which doc 05 `:1553` specifies and nobody has built; the candidate, evidence and history drawers
- * need matching, evidence links and segment history, all M9's. Building four panels with nothing
- * behind them would be worse than the absence — an empty drawer reads as "no candidates found"
- * rather than "this does not work yet".
+ * **Two items are not rendered, for two different reasons, and the difference is recorded.**
+ * Attempt search needs `GET /api/v1/payment-attempts`, which doc 05 `:1553` specifies and nobody
+ * has built. The candidate/evidence/history drawer *now has routes* — M9 slice 1 built them — and
+ * has no screen. Building a panel with nothing behind it would be worse than the absence: an empty
+ * drawer reads as "no candidates found" rather than "this does not work yet".
  *
- * So they are recorded, and the record is checked against the generated OpenAPI contract rather
- * than trusted. `test_the_absent_items_still_have_no_route` fails the day M9 adds one of those
- * routes, which is exactly when somebody needs to be told a workspace panel became buildable. Slice
- * 4 used the same shape for §16.5's prohibitions, where two of the three named mechanisms did not
- * exist yet and three passing assertions would otherwise have read as three enforced rules.
+ * So both are recorded, and both records are checked rather than trusted — the first against the
+ * generated OpenAPI contract, the second against the workspace source. The route check **failed on
+ * M9 slice 1**, which is exactly what it was written to do: tell whoever added the route that a
+ * workspace panel became buildable. Slice 4 used the same shape for §16.5's prohibitions, where two
+ * of the three named mechanisms did not exist yet and three passing assertions would otherwise have
+ * read as three enforced rules.
  *
  * Covers: UI-WORKSPACE-001, UI-CROP-001, UI-CROP-002, UI-EVIDENCE-001.
  */
@@ -76,14 +77,35 @@ function workspaceItems(): readonly string[] {
 }
 
 /**
- * The four items with no server surface, and the route each is waiting for.
+ * Items §16.3 lists that the workspace does not render, in two kinds — and the kinds matter.
  *
- * The route strings are what `test_the_absent_items_still_have_no_route` looks for in the contract,
- * so this table is a live claim rather than a note.
+ * M8 recorded both as "no route to talk to". M9 slice 1 built the candidate routes and the
+ * staleness assertion below failed, which is exactly what it was written to do: tell whoever added
+ * the route that a workspace panel became buildable.
+ *
+ * **The record splits rather than relaxes.** An absence justified by "the server cannot answer" is
+ * a different claim from one justified by "nobody has drawn it yet", and collapsing them would let
+ * the second hide behind the first's evidence. Each half has its own live check below.
  */
-const ABSENT_UNTIL_M9: ReadonlyMap<string, string> = new Map([
+const ABSENT_NO_ROUTE: ReadonlyMap<string, string> = new Map([
+  // Doc 05 `:1553` specifies `GET /api/v1/payment-attempts` and nobody has built it. M9 slice 3
+  // is the first slice with a reason to.
   ["attempt search", "/payment-attempts"],
-  ["candidate/evidence/history drawers", "/receipt-segments/{segment_id}/matching-candidates"],
+]);
+
+/**
+ * Items whose server surface now exists and whose panel is owed.
+ *
+ * The markers are what the panel would contain if it were built; `the recorded screens are still
+ * unbuilt` fails when one appears, so this record cannot go stale in the other direction either.
+ */
+const ABSENT_NO_SCREEN: ReadonlyMap<string, readonly string[]> = new Map([
+  // M9 slice 1 built `POST`/`GET /receipt-segments/{segment_id}/matching-candidates` and the two
+  // decision routes. The drawer is not this slice's: slice 1 is the table, the commands and the
+  // routes, and a panel drawn against half of M9's evidence surface would have to be redrawn when
+  // slice 2 adds evidence links and slice 5 adds history. Owed by M9's screens work, and named
+  // here so the debt is visible rather than inferred from an empty map.
+  ["candidate/evidence/history drawers", ["listMatchingCandidates", "acceptMatchingCandidate"]],
 ]);
 
 describe("the workspace covers §16.3", () => {
@@ -108,7 +130,7 @@ describe("the workspace covers §16.3", () => {
 
     const unaccounted: string[] = [];
     for (const item of workspaceItems()) {
-      if (ABSENT_UNTIL_M9.has(item)) continue;
+      if (ABSENT_NO_ROUTE.has(item) || ABSENT_NO_SCREEN.has(item)) continue;
       const markers = evidence.get(item);
       if (!markers) {
         unaccounted.push(`${item} — no marker recorded`);
@@ -123,25 +145,51 @@ describe("the workspace covers §16.3", () => {
 
   it("accounts for every item exactly once, present or recorded absent", () => {
     // The control on the test above. Without it an item could be dropped from both the evidence map
-    // and the absent map and nothing would notice — the check would simply stop looking at it.
+    // and the absent maps and nothing would notice — the check would simply stop looking at it.
     const items = workspaceItems();
-    const recorded = new Set([...ABSENT_UNTIL_M9.keys()]);
+    const recorded = new Set([...ABSENT_NO_ROUTE.keys(), ...ABSENT_NO_SCREEN.keys()]);
     const unknown = items.filter((item) => recorded.has(item));
 
     expect(items.length).toBe(11);
-    expect(unknown.length).toBe(ABSENT_UNTIL_M9.size);
+    expect(unknown.length).toBe(ABSENT_NO_ROUTE.size + ABSENT_NO_SCREEN.size);
   });
 
-  it("the absent items still have no route, so the record is not stale", () => {
-    // **The assertion that makes the absence honest.** When M9 builds matching or the attempt list,
-    // this fails and tells whoever added the route that a workspace panel is now buildable. Without
-    // it, four items could stay "deliberately absent" forever while the reason quietly expired.
+  it("the items recorded as having no route still have none", () => {
+    // **The assertion that makes the first kind of absence honest.** It failed when M9 slice 1
+    // added the candidate routes, which is what moved that item to `ABSENT_NO_SCREEN`. Without it,
+    // an item could stay "deliberately absent" forever while the reason quietly expired.
     const contract = read(CONTRACT);
-    const built = [...ABSENT_UNTIL_M9.entries()].filter(([, route]) =>
+    const built = [...ABSENT_NO_ROUTE.entries()].filter(([, route]) =>
       contract.includes(`"/api/v1${route}"`),
     );
 
     expect(built).toEqual([]);
+  });
+
+  it("the items recorded as having a route really do have one", () => {
+    // The other direction, and the reason the split is not a relaxation: an item parked in
+    // `ABSENT_NO_SCREEN` on a route that does not exist would be an absence with no evidence at
+    // all, which is weaker than what M8 recorded rather than more precise.
+    const contract = read(CONTRACT);
+    const missing = [...ABSENT_NO_SCREEN.keys()].filter(
+      () => !contract.includes('"/api/v1/receipt-segments/{segment_id}/matching-candidates"'),
+    );
+
+    expect(missing).toEqual([]);
+  });
+
+  it("the recorded screens are still unbuilt, so that record is not stale either", () => {
+    // The staleness check for the second kind. When somebody draws the drawer, this fails and the
+    // item moves into the evidence map above — the same conversation the route check forced, one
+    // layer later.
+    const source = [read(WORKSPACE_PAGE), read(CROP_CANVAS), read(PAGE_PREVIEW), read(MODULE)].join(
+      "\n",
+    );
+    const appeared = [...ABSENT_NO_SCREEN.entries()].filter(([, markers]) =>
+      markers.some((marker) => source.includes(marker)),
+    );
+
+    expect(appeared).toEqual([]);
   });
 });
 

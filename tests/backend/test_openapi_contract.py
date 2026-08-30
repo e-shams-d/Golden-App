@@ -246,6 +246,14 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "startManualReviewTask",
         "resolveManualReviewTask",
         "cancelManualReviewTask",
+        # M9 slice 1. Document 05's three at `:1798`, `:1806` and `:1816`, plus a list the
+        # document does not define — added because both decision routes take a candidate id and
+        # without a read there is no way to obtain one tomorrow. A decision route with no list is
+        # a mechanism with no caller, which is this repository's most-repeated defect.
+        "proposeMatchingCandidate",
+        "listMatchingCandidates",
+        "acceptMatchingCandidate",
+        "rejectMatchingCandidate",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

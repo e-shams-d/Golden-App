@@ -755,6 +755,57 @@ CANCEL_REVIEW_TASK = CommandNames(
     catalogued=False,
     provisional_reason=_REVIEW_QUEUE_REASON,
 )
+# --- M9 slice 1: matching candidates -------------------------------------------
+#
+# **A correction to the M9 plan's own headline.** The plan says the milestone's governance is
+# complete before its code, and for acceptance that is exactly true — `command_catalog.yaml:290`
+# carries the row with this path, `idempotency: required`, both "does not confirm" preconditions,
+# and `audit_outbox_catalog.yaml:39` names the action. It is the first M9 command and it needs
+# nothing invented.
+#
+# **Creation and rejection are not.** `permission_catalog.yaml` approves and seeds
+# `matching_candidate.create` and `.review`; `command_catalog.yaml` has a row for neither, and
+# `audit_outbox_catalog.yaml` names no candidate action but the accepted one — while
+# `05_API_Specification.md:1798` and `:1816` define both routes. That is DOC-CONFLICT-052's shape
+# for the sixth time, and the plan's claim was too broad: it listed "candidate acceptance" among
+# the catalogued rows accurately and then generalised from it.
+_CANDIDATE_DECISION_REASON = (
+    "M9 slice 1. Sixth instance of DOC-CONFLICT-052: permission_catalog.yaml approves and seeds "
+    "matching_candidate.create and matching_candidate.review, 05_API_Specification.md:1798 and "
+    ":1816 define the two routes, and neither command_catalog.yaml nor audit_outbox_catalog.yaml "
+    "names either command — while the acceptance sitting between them is catalogued completely. "
+    "Implemented against the permissions' own identifiers, the precedent M6 slice 4 and M8 slice "
+    "3 set under this conflict. The names follow the aggregate's catalogued spelling "
+    "(matching_candidate.accepted_for_confirmation) and must be renamed to whatever M0 approves. "
+    "No outbox event: a suggestion being made or refused is internal work, and nothing outside "
+    "the platform can act on it — 04_Database_Schema.md:1274 is explicit that a candidate decides "
+    "no financial fact."
+)
+
+CREATE_MATCHING_CANDIDATE = CommandNames(
+    audit_action="matching_candidate.proposed",
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=_CANDIDATE_DECISION_REASON,
+)
+
+ACCEPT_MATCHING_CANDIDATE = CommandNames(
+    audit_action="matching_candidate.accepted_for_confirmation",
+    # `audit_outbox_catalog.yaml:39` names the action; `command_catalog.yaml:298` gives it
+    # `outbox_event: null` in as many words. Right, and for the reason §12.5 gives: acceptance
+    # opens a context for confirmation and settles nothing a consumer could act on.
+    outbox_event_type=None,
+    # **True.** Permission, command row and audit action all approved, with the row's own
+    # preconditions naming the two things this command must not do.
+    catalogued=True,
+)
+
+REJECT_MATCHING_CANDIDATE = CommandNames(
+    audit_action="matching_candidate.rejected",
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=_CANDIDATE_DECISION_REASON,
+)
 
 
 # Every `CommandNames` defined above, and the gate that reads this tuple is the only thing
@@ -833,4 +884,9 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     QUARANTINE_EXPORT_ON_INTEGRITY_FAILURE,
     # M7 slice 4.
     MARK_EXPORT_SENT,
+    # M9 slice 1, in the tuple in the same commit as the entries. Only the middle one is
+    # catalogued, which is the finding the entries above record.
+    CREATE_MATCHING_CANDIDATE,
+    ACCEPT_MATCHING_CANDIDATE,
+    REJECT_MATCHING_CANDIDATE,
 )

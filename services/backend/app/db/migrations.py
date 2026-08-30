@@ -103,4 +103,10 @@ from __future__ import annotations
 # 2026-08-25 decision under DOC-CONFLICT-056: an approved batch had a documented cancellation rule
 # and no permission to authorise it, so it had no exit. The first later revision that seeds a
 # *grant* as well as a permission — `20260816_0014` deliberately seeded neither role.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260828_0027"})
+# 20260829_0028 opens M9: `matching_candidates`, §12.5's advisory suggestion table. Grants UPDATE
+# on `status` and `resolved_at` alone — the segment, the attempt, the method and the score are what
+# a suggestion *is*, and a re-pointable candidate would let a rejected one be re-accepted as a
+# different link. It also grants **nothing on `payment_attempts`**, which is what makes "accepting
+# a candidate does not mark paid" a privilege the runtime does not hold rather than a branch
+# somebody could delete. Slice 3 adds that grant, column by column and deliberately.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260829_0028"})
