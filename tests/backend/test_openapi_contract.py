@@ -260,6 +260,11 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "confirmEvidenceLink",
         "replaceEvidenceLink",
         "voidEvidenceLink",
+        # M9 slices 3 and 4. Document 05's two at `:1564` and `:1594` — the first operations in
+        # this contract that record money as having moved. Neither request body carries an amount,
+        # which is how §17 `:1131`'s "amount is exact" is enforced.
+        "confirmAttemptPaid",
+        "confirmAttemptFailed",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

@@ -117,4 +117,10 @@ from __future__ import annotations
 # stays readable. The status column admits the catalogue's canonical `revoked`; document 05's
 # `/void` path is kept because it is the API contract, and the migration records the conflict the
 # command catalogue's own row already flags.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260830_0029"})
+# 20260830_0030 creates nothing. It grants column-level UPDATE on `payment_attempts` for the nine
+# columns a confirmation writes — the result, the confirming actor, and the row's own version — and
+# for no others. M6 created those columns and granted nothing, which is what made "accepting a
+# candidate does not mark an attempt paid" a privilege the runtime did not hold. This revision ends
+# that for the confirmation command and keeps every snapshot unwritable: a confirmation records what
+# the bank did and cannot restate what was sent.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260830_0030"})

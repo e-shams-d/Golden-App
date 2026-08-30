@@ -69,6 +69,10 @@ TASK_TYPE_UNRESOLVED_SEGMENT = "bundle_unresolved_segment"
 # to it. That the approved list already contains this type is M0 saying the privacy check belongs in
 # the review queue — which is why slice 7 needed no new table, no new permission and no new command.
 TASK_TYPE_PRIVACY_REVIEW = "segment_privacy_review"
+# M9 slice 3, and the fourth value named from the tuple rather than added to it. The plan's G-4
+# asked which type an overpayment opens with and said to read this list rather than guess; it was
+# already here. `04_Database_Schema.md:1606` requires the task and M0 had already named its kind.
+TASK_TYPE_RESULT_DISCREPANCY = "payment_result_discrepancy"
 
 # How a task ended. `unresolved_with_reason` is the honest close for a task whose subject is still
 # not fixed, and the table requires it to carry prose — otherwise the honest option would also be
@@ -94,6 +98,12 @@ ENTITY_TYPES: tuple[str, ...] = (
 
 ENTITY_BANK_EXPORT = "bank_excel_export"
 ENTITY_RECEIPT_SEGMENT = "receipt_segment"
+# M9 slice 3. **The overpayment task hangs off the attempt rather than the request**, because the
+# list above has no `payment_request` and the list is M0's. The attempt is the accurate subject as
+# well as the permitted one: it is the row whose confirmation was refused, and `:1324` limits this
+# reference to queue navigation — a person opening the item wants the thing they were about to act
+# on, not its parent.
+ENTITY_PAYMENT_ATTEMPT = "payment_attempt"
 
 
 def _quoted(values: tuple[str, ...]) -> str:

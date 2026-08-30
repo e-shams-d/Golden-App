@@ -550,6 +550,115 @@
         "title": "AttachFileRequest",
         "type": "object"
       },
+      "AttemptResult": {
+        "additionalProperties": false,
+        "description": "What a confirmed attempt looks like, and what its request became.\n\n`request_status` is included because the confirmation changes it and a client that had to\nre-read the request to find out would be reading a value that another confirmation may already\nhave moved.",
+        "properties": {
+          "amount_irr": {
+            "title": "Amount Irr",
+            "type": "integer"
+          },
+          "attempt_number": {
+            "title": "Attempt Number",
+            "type": "integer"
+          },
+          "bank_result_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Result At"
+          },
+          "bank_tracking_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Tracking Number"
+          },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "failure_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Code"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "payment_request_id": {
+            "format": "uuid",
+            "title": "Payment Request Id",
+            "type": "string"
+          },
+          "record_version": {
+            "title": "Record Version",
+            "type": "integer"
+          },
+          "request_status": {
+            "title": "Request Status",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "payment_request_id",
+          "attempt_number",
+          "status",
+          "amount_irr",
+          "bank_tracking_number",
+          "bank_result_at",
+          "failure_code",
+          "failure_reason",
+          "confirmed_at",
+          "record_version",
+          "request_status"
+        ],
+        "title": "AttemptResult",
+        "type": "object"
+      },
       "BackgroundProcessingResponse": {
         "additionalProperties": false,
         "properties": {
@@ -1707,6 +1816,101 @@
           "resolution_note"
         ],
         "title": "CloseBundleRequest",
+        "type": "object"
+      },
+      "ConfirmFailedRequest": {
+        "additionalProperties": false,
+        "description": "§17.3's body.\n\n`failure_reason` is required by the schema *and* by the command. Both, for the reason slice 2\nrecords: the schema gives a client a 422 naming the field, and the command gives the same\nrefusal to any caller that does not come through it.",
+        "properties": {
+          "failure_code": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Failure Code",
+            "type": "string"
+          },
+          "failure_reason": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Failure Reason",
+            "type": "string"
+          },
+          "receipt_segment_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Segment Id"
+          }
+        },
+        "required": [
+          "failure_code",
+          "failure_reason"
+        ],
+        "title": "ConfirmFailedRequest",
+        "type": "object"
+      },
+      "ConfirmPaidRequest": {
+        "additionalProperties": false,
+        "description": "§17.2's body, field for field. **No amount** — see the module docstring.",
+        "properties": {
+          "bank_result_at": {
+            "format": "date-time",
+            "title": "Bank Result At",
+            "type": "string"
+          },
+          "bank_tracking_number": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Bank Tracking Number",
+            "type": "string"
+          },
+          "confirmation_note": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Note"
+          },
+          "evidence_unavailable_reason": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Unavailable Reason"
+          },
+          "primary_evidence_link_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Evidence Link Id"
+          }
+        },
+        "required": [
+          "bank_tracking_number",
+          "bank_result_at"
+        ],
+        "title": "ConfirmPaidRequest",
         "type": "object"
       },
       "ConfirmRequest": {
@@ -11189,6 +11393,298 @@
         "summary": "Release identity, applied schema revision and flag snapshot",
         "tags": [
           "operations"
+        ]
+      }
+    },
+    "/api/v1/payment-attempts/{attempt_id}/confirm-failed": {
+      "post": {
+        "description": "`POST /api/v1/payment-attempts/{attempt_id}/confirm-failed`, per `:1594`.\n\n**A separate permission from confirming paid**, and the catalogue is right to separate them:\nrecording a failure is not the same authority as recording that money left, even though the\nsame role holds both today.",
+        "operationId": "confirmAttemptFailed",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "attempt_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Attempt Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmFailedRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttemptResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the confirmation permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such attempt or evidence link."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The attempt moved first."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is stale or unreadable."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are required."
+          }
+        },
+        "summary": "Record that the bank did not pay this attempt, and why.",
+        "tags": [
+          "payment-attempts"
+        ]
+      }
+    },
+    "/api/v1/payment-attempts/{attempt_id}/confirm-paid": {
+      "post": {
+        "description": "`POST /api/v1/payment-attempts/{attempt_id}/confirm-paid`, per `:1564`.\n\nSeven validations run inside the command, each with its own refusal — see\n`app/commands/payment_result.py`. The two worth naming here are the ones a caller most often\ntrips: an attempt that was never sent, and an overpayment, which opens a reconciliation task\n**and** refuses.",
+        "operationId": "confirmAttemptPaid",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "attempt_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Attempt Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmPaidRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttemptResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the confirmation permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such attempt or evidence link."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The attempt moved first."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is stale or unreadable."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are required."
+          }
+        },
+        "summary": "Record that the bank paid this attempt.",
+        "tags": [
+          "payment-attempts"
         ]
       }
     },

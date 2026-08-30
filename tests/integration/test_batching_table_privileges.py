@@ -61,7 +61,28 @@ EXPECTED: dict[str, tuple[bool, bool, bool, bool]] = {
 # `UPDATE` on any of these would also permit rewriting a frozen snapshot or a content hash, so
 # the grants are per column and this is what says which.
 EXPECTED_UPDATABLE_COLUMNS: dict[str, set[str]] = {
-    "payment_attempts": {"status", "record_version", "updated_at"},
+    # **Widened from three to nine by M9's `20260830_0030`, and the six additions are the whole
+    # point of that revision.** M6 created the result columns and granted nothing on them, which
+    # is what let M9 slice 1 make "accepting a candidate does not mark an attempt paid" a
+    # privilege the runtime did not hold rather than a branch somebody could delete. Slice 3's
+    # confirmation is the first thing entitled to write them.
+    #
+    # What is still absent is what matters: `amount_irr`, both beneficiary snapshots,
+    # `bank_profile_version_id`, `attempt_number`, `attempt_type`, both lineage pointers and
+    # `split_rule_snapshot`. A confirmation records what the bank did; it cannot restate what was
+    # sent. This gate caught the widening on the very run that introduced it, which is the
+    # behaviour to keep.
+    "payment_attempts": {
+        "status",
+        "record_version",
+        "updated_at",
+        "bank_tracking_number",
+        "bank_result_at",
+        "failure_code",
+        "failure_reason",
+        "confirmed_by_admin_user_id",
+        "confirmed_at",
+    },
     "payment_batches": {
         "status",
         "current_version_id",
@@ -166,8 +187,12 @@ def test_the_updatable_columns_are_exactly_the_mutable_ones(
 
     `payment_attempts` is the table where this matters most: it carries the beneficiary name and
     IBAN a bank will be instructed with, and a table-level `UPDATE` granted for the sake of
-    moving `status` would also permit rewriting those. The migration grants three columns; this
-    asserts that it is still three.
+    moving `status` would also permit rewriting those.
+
+    **The set is not fixed for ever, and the point is that widening it is visible.** M6 granted
+    three columns; M9's `20260830_0030` added the six a payment result writes, and this gate
+    failed on the run that introduced them. Editing the expectation is the deliberate half of
+    that change — what must never happen is a snapshot column joining the list quietly.
     """
 
     problems: list[str] = []

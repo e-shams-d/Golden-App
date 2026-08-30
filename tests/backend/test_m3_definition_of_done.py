@@ -294,6 +294,11 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     ("POST", "/api/v1/evidence-links"): PERMISSION,
     ("POST", "/api/v1/evidence-links/{link_id}/replace"): PERMISSION,
     ("POST", "/api/v1/evidence-links/{link_id}/void"): PERMISSION,
+    # M9 slices 3 and 4. Two routes, two permissions — the catalogue separates confirming paid
+    # from confirming failed, and this keeps them separate. `PERMISSION` rather than `DUAL`: an
+    # attempt belongs to the centre's payment run, and a trader never confirms a bank result.
+    ("POST", "/api/v1/payment-attempts/{attempt_id}/confirm-paid"): PERMISSION,
+    ("POST", "/api/v1/payment-attempts/{attempt_id}/confirm-failed"): PERMISSION,
     # M5 slice 8. The two reads the screens need, and which nothing had built: eleven
     # published operations and only the revision history read. Both are `DUAL` — a trader
     # sees their own through `scoped()`, an accountant sees the queue through
@@ -705,6 +710,15 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ),
     ("POST", "/api/v1/evidence-links/{link_id}/void", "permission"): (
         "test_no_evidence_route_answers_a_caller_without_the_permission"
+    ),
+    # M9 slices 3 and 4. One test per route, because the two permissions are separate and the
+    # negative actor is sharp: `manager` holds `payment_attempt.read` (`20260801_0008:313`) and
+    # neither confirmation grant, so it gets past any "some attempt permission" guard.
+    ("POST", "/api/v1/payment-attempts/{attempt_id}/confirm-paid", "permission"): (
+        "test_confirming_paid_needs_the_confirm_paid_permission"
+    ),
+    ("POST", "/api/v1/payment-attempts/{attempt_id}/confirm-failed", "permission"): (
+        "test_confirming_failed_needs_the_confirm_failed_permission"
     ),
     # M5 slice 8. The two reads, four entries because both are `DUAL`. The ownership pair
     # answers `404` and the permission pair `403`, and each is asserted in its own test
