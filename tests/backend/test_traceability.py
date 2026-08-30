@@ -737,62 +737,73 @@ PENDING: dict[str, str] = {
     # different table. Replaced with an AST walk that asks what is being written: an
     # attribute assignment, or a keyword argument to `PaymentAttempt` specifically. No
     # exclusion list.
-    # Slice 3 - confirm paid and confirm failed; seven validations, each separately provoked.
-    "SVC-CONFIRM-001": (
-        "M9 slice 3 - confirm paid and confirm failed; seven validations, each separately "
-        "provoked. Stated by the plan and not yet built; the slice's own pull request discharges "
-        "it and removes this entry in the same commit."
+    # Slices 3 and 4's eleven are cited now, by `tests/backend/test_payment_result_shape.py`
+    # and `tests/integration/test_payment_results.py`, and their entries left in the same
+    # commit. Slice 3B's three remain below.
+    #
+    # **The two slices shipped as one command, because the catalogue says they are one.**
+    # `command_catalog.yaml`'s `payment_attempt.confirm_paid` row gives it
+    # `concurrency: if_match_attempt_and_lock_request_aggregate` and lists `no_overpayment`
+    # among its preconditions. The plan put the aggregate in a later slice; shipping slice 3
+    # alone would have released a command that knowingly failed its own approved contract —
+    # the request staying `sent_to_bank` after every attempt was paid, and an overpayment
+    # accepted. The plan's slice boundary fell inside one command and the catalogue row is
+    # the evidence.
+    #
+    # **Both command rows were marked blocked and both blockers were resolved.**
+    # `blocked_by_result_persistence_and_evidence_policy` and
+    # `blocked_by_result_persistence_contract`: the persistence half was M6 creating six
+    # result columns and granting nothing on them, which `20260830_0030` ends column by
+    # column with every snapshot still unwritable; the evidence half is G-3, where doc 05
+    # requires a reason 'by policy' and no approved document states the policy, so it is
+    # required in every evidence-free case and the owner still owes the decision.
+    #
+    # **Two more approved lists already held what the slice needed.** G-4 asked which task
+    # type an overpayment opens with: `payment_result_discrepancy` was already in
+    # `TASK_TYPES`. And the task hangs off the *attempt* rather than the request, because
+    # `ENTITY_TYPES` has no `payment_request` — read before writing, which is what stopped a
+    # value the column's CHECK would have refused.
+    #
+    # **The overpayment refusal commits its own task.** The first version raised a plain
+    # `BusinessRuleViolationError` and the task was rolled back with the refused request, so
+    # the block survived and the record did not. `OverpaymentRefused` exists so the route can
+    # commit before re-raising — the shape M7's download route already used for quarantine:
+    # on a failure path whose whole point is the record, the record commits.
+    #
+    # **`test_every_cited_id_uses_a_catalogue_prefix` caught the test data**, and then caught this
+    # comment. The tracking numbers were written as a three-letter prefix, a hyphen and a word,
+    # which is the shape of an obligation id — so the scanner read them as ids with an
+    # uncatalogued prefix. They are digits now, which is what document 05's own example shows.
+    # The first version of this note spelled one of the old values out and failed the same check
+    # for the same reason, which is the rule stated once more: an id-shaped string in a test file
+    # is a citation, including inside the comment explaining that it is not.
+    # Slice 3B - retry, which the plan first forgot.
+    #
+    # **A plan-level instance of this repository's most-repeated shape.** §17 `:1121` names five
+    # payment-result commands; the plan assigned two to slice 3 and one to slice 7 and never
+    # mentioned the other two. Meanwhile `permission_catalog.yaml` approves and seeds
+    # `payment_attempt.create_retry`, `audit_outbox_catalog.yaml:45` names
+    # `payment_attempt.retry_created`, and document 05 defines both routes at §17.4 and §17.5 — an
+    # approved permission and a catalogued action with no slice that builds them, found by reading
+    # the command list again at the top of slice 3 rather than by any gate.
+    #
+    # Its own slice rather than slice 3's tail, following M7's rule that a slice splits when its
+    # parts have different dependencies: marking retry-required moves a status, while creating a
+    # retry attempt inserts a row with a fresh `attempt_number` and a lineage pointer.
+    "SVC-RETRY-001": (
+        "M9 slice 3B - retry; the plan omitted both commands and this entry is the correction. "
+        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
     ),
-    "SVC-CONFIRM-002": (
-        "M9 slice 3 - confirm paid and confirm failed; seven validations, each separately "
-        "provoked. Stated by the plan and not yet built; the slice's own pull request discharges "
-        "it and removes this entry in the same commit."
+    "SVC-RETRY-002": (
+        "M9 slice 3B - retry; the plan omitted both commands and this entry is the correction. "
+        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
     ),
-    "SVC-CONFIRM-003": (
-        "M9 slice 3 - confirm paid and confirm failed; seven validations, each separately "
-        "provoked. Stated by the plan and not yet built; the slice's own pull request discharges "
-        "it and removes this entry in the same commit."
-    ),
-    "SVC-CONFIRM-004": (
-        "M9 slice 3 - confirm paid and confirm failed; seven validations, each separately "
-        "provoked. Stated by the plan and not yet built; the slice's own pull request discharges "
-        "it and removes this entry in the same commit."
-    ),
-    "SVC-CONFIRM-005": (
-        "M9 slice 3 - confirm paid and confirm failed; seven validations, each separately "
-        "provoked. Stated by the plan and not yet built; the slice's own pull request discharges "
-        "it and removes this entry in the same commit."
-    ),
-    "SVC-CONFIRM-006": (
-        "M9 slice 3 - confirm paid and confirm failed; seven validations, each separately "
-        "provoked. Stated by the plan and not yet built; the slice's own pull request discharges "
-        "it and removes this entry in the same commit."
-    ),
-    "SEC-CONFIRM-001": (
-        "M9 slice 3 - confirm paid and confirm failed; seven validations, each separately "
-        "provoked. Stated by the plan and not yet built; the slice's own pull request discharges "
-        "it and removes this entry in the same commit."
-    ),
-    "AUD-CONFIRM-001": (
-        "M9 slice 3 - confirm paid and confirm failed; seven validations, each separately "
-        "provoked. Stated by the plan and not yet built; the slice's own pull request discharges "
-        "it and removes this entry in the same commit."
-    ),
-    # Slice 4 - the request aggregate under lock; overpayment opens a task and blocks closure.
-    "SVC-AGGREGATE-001": (
-        "M9 slice 4 - the request aggregate under lock; overpayment opens a task and blocks "
-        "closure. Stated by the plan and not yet built; the slice's own pull request discharges it "
-        "and removes this entry in the same commit."
-    ),
-    "SVC-AGGREGATE-002": (
-        "M9 slice 4 - the request aggregate under lock; overpayment opens a task and blocks "
-        "closure. Stated by the plan and not yet built; the slice's own pull request discharges it "
-        "and removes this entry in the same commit."
-    ),
-    "CON-AGGREGATE-001": (
-        "M9 slice 4 - the request aggregate under lock; overpayment opens a task and blocks "
-        "closure. Stated by the plan and not yet built; the slice's own pull request discharges it "
-        "and removes this entry in the same commit."
+    "AUD-RETRY-001": (
+        "M9 slice 3B - retry; the plan omitted both commands and this entry is the correction. "
+        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
     ),
     # Slice 5 - payment result publications; immutable, hashed, one active per request.
     "DB-PUBLICATION-001": (

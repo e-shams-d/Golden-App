@@ -846,6 +846,34 @@ REVOKE_EVIDENCE_LINK = CommandNames(
     catalogued=True,
 )
 
+# --- M9 slice 3: payment results -----------------------------------------------
+#
+# Both actions are in `audit_outbox_catalog.yaml:43-44` and both events at `:74-75`. **Both
+# command rows are marked blocked**, and the blockers are resolved rather than inherited:
+# `confirm_paid` carries `blocked_by_result_persistence_and_evidence_policy` and `confirm_failed`
+# `blocked_by_result_persistence_contract`.
+#
+# *Result persistence* was M6 creating the six result columns on `payment_attempts` and granting
+# the runtime nothing on them — `20260830_0030` is that half, column by column, with every
+# snapshot still unwritable. *Evidence policy* is the plan's G-3: doc 05 `:1580` makes a reason
+# required "by policy" when no evidence exists and no approved document states the policy, so the
+# reason is required in every evidence-free case and the owner still owes the decision on whether
+# such a confirmation needs a second person.
+
+CONFIRM_ATTEMPT_PAID = CommandNames(
+    audit_action="payment_attempt.paid_confirmed",
+    # `:74`. The first outbox event in M9 that something outside the platform genuinely acts on:
+    # a paid attempt is what a publication is eventually built from.
+    outbox_event_type="PaymentAttemptPaid",
+    catalogued=True,
+)
+
+CONFIRM_ATTEMPT_FAILED = CommandNames(
+    audit_action="payment_attempt.failed_confirmed",
+    outbox_event_type="PaymentAttemptFailed",
+    catalogued=True,
+)
+
 
 # Every `CommandNames` defined above, and the gate that reads this tuple is the only thing
 # checking any of them against the catalogue. Three M5 entries — `BEGIN_REVIEW`,
@@ -932,4 +960,7 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     CONFIRM_EVIDENCE_LINK,
     REPLACE_EVIDENCE_LINK,
     REVOKE_EVIDENCE_LINK,
+    # M9 slice 3, likewise. Both catalogued, both command rows previously blocked.
+    CONFIRM_ATTEMPT_PAID,
+    CONFIRM_ATTEMPT_FAILED,
 )

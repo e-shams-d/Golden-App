@@ -19,6 +19,7 @@ from app.api.v1.matching_candidates import (
 )
 from app.api.v1.metadata import router as metadata_router
 from app.api.v1.operations import router as operations_router
+from app.api.v1.payment_attempts import router as payment_attempts_router
 from app.api.v1.payment_batches import router as payment_batches_router
 from app.api.v1.payment_requests import router as payment_requests_router
 from app.api.v1.receipt_segments import router as receipt_segments_router
@@ -63,3 +64,7 @@ api_v1_router.include_router(matching_candidates_segment_router)
 # prefix, because document 05 gives it one (`:1824`) rather than nesting it under either side of
 # the relationship it records.
 api_v1_router.include_router(evidence_links_router)
+# M9 slices 3 and 4. The first routes in this project that record money as having moved, and the
+# first that change a request's status from what its attempts did rather than from what a person
+# said about the request.
+api_v1_router.include_router(payment_attempts_router)

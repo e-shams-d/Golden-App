@@ -241,6 +241,50 @@ provocation:
 G-5 built a guard that could not fire because an earlier status transition already forbade its
 case, and a unit test would have passed it by constructing a state production cannot reach.
 
+## Slice 3B — retry, which this plan first forgot
+
+### Goal
+
+An attempt that failed can be marked as needing a retry, and a retry attempt can be created from
+it — the two of §17 `:1121`'s five payment-result commands this plan omitted.
+
+**Recorded as a correction rather than folded into slice 3.** §17 `:1121` lists five commands; the
+plan assigned two to slice 3 and one to slice 7 and never mentioned these. The word "retry"
+appeared once in the whole document, in an unrelated table cell. Meanwhile
+`permission_catalog.yaml` approves and seeds `payment_attempt.create_retry`,
+`audit_outbox_catalog.yaml:45` names `payment_attempt.retry_created`, and doc 05 defines both
+routes — an approved permission and a catalogued action with no slice that builds them, which is
+this repository's most-repeated shape appearing one level up, in a plan rather than in code.
+
+**Its own slice rather than slice 3's tail**, following M7's rule that a slice splits when its
+parts have different dependencies. Marking retry-required is a status transition on a row that
+already exists. Creating a retry *attempt* inserts a new `payment_attempts` row with
+`retry_of_attempt_id`, a fresh `attempt_number`, and a relationship to batching that slice 3 needs
+none of.
+
+### What it changes
+
+- `POST /payment-attempts/{attempt_id}/mark-retry-required` (doc 05 §17.4). "Reason required. This
+  does not itself create or send a retry" — the same shape as slice 1's acceptance: the human
+  action that looks as though it should move money must not.
+- `POST /payment-attempts/{attempt_id}/retry` (doc 05 §17.5), which creates the new attempt.
+- No new table and no new grant: `20260830_0030` already grants `status`, and `retry_of_attempt_id`
+  is written at insert on the new row rather than updated on the old one.
+
+### What proves it
+
+- `SVC-RETRY-001` — marking retry-required moves the attempt's status and creates **no** new
+  attempt, asserted by counting the request's attempts before and after. Doc 05 §17.4 says so in
+  its own words, and it is the third time in this milestone that the interesting property is what
+  a command does not do.
+- `SVC-RETRY-002` — a retry attempt carries `retry_of_attempt_id` and the next `attempt_number`,
+  and the original row is byte-identical afterwards except for its status. `uq_attempt_number_per_request`
+  is what makes the numbering checkable rather than assumed.
+- `AUD-RETRY-001` — `payment_attempt.retry_created`, the catalogued action, with no outbox event —
+  which is what `audit_outbox_catalog.yaml` lists.
+
+---
+
 ## Slice 4 — the request aggregate, recalculated under lock
 
 ### Goal
