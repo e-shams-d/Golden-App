@@ -40,6 +40,7 @@ from app.db.models.payment_batch import (
     PaymentBatchVersion,
 )
 from app.db.models.payment_request import PaymentRequest, PaymentRequestRevision
+from app.db.models.payment_result_publication import PaymentResultPublication
 from app.db.models.processing_job import ProcessingJob
 from app.db.models.rbac import AdminUserRole, Permission, Role, RolePermission
 from app.db.models.receipt_segment import ReceiptSegment
@@ -80,6 +81,7 @@ __all__ = [
     "PaymentBatchVersion",
     "PaymentRequest",
     "PaymentRequestRevision",
+    "PaymentResultPublication",
     "Permission",
     "ProcessingJob",
     "ReceiptSegment",

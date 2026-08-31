@@ -87,6 +87,11 @@ EXPECTED_TABLES = frozenset(
         "payment_batch_items",
         "payment_batch_versions",
         "payment_batches",
+        # M9 slice 5, §11.9. The only table in this list the runtime holds **no** UPDATE on. A
+        # publication is what a trader is shown as proof, so its immutability is a privilege
+        # rather than a rule somebody could edit out — and slice 7's correction is what brings the
+        # first grant, with the command that needs it.
+        "payment_result_publications",
         "permissions",
         "processing_jobs",
         "role_permissions",

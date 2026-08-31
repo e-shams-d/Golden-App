@@ -270,6 +270,13 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # "the server rejects free-form beneficiary/IBAN changes" is enforced.
         "markAttemptRetryRequired",
         "createRetryAttempt",
+        # M9 slice 5. Document 05 at `:1874` and `:1879`. Neither body carries a financial value —
+        # "the client cannot submit arbitrary financial summary values" — and neither offers a
+        # share file, which slice 5B builds. `publishPaymentResult` is `201`: nothing here is
+        # asynchronous because nothing here renders a file, and the `202` document 05 permits
+        # would be a promise this route does not keep.
+        "previewPaymentResultPublication",
+        "publishPaymentResult",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

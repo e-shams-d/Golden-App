@@ -906,6 +906,26 @@ MARK_RETRY_REQUIRED = CommandNames(
 )
 
 
+# --- M9 slice 5: publication ----------------------------------------------------
+#
+# **Fully catalogued, and it is the first M9 slice that is.** `audit_outbox_catalog.yaml:46` names
+# the action, `:77` the event, `command_catalog.yaml`'s `payment_publication.publish` row names
+# both together, and `20260801_0008` already seeded the permission to the accountant role. Nothing
+# to declare and nothing to reconcile — worth saying out loud after three slices that each opened
+# with a conflict.
+#
+# The preview has no entry, deliberately. It creates no publication and doc 05 §20.1 says so; what
+# it does write is the request's own status, which `payment_request.*` already covers.
+
+PUBLISH_PAYMENT_RESULT = CommandNames(
+    audit_action="payment_publication.created",
+    # `:77`. A trader has to be told, and `notifications` (M9 slice 7, the plan's G-2) is the
+    # consumer this event is waiting for.
+    outbox_event_type="PaymentResultPublicationCreated",
+    catalogued=True,
+)
+
+
 # Every `CommandNames` defined above, and the gate that reads this tuple is the only thing
 # checking any of them against the catalogue. Three M5 entries — `BEGIN_REVIEW`,
 # `RETURN_FOR_CORRECTION` and `MARK_ELIGIBLE_FOR_BATCHING` — were defined and **left out of this
@@ -998,4 +1018,6 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     # no command row.
     CREATE_RETRY_ATTEMPT,
     MARK_RETRY_REQUIRED,
+    # M9 slice 5, same commit as its entry. Catalogued on both sides.
+    PUBLISH_PAYMENT_RESULT,
 )

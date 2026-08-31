@@ -4167,60 +4167,6 @@
         "title": "PreviewItem",
         "type": "object"
       },
-      "PreviewRequest": {
-        "additionalProperties": false,
-        "description": "`05_API_Specification.md:1272-1288`.\n\n`bank_account_id` and `bank_mapping_id` are accepted and not consulted in this slice: the\nsplit depends on the profile version's limits, and the account and mapping shape the export\nM7 builds. They are declared because the document declares them and refusing them would\nreject the documented payload — and they are named here rather than silently ignored.",
-        "properties": {
-          "apply_split_rules": {
-            "default": true,
-            "title": "Apply Split Rules",
-            "type": "boolean"
-          },
-          "bank_account_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Bank Account Id"
-          },
-          "bank_mapping_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Bank Mapping Id"
-          },
-          "bank_profile_version_id": {
-            "format": "uuid",
-            "title": "Bank Profile Version Id",
-            "type": "string"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/PreviewItem"
-            },
-            "minItems": 1,
-            "title": "Items",
-            "type": "array"
-          }
-        },
-        "required": [
-          "items",
-          "bank_profile_version_id"
-        ],
-        "title": "PreviewRequest",
-        "type": "object"
-      },
       "PreviewResponse": {
         "additionalProperties": false,
         "description": "`:1291-1313`, with every monetary field a base-10 integer string.",
@@ -4443,6 +4389,155 @@
           "split_reason"
         ],
         "title": "ProposedRowResponse",
+        "type": "object"
+      },
+      "PublicationPreviewResponse": {
+        "additionalProperties": false,
+        "description": "What a publisher sees before committing. Persisted only as a request status change.",
+        "properties": {
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "next_publication_version": {
+            "title": "Next Publication Version",
+            "type": "integer"
+          },
+          "payment_request_id": {
+            "format": "uuid",
+            "title": "Payment Request Id",
+            "type": "string"
+          },
+          "request_status": {
+            "title": "Request Status",
+            "type": "string"
+          },
+          "summary_payload": {
+            "additionalProperties": true,
+            "title": "Summary Payload",
+            "type": "object"
+          }
+        },
+        "required": [
+          "payment_request_id",
+          "next_publication_version",
+          "content_hash",
+          "summary_payload",
+          "request_status"
+        ],
+        "title": "PublicationPreviewResponse",
+        "type": "object"
+      },
+      "PublicationResponse": {
+        "additionalProperties": false,
+        "description": "The created publication.\n\n`summary_payload` and the three columns beside it are returned together, which is what makes\n§17 `:1153`'s ten items complete for a reader while the hash still covers only the nine that\nare content. See `app/commands/payment_publication.py` for why the split exists.",
+        "properties": {
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "payment_request_id": {
+            "format": "uuid",
+            "title": "Payment Request Id",
+            "type": "string"
+          },
+          "primary_evidence_link_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Evidence Link Id"
+          },
+          "publication_version": {
+            "title": "Publication Version",
+            "type": "integer"
+          },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          },
+          "request_status": {
+            "title": "Request Status",
+            "type": "string"
+          },
+          "share_file_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share File Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary_payload": {
+            "additionalProperties": true,
+            "title": "Summary Payload",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "payment_request_id",
+          "publication_version",
+          "status",
+          "content_hash",
+          "summary_payload",
+          "primary_evidence_link_id",
+          "share_file_id",
+          "published_at",
+          "request_status"
+        ],
+        "title": "PublicationResponse",
+        "type": "object"
+      },
+      "PublishRequest": {
+        "additionalProperties": false,
+        "description": "§20.2's body, minus the two share-file fields slice 5B owns.",
+        "properties": {
+          "message_to_trader": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message To Trader"
+          },
+          "primary_evidence_link_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Evidence Link Id"
+          }
+        },
+        "title": "PublishRequest",
         "type": "object"
       },
       "ReadinessResponse": {
@@ -6211,6 +6306,80 @@
           }
         },
         "title": "DecisionRequest",
+        "type": "object"
+      },
+      "app__api__v1__payment_batches__PreviewRequest": {
+        "additionalProperties": false,
+        "description": "`05_API_Specification.md:1272-1288`.\n\n`bank_account_id` and `bank_mapping_id` are accepted and not consulted in this slice: the\nsplit depends on the profile version's limits, and the account and mapping shape the export\nM7 builds. They are declared because the document declares them and refusing them would\nreject the documented payload — and they are named here rather than silently ignored.",
+        "properties": {
+          "apply_split_rules": {
+            "default": true,
+            "title": "Apply Split Rules",
+            "type": "boolean"
+          },
+          "bank_account_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Account Id"
+          },
+          "bank_mapping_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Mapping Id"
+          },
+          "bank_profile_version_id": {
+            "format": "uuid",
+            "title": "Bank Profile Version Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewItem"
+            },
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "bank_profile_version_id"
+        ],
+        "title": "PreviewRequest",
+        "type": "object"
+      },
+      "app__api__v1__payment_publications__PreviewRequest": {
+        "additionalProperties": false,
+        "description": "§20.1's body. The evidence to propose, and nothing else.",
+        "properties": {
+          "primary_evidence_link_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Evidence Link Id"
+          }
+        },
+        "title": "PreviewRequest",
         "type": "object"
       },
       "app__api__v1__payment_requests__CancelRequest": {
@@ -12236,7 +12405,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PreviewRequest"
+                "$ref": "#/components/schemas/app__api__v1__payment_batches__PreviewRequest"
               }
             }
           },
@@ -14644,6 +14813,286 @@
         "summary": "Hand a draft to the centre.",
         "tags": [
           "payment-requests"
+        ]
+      }
+    },
+    "/api/v1/payment-requests/{request_id}/publications": {
+      "post": {
+        "description": "`POST /api/v1/payment-requests/{request_id}/publications`, per `:1879`.\n\n**201, never 202.** Doc 05 allows 202 \"if share-file generation is asynchronous\"; nothing here\nis asynchronous because nothing here renders a file, so the row exists by the time this\nreturns. Slice 5B is what may make 202 true, and it will be a deliberate change with the\noasdiff gate to answer to.\n\n**`If-Match` against the request, not the publication.** The first draft of this route had\nnone, reasoning that a publication has no prior version to be stale against — which is true and\nwas the wrong question. `08_Bank_File_and_Result_Processing.md:1316` lists \"idempotency key and\nexpected version are valid\" among §19.3's eight publication guards, and doc 05 shows the header\nat `:1885`. The version that can be stale is the **request's**: an accountant who read it at\n`rv-9`, went to make tea, and published while somebody else corrected the result would publish\na snapshot of something that had moved.",
+        "operationId": "publishPaymentResult",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request or its evidence is not publishable."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the publication permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such request or evidence link."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "This request already says exactly this."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is stale or unreadable."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are required."
+          }
+        },
+        "summary": "Create the immutable publication a trader is shown.",
+        "tags": [
+          "payment-publications"
+        ]
+      }
+    },
+    "/api/v1/payment-requests/{request_id}/publications/preview": {
+      "post": {
+        "description": "`POST /api/v1/payment-requests/{request_id}/publications/preview`, per `:1874`.\n\n**No `Idempotency-Key`.** `command_catalog.yaml` requires one for `payment_publication.publish`\nand has no row for the preview, and the preview creates nothing to replay — it validates a\nsnapshot and moves the request to `result_ready_for_trader`, which running twice leaves where\nrunning once did.",
+        "operationId": "previewPaymentResultPublication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__api__v1__payment_publications__PreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request or its evidence is not publishable."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the publication permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such request or evidence link."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "This request already says exactly this."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is stale or unreadable."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are required."
+          }
+        },
+        "summary": "Show the exact trader-safe snapshot this request would publish.",
+        "tags": [
+          "payment-publications"
         ]
       }
     },
