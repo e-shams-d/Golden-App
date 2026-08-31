@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -272,6 +273,7 @@ def replace_evidence_link(
     session.refresh(original)
 
     _refuse_unless_transition_permitted(original, LINK_REPLACED)
+    _refuse_to_replace_evidence_a_trader_has_seen(session, original)
 
     if session.get(ReceiptSegment, command.new_receipt_segment_id) is None:
         raise NotFoundError()
@@ -479,6 +481,54 @@ def _flush_or_conflict(uow: SqlAlchemyUnitOfWork, link_type: str) -> None:
             "§12.6 permits one active primary per attempt and one active primary target per "
             "segment; replace the existing link rather than adding a second."
         ) from exc
+
+
+def _refuse_to_replace_evidence_a_trader_has_seen(
+    session: Session, link: ConfirmedEvidenceLink
+) -> None:
+    """M9 slice 7B, and it closes a hole this command has had since slice 2.
+
+    **What was possible until now.** An accountant holding `evidence_link.replace` could swap the
+    evidence under a *published* result: the old link became `replaced`, the publication went on
+    pointing at it, and the trader went on being shown a publication whose cited evidence had been
+    retired. No approval, no publication N+1, no notification — and nothing said so, because this
+    command was written before publications existed and has never known about them.
+
+    Doc 05 `:1855` describes the whole sentence: "In one transaction the old link becomes
+    `replaced`, the new link becomes active, affected publication state is recalculated... When a
+    published result materially changes, a corrected publication and trader notification are
+    required." Slice 2 implemented the first half. This refusal is what stops the first half
+    running without the second.
+
+    **Refused rather than silently escalated to a correction.** ADR_INDEX's POL-002 is approved for
+    Phase 1A and says the control is "manager authority or dual control... the accountant-only
+    default is rejected". Quietly turning an ordinary replacement into a correction would let the
+    accountant-only default back in through a path nobody was looking at;
+    `app/commands/publication_correction.py` is the one that asks for the second human.
+    """
+
+    from app.db.models.payment_result_publication import (
+        PUBLICATION_ACTIVE,
+        PaymentResultPublication,
+    )
+
+    cited = session.scalar(
+        select(PaymentResultPublication.publication_version).where(
+            PaymentResultPublication.primary_evidence_link_id == link.id,
+            PaymentResultPublication.status == PUBLICATION_ACTIVE,
+        )
+    )
+    if cited is None and link.published_to_trader_at is None:
+        return
+
+    raise BusinessRuleViolationError(
+        f"evidence link {link.id} is cited by a published result"
+        + (f" (publication v{cited})" if cited is not None else "")
+        + ". Replacing it here would retire evidence a trader is still being shown, with no "
+        "corrected publication and no notification. `05_API_Specification.md:1855` requires both, "
+        "and POL-002 requires manager authority or dual control for the correction that produces "
+        "them — use the correction command."
+    )
 
 
 def _refuse_unless_transition_permitted(link: ConfirmedEvidenceLink, target: str) -> None:

@@ -312,6 +312,11 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # published is weaker than publishing it, and the accountant holds both.
     ("GET", "/api/v1/payment-requests/{request_id}/publications"): PERMISSION,
     ("GET", "/api/v1/payment-requests/{request_id}/publications/current"): PERMISSION,
+    # M9 slice 7B. `payment_publication.correct`, which POL-002 keeps at `default_roles: []` — an
+    # administrator assigns it. Still `PERMISSION`: the separation of preparer from approver is
+    # enforced on the two identifiers inside the command, because a control that could be
+    # configured off by granting one person both permissions is not the control POL-002 approved.
+    ("POST", "/api/v1/payment-requests/{request_id}/publications/corrections"): PERMISSION,
     # The trader's three, and `OWNERSHIP` rather than `PERMISSION` is the whole point:
     # `04_Database_Schema.md:405` gives a trader session no grants at all, so a route-level
     # `requires(...)` would deny the only audience these have. The catalogue's permission name is
@@ -772,6 +777,13 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
         "/api/v1/payment-requests/{request_id}/publications/current",
         "permission",
     ): "test_a_manager_may_neither_preview_nor_publish",
+    # M9 slice 7B. Its negative test is sharper than the others in this block: nobody holds
+    # `payment_publication.correct` by default, so the accountant who can publish is refused here.
+    (
+        "POST",
+        "/api/v1/payment-requests/{request_id}/publications/corrections",
+        "permission",
+    ): "test_nobody_holds_the_correction_permission_by_default",
     # The trader's three, all covered by one test — and it is one test on purpose. The claim is
     # not "each route refuses" but "a second trader cannot tell these requests exist", which is a
     # property of the surface rather than of any route on it. `404` is what it asserts, and a
