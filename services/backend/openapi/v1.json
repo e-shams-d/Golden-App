@@ -1954,6 +1954,41 @@
         "title": "ConfirmRequest",
         "type": "object"
       },
+      "CorrectionRequest": {
+        "additionalProperties": false,
+        "description": "§17.7's correction, and the two humans it needs.\n\n**`approved_by_admin_user_id` is a field and that is deliberate.** Everywhere else in this\nproject an actor comes from the session and never from the body — `_publishing_admin` says so\ntwo functions up. A dual-control decision is the exception the rule was written around: the\napprover is by definition *not* the caller, so there is no session to take them from. The\nsecond human's `X-Recent-Auth` reference is what proves they were present; this field is who\nthe reference must belong to, and `_refuse_a_single_human` refuses when it is the caller.",
+        "properties": {
+          "approved_by_admin_user_id": {
+            "format": "uuid",
+            "title": "Approved By Admin User Id",
+            "type": "string"
+          },
+          "correction_reason": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Correction Reason",
+            "type": "string"
+          },
+          "new_receipt_segment_id": {
+            "format": "uuid",
+            "title": "New Receipt Segment Id",
+            "type": "string"
+          },
+          "replaces_evidence_link_id": {
+            "format": "uuid",
+            "title": "Replaces Evidence Link Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "replaces_evidence_link_id",
+          "new_receipt_segment_id",
+          "correction_reason",
+          "approved_by_admin_user_id"
+        ],
+        "title": "CorrectionRequest",
+        "type": "object"
+      },
       "CreateAccountRequest": {
         "additionalProperties": false,
         "properties": {
@@ -15573,6 +15608,162 @@
           }
         },
         "summary": "Create the immutable publication a trader is shown.",
+        "tags": [
+          "payment-publications"
+        ]
+      }
+    },
+    "/api/v1/payment-requests/{request_id}/publications/corrections": {
+      "post": {
+        "description": "`POST /api/v1/payment-requests/{request_id}/publications/corrections`.\n\n**The path is this implementation's, and the catalogue says so.**\n`command_catalog.yaml`'s `payment_publication.correct_paid_result` row carries `method: TBD,\npath: TBD`, and document 05 defines no correction endpoint. Two candidates existed: overload\n`/evidence-links/{id}/replace` with dual-control headers, or give the correction its own\naddress under the request the way §20 gives every other publication operation one. The second\nwins because a route that means \"ordinary replacement\" for one caller and \"corrected\npublication, superseded predecessor, trader notified\" for another is a route whose guard\ndepends on data. Recorded in the M9 plan as a path M0 owes.\n\n**`payment_publication.correct` has no default role, and that is not a bug.** POL-002 keeps\n`default_roles: []` with preparer and approver split, so an administrator assigns it. What the\nempty default cannot do is switch the control off: `_refuse_a_single_human` compares the two\nids, so granting one person both permissions still refuses.",
+        "operationId": "correctPaymentResultPublication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request or its evidence is not publishable."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the publication permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such request or evidence link."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "This request already says exactly this."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is stale or unreadable."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are required."
+          }
+        },
+        "summary": "Correct a published result: publication N+1, N superseded, trader notified.",
         "tags": [
           "payment-publications"
         ]

@@ -593,12 +593,24 @@ def test_only_one_publication_is_active_per_request(world: dict[str, Any]) -> No
     assert len(publications_of(world, case["request_id"])) == 1
 
 
-def test_the_runtime_role_cannot_change_a_publication(world: dict[str, Any]) -> None:
+def test_the_runtime_role_cannot_rewrite_what_a_trader_was_shown(
+    world: dict[str, Any],
+) -> None:
     """§11.9's word "immutable", as a privilege rather than as a description.
 
-    `SET ROLE` to the application role and try. The owner may do anything, so a test that skipped
-    this step would pass against a table with a full `GRANT UPDATE` — the trap
-    `test_batching_table_privileges.py` was written to record.
+    **The claim narrowed when slice 7B landed, and the obligation did not.** This test used to
+    assert the runtime could not update a publication *at all*, which was right while nothing
+    could supersede one — slice 5 withheld the grant deliberately. `20260903_0034` grants
+    `UPDATE (status)` with the correction that needs it, so the honest claim is now the one
+    `04_Database_Schema.md:1162` actually makes: a publication may become `superseded`, and
+    everything a trader was shown stays unwritable.
+
+    So the attempt below moved from `status` to `summary_payload`. `SET ROLE` first: the owner may
+    do anything, and a test that skipped that step would pass against a table with every grant —
+    the trap `test_batching_table_privileges.py` was written to record.
+
+    `test_the_runtime_may_update_only_the_publication_status` reads the grant itself, which is what
+    catches a widening this behavioural test cannot see.
     """
 
     sign_in_admin(world["client"], "publication_accountant")
@@ -610,9 +622,19 @@ def test_the_runtime_role_cannot_change_a_publication(world: dict[str, Any]) -> 
         connection.execute(f'SET ROLE "{world["app_role"]}"')
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             connection.execute(
-                "UPDATE payment_result_publications SET status = 'revoked' "
+                "UPDATE payment_result_publications SET summary_payload = '{}' "
                 "WHERE payment_request_id = %s",
                 (case["request_id"],),
+            )
+        connection.rollback()
+
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(f'SET ROLE "{world["app_role"]}"')
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            connection.execute(
+                "UPDATE payment_result_publications SET content_hash = %s "
+                "WHERE payment_request_id = %s",
+                ("e" * 64, case["request_id"]),
             )
         connection.rollback()
 

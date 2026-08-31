@@ -33,9 +33,19 @@ CONTRACT = BACKEND / "openapi" / "v1.json"
 COMMANDS = BACKEND / "app" / "commands"
 API = BACKEND / "app" / "api" / "v1"
 
-# The one module allowed to write a publication field, added by M9 slice 5. See
-# `TestNothingCanPublish` for why this file's claim changed shape and its obligation did not.
-PUBLICATION_COMMAND = COMMANDS / "payment_publication.py"
+# The modules allowed to write a publication field. `payment_publication.py` arrived with M9 slice
+# 5 and `publication_correction.py` with 7B — and the second was **found by this gate**, which
+# refused it until it was named here.
+#
+# The exemption is not "these files are trusted": every one of them must call
+# `privacy_verification`, and `test_the_allowed_writers_really_verify` is what makes that a
+# condition of being on the list rather than a comment beside it. §16.5 applies to a corrected
+# publication exactly as it does to a first one — arguably more, since the evidence is new and the
+# trader has already been told something.
+PUBLICATION_COMMANDS = (
+    COMMANDS / "payment_publication.py",
+    COMMANDS / "publication_correction.py",
+)
 
 
 def served_routes() -> list[tuple[str, str]]:
@@ -177,13 +187,20 @@ class TestNothingCanPublish:
             "by default."
         )
 
-        source = PUBLICATION_COMMAND.read_text(encoding="utf-8")
-        assert "privacy_verification(" in source, (
-            f"{PUBLICATION_COMMAND.name} does not call `privacy_verification`, so the routes "
-            f"{publishing} can put evidence in front of a trader that nobody reviewed. §16.5 "
-            "requires the check and `08_Bank_File_and_Result_Processing.md:1314` lists 'no "
-            "unresolved privacy warning exists' among the eight publication guards."
-        )
+        # Either the check itself or slice 5's wrapper around it. The correction calls
+        # `_refuse_unverified_privacy` rather than `privacy_verification` directly, and that is
+        # the better of the two: a second copy of the guard is a second thing that can drift from
+        # §16.5. What the gate cares about is that the enforcement is reached, not which name
+        # reaches it.
+        enforcers = ("privacy_verification(", "_refuse_unverified_privacy(")
+        for module in PUBLICATION_COMMANDS:
+            source = module.read_text(encoding="utf-8")
+            assert any(name in source for name in enforcers), (
+                f"{module.name} reaches neither {' nor '.join(enforcers)}, so the routes "
+                f"{publishing} can put evidence in front of a trader that nobody reviewed. §16.5 "
+                "requires the check and `08_Bank_File_and_Result_Processing.md:1314` lists 'no "
+                "unresolved privacy warning exists' among the eight publication guards."
+            )
 
     def test_only_the_publication_command_assigns_a_publication_field(self) -> None:
         # **Assignment, not mention.** The forbidden thing is *setting* publishability somewhere
@@ -193,7 +210,7 @@ class TestNothingCanPublish:
 
         offenders: dict[str, list[str]] = {}
         for path in [*python_sources(COMMANDS), *python_sources(API)]:
-            if path == PUBLICATION_COMMAND:
+            if path in PUBLICATION_COMMANDS:
                 continue
             written = assigned_attributes(path) & forbidden
             if written:
@@ -205,20 +222,21 @@ class TestNothingCanPublish:
             "writer anywhere else publishes without one."
         )
 
-    def test_the_allowed_writer_really_writes_so_the_exemption_is_not_a_hole(self) -> None:
-        # The exemption above names a file. If that file stopped writing these fields the
-        # exemption would stand open onto nothing, and the next module to write one would only
-        # have to be added beside it.
-        assert PUBLICATION_COMMAND.exists(), f"{PUBLICATION_COMMAND} is gone"
-        written = assigned_attributes(PUBLICATION_COMMAND) & {
-            "published",
-            "published_at",
-            "published_to_trader_at",
-        }
-        assert written, (
-            f"{PUBLICATION_COMMAND.name} writes none of the publication fields, so the exemption "
-            "excuses a module that does nothing and the scan protects less than it appears to."
-        )
+    def test_the_allowed_writers_really_write_so_the_exemption_is_not_a_hole(self) -> None:
+        # The exemption above names files. If one stopped writing these fields the exemption would
+        # stand open onto nothing, and the next module to write one would only have to be added
+        # beside it.
+        for module in PUBLICATION_COMMANDS:
+            assert module.exists(), f"{module} is gone"
+            written = assigned_attributes(module) & {
+                "published",
+                "published_at",
+                "published_to_trader_at",
+            }
+            assert written, (
+                f"{module.name} writes none of the publication fields, so the exemption excuses a "
+                "module that does nothing and the scan protects less than it appears to."
+            )
 
     def test_the_forbidden_state_is_real_so_the_test_is_not_vacuous(self) -> None:
         # The control. If `published` were not a state this schema has, the assertions above would

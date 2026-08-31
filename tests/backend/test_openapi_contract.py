@@ -286,6 +286,12 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "getOwnPaymentResultPublication",
         "acknowledgeOwnPaymentResult",
         "disputeOwnPaymentResult",
+        # M9 slice 7B. **The one operation in this contract whose path this implementation chose.**
+        # `command_catalog.yaml` gives `payment_publication.correct_paid_result`
+        # `method: TBD, path: TBD` and document 05 defines no correction endpoint; §20's own
+        # pattern — publication operations under the request — is what settled it, and the M9 plan
+        # records it as a path M0 owes.
+        "correctPaymentResultPublication",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

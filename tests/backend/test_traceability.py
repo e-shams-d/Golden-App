@@ -818,22 +818,8 @@ PENDING: dict[str, str] = {
     # is new — the plan named the dispute's negative property and not the acknowledgement's,
     # and both get the same read-back because the safe-looking action is where a convenience
     # write gets added.
-    # Slice 7 - correction and publication N+1; the old version survives, and the gate.
-    "SVC-CORRECTION-001": (
-        "M9 slice 7 - correction and publication N+1; the old version survives, and the gate. "
-        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-    ),
-    "SVC-CORRECTION-002": (
-        "M9 slice 7 - correction and publication N+1; the old version survives, and the gate. "
-        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-    ),
-    "TRACE-M9-001": (
-        "M9 slice 7 - correction and publication N+1; the old version survives, and the gate. "
-        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-    ),
+    # Slices 7 and 7B shipped. Every M9 obligation is now discharged by citation except the
+    # share file's two, which slice 5B owns and which nothing can order until it exists.
 }
 
 

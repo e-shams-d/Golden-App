@@ -137,4 +137,8 @@ from __future__ import annotations
 # docstring said so in as many words: "nothing consumes these events in Phase 1A, and a dispatcher
 # that invented a destination would publish somewhere no consumer agreed to." Insert-only: nothing
 # marks a notification read yet, so no UPDATE is granted.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260902_0033"})
+# 20260903_0034 creates nothing and grants `UPDATE (status)` on `payment_result_publications` —
+# the one grant `20260831_0031` deliberately withheld, arriving with the correction that needs it.
+# `summary_payload` and `content_hash` stay unwritable, which is what makes "the previous version
+# is preserved" a property of the database rather than of a code branch.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260903_0034"})

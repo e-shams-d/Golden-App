@@ -946,6 +946,25 @@ DISPUTE_PUBLICATION = CommandNames(
 )
 
 
+# --- M9 slice 7B: correction ----------------------------------------------------
+#
+# `audit_outbox_catalog.yaml:47` names the action and `:78` the event, and `command_catalog.yaml`'s
+# `payment_publication.correct_paid_result` row pairs them. That row also carries
+# `status: blocked_by_business_policy_and_api_persistence_contract` — and the business policy half
+# is **no longer blocked**: ADR_INDEX's POL-002 is approved for Phase 1A and says manager authority
+# or dual control is required, with the accountant-only default rejected. The API persistence half
+# is still open, which is why this command is reached through document 05's existing replacement
+# address rather than the `path: TBD` the catalogue records.
+
+CORRECT_PAYMENT_PUBLICATION = CommandNames(
+    audit_action="payment_publication.superseded",
+    # `:78`. The event slice 7's projection turns into the trader notification §17.7's seventh step
+    # requires — which is why that slice had to come first.
+    outbox_event_type="TraderResultCorrected",
+    catalogued=True,
+)
+
+
 # Every `CommandNames` defined above, and the gate that reads this tuple is the only thing
 # checking any of them against the catalogue. Three M5 entries — `BEGIN_REVIEW`,
 # `RETURN_FOR_CORRECTION` and `MARK_ELIGIBLE_FOR_BATCHING` — were defined and **left out of this
@@ -1043,4 +1062,7 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     # M9 slice 6. Both catalogued, neither with an event.
     ACKNOWLEDGE_PUBLICATION,
     DISPUTE_PUBLICATION,
+    # M9 slice 7B. Catalogued on both sides; its command row's business-policy blocker is what
+    # POL-002 answered.
+    CORRECT_PAYMENT_PUBLICATION,
 )

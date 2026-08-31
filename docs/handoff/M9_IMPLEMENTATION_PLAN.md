@@ -571,9 +571,19 @@ rather than inventing a path M0 owns.
 
 ### What proves it
 
+- `SEC-CORRECTION-001` — **the control cannot be configured off**, which is POL-002's own wording
+  and this slice's headline. One administrator grants one person both roles — two clicks, and
+  exactly what a real deployment does by accident — and the correction is refused anyway, because
+  the separation compares two identifiers rather than asking about grants. Its other half is that
+  the named approver must actually hold `payment_publication.correct`, read from *their* roles: one
+  alone would let two ungranted people correct, the other alone would let one granted person.
 - `SVC-CORRECTION-001` — **the old publication is preserved** (§17 `:1185`). Every column of
   publication N read before and after through `row_to_json`, with only `status` permitted to move
-  — the M6 supersession pattern.
+  — the M6 supersession pattern. Backed by `20260903_0034` granting `UPDATE (status)` and nothing
+  else, and by a second test that reads `information_schema` directly: a grant is a capability, and
+  only a query about privileges can see one. That test exists because a negative control widening
+  the grant went NOT CAUGHT — the command does not write those columns, so nothing observable
+  changed.
 - `SVC-CORRECTION-002` — N+1 is created, N becomes `superseded`, the aggregate is recalculated,
   and the whole thing is one transaction. A correction that commits the new publication and fails
   to supersede the old one leaves two `active` rows, which the partial unique index refuses — so
@@ -607,6 +617,22 @@ went uncaught — which is the whole reason for running them.
   counts any id inside a `### What proves it` section as one this plan states, so naming M7's
   would make two plans state one obligation and a citation of either would discharge both. The
   first draft did exactly that and the gate caught it.
+
+**The hole this slice closed, which had been open since slice 2.** `replace_evidence_link` knew
+nothing about publications — it was written before they existed — so an accountant holding
+`evidence_link.replace` could swap the evidence under a *published* result: the old link became
+`replaced`, the publication went on citing it, and the trader went on being shown evidence that had
+been retired. No approval, no publication N+1, no notification. Doc 05 `:1855` requires all three;
+slice 2 implemented the sentence's first clause and nothing after it. The ordinary route now
+refuses the published case and names the correction, rather than quietly escalating to one — a
+silent escalation would let POL-002's rejected accountant-only default back in through a path
+nobody was looking at.
+
+**One more gate found a second writer and was right to.** M8's `TestNothingCanPublish` refused
+`publication_correction.py` until it was named among the modules allowed to write a publication
+field. The exemption is not "this file is trusted": every module on that list must reach the §16.5
+privacy guard, and a control asserts it — which is what keeps the list a condition rather than a
+door.
 
 ---
 

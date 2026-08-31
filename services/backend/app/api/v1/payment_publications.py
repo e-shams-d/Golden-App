@@ -36,6 +36,8 @@ from app.api.v1.auth import authenticated_actor, requires
 from app.audit.redaction import RedactionPolicy
 from app.audit.writer import AuditActor, AuditContext
 from app.commands import payment_publication as publication_commands
+from app.commands import publication_correction as correction_commands
+from app.commands.publication_correction import REQUEST_RESULT_PUBLISHED
 from app.core.errors import (
     ErrorEnvelope,
     ForbiddenError,
@@ -377,6 +379,92 @@ def current_payment_result_publication(
             raise NotFoundError()
         response = _rendered(publication, request.status)
         uow.rollback()
+
+    return response
+
+
+class CorrectionRequest(BaseModel):
+    """§17.7's correction, and the two humans it needs.
+
+    **`approved_by_admin_user_id` is a field and that is deliberate.** Everywhere else in this
+    project an actor comes from the session and never from the body — `_publishing_admin` says so
+    two functions up. A dual-control decision is the exception the rule was written around: the
+    approver is by definition *not* the caller, so there is no session to take them from. The
+    second human's `X-Recent-Auth` reference is what proves they were present; this field is who
+    the reference must belong to, and `_refuse_a_single_human` refuses when it is the caller.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    replaces_evidence_link_id: uuid.UUID
+    new_receipt_segment_id: uuid.UUID
+    correction_reason: str = Field(min_length=1, max_length=4000)
+    approved_by_admin_user_id: uuid.UUID
+
+
+@router.post(
+    "/{request_id}/publications/corrections",
+    response_model=PublicationResponse,
+    status_code=201,
+    operation_id="correctPaymentResultPublication",
+    summary="Correct a published result: publication N+1, N superseded, trader notified.",
+    responses=RESPONSES,
+    # **The preparer's permission, not the approver's.** POL-002 keeps
+    # `correction_preparer_and_approver_permissions_must_be_split`, and the caller is the preparer:
+    # guarding on `payment_publication.correct` here would mean the person pressing the button
+    # holds the *approver's* grant, which is the split inverted. The approver's permission is
+    # verified against the approver's own record inside the command, where the second human is.
+    dependencies=[requires(declare("payment_attempt.correct_result"))],
+)
+def correct_payment_result_publication(
+    request_id: uuid.UUID,
+    payload: CorrectionRequest,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> PublicationResponse:
+    """`POST /api/v1/payment-requests/{request_id}/publications/corrections`.
+
+    **The path is this implementation's, and the catalogue says so.**
+    `command_catalog.yaml`'s `payment_publication.correct_paid_result` row carries `method: TBD,
+    path: TBD`, and document 05 defines no correction endpoint. Two candidates existed: overload
+    `/evidence-links/{id}/replace` with dual-control headers, or give the correction its own
+    address under the request the way §20 gives every other publication operation one. The second
+    wins because a route that means "ordinary replacement" for one caller and "corrected
+    publication, superseded predecessor, trader notified" for another is a route whose guard
+    depends on data. Recorded in the M9 plan as a path M0 owes.
+
+    **`payment_publication.correct` has no default role, and that is not a bug.** POL-002 keeps
+    `default_roles: []` with preparer and approver split, so an administrator assigns it. What the
+    empty default cannot do is switch the control off: `_refuse_a_single_human` compares the two
+    ids, so granting one person both permissions still refuses.
+    """
+
+    expected = _parse_record_version(if_match)
+    key = _require_key(idempotency_key)
+    now = utc_now()
+
+    with runtime.uow_factory() as uow:
+        result = correction_commands.correct_published_result(
+            correction_commands.CorrectPublishedResult(
+                payment_request_id=request_id,
+                expected_record_version=expected,
+                replaces_evidence_link_id=payload.replaces_evidence_link_id,
+                new_receipt_segment_id=payload.new_receipt_segment_id,
+                correction_reason=payload.correction_reason,
+                prepared_by_admin_user_id=_publishing_admin(actor),
+                approved_by_admin_user_id=payload.approved_by_admin_user_id,
+            ),
+            uow=uow,
+            policy=PUBLICATION_REDACTION,
+            actor=_audit_actor(actor),
+            context=AuditContext(request_id=get_request_id()),
+            idempotency_key=key,
+            now=now,
+        )
+        response = _rendered(result.publication, REQUEST_RESULT_PUBLISHED)
+        uow.commit()
 
     return response
 
