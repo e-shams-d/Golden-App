@@ -123,4 +123,9 @@ from __future__ import annotations
 # candidate does not mark an attempt paid" a privilege the runtime did not hold. This revision ends
 # that for the confirmation command and keeps every snapshot unwritable: a confirmation records what
 # the bank did and cannot restate what was sent.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260830_0030"})
+# 20260831_0031 creates `payment_result_publications`, §11.9's immutable trader-visible result,
+# with all three of `:1154`'s uniques — two plain and one partial — and grants the runtime
+# **nothing**. That absence is the immutability: document 04 calls these rows immutable, and a
+# table a runtime role may UPDATE is immutable only until somebody writes the UPDATE. Slice 7's
+# correction brings `GRANT UPDATE (status)` with the command that needs it, rather than ahead of it.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260831_0031"})

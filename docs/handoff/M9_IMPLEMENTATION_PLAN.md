@@ -50,6 +50,9 @@ specification, `doc 06` the workflows document, `doc 08` the bank-file document.
 | doc 05 `:1905` | `05_API_Specification.md:1905` | the publication reads |
 | doc 05 `:1921` | `05_API_Specification.md:1921` | acknowledge |
 | doc 05 `:1942` | `05_API_Specification.md:1942` | dispute, and what it does *not* do |
+| doc 06 `:600` | `06_Workflows_and_State_Machines.md:600` | the only arrow into publication |
+| doc 06 `:1066` | `06_Workflows_and_State_Machines.md:1066` | a segment becomes `published` |
+| doc 08 `:1307` | `08_Bank_File_and_Result_Processing.md:1307` | §19.3, the eight publication guards |
 
 ---
 
@@ -328,13 +331,30 @@ allows.
 
 ### What it changes
 
-- `payment_result_publications` (doc 04 `:1133`) with all three uniques (doc 04 `:1154`).
+- `payment_result_publications` (doc 04 `:1133`) with all three uniques (doc 04 `:1154`), and
+  **no `UPDATE` grant at all** — §11.9's word "immutable", made a privilege the runtime does not
+  hold rather than a description of intent. Slice 7 brings `GRANT UPDATE (status)` with the
+  correction that needs it.
 - Preview and publish (doc 05 `:1874`).
-- The share file, rendered by the `files` queue with a recorded renderer version.
+- ~~The share file, rendered by the `files` queue with a recorded renderer version.~~ **Moved to
+  slice 5B** — see below.
 
 `UNIQUE(payment_request_id, content_hash)` is worth pausing on: it makes republishing an identical
 snapshot impossible, which is what stops a correction that changed nothing from producing a
 version N+1 that says the same thing.
+
+**And that constraint decides the shape of the whole slice.** It can only ever refuse anything if
+the digest covers content alone: put `published_at` into the hashed payload and every republication
+is unique by its clock; put `publication_version` in and it is unique by its counter. Either way
+the constraint stays in the schema, stays in every report, and never fires again. So §17 `:1153`'s
+ten items are split — nine hashed in `summary_payload`, and the version, the actor and the time as
+columns beside it. A trader still sees all ten because the API composes both halves.
+
+**The preview is not a read.** `06_Workflows_and_State_Machines.md:600-601` draws exactly two
+arrows into publication — `paid -> result_ready_for_trader: publication preview validated` and
+`result_ready_for_trader -> result_published` — so the preview is the validation step, and
+publishing without it is a transition the workflow document does not have. Not implementing it
+would have left `result_ready_for_trader` a status nothing could reach.
 
 ### What proves it
 
@@ -343,13 +363,79 @@ version N+1 that says the same thing.
 - `SVC-PUBLICATION-001` — `content_hash` is canonical and stable across a re-render, computed with
   M6's `unversioned_digest`. Any numeric in the payload is an integer or a string, because
   `parameters_hash` refuses floats — the rule M8 slice 4 found the hard way.
+- `SVC-PUBLICATION-002` — the hashed payload contains **no** key that changes on every publication,
+  asserted as an AST scan over `_snapshot`'s returned dictionary. Paired with a live test that
+  publishes an unchanged result twice and requires a 409: publishing once would pass against a
+  hash that included the clock.
+- `SVC-PUBLICATION-003` — neither request body carries a financial value, asserted over the models.
+  Doc 05 §20.2: "The client cannot submit arbitrary financial summary values." Third use of
+  enforcement-by-absence in this milestone, after the amount and the beneficiary.
+- `SVC-PUBLICATION-004` — a publication is unreachable from `partially_paid` or `failed`, and
+  unreachable without a preview. Both are transitions 13.2 does not draw.
+- `SVC-PUBLICATION-005` — the two §19.3 guards that were nearly missed: the financial result is
+  **human-confirmed**, checked against `confirmed_by_admin_user_id` rather than against the
+  request's derived status, and the caller's **expected version** is valid, as `If-Match` against
+  the request through a compare-and-swap.
+- `SEC-PUBLICATION-002` — **no unresolved privacy warning exists** (doc 08 `:1314`, §16.5). The
+  check is a version comparison, so a crop re-rendered after its review is unverified again with
+  nothing to reset.
 - `SEC-PUBLICATION-001` — **the full bundle never reaches trader APIs or files** (§17 `:1185`).
   Asserted as a scan over the whole trader surface, not over the publication endpoint alone,
   because the thing somebody adds under pressure gets added wherever it is convenient. §17
-  `:1153`'s ten fields are the allowed set and the IBAN is masked.
+  `:1153`'s ten fields are the allowed set and the IBAN is masked **at write time**, so the full
+  account number never enters a column retained for years. A segment with no crop is refused
+  rather than degraded — the fallback is how a bundle would reach a trader.
+- `AUD-PUBLICATION-002` — `payment_publication.created` and `PaymentResultPublicationCreated`, both
+  catalogued. The audit row carries the hash and not the payload.
+
+**The plan cited the wrong document for the guard list, and a gate found it.**
+`08_Bank_File_and_Result_Processing.md` §19.3 is headed "Publication guards" and gives **eight**;
+this plan cited §17 and doc 05 and none of them. Three had no implementation until M8's
+`TestNothingCanPublish` failed — it had asserted "nothing publishes" because publication did not
+exist, and slice 5 is the milestone that makes that assertion false. Following it to its source
+produced the privacy guard, the human-confirmation guard and `If-Match`.
+
+The privacy one is the sharpest: `privacy_verification` has existed since M8 with **no caller**,
+its own docstring recording why — "publication is M9's, and a guard on a path that does not exist
+would be untestable". Sixteenth instance of the mechanism-with-no-caller shape, and the first one
+this project planned in advance and then nearly walked past.
+
+**What this slice found that no gate had:** `receipt_segments.status = 'published'` was a value the
+catalogue approved, the CHECK admitted, `RESOLVED_SEGMENT_STATUSES` counted, and **nothing wrote**.
+`06_Workflows_and_State_Machines.md:1066` gives the arrow — `confirmed_linked --> published:
+included in active publication` — and slice 2's own comment promised M9 would write it. A status
+with no writer is the mechanism-with-no-caller defect in another costume; it is written here, and
+asserted.
+
+## Slice 5B — the share file
+
+### Goal
+
+The downloadable artifact §20.2's `include_share_file` asks for, and §17 `:1153` calls the "safe
+evidence/share file".
+
+**Split out of slice 5 because its inputs are not settled, and slice 5's are.** Three things are
+missing and none of them is code:
+
+1. `file_purpose_catalog.yaml` has seven purposes and **none of them is a publication share file**.
+   Inventing an eighth is the drift this milestone opened by promising not to do.
+2. There is no font asset in the repository and no RTL text shaping in the backend. A share file
+   for an Iranian trader that cannot render Persian is not a share file, and Iran-only deployment
+   rules out fetching a font at build time from anywhere foreign.
+3. `FILE-PUBLICATION-001` asks for byte-for-byte reproduction, which means pinning a font version —
+   a decision about a committed binary asset, not a rendering detail.
+
+Slice 5 therefore offers **no way to ask for one**: `include_share_file` and `share_format` are
+absent from the request model, the way the amount is absent from a confirmation. A flag a caller
+may set that changes nothing reads as a working feature, which is worse than no flag.
+
+### What proves it
+
 - `FILE-PUBLICATION-001` — the share file reproduces byte-for-byte from the same publication, and
-  its renderer version is recorded on the row. `app/exports/crop.py`'s precedent governs it,
-  including that a scale factor is never applied to pixels that are evidence.
+  its renderer version is recorded. `app/exports/crop.py`'s precedent governs it, including that a
+  scale factor is never applied to pixels that are evidence.
+- `FILE-PUBLICATION-002` — the file's `file_objects` row carries a catalogued purpose and a
+  visibility scope of `trader_visible_after_publication`, and the derivation row names its source.
 
 ## Slice 6 — the trader surface: read, acknowledge, dispute
 
@@ -388,6 +474,13 @@ A published result can be corrected without erasing what the trader was shown.
 - `notifications` (doc 04 `:1334`), as an outbox-handler projection. See G-2.
 - §17 `:1172`'s eight steps, and doc 04 `:1162` compressed into one sentence.
 
+**The projection must consume `PaymentAttemptFailed`, not only `TraderResultCorrected`.** G-5
+decides that a failed payment reaches its trader as a notification rather than as a publication,
+and that decision is only honest if this slice reads the event slice 3 has been enqueuing since
+M9 opened. Today it has no consumer at all. A decision that routes a case to a mechanism nobody
+builds is worse than no decision, so it is written into the slice rather than left as an
+implication.
+
 ### What proves it
 
 - `SVC-CORRECTION-001` — **the old publication is preserved** (§17 `:1185`). Every column of
@@ -401,6 +494,9 @@ A published result can be corrected without erasing what the trader was shown.
   `:1185`). The handler is failed deliberately and the financial rows are read back.
   `audit_outbox_catalog.yaml` sets `notifications_are_workflow_truth: false`, so nothing reads the
   notification to decide anything, and the test asserts that too.
+- `OPS-NOTIFY-002` — a confirmed failure produces a trader notification. G-5's decision made
+  concrete: `PaymentAttemptFailed` is enqueued today and read by nothing, and this is the test that
+  says the failure path exists rather than being described.
 - `TRACE-M9-001` — the Definition of Done (§17 `:1200`): every trader-visible result traces
   publication → confirmed result → confirmed evidence → exact bank-result source. One test that
   walks the chain in SQL for a published request and asserts each hop resolves — the shape of M7's
@@ -463,6 +559,64 @@ suitable, the precedent is M8's: implement against the identifier the catalogue 
 record the gap and open the task with the nearest approved type rather than inventing a value that
 looks approved. **Not decided here** — it is a five-minute read at the top of slice 4, and deciding
 it now from memory is how a wrong value gets written into a plan and then trusted.
+
+## G-5 — how a failed payment reaches its trader
+
+Found while building slice 5. `06_Workflows_and_State_Machines.md` 13.2 draws exactly one arrow
+into the publication path — `paid --> result_ready_for_trader` — and none from `partially_paid`,
+`failed` or `retry_required`. Read literally, **only a fully paid request can ever be published**,
+which looks at first like a trader whose payment failed is never told anything.
+
+**Taken: publication stays `paid`-only, and the failure path is `notifications`.** Four things
+decided it, and none of them is the diagram.
+
+**1. A publication is not a message.** `04_Database_Schema.md` §11.9 calls the row a "trader-visible
+result/share output" and gives it a `share_file_id` and a `content_hash`. It is an immutable,
+hashed, evidence-bearing artifact a trader can forward to their accountant. A failure has no
+evidence to bear and nothing to share; publishing one would mean minting a permanent versioned
+document whose content is "nothing happened".
+
+**2. The event already exists and already fires.** Slice 3 enqueues `PaymentAttemptFailed` on every
+confirmed failure — catalogued, dispatched by M2's outbox, and today **with no consumer**. G-2
+already assigns `notifications` to slice 7. So the mechanism for telling a trader about a failure
+is built and waiting for its reader; adding a publication path would be a second answer to a
+question that already has one.
+
+**3. `partially_paid` is not a final state in the first place.** The state machine's own next step
+from it is `retry_required`, and Iranian per-transaction transfer limits make split payments
+ordinary rather than exceptional — `bank_profile_versions.default_transfer_limit_irr` exists for
+exactly that. An immutable publication saying "partly paid" while a retry is in flight would need
+correcting almost immediately, which is the one thing §11.9 makes expensive.
+
+**4. Publishing `failed` would have been a branch with no reachable input.** Checked rather than
+assumed: **nothing in this system writes `payment_requests.status = 'failed'`.** Slice 4's
+`_recalculate` returns early when the paid sum is zero, and §17.4's five payment-result commands
+contain no command that would — though 13.2 draws `sent_to_bank --> failed: terminal failed outcome
+chosen`. Adding the arrow to publication without adding the command would have shipped a status
+branch nothing could reach, which is this repository's most-repeated defect.
+
+**What this leaves for the owner, stated precisely rather than as an open question:**
+
+- **Slice 7 must consume `PaymentAttemptFailed`, not only the correction event.** That is now a
+  requirement of the slice rather than an implication, and it is what makes this decision honest —
+  without it the failure path is a promise.
+- **Doc 06 13.2 draws an arrow §17.4 gives no command for.** "Terminal failed outcome chosen" needs
+  either a sixth payment-result command with a catalogue row, a permission and an audit action, or
+  the arrow removed. M9 builds neither: inventing the command is exactly what section 1 says this
+  milestone must not do. Recorded as an M0 debt; until it is settled, a request whose every attempt
+  failed rests at `sent_to_bank`, and the trader learns of it from the notification rather than
+  from the request's status.
+
+## G-6 — the publication status aggregate is not in the catalogue
+
+`status_catalog.yaml` has aggregates for `payment_request`, `payment_attempt`,
+`confirmed_evidence_link`, `receipt_segment` and the rest, and **none for
+`payment_result_publication`**. Document 04 §11.9 names its three values and is the only source.
+
+`tests/backend/test_status_catalogue_drift.py` holds every CHECK to its catalogued aggregate
+exactly; for this table it has nothing to compare against, so the CHECK is unguarded by that gate.
+Recorded as an M0 debt rather than papered over: adding the aggregate is a catalogue change and
+belongs to whoever owns the catalogue.
 
 ---
 

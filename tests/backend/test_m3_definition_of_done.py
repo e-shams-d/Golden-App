@@ -303,6 +303,11 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # `mark_retry_required`, and deciding a retry is needed is the same authority as making one.
     ("POST", "/api/v1/payment-attempts/{attempt_id}/mark-retry-required"): PERMISSION,
     ("POST", "/api/v1/payment-attempts/{attempt_id}/retry"): PERMISSION,
+    # M9 slice 5. `PERMISSION` rather than `DUAL`, and the distinction matters here more than
+    # anywhere: these two routes are how a result *becomes* trader-visible, and a trader has no
+    # part in deciding that. What a trader may reach is slice 6's read, under `/me/trader`.
+    ("POST", "/api/v1/payment-requests/{request_id}/publications/preview"): PERMISSION,
+    ("POST", "/api/v1/payment-requests/{request_id}/publications"): PERMISSION,
     # M5 slice 8. The two reads the screens need, and which nothing had built: eleven
     # published operations and only the revision history read. Both are `DUAL` — a trader
     # sees their own through `scoped()`, an accountant sees the queue through
@@ -731,6 +736,17 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ),
     ("POST", "/api/v1/payment-attempts/{attempt_id}/retry", "permission"): (
         "test_no_retry_route_answers_a_caller_without_the_permission"
+    ),
+    # M9 slice 5. One test over both, because `20260801_0008:250-251` gives both grants to the
+    # accountant alone — and `manager` is the sharp negative, holding every batch approval
+    # permission and neither of these.
+    (
+        "POST",
+        "/api/v1/payment-requests/{request_id}/publications/preview",
+        "permission",
+    ): "test_a_manager_may_neither_preview_nor_publish",
+    ("POST", "/api/v1/payment-requests/{request_id}/publications", "permission"): (
+        "test_a_manager_may_neither_preview_nor_publish"
     ),
     # M5 slice 8. The two reads, four entries because both are `DUAL`. The ownership pair
     # answers `404` and the permission pair `403`, and each is asserted in its own test

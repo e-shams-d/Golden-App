@@ -33,6 +33,10 @@ CONTRACT = BACKEND / "openapi" / "v1.json"
 COMMANDS = BACKEND / "app" / "commands"
 API = BACKEND / "app" / "api" / "v1"
 
+# The one module allowed to write a publication field, added by M9 slice 5. See
+# `TestNothingCanPublish` for why this file's claim changed shape and its obligation did not.
+PUBLICATION_COMMAND = COMMANDS / "payment_publication.py"
+
 
 def served_routes() -> list[tuple[str, str]]:
     """Every `/api/v1` route the router serves, as (method, path).
@@ -86,15 +90,39 @@ def python_sources(root: Path) -> list[Path]:
     return sorted(path for path in root.rglob("*.py") if "__pycache__" not in path.parts)
 
 
+def _model_names(tree: ast.Module) -> set[str]:
+    """Every name this module imports from `app.db.models`.
+
+    Used to tell a row from a response. Both are built with keyword arguments and only one of
+    them writes anything a trader will later be shown.
+    """
+
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith(
+            "app.db.models"
+        ):
+            names.update(alias.asname or alias.name for alias in node.names)
+    return names
+
+
 def assigned_attributes(path: Path) -> set[str]:
-    """Every attribute this module assigns to, as `obj.attr = ...` or in a keyword argument.
+    """Every attribute this module assigns to on a database row.
 
     Parsed rather than grepped. A grep for `published` matches this file's own docstring and the
     comment in `receipt_segment.py` explaining that M9 owns the state — the seventh and eighth times
     a scan here would have been defeated by the prose written to justify it.
+
+    **Keyword arguments count only when the call constructs an ORM model.** They used to count on
+    every call, which was right while nothing could publish and wrong the moment something could:
+    M9 slice 5's router builds a `PublicationResponse(published_at=...)` from a row it has just
+    read, and that is a render, not a write. Excusing the whole router would have excused the one
+    place a leak is most likely to be added, so the *rule* narrowed instead of the file list —
+    the same move M6's lineage scan made when a retry legitimately wrote a lineage column.
     """
 
     tree = ast.parse(path.read_text(encoding="utf-8"))
+    models = _model_names(tree)
     names: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
@@ -103,44 +131,93 @@ def assigned_attributes(path: Path) -> set[str]:
                     names.add(target.attr)
         elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Attribute):
             names.add(node.target.attr)
-        elif isinstance(node, ast.keyword) and node.arg:
-            names.add(node.arg)
+        elif isinstance(node, ast.Call):
+            callee = node.func
+            callee_name = (
+                callee.attr if isinstance(callee, ast.Attribute) else getattr(callee, "id", None)
+            )
+            if callee_name in models:
+                names.update(keyword.arg for keyword in node.keywords if keyword.arg)
     return names
 
 
 class TestNothingCanPublish:
-    """`SVC-PRIVACY-002`. §2.5 of the M8 plan: publication is M9's, and M8 adds no way round it."""
+    """`SVC-PRIVACY-002`. §16.5: no evidence reaches a trader without a privacy verification.
 
-    def test_no_route_names_publication(self) -> None:
+    **The claim these tests make has changed shape; the obligation has not.** M8 wrote them when
+    publication did not exist, so the strongest available form of "nothing publishes without a
+    privacy check" was "nothing publishes at all" — §2.5 of the M8 plan, in as many words:
+    "publication is M9's, and M8 adds no way round it."
+
+    M9 slice 5 is that milestone. There is now exactly one publication path and it calls
+    `privacy_verification` — the guard `app/commands/manual_review_task.py` was built for and could
+    not have, its docstring saying so directly: "There is deliberately no setter... a guard on a
+    path that does not exist would be untestable."
+
+    So these move from counting paths to checking the one that exists. The failure prevented is the
+    same, and it is now the realistic one: a *second* publication path added later that skips the
+    check. The class name is kept because the obligation id is, and renaming it would suggest a
+    different claim rather than the same one at a later date.
+    """
+
+    def test_every_publication_route_goes_through_the_privacy_guard(self) -> None:
         # The whole route table, not a sample. `publications` is doc 05 `:1874`'s path segment and
         # `publishable` is the flag a shortcut would invent.
-        offenders = [
+        publishing = [
             (method, path)
             for method, path in served_routes()
             if "publication" in path or "publishable" in path or "publish" in path
         ]
 
-        assert offenders == [], (
-            f"M8 serves a publication route: {offenders}. Publication is M9's, and a path that "
-            "exists before its privacy precondition can be enforced is a path that can be used "
-            "without one."
+        # The vacuity control, inline. If this list were empty the assertion below would hold over
+        # nothing — before M9 slice 5 that was the correct state and this class asserted it.
+        assert publishing, (
+            "no publication route is served at all. That was right until M9 slice 5; now it means "
+            "the routes were removed or renamed, and this test must follow them rather than pass "
+            "by default."
         )
 
-    def test_no_command_or_route_assigns_a_publication_flag(self) -> None:
-        # **Assignment, not mention.** The forbidden thing is *setting* publishability, and the
-        # segment status tuple legitimately contains `published` because M9 will use it — slice 1's
-        # `recount` already reads it. So this looks for writes.
+        source = PUBLICATION_COMMAND.read_text(encoding="utf-8")
+        assert "privacy_verification(" in source, (
+            f"{PUBLICATION_COMMAND.name} does not call `privacy_verification`, so the routes "
+            f"{publishing} can put evidence in front of a trader that nobody reviewed. §16.5 "
+            "requires the check and `08_Bank_File_and_Result_Processing.md:1314` lists 'no "
+            "unresolved privacy warning exists' among the eight publication guards."
+        )
+
+    def test_only_the_publication_command_assigns_a_publication_field(self) -> None:
+        # **Assignment, not mention.** The forbidden thing is *setting* publishability somewhere
+        # that has not been through the guard, and the segment status tuple legitimately contains
+        # `published` because M9 uses it. So this looks for writes, and allows exactly one module.
         forbidden = {"published", "publishable", "is_published", "published_at", "publication_id"}
 
         offenders: dict[str, list[str]] = {}
         for path in [*python_sources(COMMANDS), *python_sources(API)]:
+            if path == PUBLICATION_COMMAND:
+                continue
             written = assigned_attributes(path) & forbidden
             if written:
                 offenders[str(path.relative_to(BACKEND))] = sorted(written)
 
         assert offenders == {}, (
-            f"something in M8 writes a publication field: {offenders}. §16.5 requires a privacy "
-            "verification before evidence is published; a writer here could publish without one."
+            f"something outside the publication command writes a publication field: {offenders}. "
+            "Only `app/commands/payment_publication.py` performs the §16.5 verification, so a "
+            "writer anywhere else publishes without one."
+        )
+
+    def test_the_allowed_writer_really_writes_so_the_exemption_is_not_a_hole(self) -> None:
+        # The exemption above names a file. If that file stopped writing these fields the
+        # exemption would stand open onto nothing, and the next module to write one would only
+        # have to be added beside it.
+        assert PUBLICATION_COMMAND.exists(), f"{PUBLICATION_COMMAND} is gone"
+        written = assigned_attributes(PUBLICATION_COMMAND) & {
+            "published",
+            "published_at",
+            "published_to_trader_at",
+        }
+        assert written, (
+            f"{PUBLICATION_COMMAND.name} writes none of the publication fields, so the exemption "
+            "excuses a module that does nothing and the scan protects less than it appears to."
         )
 
     def test_the_forbidden_state_is_real_so_the_test_is_not_vacuous(self) -> None:

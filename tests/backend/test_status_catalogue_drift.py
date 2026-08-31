@@ -132,6 +132,16 @@ LOCAL_LIFECYCLES: dict[tuple[str, str], str] = {
         "inventing one for a two-value flag inside approved M0 governance under a checksum chain, "
         "which is not an implementer's decision. Q-8 in the M8 plan records it."
     ),
+    ("payment_result_publications", "status"): (
+        "M9 slice 5. Three values, `active`, `superseded` and `revoked`, from "
+        "`04_Database_Schema.md:1140` — and `status_catalog.yaml` has **no** "
+        "`payment_result_publication` aggregate at all, so this CHECK has nothing to be held to "
+        "and document 04 is its only source. Unlike the row above this is not a two-value local "
+        "flag: it is a real lifecycle that slice 7's correction moves, and the right fix is for "
+        "the catalogue to gain the aggregate. Recorded rather than papered over, because adding "
+        "one to approved M0 governance under a checksum chain is not an implementer's decision. "
+        "G-6 in the M9 plan records it."
+    ),
 }
 
 # Columns whose aggregate the catalogue records with `canonical: null`, and which
