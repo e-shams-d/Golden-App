@@ -30,6 +30,7 @@ from app.db.models.idempotency_record import IdempotencyRecord
 from app.db.models.identity import AdminUser, TraderUser
 from app.db.models.manual_review_task import ManualReviewTask
 from app.db.models.matching_candidate import MatchingCandidate
+from app.db.models.notification import Notification
 from app.db.models.outbox_event import OutboxEvent
 from app.db.models.payment_batch import (
     BatchApproval,
@@ -73,6 +74,7 @@ __all__ = [
     "LegalHold",
     "ManualReviewTask",
     "MatchingCandidate",
+    "Notification",
     "OutboxEvent",
     "PaymentAttempt",
     "PaymentAttemptAllocation",

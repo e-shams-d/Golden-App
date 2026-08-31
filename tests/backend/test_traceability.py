@@ -829,17 +829,6 @@ PENDING: dict[str, str] = {
         "Stated by the plan and not yet built; the slice's own pull request discharges it and "
         "removes this entry in the same commit."
     ),
-    "OPS-NOTIFY-001": (
-        "M9 slice 7 - correction and publication N+1; the old version survives, and the gate. "
-        "Stated by the plan and not yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-    ),
-    "OPS-NOTIFY-002": (
-        "M9 slice 7 - a confirmed failure reaches its trader as a notification. G-5 decides that "
-        "a failure is told rather than published, and `PaymentAttemptFailed` has been enqueued "
-        "since slice 3 with no consumer. Stated by the plan and not yet built; slice 7's pull "
-        "request discharges it and removes this entry in the same commit."
-    ),
     "TRACE-M9-001": (
         "M9 slice 7 - correction and publication N+1; the old version survives, and the gate. "
         "Stated by the plan and not yet built; the slice's own pull request discharges it and "

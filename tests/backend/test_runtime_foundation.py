@@ -87,7 +87,11 @@ EXPECTED_TABLES = frozenset(
         "payment_batch_items",
         "payment_batch_versions",
         "payment_batches",
-        # M9 slice 5, §11.9. The only table in this list the runtime holds **no** UPDATE on. A
+        # M9 slice 7, §13.3. The projection M2's outbox was built to feed and had no consumer for.
+        # Insert-only for now, like the row below: nothing marks a notification read, and a grant
+        # ahead of the command that needs it is a capability with no caller.
+        "notifications",
+        # M9 slice 5, §11.9. The only other table in this list the runtime holds **no** UPDATE on. A
         # publication is what a trader is shown as proof, so its immutability is a privilege
         # rather than a rule somebody could edit out — and slice 7's correction is what brings the
         # first grant, with the command that needs it.

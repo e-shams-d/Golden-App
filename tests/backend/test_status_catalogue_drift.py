@@ -111,6 +111,12 @@ STATUS_COLUMN_TO_AGGREGATE: dict[tuple[str, str], str] = {
     # three only — this gate holds a constraint to its aggregate exactly, which is what makes the
     # alias a decision somebody records rather than a spelling that leaks into a column.
     ("confirmed_evidence_links", "status"): "confirmed_evidence_link",
+    # M9 slice 7. Three canonical states and no aliases, and **two of the three are written by
+    # nothing yet**: the projection inserts `unread`, and `read`/`dismissed` belong to a recipient
+    # action that has no route. The CHECK lists all three anyway because this gate holds a
+    # constraint to its aggregate *exactly* — narrowing it to what one slice happens to use would
+    # make the next slice's legitimate value look like drift.
+    ("notifications", "status"): "notification",
 }
 
 # Status columns whose value set is **local to one relation** and is not a lifecycle the catalogue

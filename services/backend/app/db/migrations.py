@@ -132,4 +132,9 @@ from __future__ import annotations
 # gains `payment_result_publication`, so a trader's dispute can name the publication it is about
 # rather than one of the attempts underneath it. §17 `:1185` requires the exact publication version,
 # and `entity_record_version` can only carry it if the entity is the publication.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260901_0032"})
+# 20260902_0033 creates `notifications`, §13.3 — the only table M9 needed that no earlier milestone
+# built, and the destination M2's outbox has been waiting for since it was written. Its dispatcher
+# docstring said so in as many words: "nothing consumes these events in Phase 1A, and a dispatcher
+# that invented a destination would publish somewhere no consumer agreed to." Insert-only: nothing
+# marks a notification read yet, so no UPDATE is granted.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260902_0033"})
