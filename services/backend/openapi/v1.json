@@ -2674,6 +2674,30 @@
         "title": "DependencyStatus",
         "type": "object"
       },
+      "DisputeRequest": {
+        "additionalProperties": false,
+        "description": "§20.6's body, minus `attachment_file_ids`.\n\nDocument 05 shows that field. Accepting a file id here would let a trader name a file this\ncommand never checks the ownership of — the IDOR case `14_Testing_QA_Acceptance.md:1274`\ndescribes, arriving through a field that looks helpful. M4's upload path is where a trader's\nfile gets an owner; linking one to a dispute needs that path, not this one.",
+        "properties": {
+          "description": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "reason_code": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Reason Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason_code",
+          "description"
+        ],
+        "title": "DisputeRequest",
+        "type": "object"
+      },
       "DraftCreated": {
         "additionalProperties": false,
         "properties": {
@@ -5855,6 +5879,86 @@
           "record_version"
         ],
         "title": "TraderProfileResponse",
+        "type": "object"
+      },
+      "TraderPublicationResponse": {
+        "additionalProperties": false,
+        "description": "The active publication, as its owner sees it.\n\nNo `published_by_admin_user_id` and no `supersedes_publication_id`: who at the centre pressed\nthe button is the centre's record of its own act, and a trader who needs to raise something\ndoes it by request number. `publication_version` **is** here — §17 `:1153` lists it, and a\ntrader who disputes needs to be able to say which version they are talking about.",
+        "properties": {
+          "acknowledged_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acknowledged At"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "disputed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disputed At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "payment_request_id": {
+            "format": "uuid",
+            "title": "Payment Request Id",
+            "type": "string"
+          },
+          "publication_version": {
+            "title": "Publication Version",
+            "type": "integer"
+          },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          },
+          "request_status": {
+            "title": "Request Status",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary_payload": {
+            "additionalProperties": true,
+            "title": "Summary Payload",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "payment_request_id",
+          "publication_version",
+          "status",
+          "content_hash",
+          "summary_payload",
+          "published_at",
+          "request_status",
+          "acknowledged_at",
+          "disputed_at"
+        ],
+        "title": "TraderPublicationResponse",
         "type": "object"
       },
       "TraderResponse": {
@@ -11338,6 +11442,392 @@
         ]
       }
     },
+    "/api/v1/me/trader/payment-requests/{request_id}/acknowledge-result": {
+      "post": {
+        "description": "`POST .../acknowledge-result`, per `:1921`. **No request body** — agreeing needs no fields.\n\nBoth headers, which is `command_catalog.yaml`'s `idempotency: required` plus\n`current_publication_identity_revalidated`: the version is the request's, and a stale one means\na correction replaced the result while the trader was reading it.",
+        "operationId": "acknowledgeOwnPaymentResult",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraderPublicationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "There is no published result to respond to."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller is not an active trader."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such request, or it belongs to somebody else. The two are deliberately indistinguishable."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is stale or unreadable."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are required."
+          }
+        },
+        "summary": "Confirm to the centre that the published result is correct.",
+        "tags": [
+          "trader-publications"
+        ]
+      }
+    },
+    "/api/v1/me/trader/payment-requests/{request_id}/dispute-result": {
+      "post": {
+        "description": "`POST .../dispute-result`, per `:1942`.\n\n**This reverses nothing.** Doc 05 in its own words: \"A dispute creates a visible manual review\ntask and does not automatically reverse bank facts.\" The command imports no attempt model and\nperforms no recalculation, and `SVC-DISPUTE-001` reads the financial rows back rather than\ntrusting that.",
+        "operationId": "disputeOwnPaymentResult",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisputeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraderPublicationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "There is no published result to respond to."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller is not an active trader."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such request, or it belongs to somebody else. The two are deliberately indistinguishable."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is stale or unreadable."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are required."
+          }
+        },
+        "summary": "Tell the centre the published result is wrong, and why.",
+        "tags": [
+          "trader-publications"
+        ]
+      }
+    },
+    "/api/v1/me/trader/payment-requests/{request_id}/publication": {
+      "get": {
+        "description": "`GET /api/v1/me/trader/payment-requests/{request_id}/publication`, per `:1913`.\n\n**Active only.** §20.3: \"Trader endpoints expose only own active publication and allowed\nhistorical correction notices.\" The history is the centre's, and slice 7 decides what a\ncorrection notice says — a route that returned superseded versions today would be answering a\nquestion nobody has settled.",
+        "operationId": "getOwnPaymentResultPublication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraderPublicationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "There is no published result to respond to."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller is not an active trader."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such request, or it belongs to somebody else. The two are deliberately indistinguishable."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is stale or unreadable."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are required."
+          }
+        },
+        "summary": "The caller's own current published result for this request.",
+        "tags": [
+          "trader-publications"
+        ]
+      }
+    },
     "/api/v1/me/trader/profile": {
       "get": {
         "operationId": "getOwnTraderProfile",
@@ -14817,6 +15307,122 @@
       }
     },
     "/api/v1/payment-requests/{request_id}/publications": {
+      "get": {
+        "description": "`GET /api/v1/payment-requests/{request_id}/publications`, per `:1905`.\n\n**The history, which is the centre's and not the trader's.** §20.3: \"Internal users see history\nsubject to permission. Trader endpoints expose only own active publication.\" The trader route\nlives in `trader_publications.py` and returns one row; this returns all of them, superseded\nones included, because that is what makes a correction auditable.\n\nGuarded by `payment_publication.preview` rather than `.publish`: reading what was published is\nweaker than publishing it, and `20260801_0008` gives both to the accountant — so this reuses\nthe narrower of the two rather than asking for a grant no catalogue names.",
+        "operationId": "listPaymentResultPublications",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PublicationResponse"
+                  },
+                  "title": "Response Listpaymentresultpublications",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request or its evidence is not publishable."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the publication permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such request or evidence link."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "This request already says exactly this."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is stale or unreadable."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are required."
+          }
+        },
+        "summary": "Every publication this request has had, newest version first.",
+        "tags": [
+          "payment-publications"
+        ]
+      },
       "post": {
         "description": "`POST /api/v1/payment-requests/{request_id}/publications`, per `:1879`.\n\n**201, never 202.** Doc 05 allows 202 \"if share-file generation is asynchronous\"; nothing here\nis asynchronous because nothing here renders a file, so the row exists by the time this\nreturns. Slice 5B is what may make 202 true, and it will be a deliberate change with the\noasdiff gate to answer to.\n\n**`If-Match` against the request, not the publication.** The first draft of this route had\nnone, reasoning that a publication has no prior version to be stale against — which is true and\nwas the wrong question. `08_Bank_File_and_Result_Processing.md:1316` lists \"idempotency key and\nexpected version are valid\" among §19.3's eight publication guards, and doc 05 shows the header\nat `:1885`. The version that can be stale is the **request's**: an accountant who read it at\n`rv-9`, went to make tea, and published while somebody else corrected the result would publish\na snapshot of something that had moved.",
         "operationId": "publishPaymentResult",
@@ -14967,6 +15573,120 @@
           }
         },
         "summary": "Create the immutable publication a trader is shown.",
+        "tags": [
+          "payment-publications"
+        ]
+      }
+    },
+    "/api/v1/payment-requests/{request_id}/publications/current": {
+      "get": {
+        "description": "`GET .../publications/current`, per `:1906`.\n\nA separate route rather than a filter on the one above, because document 05 defines it as one —\nand because \"the current answer\" is what a screen asks while \"every answer so far\" is what an\ninvestigation asks. `uq_active_publication_per_request` is what lets this return a single row\nrather than the first of several.",
+        "operationId": "getCurrentPaymentResultPublication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request or its evidence is not publishable."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the publication permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such request or evidence link."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "This request already says exactly this."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is stale or unreadable."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are required."
+          }
+        },
+        "summary": "The active publication for this request, if there is one.",
         "tags": [
           "payment-publications"
         ]

@@ -277,6 +277,15 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # would be a promise this route does not keep.
         "previewPaymentResultPublication",
         "publishPaymentResult",
+        # M9 slice 6. The two internal reads (`:1905`) and the three trader operations
+        # (`:1913`, `:1921`, `:1942`). §20.4's share-file download is absent on purpose — slice 5B
+        # builds the renderer, and an operation that can only ever 404 is one a client would write
+        # code against.
+        "listPaymentResultPublications",
+        "getCurrentPaymentResultPublication",
+        "getOwnPaymentResultPublication",
+        "acknowledgeOwnPaymentResult",
+        "disputeOwnPaymentResult",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

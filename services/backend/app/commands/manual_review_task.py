@@ -41,6 +41,7 @@ from app.audit.writer import AuditActor, AuditContext, AuditEntry, AuditWriter
 from app.core.errors import BusinessRuleViolationError, ConflictError, NotFoundError
 from app.db.models.identity import AdminUser
 from app.db.models.manual_review_task import (
+    ENTITY_PAYMENT_PUBLICATION,
     ENTITY_RECEIPT_SEGMENT,
     OPEN_STATUSES,
     RESOLUTION_UNRESOLVED,
@@ -79,6 +80,18 @@ class OpenTask:
     priority: int
     description: str | None = None
     due_at: datetime | None = None
+    # M9 slice 6. **The version the task is raised *about*, which is not the same fact
+    # `resolve_task` captures** — that one records the version somebody judged, and its comment
+    # explains why that is right for a privacy review.
+    #
+    # A dispute needs the other one. §17 `:1185` requires that "a dispute references the exact
+    # publication version", and the version that matters is the one the trader was shown. For a
+    # publication the two coincide, because the row is immutable and its version never moves —
+    # which is what makes writing it at both ends consistent rather than contradictory.
+    #
+    # Optional, because every earlier caller raises a task about something whose version either
+    # does not exist (an export is immutable) or is not the point.
+    entity_record_version: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,6 +160,7 @@ def open_task(
         title=command.title,
         description=command.description,
         due_at=command.due_at,
+        entity_record_version=command.entity_record_version,
         record_version=1,
         created_at=now,
         updated_at=now,
@@ -457,13 +471,25 @@ def _subject_version(session: Session, task: ManualReviewTask) -> int | None:
     nothing to record, and the draft would have failed on an attribute that does not exist.
     `bank_result_bundle` does carry a version, but nothing in this milestone verifies a bundle
     *version*, and claiming one would be a fact nobody checks. `payment_attempt` is M9's.
+
+    **`payment_result_publication` is the second entry, added by M9 slice 6, and it is here to
+    stop a bug rather than to record a new fact.** A dispute writes the publication version when
+    the task is *opened*, because that is what §17 `:1185` requires it to reference. Without this
+    branch, resolving that task would set the column back to `None` and the reference §17 asks for
+    would disappear at exactly the moment somebody acted on it. The number is the same either way
+    — a publication is immutable and its version never moves — which is why re-deriving it here is
+    safe rather than a second opinion.
     """
 
+    from app.db.models.payment_result_publication import PaymentResultPublication
     from app.db.models.receipt_segment import ReceiptSegment
 
     if task.entity_type == ENTITY_RECEIPT_SEGMENT:
         segment = session.get(ReceiptSegment, task.entity_id)
         return segment.record_version if segment else None
+    if task.entity_type == ENTITY_PAYMENT_PUBLICATION:
+        publication = session.get(PaymentResultPublication, task.entity_id)
+        return publication.publication_version if publication else None
     return None
 
 

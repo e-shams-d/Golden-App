@@ -25,6 +25,7 @@ from app.api.v1.payment_publications import router as payment_publications_route
 from app.api.v1.payment_requests import router as payment_requests_router
 from app.api.v1.receipt_segments import router as receipt_segments_router
 from app.api.v1.roles import router as roles_router
+from app.api.v1.trader_publications import router as trader_publications_router
 from app.api.v1.trader_self_service import router as trader_self_service_router
 from app.api.v1.traders import router as traders_router
 
@@ -73,3 +74,8 @@ api_v1_router.include_router(payment_attempts_router)
 # document 05 puts them there (`:1874`, `:1879`) — and because a publication has no address of its
 # own until one of these two creates it.
 api_v1_router.include_router(payment_publications_router)
+# M9 slice 6. Its own module rather than more routes in `trader_self_service.py`: that file is
+# about a trader's own *business*, and this is about a result somebody else produced. They share
+# the `/me/trader` prefix because document 05 puts them both there, and `test_trader_surface_
+# isolation.py` finds both by reading the routes rather than from a list either could fall off.
+api_v1_router.include_router(trader_publications_router)

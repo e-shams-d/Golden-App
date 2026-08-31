@@ -128,4 +128,8 @@ from __future__ import annotations
 # **nothing**. That absence is the immutability: document 04 calls these rows immutable, and a
 # table a runtime role may UPDATE is immutable only until somebody writes the UPDATE. Slice 7's
 # correction brings `GRANT UPDATE (status)` with the command that needs it, rather than ahead of it.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260831_0031"})
+# 20260901_0032 creates nothing and widens one CHECK by one value: `manual_review_tasks.entity_type`
+# gains `payment_result_publication`, so a trader's dispute can name the publication it is about
+# rather than one of the attempts underneath it. §17 `:1185` requires the exact publication version,
+# and `entity_record_version` can only carry it if the entity is the publication.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260901_0032"})
