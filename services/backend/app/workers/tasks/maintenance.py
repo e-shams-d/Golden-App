@@ -39,15 +39,22 @@ def poll_outbox_task() -> dict[str, int]:
     logic can be called directly from a test without a broker, and the wrapper is
     the only thing that needs the process runtime.
 
-    Delivery is a no-op for now: nothing consumes these events in Phase 1A, and a
-    dispatcher that invented a destination would publish somewhere no consumer
-    agreed to. Marking them published proves the loop and the claim, which is
-    what M2 owns.
+    **Delivery stopped being a no-op in M9 slice 7.** This docstring used to say "nothing consumes
+    these events in Phase 1A, and a dispatcher that invented a destination would publish somewhere
+    no consumer agreed to" — which was correct, and which `notifications`
+    (`04_Database_Schema.md` §13.3) ends. The destination is one document 04 specifies rather than
+    one a dispatcher guessed, and the plan's G-2 assigned it to this slice.
+
+    The projection reads three of the eleven event types and ignores the rest, which is not a gap:
+    a notification is for a person, and most of these events are about work the centre does to
+    itself.
     """
 
+    from app.notifications.projection import notification_deliverer
     from app.workers.runtime import worker_runtime
 
-    report = poll_outbox(worker_runtime(), lambda _event: None)
+    runtime = worker_runtime()
+    report = poll_outbox(runtime, notification_deliverer(runtime.uow_factory))
     return {
         "published": report.published,
         "failed": report.failed,

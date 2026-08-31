@@ -492,7 +492,57 @@ trader whose complaint does not fit an option somebody guessed, and this is the 
 system whose user is a customer rather than staff — the cost of guessing wrong is a phone call
 instead of a record. The same reversible middle as G-3, and M0 owes the list.
 
-## Slice 7 — correction, publication N+1, and the Definition of Done
+## Slice 7 — `notifications`, and the consumer the outbox never had
+
+### Goal
+
+Outbox events become messages for people, so that G-2 and G-5 stop being promises.
+
+**Split from the correction, which is now slice 7B.** §17.7's seventh step is "notify the trader",
+so the correction depends on this and not the other way round — and the two have different
+blockers. This one has none: `04_Database_Schema.md` §13.3 specifies the table, the index and the
+rule that a notification is never workflow truth. 7B's are recorded there.
+
+### What it changes
+
+- `notifications` (doc 04 `:1334`) with §13.3's dedup index verbatim, and **no UPDATE grant** —
+  nothing marks a notification read yet, and ADR-009 has not settled a delivery channel.
+- `app/notifications/projection.py`, and `poll_outbox_task`'s `lambda _event: None` replaced.
+  That no-op carried M2's own explanation since the outbox was built: "nothing consumes these
+  events in Phase 1A, and a dispatcher that invented a destination would publish somewhere no
+  consumer agreed to." The destination is document 04's, not a guess.
+- Three of the eleven event types are read. The other eight are ignored rather than dead-lettered:
+  most of them are about work the centre does to itself, and a person has no use for them.
+
+### What proves it
+
+- `OPS-NOTIFY-001` — **notification failure does not roll back committed financial state** (§17
+  `:1185`). The projection is made to raise and the attempt's whole row is read back; the event is
+  left `failed` and retryable rather than published, because the message genuinely was not sent.
+- `OPS-NOTIFY-002` — a confirmed failure produces a trader notification. G-5's decision made
+  concrete: `PaymentAttemptFailed` has been enqueued since slice 3 and read by nothing, and this is
+  the test that says the failure path exists rather than being described.
+- The dedup index is exercised by redelivering the same event, which is what at-least-once means in
+  practice rather than in a docstring.
+- A notification carries **no amount and no IBAN**: every channel ADR-009 might choose delivers
+  outside the authenticated surface, so a figure in the body is a figure on somebody's lock screen.
+
+**Four of the first seven negative controls went NOT CAUGHT, one for each of the four meanings.**
+Worth recording in full, because the milestone opened by naming them:
+
+| Control | Meaning | What it actually showed |
+|---|---|---|
+| an amount in the message | *test insensitive by construction* | the fixture's event payload carried no amount, so the assertion could not have failed however the message was written |
+| the dedup key set to `None` | *sabotage does not break the property* | the projection's read matched the earlier row through `IS NULL`, so deduplication held for the wrong reason |
+| a malformed payload returning `None` | *sabotage does not break the property* | the caller then hit `None.trader_id` and the event failed anyway |
+| the migration granting `UPDATE` | *sabotage asks the wrong question* — **and the gate was missing** | the control defined an uncalled helper; fixing it revealed that **no test covered this table's privileges at all** |
+
+The fourth is the one that mattered. `test_batching_table_privileges.py`'s matrix is M6's and stops
+at the batching tables, so `notifications` could have shipped with any grant and nothing would have
+said so. `test_the_runtime_role_cannot_change_a_notification` exists because a negative control went
+uncaught, which is the whole reason for running them.
+
+## Slice 7B — correction, publication N+1, and the Definition of Done
 
 ### Goal
 
@@ -501,15 +551,23 @@ A published result can be corrected without erasing what the trader was shown.
 ### What it changes
 
 - The correction command behind `payment_publication.correct`, with M7's step-up binding.
-- `notifications` (doc 04 `:1334`), as an outbox-handler projection. See G-2.
 - §17 `:1172`'s eight steps, and doc 04 `:1162` compressed into one sentence.
 
-**The projection must consume `PaymentAttemptFailed`, not only `TraderResultCorrected`.** G-5
-decides that a failed payment reaches its trader as a notification rather than as a publication,
-and that decision is only honest if this slice reads the event slice 3 has been enqueuing since
-M9 opened. Today it has no consumer at all. A decision that routes a case to a mechanism nobody
-builds is worse than no decision, so it is written into the slice rather than left as an
-implication.
+**What is settled and what is not.** ADR_INDEX's **POL-002 is approved for Phase 1A**: "manager
+authority or dual control is required; the accountant-only default is rejected... The previous
+publication and its evidence are preserved and `payment_publication.correct` keeps
+`default_roles: []` with preparer and approver split." So the *control* is decided, and the empty
+default roles are a deployment decision — an administrator assigns them — rather than a block.
+POL-002 also sets this slice's headline obligation in its own words: **"M9 correction and UAT must
+prove the control cannot be configured off."**
+
+**What is not settled is the route.** `command_catalog.yaml`'s `payment_publication.correct_paid_
+result` row carries `method: TBD, path: TBD`, and document 05 defines no correction endpoint. What
+document 05 *does* define is where a correction comes from: `:1855`, on the evidence-link
+replacement — "When a published result materially changes, a corrected publication and trader
+notification are required." Slice 2 built that replacement before publications existed, so it
+implements the first half of that sentence and none of the second. That is the seam 7B works along,
+rather than inventing a path M0 owns.
 
 ### What proves it
 
@@ -527,6 +585,21 @@ implication.
 - `OPS-NOTIFY-002` — a confirmed failure produces a trader notification. G-5's decision made
   concrete: `PaymentAttemptFailed` is enqueued today and read by nothing, and this is the test that
   says the failure path exists rather than being described.
+
+**Four of slice 7's first seven negative controls went NOT CAUGHT, and each was a different one of
+the four meanings.** Worth recording in full, because the milestone opened by naming them:
+
+| Control | Meaning | What it actually showed |
+|---|---|---|
+| an amount in the message | *test insensitive by construction* | the fixture's event payload carried no amount, so the assertion could not have failed however the message was written |
+| the dedup key set to `None` | *sabotage does not break the property* | `_insert_once`'s read matched the earlier row through `IS NULL`, so deduplication held for the wrong reason |
+| a malformed payload returning `None` | *sabotage does not break the property* | the caller then hit `None.trader_id` and the event failed anyway |
+| the migration granting `UPDATE` | *sabotage asks the wrong question* — **and the gate was missing** | the control defined an uncalled helper; fixing it revealed that **no test covered this table's privileges at all** |
+
+The fourth is the one that mattered. `test_batching_table_privileges.py`'s matrix is M6's and stops
+at the batching tables, so `notifications` could have shipped with any grant and nothing would have
+said so. `test_the_runtime_role_cannot_change_a_notification` exists because a negative control
+went uncaught — which is the whole reason for running them.
 - `TRACE-M9-001` — the Definition of Done (§17 `:1200`): every trader-visible result traces
   publication → confirmed result → confirmed evidence → exact bank-result source. One test that
   walks the chain in SQL for a published request and asserts each hop resolves — the shape of M7's
