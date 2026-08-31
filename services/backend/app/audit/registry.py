@@ -874,6 +874,37 @@ CONFIRM_ATTEMPT_FAILED = CommandNames(
     catalogued=True,
 )
 
+# --- M9 slice 3B: retry ---------------------------------------------------------
+#
+# **The slice the plan forgot.** §17 `:1121` lists five payment-result commands and the M9 plan
+# named three of them; these two were built after re-reading that list at the top of slice 3.
+
+CREATE_RETRY_ATTEMPT = CommandNames(
+    audit_action="payment_attempt.retry_created",
+    # `audit_outbox_catalog.yaml:45` names the action and `command_catalog.yaml` gives the command
+    # `outbox_event: null`. Right: a retry that has not been batched, exported or sent is a plan,
+    # and nothing outside the platform can act on a plan.
+    outbox_event_type=None,
+    catalogued=True,
+)
+
+MARK_RETRY_REQUIRED = CommandNames(
+    audit_action="payment_attempt.retry_required",
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=(
+        "M9 slice 3B. `05_API_Specification.md:1608` defines "
+        "POST /payment-attempts/{attempt_id}/mark-retry-required and `command_catalog.yaml` has "
+        "no row for it, while `audit_outbox_catalog.yaml` names retry_created and no separate "
+        "action for the decision that precedes it. Seventh instance of DOC-CONFLICT-052. "
+        "Implemented against `payment_attempt.create_retry`, the nearest approved permission — "
+        "deciding that a retry is needed is the same authority as making one, and the catalogue "
+        "has no `mark_retry_required` to borrow instead. The name follows the aggregate's "
+        "catalogued spelling and must be renamed to whatever M0 approves. No outbox event: "
+        "§17.4 says in as many words that this creates and sends nothing."
+    ),
+)
+
 
 # Every `CommandNames` defined above, and the gate that reads this tuple is the only thing
 # checking any of them against the catalogue. Three M5 entries — `BEGIN_REVIEW`,
@@ -963,4 +994,8 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     # M9 slice 3, likewise. Both catalogued, both command rows previously blocked.
     CONFIRM_ATTEMPT_PAID,
     CONFIRM_ATTEMPT_FAILED,
+    # M9 slice 3B. One catalogued, one not — the decision that precedes a retry has a route and
+    # no command row.
+    CREATE_RETRY_ATTEMPT,
+    MARK_RETRY_REQUIRED,
 )

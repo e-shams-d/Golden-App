@@ -265,6 +265,11 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # which is how §17 `:1131`'s "amount is exact" is enforced.
         "confirmAttemptPaid",
         "confirmAttemptFailed",
+        # M9 slice 3B — the two §17 `:1121` commands the plan forgot. Document 05 defines them at
+        # `:1608` and `:1616`; neither request body carries a beneficiary field, which is how
+        # "the server rejects free-form beneficiary/IBAN changes" is enforced.
+        "markAttemptRetryRequired",
+        "createRetryAttempt",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

@@ -2437,6 +2437,35 @@
         "title": "CreateReplacementVersionRequest",
         "type": "object"
       },
+      "CreateRetryRequest": {
+        "additionalProperties": false,
+        "description": "§17.5's body, field for field.\n\n**No beneficiary fields.** `:1634`: \"The server rejects free-form beneficiary/IBAN changes.\nMaterial beneficiary changes must exist in the referenced request revision.\" The strongest way\nto reject a field is to have nowhere for it to arrive, which is the same enforcement\n`ConfirmPaidRequest` uses for the amount. `SVC-RETRY-002` asserts the absence.",
+        "properties": {
+          "amount_irr": {
+            "exclusiveMinimum": 0.0,
+            "title": "Amount Irr",
+            "type": "integer"
+          },
+          "payment_request_revision_id": {
+            "format": "uuid",
+            "title": "Payment Request Revision Id",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "payment_request_revision_id",
+          "amount_irr",
+          "reason"
+        ],
+        "title": "CreateRetryRequest",
+        "type": "object"
+      },
       "CreateRevisionRequest": {
         "additionalProperties": false,
         "description": "A complete statement of what is being submitted, not a patch.\n\nEvery content field is required. A partial shape would make revision 3's content\n\"revision 2 plus a diff\", so reading what was submitted the third time would mean\nreplaying the first two — and the whole point of an immutable revision is that it\nanswers that question on its own.",
@@ -3601,6 +3630,23 @@
           "expected_revision_id"
         ],
         "title": "MarkEligibleRequest",
+        "type": "object"
+      },
+      "MarkRetryRequiredRequest": {
+        "additionalProperties": false,
+        "description": "§17.4's body. A reason, and nothing else — this creates nothing.",
+        "properties": {
+          "reason": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "MarkRetryRequiredRequest",
         "type": "object"
       },
       "MarkSentConfirmation": {
@@ -11683,6 +11729,298 @@
           }
         },
         "summary": "Record that the bank paid this attempt.",
+        "tags": [
+          "payment-attempts"
+        ]
+      }
+    },
+    "/api/v1/payment-attempts/{attempt_id}/mark-retry-required": {
+      "post": {
+        "description": "`POST /api/v1/payment-attempts/{attempt_id}/mark-retry-required`, per `:1608`.\n\n**\"This does not itself create or send a retry\"** — `:1612`, and the summary above repeats it\nbecause the route name is where a reader looks first. `SVC-RETRY-001` counts the request's\nattempts before and after.\n\n**Guarded by `payment_attempt.create_retry`**, because the catalogue has no\n`mark_retry_required` and deciding a retry is needed is the same authority as making one.\nRecorded here rather than resolved by inventing a permission — the rule M8 slice 3 followed\nwhen three permissions covered six queue routes.",
+        "operationId": "markAttemptRetryRequired",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "attempt_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Attempt Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkRetryRequiredRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttemptResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the confirmation permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such attempt or evidence link."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The attempt moved first."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is stale or unreadable."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are required."
+          }
+        },
+        "summary": "Record that this attempt needs retrying. Creates nothing.",
+        "tags": [
+          "payment-attempts"
+        ]
+      }
+    },
+    "/api/v1/payment-attempts/{attempt_id}/retry": {
+      "post": {
+        "description": "`POST /api/v1/payment-attempts/{attempt_id}/retry`, per `:1616`.\n\n**201, because the response is the new attempt.** The original becomes `superseded` in the\nsame transaction — `06_Workflows_and_State_Machines.md:684` — and handing back the retired row\nwould give a client something already historical.\n\n**The retry is unbatched.** `:1636`: \"The retry attempt remains unbatched until included in a\nfuture batch version.\" It is created in `created`, which is where M6's allocation picks it up.",
+        "operationId": "createRetryAttempt",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "attempt_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Attempt Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRetryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttemptResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the confirmation permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such attempt or evidence link."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The attempt moved first."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is stale or unreadable."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are required."
+          }
+        },
+        "summary": "Create a retry attempt from a marked one, unbatched.",
         "tags": [
           "payment-attempts"
         ]

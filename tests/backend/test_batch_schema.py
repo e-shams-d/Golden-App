@@ -269,6 +269,19 @@ LINEAGE_COLUMNS: tuple[str, ...] = (
     "confirmed_at",
 )
 
+# **Lineage columns a later milestone legitimately writes, and the one place each is written.**
+#
+# `DB-ATTEMPT-001` said M6 writes none of these. M9 slice 3B writes one: §17.5's retry creates a
+# new attempt carrying `retry_of_attempt_id`, which is the whole point of the column existing.
+#
+# Removing it from `LINEAGE_COLUMNS` would have been the easy edit and would have lost two
+# guarantees — that the column is still nullable, and that nothing *else* writes it. So the
+# column stays in the list above, comes out of the prohibition scan, and gains its own assertion
+# below: written by this module and by no other.
+WRITTEN_BY_EXACTLY_ONE_COMMAND: dict[str, str] = {
+    "retry_of_attempt_id": "commands/payment_retry.py",
+}
+
 
 def test_every_lineage_column_exists_and_is_nullable() -> None:
     """`DB-ATTEMPT-001`, the half that is a property of the schema.
@@ -317,7 +330,7 @@ def test_nothing_in_the_application_writes_a_lineage_column() -> None:
     """
 
     application = Path(__file__).resolve().parents[2] / "services" / "backend" / "app"
-    lineage = set(LINEAGE_COLUMNS)
+    lineage = set(LINEAGE_COLUMNS) - set(WRITTEN_BY_EXACTLY_ONE_COMMAND)
     offenders: list[str] = []
 
     for source in sorted(application.rglob("*.py")):
@@ -346,6 +359,45 @@ def test_nothing_in_the_application_writes_a_lineage_column() -> None:
         "a lineage column is written somewhere in the application, and `DB-ATTEMPT-001` claims "
         "none is:\n" + "\n".join(f"  {offender}" for offender in sorted(set(offenders)))
     )
+
+
+def test_each_exempted_lineage_column_is_written_in_exactly_one_place() -> None:
+    """The other half of the exemption, and what makes it narrower than a deletion.
+
+    `retry_of_attempt_id` came out of the prohibition scan because M9 slice 3B writes it. This
+    asserts it is written *there* and nowhere else — so a second writer appearing anywhere in the
+    application fails here rather than inheriting the exemption.
+    """
+
+    application = Path(__file__).resolve().parents[2] / "services" / "backend" / "app"
+
+    for column, expected in WRITTEN_BY_EXACTLY_ONE_COMMAND.items():
+        writers: set[str] = set()
+        for source in sorted(application.rglob("*.py")):
+            tree = ast.parse(source.read_text(encoding="utf-8"))
+            where = str(source.relative_to(application)).replace("\\", "/")
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Assign):
+                    for target in node.targets:
+                        if isinstance(target, ast.Attribute) and target.attr == column:
+                            writers.add(where)
+                elif isinstance(node, ast.Call):
+                    callee = node.func
+                    callee_name = (
+                        callee.attr
+                        if isinstance(callee, ast.Attribute)
+                        else getattr(callee, "id", None)
+                    )
+                    if callee_name != "PaymentAttempt":
+                        continue
+                    if any(keyword.arg == column for keyword in node.keywords):
+                        writers.add(where)
+
+        assert writers == {expected}, (
+            f"{column} is written by {sorted(writers)} and the exemption names only {expected}. "
+            "Either the writer moved, or a second one appeared and must be a decision rather "
+            "than an inheritance."
+        )
 
 
 def test_the_lineage_scan_catches_both_shapes_and_ignores_the_third(tmp_path: Path) -> None:

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel, ConfigDict, Field
@@ -32,9 +32,11 @@ from app.api.v1.auth import authenticated_actor, requires
 from app.audit.redaction import RedactionPolicy
 from app.audit.writer import AuditActor, AuditContext
 from app.commands import payment_result as result_commands
+from app.commands import payment_retry as retry_commands
 from app.core.errors import (
     ErrorEnvelope,
     ForbiddenError,
+    NotFoundError,
     PreconditionRequiredError,
     VersionConflictError,
 )
@@ -42,6 +44,7 @@ from app.core.request_context import get_request_id
 from app.core.runtime import RuntimeServices
 from app.core.time import utc_now
 from app.db.models.payment_batch import PaymentAttempt
+from app.db.models.payment_request import PaymentRequest
 from app.security.actor import ActorContext
 from app.security.permissions import declare
 
@@ -89,6 +92,30 @@ class ConfirmFailedRequest(BaseModel):
     receipt_segment_id: uuid.UUID | None = None
 
 
+class MarkRetryRequiredRequest(BaseModel):
+    """§17.4's body. A reason, and nothing else — this creates nothing."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=4000)
+
+
+class CreateRetryRequest(BaseModel):
+    """§17.5's body, field for field.
+
+    **No beneficiary fields.** `:1634`: "The server rejects free-form beneficiary/IBAN changes.
+    Material beneficiary changes must exist in the referenced request revision." The strongest way
+    to reject a field is to have nowhere for it to arrive, which is the same enforcement
+    `ConfirmPaidRequest` uses for the amount. `SVC-RETRY-002` asserts the absence.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    payment_request_revision_id: uuid.UUID
+    amount_irr: int = Field(gt=0)
+    reason: str = Field(min_length=1, max_length=4000)
+
+
 class AttemptResult(BaseModel):
     """What a confirmed attempt looks like, and what its request became.
 
@@ -128,6 +155,20 @@ def _rendered(attempt: PaymentAttempt, request_status: str) -> AttemptResult:
         record_version=attempt.record_version,
         request_status=request_status,
     )
+
+
+def _request_status(session: Any, request_id: uuid.UUID) -> str:
+    """The request's status as it stands, for the two retry routes.
+
+    They do not move it — a retry decision and an unbatched retry attempt change no paid sum — so
+    the response reports rather than recomputes. Recomputing here would put a second copy of
+    `_recalculate`'s rule in a route, which is how two answers to one question begin.
+    """
+
+    request = session.get(PaymentRequest, request_id)
+    if request is None:  # pragma: no cover - the foreign key guarantees it
+        raise NotFoundError()
+    return str(request.status)
 
 
 def _audit_actor(actor: ActorContext) -> AuditActor:
@@ -286,6 +327,115 @@ def confirm_attempt_failed(
             now=now,
         )
         rendered = _rendered(result.attempt, result.request_status)
+        uow.commit()
+
+    return rendered
+
+
+@router.post(
+    "/{attempt_id}/mark-retry-required",
+    response_model=AttemptResult,
+    operation_id="markAttemptRetryRequired",
+    summary="Record that this attempt needs retrying. Creates nothing.",
+    responses=RESPONSES,
+    dependencies=[requires(declare("payment_attempt.create_retry"))],
+)
+def mark_attempt_retry_required(
+    attempt_id: uuid.UUID,
+    payload: MarkRetryRequiredRequest,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> AttemptResult:
+    """`POST /api/v1/payment-attempts/{attempt_id}/mark-retry-required`, per `:1608`.
+
+    **"This does not itself create or send a retry"** — `:1612`, and the summary above repeats it
+    because the route name is where a reader looks first. `SVC-RETRY-001` counts the request's
+    attempts before and after.
+
+    **Guarded by `payment_attempt.create_retry`**, because the catalogue has no
+    `mark_retry_required` and deciding a retry is needed is the same authority as making one.
+    Recorded here rather than resolved by inventing a permission — the rule M8 slice 3 followed
+    when three permissions covered six queue routes.
+    """
+
+    expected = _parse_record_version(if_match)
+    key = _require_key(idempotency_key)
+    now = utc_now()
+
+    with runtime.uow_factory() as uow:
+        result = retry_commands.mark_retry_required(
+            retry_commands.MarkRetryRequired(
+                payment_attempt_id=attempt_id,
+                expected_record_version=expected,
+                reason=payload.reason,
+            ),
+            uow=uow,
+            policy=RESULT_REDACTION,
+            actor=_audit_actor(actor),
+            context=AuditContext(request_id=get_request_id()),
+            idempotency_key=key,
+            now=now,
+        )
+        # The request's own status is untouched by this command, so it is reported as it stands
+        # rather than recomputed — a retry decision moves no paid sum.
+        request_status = _request_status(uow.session, result.attempt.payment_request_id)
+        rendered = _rendered(result.attempt, request_status)
+        uow.commit()
+
+    return rendered
+
+
+@router.post(
+    "/{attempt_id}/retry",
+    response_model=AttemptResult,
+    status_code=201,
+    operation_id="createRetryAttempt",
+    summary="Create a retry attempt from a marked one, unbatched.",
+    responses=RESPONSES,
+    dependencies=[requires(declare("payment_attempt.create_retry"))],
+)
+def create_retry_attempt(
+    attempt_id: uuid.UUID,
+    payload: CreateRetryRequest,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> AttemptResult:
+    """`POST /api/v1/payment-attempts/{attempt_id}/retry`, per `:1616`.
+
+    **201, because the response is the new attempt.** The original becomes `superseded` in the
+    same transaction — `06_Workflows_and_State_Machines.md:684` — and handing back the retired row
+    would give a client something already historical.
+
+    **The retry is unbatched.** `:1636`: "The retry attempt remains unbatched until included in a
+    future batch version." It is created in `created`, which is where M6's allocation picks it up.
+    """
+
+    expected = _parse_record_version(if_match)
+    key = _require_key(idempotency_key)
+    now = utc_now()
+
+    with runtime.uow_factory() as uow:
+        result = retry_commands.create_retry_attempt(
+            retry_commands.CreateRetryAttempt(
+                payment_attempt_id=attempt_id,
+                expected_record_version=expected,
+                payment_request_revision_id=payload.payment_request_revision_id,
+                amount_irr=payload.amount_irr,
+                reason=payload.reason,
+            ),
+            uow=uow,
+            policy=RESULT_REDACTION,
+            actor=_audit_actor(actor),
+            context=AuditContext(request_id=get_request_id()),
+            idempotency_key=key,
+            now=now,
+        )
+        request_status = _request_status(uow.session, result.attempt.payment_request_id)
+        rendered = _rendered(result.attempt, request_status)
         uow.commit()
 
     return rendered
