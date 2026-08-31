@@ -926,6 +926,26 @@ PUBLISH_PAYMENT_RESULT = CommandNames(
 )
 
 
+# --- M9 slice 6: the trader responds -------------------------------------------
+#
+# `audit_outbox_catalog.yaml:48-49` names both actions and lists **no outbox event for either**,
+# which is right and worth saying out loud: nothing outside this platform acts on a trader's
+# opinion of a result. A dispute's consumer is a person, and the review task is how they hear
+# about it — an event would be a second delivery path for the same fact, and the one nobody reads.
+
+ACKNOWLEDGE_PUBLICATION = CommandNames(
+    audit_action="payment_publication.acknowledged",
+    outbox_event_type=None,
+    catalogued=True,
+)
+
+DISPUTE_PUBLICATION = CommandNames(
+    audit_action="payment_publication.disputed",
+    outbox_event_type=None,
+    catalogued=True,
+)
+
+
 # Every `CommandNames` defined above, and the gate that reads this tuple is the only thing
 # checking any of them against the catalogue. Three M5 entries — `BEGIN_REVIEW`,
 # `RETURN_FOR_CORRECTION` and `MARK_ELIGIBLE_FOR_BATCHING` — were defined and **left out of this
@@ -1020,4 +1040,7 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     MARK_RETRY_REQUIRED,
     # M9 slice 5, same commit as its entry. Catalogued on both sides.
     PUBLISH_PAYMENT_RESULT,
+    # M9 slice 6. Both catalogued, neither with an event.
+    ACKNOWLEDGE_PUBLICATION,
+    DISPUTE_PUBLICATION,
 )

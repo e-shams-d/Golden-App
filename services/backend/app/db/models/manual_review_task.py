@@ -94,6 +94,10 @@ ENTITY_TYPES: tuple[str, ...] = (
     "bank_result_bundle",
     "receipt_segment",
     "payment_attempt",
+    # M9 slice 6, added by `20260901_0032` and the first value this list has gained. Added by the
+    # list's own stated rule — `payment_result_publications` is now a table that exists — rather
+    # than against any document: §13.1 lists the columns and enumerates no values.
+    "payment_result_publication",
 )
 
 ENTITY_BANK_EXPORT = "bank_excel_export"
@@ -104,6 +108,12 @@ ENTITY_RECEIPT_SEGMENT = "receipt_segment"
 # reference to queue navigation — a person opening the item wants the thing they were about to act
 # on, not its parent.
 ENTITY_PAYMENT_ATTEMPT = "payment_attempt"
+# M9 slice 6. **A dispute names the publication, not the attempt** — the opposite call from the one
+# above, and for a reason the overpayment case did not have: a publication covers a whole request
+# and may span several attempts, so pointing a dispute at one of them would name a part of what the
+# trader is complaining about. It would also put the *attempt's* version in
+# `entity_record_version`, where §17 `:1185` requires the exact publication version.
+ENTITY_PAYMENT_PUBLICATION = "payment_result_publication"
 
 
 def _quoted(values: tuple[str, ...]) -> str:

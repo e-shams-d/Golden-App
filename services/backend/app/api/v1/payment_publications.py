@@ -28,6 +28,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 
 from app.api.contract import VALIDATION_ERROR_RESPONSE
 from app.api.dependencies import get_runtime
@@ -38,12 +39,18 @@ from app.commands import payment_publication as publication_commands
 from app.core.errors import (
     ErrorEnvelope,
     ForbiddenError,
+    NotFoundError,
     PreconditionRequiredError,
     VersionConflictError,
 )
 from app.core.request_context import get_request_id
 from app.core.runtime import RuntimeServices
 from app.core.time import utc_now
+from app.db.models.payment_request import PaymentRequest
+from app.db.models.payment_result_publication import (
+    PUBLICATION_ACTIVE,
+    PaymentResultPublication,
+)
 from app.security.actor import ActorContext
 from app.security.permissions import declare
 
@@ -118,6 +125,30 @@ class PublicationResponse(BaseModel):
     share_file_id: uuid.UUID | None
     published_at: datetime
     request_status: str
+
+
+def _rendered(
+    publication: PaymentResultPublication, request_status: str
+) -> PublicationResponse:
+    """One row, as an internal caller sees it.
+
+    Extracted when slice 6 added the two reads: three routes building the same response by hand is
+    three places for a field to be forgotten, and the one most likely to be forgotten is
+    `share_file_id` — the column slice 5B fills.
+    """
+
+    return PublicationResponse(
+        id=publication.id,
+        payment_request_id=publication.payment_request_id,
+        publication_version=publication.publication_version,
+        status=publication.status,
+        content_hash=publication.content_hash,
+        summary_payload=dict(publication.summary_payload),
+        primary_evidence_link_id=publication.primary_evidence_link_id,
+        share_file_id=publication.share_file_id,
+        published_at=publication.published_at,
+        request_status=request_status,
+    )
 
 
 def _audit_actor(actor: ActorContext) -> AuditActor:
@@ -261,20 +292,91 @@ def publish_payment_result(
             idempotency_key=key,
             now=now,
         )
-        publication = result.publication
-        response = PublicationResponse(
-            id=publication.id,
-            payment_request_id=publication.payment_request_id,
-            publication_version=publication.publication_version,
-            status=publication.status,
-            content_hash=publication.content_hash,
-            summary_payload=dict(publication.summary_payload),
-            primary_evidence_link_id=publication.primary_evidence_link_id,
-            share_file_id=publication.share_file_id,
-            published_at=publication.published_at,
-            request_status=result.request_status,
-        )
+        response = _rendered(result.publication, result.request_status)
         uow.commit()
+
+    return response
+
+
+@router.get(
+    "/{request_id}/publications",
+    response_model=list[PublicationResponse],
+    operation_id="listPaymentResultPublications",
+    summary="Every publication this request has had, newest version first.",
+    responses=RESPONSES,
+    dependencies=[requires(declare("payment_publication.preview"))],
+)
+def list_payment_result_publications(
+    request_id: uuid.UUID,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+) -> list[PublicationResponse]:
+    """`GET /api/v1/payment-requests/{request_id}/publications`, per `:1905`.
+
+    **The history, which is the centre's and not the trader's.** §20.3: "Internal users see history
+    subject to permission. Trader endpoints expose only own active publication." The trader route
+    lives in `trader_publications.py` and returns one row; this returns all of them, superseded
+    ones included, because that is what makes a correction auditable.
+
+    Guarded by `payment_publication.preview` rather than `.publish`: reading what was published is
+    weaker than publishing it, and `20260801_0008` gives both to the accountant — so this reuses
+    the narrower of the two rather than asking for a grant no catalogue names.
+    """
+
+    with runtime.uow_factory() as uow:
+        session = uow.session
+        request = session.get(PaymentRequest, request_id)
+        if request is None:
+            uow.rollback()
+            raise NotFoundError()
+        rows = list(
+            session.scalars(
+                select(PaymentResultPublication)
+                .where(PaymentResultPublication.payment_request_id == request_id)
+                .order_by(PaymentResultPublication.publication_version.desc())
+            )
+        )
+        response = [_rendered(row, request.status) for row in rows]
+        uow.rollback()
+
+    return response
+
+
+@router.get(
+    "/{request_id}/publications/current",
+    response_model=PublicationResponse,
+    operation_id="getCurrentPaymentResultPublication",
+    summary="The active publication for this request, if there is one.",
+    responses=RESPONSES,
+    dependencies=[requires(declare("payment_publication.preview"))],
+)
+def current_payment_result_publication(
+    request_id: uuid.UUID,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+) -> PublicationResponse:
+    """`GET .../publications/current`, per `:1906`.
+
+    A separate route rather than a filter on the one above, because document 05 defines it as one —
+    and because "the current answer" is what a screen asks while "every answer so far" is what an
+    investigation asks. `uq_active_publication_per_request` is what lets this return a single row
+    rather than the first of several.
+    """
+
+    with runtime.uow_factory() as uow:
+        session = uow.session
+        request = session.get(PaymentRequest, request_id)
+        publication = session.scalar(
+            select(PaymentResultPublication).where(
+                PaymentResultPublication.payment_request_id == request_id,
+                PaymentResultPublication.status == PUBLICATION_ACTIVE,
+            )
+        )
+        if publication is None or request is None:
+            uow.rollback()
+            raise NotFoundError()
+        response = _rendered(publication, request.status)
+        uow.rollback()
 
     return response
 

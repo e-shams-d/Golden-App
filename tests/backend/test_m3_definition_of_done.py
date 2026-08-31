@@ -308,6 +308,21 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # part in deciding that. What a trader may reach is slice 6's read, under `/me/trader`.
     ("POST", "/api/v1/payment-requests/{request_id}/publications/preview"): PERMISSION,
     ("POST", "/api/v1/payment-requests/{request_id}/publications"): PERMISSION,
+    # M9 slice 6. The internal reads take `payment_publication.preview` — reading what was
+    # published is weaker than publishing it, and the accountant holds both.
+    ("GET", "/api/v1/payment-requests/{request_id}/publications"): PERMISSION,
+    ("GET", "/api/v1/payment-requests/{request_id}/publications/current"): PERMISSION,
+    # The trader's three, and `OWNERSHIP` rather than `PERMISSION` is the whole point:
+    # `04_Database_Schema.md:405` gives a trader session no grants at all, so a route-level
+    # `requires(...)` would deny the only audience these have. The catalogue's permission name is
+    # still carried in the guard closure so `test_permission_guards.py` can see it — the shape M5
+    # established for `payment_requests.py`.
+    ("GET", "/api/v1/me/trader/payment-requests/{request_id}/publication"): OWNERSHIP,
+    (
+        "POST",
+        "/api/v1/me/trader/payment-requests/{request_id}/acknowledge-result",
+    ): OWNERSHIP,
+    ("POST", "/api/v1/me/trader/payment-requests/{request_id}/dispute-result"): OWNERSHIP,
     # M5 slice 8. The two reads the screens need, and which nothing had built: eleven
     # published operations and only the revision history read. Both are `DUAL` — a trader
     # sees their own through `scoped()`, an accountant sees the queue through
@@ -748,6 +763,34 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ("POST", "/api/v1/payment-requests/{request_id}/publications", "permission"): (
         "test_a_manager_may_neither_preview_nor_publish"
     ),
+    # M9 slice 6. The internal reads share the preview permission and its negative test.
+    ("GET", "/api/v1/payment-requests/{request_id}/publications", "permission"): (
+        "test_a_manager_may_neither_preview_nor_publish"
+    ),
+    (
+        "GET",
+        "/api/v1/payment-requests/{request_id}/publications/current",
+        "permission",
+    ): "test_a_manager_may_neither_preview_nor_publish",
+    # The trader's three, all covered by one test — and it is one test on purpose. The claim is
+    # not "each route refuses" but "a second trader cannot tell these requests exist", which is a
+    # property of the surface rather than of any route on it. `404` is what it asserts, and a
+    # per-route test asserting `404` three times would be three copies of one idea.
+    (
+        "GET",
+        "/api/v1/me/trader/payment-requests/{request_id}/publication",
+        "ownership",
+    ): "test_another_trader_gets_404_and_not_403",
+    (
+        "POST",
+        "/api/v1/me/trader/payment-requests/{request_id}/acknowledge-result",
+        "ownership",
+    ): "test_another_trader_gets_404_and_not_403",
+    (
+        "POST",
+        "/api/v1/me/trader/payment-requests/{request_id}/dispute-result",
+        "ownership",
+    ): "test_another_trader_gets_404_and_not_403",
     # M5 slice 8. The two reads, four entries because both are `DUAL`. The ownership pair
     # answers `404` and the permission pair `403`, and each is asserted in its own test
     # rather than shared: the list's ownership case is about which rows come back, and the

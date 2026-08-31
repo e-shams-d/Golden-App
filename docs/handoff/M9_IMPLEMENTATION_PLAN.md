@@ -448,6 +448,19 @@ financial moving.
 
 - The reads at doc 05 `:1905`, acknowledge at doc 05 `:1921`, dispute at doc 05 `:1942`.
 - A dispute writes a `manual_review_tasks` row and the exact `publication_version`.
+- `20260901_0032`: one CHECK widened by one value, so `entity_type` may be
+  `payment_result_publication`. Attaching the dispute to an *attempt* — which is what slice 3 does
+  for an overpayment — would name a part of what the trader is complaining about, and would put the
+  attempt's version where §17 requires the publication's.
+- **§20.4's share-file download is not built.** `share_file_id` is null on every row until slice
+  5B, and a route that can only ever 404 is a promise a client would write code against.
+
+**The trader guard cannot be `requires(...)`.** `04_Database_Schema.md:405` gives a trader session
+no permissions at all, so the route-level guard every internal route uses denies the only audience
+these three have — measured, not assumed: the first version used it and every trader test failed
+with `Permission denied`. The permission name is still carried in the guard closure, because
+`test_permission_guards.py` finds a route's permissions by walking it. M5's `payment_requests.py`
+established the shape and records the same reasoning.
 
 ### What proves it
 
@@ -459,8 +472,25 @@ financial moving.
   the request's rows are byte-identical after the dispute. This is slice 1's negative property at
   the other end of the milestone: the human action that looks like it should move the money is
   precisely the one that must not.
+- `SVC-ACKNOWLEDGE-001` — **the same read-back for the safe-looking action.** The plan named the
+  dispute's negative property and not the acknowledgement's, and a convenience write gets added to
+  whichever action nobody is watching. Both compare whole rows.
 - `AUD-PUBLICATION-001` — `payment_publication.acknowledged` and `.disputed`, and no outbox event
-  for either, which is what the catalogue lists.
+  for either, which is what the catalogue lists. The absence is asserted as well as the presence.
+
+**A trap this slice found in M8's code.** `resolve_task` sets `entity_record_version` from the
+subject *at resolution*, which is right for a privacy review — its comment explains that the
+version somebody judged is the fact worth keeping. A dispute needs the other fact: the version the
+trader was shown. Without teaching `_subject_version` about publications, resolving a dispute
+would have set the column back to `NULL` and §17 `:1185`'s reference would have vanished at exactly
+the moment somebody acted on it. The two readings agree here only because a publication is
+immutable, which is what makes writing it at both ends consistent rather than contradictory.
+
+**No dispute `reason_code` list exists.** Doc 05 shows one value and no catalogue names a set. The
+field is required and bounded rather than enumerated: a closed list invented here would refuse a
+trader whose complaint does not fit an option somebody guessed, and this is the only surface in the
+system whose user is a customer rather than staff — the cost of guessing wrong is a phone call
+instead of a record. The same reversible middle as G-3, and M0 owes the list.
 
 ## Slice 7 — correction, publication N+1, and the Definition of Done
 

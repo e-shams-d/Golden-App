@@ -814,22 +814,10 @@ PENDING: dict[str, str] = {
         "`trader_visible_after_publication` visibility, which is the first of those three "
         "blockers and belongs to whoever owns the catalogue."
     ),
-    # Slice 6 - the trader surface; read, acknowledge and dispute, none of which moves money.
-    "API-PUBLICATION-001": (
-        "M9 slice 6 - the trader surface; read, acknowledge and dispute, none of which moves "
-        "money. Stated by the plan and not yet built; the slice's own pull request discharges it "
-        "and removes this entry in the same commit."
-    ),
-    "SVC-DISPUTE-001": (
-        "M9 slice 6 - the trader surface; read, acknowledge and dispute, none of which moves "
-        "money. Stated by the plan and not yet built; the slice's own pull request discharges it "
-        "and removes this entry in the same commit."
-    ),
-    "AUD-PUBLICATION-001": (
-        "M9 slice 6 - the trader surface; read, acknowledge and dispute, none of which moves "
-        "money. Stated by the plan and not yet built; the slice's own pull request discharges it "
-        "and removes this entry in the same commit."
-    ),
+    # Slice 6 shipped; its three obligations are discharged by citation. `SVC-ACKNOWLEDGE-001`
+    # is new — the plan named the dispute's negative property and not the acknowledgement's,
+    # and both get the same read-back because the safe-looking action is where a convenience
+    # write gets added.
     # Slice 7 - correction and publication N+1; the old version survives, and the gate.
     "SVC-CORRECTION-001": (
         "M9 slice 7 - correction and publication N+1; the old version survives, and the gate. "
