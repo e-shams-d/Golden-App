@@ -509,6 +509,96 @@ def test_resolving_a_dispute_keeps_the_publication_version(world: dict[str, Any]
         engine.dispose()
 
 
+def a_share_file(world: dict[str, Any], case: dict[str, Any]) -> uuid.UUID:
+    """Attach a rendered card to the case's publication, with its bytes in storage.
+
+    Written directly rather than by publishing through the API: slice 5's publish path renders the
+    card and slice 5's tests prove it. What this module owns is who may *download* one.
+    """
+
+    import io
+
+    from app.exports.share_card import render_share_card
+
+    file_id = uuid.uuid4()
+    card = render_share_card({"request_number": "PR-SHARE", "attempts": []}, None)
+    key = f"cards/{file_id}"
+    world["client"].app.state.runtime.storage.write(key, io.BytesIO(card))
+
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            "INSERT INTO file_objects (id, storage_provider, storage_bucket, storage_key, "
+            "original_filename, mime_type_declared, size_bytes, sha256_hash, category, "
+            "visibility_scope, storage_status, scan_status, uploaded_by_actor_type, "
+            "original_or_derived_relation, metadata) "
+            "VALUES (%s, 'local', 'gold', %s, 'result.png', 'image/png', %s, %s, "
+            "'incoming_payment_receipt', 'trader_visible_after_publication', 'available', "
+            "'clean', 'system_worker', 'derived', '{}')",
+            (file_id, key, len(card), "f" * 64),
+        )
+        connection.execute(
+            "UPDATE payment_result_publications SET share_file_id = %s WHERE id = %s",
+            (file_id, case["publication_id"]),
+        )
+        connection.commit()
+    return file_id
+
+
+def test_a_trader_downloads_their_own_result_card(world: dict[str, Any]) -> None:
+    """`FILE-PUBLICATION-002`, doc 05 §20.4's second route.
+
+    Asserted on the PNG magic number rather than only on the content type: a route returning an
+    empty body with the right header would satisfy the header alone.
+    """
+
+    case = a_published_request(world)
+    a_share_file(world, case)
+    sign_in_trader(world, OWNER_PHONE)
+
+    response = world["client"].get(
+        f"/api/v1/me/trader/publications/{case['publication_id']}/share-file"
+    )
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "image/png"
+    assert "attachment" in response.headers["content-disposition"]
+    assert response.content[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_another_trader_cannot_download_the_share_file(world: dict[str, Any]) -> None:
+    """`API-PUBLICATION-001` through a **publication** id rather than a request id.
+
+    A different chain from the read route's — publication → request → owner — and therefore a
+    separate way to get it wrong, which is why it has its own test rather than sharing one.
+    """
+
+    case = a_published_request(world, trader_key="owner")
+    a_share_file(world, case)
+    sign_in_trader(world, OTHER_PHONE)
+
+    response = world["client"].get(
+        f"/api/v1/me/trader/publications/{case['publication_id']}/share-file"
+    )
+    assert response.status_code == 404, (
+        f"a second trader received {response.status_code}. Anything but 404 confirms the card "
+        "exists, which over publication identifiers is an enumeration oracle."
+    )
+
+
+def test_a_publication_with_no_card_answers_404(world: dict[str, Any]) -> None:
+    """`share_file_id` is nullable — a publication citing no evidence gets no card.
+
+    404 rather than a success with no bytes, which a client would write to disk as an empty file.
+    """
+
+    case = a_published_request(world)
+    sign_in_trader(world, OWNER_PHONE)
+
+    response = world["client"].get(
+        f"/api/v1/me/trader/publications/{case['publication_id']}/share-file"
+    )
+    assert response.status_code == 404, response.text
+
+
 def test_a_trader_cannot_respond_before_a_result_is_published(
     world: dict[str, Any],
 ) -> None:

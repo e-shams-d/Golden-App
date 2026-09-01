@@ -39,7 +39,22 @@ DERIVED: Final = "derived"
 PREVIEW: Final = "preview"
 NORMALIZED_PAGE: Final = "normalized_page"
 CROP: Final = "crop"
-DERIVATION_TYPES: Final = (PREVIEW, NORMALIZED_PAGE, CROP)
+# M9 slice 5B. The trader's result card, derived from the evidence crop it displays.
+#
+# **A fourth derivation type rather than an eighth upload purpose**, and that difference is what
+# makes this an implementation decision rather than the owner's. `05_API_Specification.md:991-997`
+# enumerates seven *upload* purposes and `FILE-PURPOSE-001` parses that list, so adding one means
+# amending an approved contract — tried, and the gate refused it. A share card is not uploaded: the
+# platform produces it, and `record_derivation` gives a derived file its **source's** category and
+# visibility rather than a purpose of its own. So the card inherits the crop's
+# `incoming_payment_receipt` and its `trader_visible_after_publication` scope, both already
+# approved. M4's catalogue already describes this shape for the crop itself — "a different file
+# with its own row".
+#
+# `08_Bank_File_and_Result_Processing.md:431` lists what a derivation *records* and enumerates no
+# types, which is why this tuple is ours to extend and document 05's list is not.
+SHARE_CARD: Final = "share_card"
+DERIVATION_TYPES: Final = (PREVIEW, NORMALIZED_PAGE, CROP, SHARE_CARD)
 
 
 @dataclass(frozen=True)

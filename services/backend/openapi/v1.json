@@ -12022,6 +12022,103 @@
         ]
       }
     },
+    "/api/v1/me/trader/publications/{publication_id}/share-file": {
+      "get": {
+        "description": "`GET /api/v1/me/trader/publications/{publication_id}/share-file`, per doc 05 `:1917`.\n\n**Ownership is resolved through the publication's request, not through the file.** A file id is\nthe wrong thing to authorise against — `file_objects` has no trader column and the card is a\nderivation whose visibility it inherits. So the chain is publication → request →\n`require_owned`, and a second trader gets the same 404 as for a publication that is not there.\n\n**Superseded publications are still downloadable, and that is deliberate.** The read route\nabove returns only the active version, because \"what is my result\" has one answer. A card the\ntrader already downloaded and forwarded is a different question: §11.9 keeps old publications\nprecisely so what was shared remains accountable, and refusing the file would leave a document\nin the world that the platform denies having produced.",
+        "operationId": "downloadOwnPaymentResultShareFile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "publication_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Publication Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "There is no published result to respond to."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller is not an active trader."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such request, or it belongs to somebody else. The two are deliberately indistinguishable."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is stale or unreadable."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are required."
+          }
+        },
+        "summary": "Download the result card for the caller's own publication.",
+        "tags": [
+          "trader-publications"
+        ]
+      }
+    },
     "/api/v1/meta/release": {
       "get": {
         "operationId": "getReleaseMetadata",

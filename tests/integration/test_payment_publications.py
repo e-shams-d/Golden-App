@@ -165,6 +165,21 @@ def world(migrated: RuntimeIdentities, tmp_path_factory: Any) -> Iterator[dict[s
     app = create_app(settings=settings)
     app.state.runtime = RuntimeServices.from_settings(settings)
     app.state.accepting_traffic = True
+
+    # **The crop's bytes, not just its row.** M9 slice 5B renders the share card from the evidence
+    # image, and refuses when a `file_objects` row has no stored object — a card that silently
+    # dropped the proof would look complete and be exactly what a trader forwards to argue with.
+    # Before 5B the fixture only needed the row, and four tests here failed the moment the renderer
+    # arrived, correctly.
+    import io as _io
+
+    from PIL import Image as _Image
+
+    _buffer = _io.BytesIO()
+    _Image.new("RGB", (240, 120), "white").save(_buffer, format="PNG")
+    _buffer.seek(0)
+    app.state.runtime.storage.write(f"publications/{ids['crop_file']}", _buffer)
+
     with TestClient(app, base_url="https://admin.localhost") as client:
         yield {
             "client": client,
@@ -523,6 +538,57 @@ def test_a_segment_with_no_crop_is_refused_rather_than_degraded(
     response = preview(world, case["request_id"], primary_evidence_link_id=str(link_id))
     assert response.status_code == 400, response.text
     assert "no crop" in response.text
+    assert publications_of(world, case["request_id"]) == []
+
+
+def test_a_crop_with_no_stored_bytes_refuses_the_publication(
+    world: dict[str, Any],
+) -> None:
+    """M9 slice 5B. A row that says an image exists and storage that disagrees.
+
+    **This test exists because a negative control went uncaught.** The control made the renderer
+    carry on with no evidence, and nothing failed — there was no test for it at all, only a
+    comment in the command saying why it refuses. A card that silently dropped the proof would
+    look complete and be exactly what a trader forwards to argue with.
+
+    `reconcile-storage.sh` is what finds this state operationally; the publish path's job is to
+    refuse rather than to render around it.
+    """
+
+    sign_in_admin(world["client"], "publication_accountant")
+    case = a_paid_request(world)
+
+    # A second crop file whose row exists and whose bytes were never written.
+    ghost = uuid.uuid4()
+    ghost_segment = uuid.uuid4()
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            "INSERT INTO file_objects (id, storage_provider, storage_bucket, storage_key, "
+            "original_filename, mime_type_declared, size_bytes, sha256_hash, category, "
+            "visibility_scope, storage_status, scan_status, uploaded_by_actor_type, "
+            "original_or_derived_relation, metadata) "
+            "VALUES (%s, 'local', 'gold', %s, 'ghost.png', 'image/png', 10, %s, "
+            "'incoming_payment_receipt', 'internal', 'available', 'clean', 'admin_user', "
+            "'derived', '{}')",
+            (ghost, f"publications/missing-{ghost}", "e" * 64),
+        )
+        connection.execute(
+            "INSERT INTO receipt_segments (id, source_file_id, segment_file_id, "
+            "rotation_degrees, creation_method, status, raw_extraction, created_by_actor_type, "
+            "record_version) "
+            "VALUES (%s, %s, %s, 0, 'manual_external_attachment', 'confirmed_linked', '{}', "
+            "'admin_user', 1)",
+            (ghost_segment, world["bundle_file_id"], ghost),
+        )
+        connection.commit()
+
+    link_id = an_evidence_link(world, case, segment_id=ghost_segment)
+    a_resolved_privacy_review(world, ghost_segment)
+
+    assert preview(world, case["request_id"]).status_code == 200
+    response = publish(world, case["request_id"], primary_evidence_link_id=str(link_id))
+    assert response.status_code == 400, response.text
+    assert "no stored bytes" in response.text
     assert publications_of(world, case["request_id"]) == []
 
 

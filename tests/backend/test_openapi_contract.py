@@ -292,6 +292,10 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # pattern — publication operations under the request — is what settled it, and the M9 plan
         # records it as a path M0 owes.
         "correctPaymentResultPublication",
+        # M9 slice 5B. §20.4's second route, which slice 6 left out because `share_file_id` was
+        # null on every row and a route that can only 404 is a promise a client writes code
+        # against. It renders now, so it exists now.
+        "downloadOwnPaymentResultShareFile",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

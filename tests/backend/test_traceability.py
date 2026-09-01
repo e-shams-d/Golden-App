@@ -802,18 +802,6 @@ PENDING: dict[str, str] = {
     # Slice 5 shipped, and its six obligations are discharged by citation rather than recorded
     # here. What remains is the share file, which slice 5B owns and which nothing can order until
     # it exists — `PublishRequest` has no field for it.
-    "FILE-PUBLICATION-001": (
-        "M9 slice 5B - the share file. Slice 5 shipped the publication and moved the renderer "
-        "out: `file_purpose_catalog.yaml` names no publication share file, there is no font "
-        "asset in the repository and no RTL shaping in the backend, and byte-for-byte "
-        "reproduction means pinning a font version. Slice 5 offers no way to ask for a file that "
-        "does not exist, so nothing depends on this yet."
-    ),
-    "FILE-PUBLICATION-002": (
-        "M9 slice 5B - the share file. Its `file_objects` row needs a catalogued purpose and "
-        "`trader_visible_after_publication` visibility, which is the first of those three "
-        "blockers and belongs to whoever owns the catalogue."
-    ),
     # Slice 6 shipped; its three obligations are discharged by citation. `SVC-ACKNOWLEDGE-001`
     # is new — the plan named the dispute's negative property and not the acknowledgement's,
     # and both get the same read-back because the safe-looking action is where a convenience

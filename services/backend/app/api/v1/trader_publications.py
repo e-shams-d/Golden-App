@@ -30,6 +30,7 @@ from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
@@ -49,11 +50,14 @@ from app.core.errors import (
 from app.core.request_context import get_request_id
 from app.core.runtime import RuntimeServices
 from app.core.time import utc_now
+from app.db.models.file_object import FileObject
 from app.db.models.payment_request import PaymentRequest
 from app.db.models.payment_result_publication import (
     PUBLICATION_ACTIVE,
     PaymentResultPublication,
 )
+from app.exports.share_card import SHARE_MEDIA_TYPE
+from app.files.download import FileBytesUnavailableError, open_stream
 from app.security.actor import ActorContext
 from app.security.ownership import require_owned
 from app.security.permissions import declare
@@ -340,6 +344,76 @@ def dispute_result(
         uow.commit()
 
     return response
+
+
+@router.get(
+    "/publications/{publication_id}/share-file",
+    operation_id="downloadOwnPaymentResultShareFile",
+    summary="Download the result card for the caller's own publication.",
+    responses=RESPONSES,
+    dependencies=[trader_only("payment_publication.read_own")],
+    # M4's file download and M7's export download both declare this, and M7's comment predicted
+    # exactly what happened when this route did not: "without it FastAPI describes the 200 as an
+    # empty schema — which the client type generator refuses, correctly". It did refuse, and the
+    # failure surfaced in `pnpm openapi:generate` rather than in any Python gate.
+    response_class=StreamingResponse,
+)
+def own_share_file(
+    publication_id: uuid.UUID,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+) -> StreamingResponse:
+    """`GET /api/v1/me/trader/publications/{publication_id}/share-file`, per doc 05 `:1917`.
+
+    **Ownership is resolved through the publication's request, not through the file.** A file id is
+    the wrong thing to authorise against — `file_objects` has no trader column and the card is a
+    derivation whose visibility it inherits. So the chain is publication → request →
+    `require_owned`, and a second trader gets the same 404 as for a publication that is not there.
+
+    **Superseded publications are still downloadable, and that is deliberate.** The read route
+    above returns only the active version, because "what is my result" has one answer. A card the
+    trader already downloaded and forwarded is a different question: §11.9 keeps old publications
+    precisely so what was shared remains accountable, and refusing the file would leave a document
+    in the world that the platform denies having produced.
+    """
+
+    with runtime.uow_factory() as uow:
+        session = uow.session
+        publication = session.get(PaymentResultPublication, publication_id)
+        if publication is None or publication.share_file_id is None:
+            uow.rollback()
+            raise NotFoundError()
+
+        request = session.get(PaymentRequest, publication.payment_request_id)
+        require_owned(request, request.trader_id if request else None, actor)
+
+        card = session.get(FileObject, publication.share_file_id)
+        if card is None:  # pragma: no cover - the foreign key guarantees it
+            uow.rollback()
+            raise NotFoundError()
+
+        # **`open_stream`, not `storage.open`.** A gate refuses a storage address outside
+        # `app/storage/` and `app/files/`, and it is right to: `StorageError` carries the key in
+        # its message, so an unhandled one puts a storage path in front of a caller. The file
+        # service keeps the address and hands back an iterator.
+        try:
+            stream = open_stream(runtime.storage, card)
+        except FileBytesUnavailableError:
+            # A row without its bytes. 404 rather than 500: the caller cannot act on the
+            # difference, and `reconcile-storage.sh` is what finds it on the operator's side.
+            uow.rollback()
+            raise NotFoundError() from None
+        filename = stream.filename
+        uow.rollback()
+
+    # Streamed rather than buffered, which is what `open_stream` hands back and what M4's and M7's
+    # downloads both do. The card is small, and the reason is not size: reading it into memory
+    # here would make the response's shape differ from every other file route for no gain.
+    return StreamingResponse(
+        stream.chunks,
+        media_type=SHARE_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 __all__ = ["router"]
