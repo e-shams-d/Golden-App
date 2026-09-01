@@ -92,6 +92,10 @@ EXPECTED_TABLES = frozenset(
         # nothing may update except to mark it superseded.
         "gold_sale_orders",
         "gold_sale_pricing_versions",
+        # M10 slice 2, §10.3. A trader's *claim* to have paid. Its `trader_id` is denormalised
+        # from the order so `scoped()` has a column to constrain, and a composite foreign key
+        # keeps the copy honest.
+        "incoming_payment_receipts",
         # M9 slice 7, §13.3. The projection M2's outbox was built to feed and had no consumer for.
         # Insert-only for now, like the row below: nothing marks a notification read, and a grant
         # ahead of the command that needs it is a capability with no caller.

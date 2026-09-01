@@ -303,6 +303,9 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "getGoldSaleOrder",
         "submitGoldSaleOrder",
         "createGoldSalePricingVersion",
+        # M10 slice 2. Document 05 at `:1983`. No `If-Match`: a receipt is a new row, not an edit,
+        # and a trader may legitimately pay in instalments.
+        "submitIncomingPaymentReceipt",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

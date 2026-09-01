@@ -123,6 +123,12 @@ STATUS_COLUMN_TO_AGGREGATE: dict[tuple[str, str], str] = {
     # its aggregate exactly and a mismatch would have failed the migration's own test rather than
     # this one.
     ("gold_sale_orders", "status"): "gold_sale_order",
+    # M10 slice 2. Nine canonical states, no aliases. Two of them — `duplicate_suspected` and
+    # `superseded` — belong to matching and correction and are unreachable until slices 5 and 8;
+    # the CHECK admits all nine anyway, because this gate holds a constraint to its aggregate
+    # *exactly* and narrowing it to what one slice uses would make the next slice's legitimate
+    # value look like drift.
+    ("incoming_payment_receipts", "status"): "incoming_payment_receipt",
 }
 
 # Status columns whose value set is **local to one relation** and is not a lifecycle the catalogue

@@ -816,19 +816,7 @@ PENDING: dict[str, str] = {
     # `catalogued=False` declarations with written reasons, which is M8's shape rather than
     # M9's 'every name is already approved'.
     # Slice 1 shipped; its three obligations are discharged by citation.
-    # Slice 2 - the trader's claim to have paid, which is not itself a payment.
-    "SEC-RECEIPT-001": (
-        "M10 slice 2 - incoming payment receipts. Stated by the plan and not "
-        "yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-        "own pull request discharges it and removes this entry in the same commit."
-    ),
-    "SVC-RECEIPT-001": (
-        "M10 slice 2 - incoming payment receipts. Stated by the plan and not "
-        "yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-        "own pull request discharges it and removes this entry in the same commit."
-    ),
+    # Slice 2 shipped; both obligations are discharged by citation.
     # Slice 3 - the statement file and its versioned import runs. Closes BANK-VER-005.
     "DB-IMPORT-001": (
         "M10 slice 3 - bank statement files and import runs. Stated by the plan and not "

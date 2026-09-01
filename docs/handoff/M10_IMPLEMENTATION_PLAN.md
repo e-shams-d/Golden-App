@@ -163,6 +163,22 @@ A trader says they have paid, and attaches evidence.
   `payment_evidence_submitted` and **changes no confirmed amount**, which is the same negative
   property M9 asserted four times: the human action that looks like it should move money must not.
 
+**As built**, three things are worth carrying to slice 6.
+
+**The two amounts are two columns and the test reads both.** `amount_irr` is claimed,
+`confirmed_amount_irr` is verified, and the three sharpest controls each collapse them in a way
+that looks helpful — fill the confirmation from the claim, mark the order confirmed, or create the
+receipt as `confirmed`. All three are the mistake somebody makes when the two facts look like one.
+
+**An accountant cannot claim on a trader's behalf**, and it is a 403 rather than a convenience.
+"The centre says the trader paid" is a different assertion from "the trader says so", and the audit
+row is where that difference has to survive.
+
+**Two owner checks, deliberately.** The route's `require_owned` and the command's own
+`trader_id` comparison; a control removing only the first went NOT CAUGHT because the second
+answered. Defence in depth rather than a hole — the command's comment says why it re-checks — and
+the control now removes both.
+
 ## Slice 3 — `bank_statement_files` and the import run
 
 ### Goal

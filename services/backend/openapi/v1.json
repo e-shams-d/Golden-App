@@ -3485,6 +3485,227 @@
         "title": "FinalizeVersionRequest",
         "type": "object"
       },
+      "IncomingReceiptRequest": {
+        "additionalProperties": false,
+        "description": "§21.3's body: \"structured fields\" and a reference to an available file.\n\n**No `confirmed_amount_irr` and no `status`.** §21.3 in five words: \"Uploading evidence never\nconfirms payment.\" A trader cannot submit a confirmation, and the strongest way to say so is\nto have nowhere for one to arrive.",
+        "properties": {
+          "amount_irr": {
+            "exclusiveMinimum": 0.0,
+            "title": "Amount Irr",
+            "type": "integer"
+          },
+          "destination_bank_account_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Bank Account Id"
+          },
+          "entered_amount_unit": {
+            "anyOf": [
+              {
+                "maxLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entered Amount Unit"
+          },
+          "entered_amount_value": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entered Amount Value"
+          },
+          "evidence_file_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence File Id"
+          },
+          "payment_at_normalized": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment At Normalized"
+          },
+          "raw_payment_date": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Payment Date"
+          },
+          "sender_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Name"
+          },
+          "source_account_hint": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Account Hint"
+          },
+          "source_bank_name": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Bank Name"
+          },
+          "tracking_number": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracking Number"
+          }
+        },
+        "required": [
+          "amount_irr"
+        ],
+        "title": "IncomingReceiptRequest",
+        "type": "object"
+      },
+      "IncomingReceiptResponse": {
+        "additionalProperties": false,
+        "description": "What comes back. `confirmed_amount_irr` is included **and will be null**.\n\nPresent rather than omitted so a client can see that the centre has not agreed with the figure\nyet — a response that simply left it out would read as though the question had not been asked.",
+        "properties": {
+          "amount_irr": {
+            "title": "Amount Irr",
+            "type": "integer"
+          },
+          "confirmed_amount_irr": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Amount Irr"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "evidence_file_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence File Id"
+          },
+          "gold_sale_order_id": {
+            "format": "uuid",
+            "title": "Gold Sale Order Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "order_status": {
+            "title": "Order Status",
+            "type": "string"
+          },
+          "record_version": {
+            "title": "Record Version",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tracking_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracking Number"
+          }
+        },
+        "required": [
+          "id",
+          "gold_sale_order_id",
+          "amount_irr",
+          "confirmed_amount_irr",
+          "status",
+          "tracking_number",
+          "evidence_file_id",
+          "order_status",
+          "record_version",
+          "created_at"
+        ],
+        "title": "IncomingReceiptResponse",
+        "type": "object"
+      },
       "JobHealth": {
         "additionalProperties": false,
         "properties": {
@@ -10991,6 +11212,146 @@
           }
         },
         "summary": "One order.",
+        "tags": [
+          "gold-sale-orders"
+        ]
+      }
+    },
+    "/api/v1/gold-sale-orders/{order_id}/incoming-payment-receipts": {
+      "post": {
+        "description": "`POST /api/v1/gold-sale-orders/{order_id}/incoming-payment-receipts`, per `:1983`.\n\n**No `If-Match`.** §21.3 shows only an idempotency key, and it is right to: a receipt is a new\nrow rather than a change to an existing one, and the order's version is not what a second\nreceipt would conflict with — a trader may legitimately pay in two instalments.\n\nThe trader is taken from the session. §21.3's body has no `trader_id`, which is the defence\n`app/security/ownership.py` describes: the attack is not validated, it is unrepresentable.",
+        "operationId": "submitIncomingPaymentReceipt",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncomingReceiptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncomingReceiptResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The order is not in a state that permits this."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such order, or it belongs to somebody else. The two are deliberately indistinguishable."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "This order already says exactly this."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is stale or unreadable."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are required."
+          }
+        },
+        "summary": "Tell the centre the order has been paid for, with evidence.",
         "tags": [
           "gold-sale-orders"
         ]

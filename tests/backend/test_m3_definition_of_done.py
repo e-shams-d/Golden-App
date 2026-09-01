@@ -338,6 +338,10 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # Pricing is internal only: `20260801_0008:228` gives `gold_sale.price` to the accountant
     # alone, and a trader pricing their own order is what the separation exists to prevent.
     ("POST", "/api/v1/gold-sale-orders/{order_id}/pricing-versions"): PERMISSION,
+    # M10 slice 2. `DUAL` because the closure carries both names, but the route refuses an
+    # internal caller outright: "the centre says the trader paid" is a different claim from "the
+    # trader says so", and an audit trail must not blur the two.
+    ("POST", "/api/v1/gold-sale-orders/{order_id}/incoming-payment-receipts"): DUAL,
     # M9 slice 5B. Ownership resolved through the publication's *request*: a file id is the wrong
     # thing to authorise against, because `file_objects` has no trader column and the card is a
     # derivation that inherits its visibility.
@@ -845,6 +849,19 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ("POST", "/api/v1/gold-sale-orders/{order_id}/pricing-versions", "permission"): (
         "test_a_manager_cannot_price_an_order"
     ),
+    # M10 slice 2. Two different refusals, so two different tests: a second trader gets 404
+    # because the order is not theirs, and an accountant gets 403 because a claim is the trader's
+    # to make.
+    (
+        "POST",
+        "/api/v1/gold-sale-orders/{order_id}/incoming-payment-receipts",
+        "ownership",
+    ): "test_another_trader_cannot_claim_against_this_order",
+    (
+        "POST",
+        "/api/v1/gold-sale-orders/{order_id}/incoming-payment-receipts",
+        "permission",
+    ): "test_an_accountant_cannot_claim_on_a_traders_behalf",
     # M9 slice 5B. Its own test, not the shared one: this route authorises through a *publication*
     # id rather than a request id, so it is a different chain and a separate way to get it wrong.
     (
