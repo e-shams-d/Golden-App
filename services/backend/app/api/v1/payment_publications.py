@@ -288,6 +288,7 @@ def publish_payment_result(
                 message_to_trader=payload.message_to_trader,
             ),
             uow=uow,
+            storage=runtime.storage,
             policy=PUBLICATION_REDACTION,
             actor=_audit_actor(actor),
             context=AuditContext(request_id=get_request_id()),

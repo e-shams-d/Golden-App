@@ -328,6 +328,10 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
         "/api/v1/me/trader/payment-requests/{request_id}/acknowledge-result",
     ): OWNERSHIP,
     ("POST", "/api/v1/me/trader/payment-requests/{request_id}/dispute-result"): OWNERSHIP,
+    # M9 slice 5B. Ownership resolved through the publication's *request*: a file id is the wrong
+    # thing to authorise against, because `file_objects` has no trader column and the card is a
+    # derivation that inherits its visibility.
+    ("GET", "/api/v1/me/trader/publications/{publication_id}/share-file"): OWNERSHIP,
     # M5 slice 8. The two reads the screens need, and which nothing had built: eleven
     # published operations and only the revision history read. Both are `DUAL` — a trader
     # sees their own through `scoped()`, an accountant sees the queue through
@@ -803,6 +807,13 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
         "/api/v1/me/trader/payment-requests/{request_id}/dispute-result",
         "ownership",
     ): "test_another_trader_gets_404_and_not_403",
+    # M9 slice 5B. Its own test, not the shared one: this route authorises through a *publication*
+    # id rather than a request id, so it is a different chain and a separate way to get it wrong.
+    (
+        "GET",
+        "/api/v1/me/trader/publications/{publication_id}/share-file",
+        "ownership",
+    ): "test_another_trader_cannot_download_the_share_file",
     # M5 slice 8. The two reads, four entries because both are `DUAL`. The ownership pair
     # answers `404` and the permission pair `403`, and each is asserted in its own test
     # rather than shared: the list's ownership case is about which rows come back, and the

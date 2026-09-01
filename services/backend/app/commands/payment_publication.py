@@ -91,6 +91,7 @@ SEC-PUBLICATION-001, AUD-PUBLICATION-002.
 
 from __future__ import annotations
 
+import io
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -107,10 +108,12 @@ from app.audit.writer import AuditActor, AuditContext, AuditEntry, AuditWriter
 from app.commands.manual_review_task import privacy_verification
 from app.core.errors import BusinessRuleViolationError, ConflictError, NotFoundError
 from app.core.hashing import unversioned_digest
+from app.core.hashing import unversioned_digest as payload_digest
 from app.db.concurrency import compare_and_swap
 from app.db.locking import LockScope, LockTarget, lock_rows
 from app.db.models.bank import BankProfile, BankProfileVersion
 from app.db.models.confirmed_evidence_link import LINK_ACTIVE, ConfirmedEvidenceLink
+from app.db.models.file_object import FileObject
 from app.db.models.payment_batch import PaymentAttempt
 from app.db.models.payment_request import PaymentRequest, PaymentRequestRevision
 from app.db.models.payment_result_publication import (
@@ -119,7 +122,16 @@ from app.db.models.payment_result_publication import (
 )
 from app.db.models.receipt_segment import ReceiptSegment
 from app.db.unit_of_work import SqlAlchemyUnitOfWork
+from app.exports.share_card import (
+    FONT_NAME,
+    RENDERER_VERSION,
+    SHARE_MEDIA_TYPE,
+    render_share_card,
+)
+from app.files.derivation import SHARE_CARD, DerivationRequest, record_derivation
+from app.files.download import FileBytesUnavailableError, open_stream
 from app.idempotency import IdempotencyResolver
+from app.storage.interface import StorageBackend
 
 METADATA_SCHEMA = "audit.payment_publication"
 METADATA_VERSION = 1
@@ -248,6 +260,7 @@ def publish_result(
     command: PublishResult,
     *,
     uow: SqlAlchemyUnitOfWork,
+    storage: StorageBackend,
     policy: RedactionPolicy,
     actor: AuditActor,
     context: AuditContext,
@@ -298,6 +311,14 @@ def publish_result(
         content_hash=content_hash,
         published_by_admin_user_id=command.published_by_admin_user_id,
         published_at=now,
+        # **Rendered before the insert, not set afterwards.** `20260831_0031` grants the runtime no
+        # UPDATE on this table at all, so a card attached in a second statement would need a grant
+        # this slice has no other use for — and the first thing that grant would also permit is
+        # rewriting a publication's status outside a correction. Rendering first keeps the row
+        # insert-only and the immutability intact.
+        share_file_id=_render_the_share_card(
+            uow, storage, payload=payload, link=link, request=request, now=now
+        ),
     )
     session.add(publication)
     _flush_or_conflict(uow, str(request.request_number))
@@ -533,6 +554,82 @@ def _safe_evidence_file_id(
             "the only other file this segment has — create the crop first."
         )
     return segment.segment_file_id
+
+
+def _render_the_share_card(
+    uow: SqlAlchemyUnitOfWork,
+    storage: StorageBackend,
+    *,
+    payload: dict[str, Any],
+    link: ConfirmedEvidenceLink | None,
+    request: PaymentRequest,
+    now: datetime,
+) -> uuid.UUID | None:
+    """`FILE-PUBLICATION-001` and `-002`. The card, and the row that accounts for it.
+
+    **A derivation of the crop, not an upload.** `record_derivation` gives the card its source's
+    category and visibility, so it inherits `incoming_payment_receipt` and
+    `trader_visible_after_publication` — both already approved — instead of needing an eighth entry
+    in document 05's upload-purpose list, which `FILE-PURPOSE-001` parses and would refuse.
+
+    **No evidence, no card.** A publication may cite nothing; a result card whose whole subject is
+    the evidence would then be a page of fields with a blank space where the proof should be, and
+    `share_file_id` is nullable precisely so that case has an answer. The trader still sees the
+    publication itself.
+
+    The parameters recorded on the derivation are the publication's **content hash** and version,
+    not the payload: `parameters_hash` refuses floats and the payload is already stored on the row
+    this card belongs to. What the derivation needs to say is *which* publication produced these
+    bytes, and the digest says it in 64 characters.
+    """
+
+    if link is None:
+        return None
+
+    segment = uow.session.get(ReceiptSegment, link.receipt_segment_id)
+    if segment is None or segment.segment_file_id is None:  # pragma: no cover - guarded above
+        raise NotFoundError()
+
+    crop = uow.session.get(FileObject, segment.segment_file_id)
+    if crop is None:  # pragma: no cover - the foreign key guarantees it
+        raise NotFoundError()
+
+    # **`open_stream`, not `storage.open`.** A gate refuses a storage address outside
+    # `app/storage/` and `app/files/`, and its reason is exact: `StorageError` carries the key in
+    # its message, so an unhandled one puts a storage path in front of a caller.
+    try:
+        evidence = b"".join(open_stream(storage, crop).chunks)
+    except FileBytesUnavailableError:
+        # The crop's row exists and its bytes do not. Refused rather than rendered without the
+        # evidence: a card that silently dropped the proof would look complete and be exactly the
+        # thing a trader forwards to argue with.
+        raise PublicationRefused(
+            f"the evidence crop {crop.id} has a record but no stored bytes, so the share card "
+            "would show a result with no proof. `reconcile-storage.sh` finds this state; it is "
+            "not something to render around."
+        ) from None
+
+    card = render_share_card(payload, evidence)
+
+    result = record_derivation(
+        DerivationRequest(
+            source_file_id=crop.id,
+            derivation_type=SHARE_CARD,
+            renderer_version=RENDERER_VERSION,
+            parameters={
+                "payment_request_id": str(request.id),
+                "publication_content_hash": payload_digest(payload),
+                "rendered_at_version": FONT_NAME,
+            },
+            media_type=SHARE_MEDIA_TYPE,
+            filename=f"{request.request_number}-result.png",
+            body=io.BytesIO(card),
+        ),
+        uow=uow,
+        storage=storage,
+        moment=now,
+    )
+    return result.derived_file_id
 
 
 def _flush_or_conflict(uow: SqlAlchemyUnitOfWork, request_number: str) -> None:

@@ -414,16 +414,100 @@ asserted.
 The downloadable artifact §20.2's `include_share_file` asks for, and §17 `:1153` calls the "safe
 evidence/share file".
 
-**Split out of slice 5 because its inputs are not settled, and slice 5's are.** Three things are
-missing and none of them is code:
+**Split out of slice 5 because its inputs were not settled. Two of the three since have been —
+by measurement, not by assumption**, and the correction is worth recording because the original
+list overstated the blocker.
 
-1. `file_purpose_catalog.yaml` has seven purposes and **none of them is a publication share file**.
-   Inventing an eighth is the drift this milestone opened by promising not to do.
-2. There is no font asset in the repository and no RTL text shaping in the backend. A share file
-   for an Iranian trader that cannot render Persian is not a share file, and Iran-only deployment
-   rules out fetching a font at build time from anywhere foreign.
-3. `FILE-PUBLICATION-001` asks for byte-for-byte reproduction, which means pinning a font version —
-   a decision about a committed binary asset, not a rendering detail.
+| Input | First assessment | What checking it found |
+|---|---|---|
+| RTL text shaping in the backend | missing | **Dissolved.** Pillow 12.3.0 in the frozen graph reports `raqm: True`, so `ImageDraw.text(..., direction="rtl", language="fa")` shapes Persian and applies bidi natively. **No new dependency.** |
+| Which font, and vendored or fetched | undecided | **Decided by precedent.** `infra/scripts/refresh-webfont.sh` settled it for the two frontend apps and argues it at length: Vazirmatn, SIL OFL 1.1, **committed rather than installed**, because Iran cannot reach the font hosts and the image build has no registry. |
+| A FreeType-readable copy of that font | looked like the one real blocker | **Resolved, from the asset the repo already vendors.** `Vazirmatn-Variable.woff2` was converted to `services/backend/app/exports/fonts/Vazirmatn-Regular.ttf` with a throwaway `uv run --with fonttools` — the tool is fetched for the run and is **not** a project dependency, which is the same shape as `refresh-webfont.sh`: a once-a-year human operation whose *output* is committed. Nothing was downloaded from a geo-blocked host; the font is the one already approved. |
+| `file_purpose_catalog.yaml` has no publication share file | inventing one is drift | **Still blocked, and for a sharper reason than first recorded.** It is *not* the M0 checksum chain: that manifest hashes seventeen files and this catalogue is not among them. It is that the catalogue's seven purposes are `05_API_Specification.md:991-997` **verbatim**, and `FILE-PURPOSE-001` parses the specification and compares. Adding an eighth row was tried and the gate failed exactly as designed; the row was reverted. Amending the list means amending an approved API contract. |
+
+**The font is instanced at `wght=400`, and that is the reproducibility decision.** A variable font
+is many typefaces in one file; asking FreeType for "Vazirmatn" without naming an instance means the
+default instance today and whatever the default becomes after an upgrade. `FILE-PUBLICATION-001`
+cannot rest on that, so the weight is pinned in the committed artifact rather than at render time
+— the same argument `app/exports/crop.py` makes for `RENDER_SCALE` being a constant.
+
+**Shaping was verified rather than assumed**, and the first two attempts to verify it were wrong,
+which is worth recording because both failures were the shapes this milestone kept meeting:
+
+1. The canvas was 400px and the text 193px wide, anchored at x=380 — most of it rendered off the
+   edge, giving 76 dark pixels and the conclusion "the font has no coverage". A check whose canvas
+   cannot hold its subject is insensitive by construction.
+2. Comparing `direction="rtl"` against `"ltr"` produced identical bytes, and that is *correct*: for
+   a pure-Persian string the Unicode bidi algorithm orders it the same either way, so the base
+   direction hint changes nothing. The sabotage did not break the property.
+
+What actually proves shaping is contextual joining: `getlength("پپ")` is **34.7px** against
+**49.0px** for two isolated glyphs, and `"پرداخت"` is **83.0px** against **97.2px** naive. Persian
+letters connect, which is the thing a renderer without Raqm cannot do.
+
+**Two routes existed and Route B was taken**, at a cost of one value in a tuple this repository
+owns.
+
+*Route A — an eighth upload purpose.* Amend `05_API_Specification.md:991-997`, then the catalogue,
+then the inlined copy. Three gates keep them aligned, so the change is safe once made — but the
+first step is editing an approved API contract, which is the owner's. **Tried and reverted:** the
+catalogue row alone failed `FILE-PURPOSE-001`, exactly as designed.
+
+*Route B — a derivation, which is what the platform already does for files it produces itself.*
+`record_derivation` gives a derived file its **source's** category and visibility rather than a
+purpose of its own, and M4's catalogue already describes this exact shape: of
+`bank_result_bundle_source` it says "what a trader eventually sees is a crop derived from it (M8),
+which is a different file with its own row". A share card built from the primary evidence crop
+inherits `incoming_payment_receipt` — already
+`visibility_scope: trader_visible_after_publication`, already approved — and needs **no new upload
+purpose at all**. What it does need is a fourth value in `DERIVATION_TYPES`, which is
+implementation-owned: doc 08 `:431` lists what a derivation *records* and enumerates no types.
+
+**Route B was chosen.** It reuses the mechanism M8 built, keeps the trader-visible file
+provenance-linked to the evidence it shows, and touches no approved document. Route A's only real
+advantage is that a share card is conceptually its own kind of thing — a naming preference, not a
+control.
+
+### What it changes
+
+- `app/exports/share_card.py` — pure rendering, `crop.py`'s separation and its discipline.
+- `services/backend/app/exports/fonts/Vazirmatn-Regular.ttf` and its licence, converted from the
+  `.woff2` the repository already vendors and **instanced at `wght=400`**.
+- `SHARE_CARD` in `DERIVATION_TYPES`, and the card recorded through `record_derivation` so it
+  inherits the crop's category and visibility.
+- The card is rendered **before** the publication row is inserted, so `share_file_id` is set at
+  insert. `20260831_0031` grants no UPDATE on that table, and a card attached afterwards would need
+  a grant whose first other use is rewriting a publication's status outside a correction.
+- Doc 05 §20.4's second route, which slice 6 deliberately left out while every `share_file_id` was
+  null.
+
+### What proves it
+
+- `FILE-PUBLICATION-001` — two renders of one publication are byte-identical, and the card carries
+  no PNG timestamp. Paired with controls that add one, swap the font for Pillow's bundled default,
+  and drop the font instance from the provenance string.
+- `FILE-PUBLICATION-002` — the derivation row names its source and its renderer version, and the
+  trader download resolves ownership through the publication's **request**: a file id is the wrong
+  thing to authorise against, because `file_objects` has no trader column.
+- The font covers Persian **and joins it**: `getlength("پپ")` is 34.7px against 49.0px for two
+  isolated glyphs. Coverage and shaping are different claims and only the second proves Raqm works.
+
+**Two more negative controls went NOT CAUGHT, and one of them found a missing gate again.** The
+control that made the renderer carry on without evidence failed nothing — because *nothing tested
+it*: the refusal existed with a comment explaining itself and no test.
+`test_a_crop_with_no_stored_bytes_refuses_the_publication` exists because of that control. The
+other was the third meaning: removing one of two guards on a missing card left the second still
+answering 404, which is defence in depth rather than a hole, so the control now removes the pair.
+
+**A text scan matched its own justification, for the ninth time in this project.** The test that
+forbids a system-font lookup searched the source for the matcher's name and found it in the
+module's docstring explaining why it does not use one. Rewritten as an AST walk over called
+function names.
+
+`FILE-PUBLICATION-001` asks for byte-for-byte reproduction, which is why the font is a *committed,
+version-pinned* asset rather than whatever the base image happens to ship: `fc-match ":lang=fa"` on
+this machine returns DejaVu Sans, which has no Arabic script at all. A renderer that fell back to
+the system font would produce boxes, and would produce *different* boxes on a different image.
 
 Slice 5 therefore offers **no way to ask for one**: `include_share_file` and `share_format` are
 absent from the request model, the way the amount is absent from a confirmation. A flag a caller
