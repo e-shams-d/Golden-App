@@ -103,6 +103,14 @@ NON_MONETARY_NUMERIC: dict[tuple[str, str], str] = {
         "payment_attempts, so no arithmetic on this column can reach money. NUMERIC rather than "
         "a float because the CHECK's bounds have to hold exactly at 0 and at 1."
     ),
+    ("gold_sale.py", "gold_weight"): (
+        "A mass, not money. 04_Database_Schema.md:178 specifies NUMERIC(20, 6) verbatim under "
+        "§4.5 'Weight and purity', with the unit stored explicitly beside it. Every amount M1 "
+        "through M9 stores is BigInteger rials and a weight cannot be; a float would reach "
+        "app/core/hashing.py, which refuses one outright because two masses a human calls equal "
+        "would hash differently. The rial columns on both gold-sale tables stay BigInteger, so "
+        "no arithmetic on this column produces money without a unit price the schema also holds."
+    ),
 }
 
 # Any column whose name suggests money. Deliberately broad: this decides what the exemption above

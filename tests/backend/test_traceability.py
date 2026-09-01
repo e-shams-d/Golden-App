@@ -815,25 +815,7 @@ PENDING: dict[str, str] = {
     # — two catalogued audit actions against twelve capabilities — so its plan expects
     # `catalogued=False` declarations with written reasons, which is M8's shape rather than
     # M9's 'every name is already approved'.
-    # Slice 1 - the order aggregate and its immutable pricing versions.
-    "DB-GOLDSALE-001": (
-        "M10 slice 1 - gold sale orders and pricing versions. Stated by the plan and not "
-        "yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-        "own pull request discharges it and removes this entry in the same commit."
-    ),
-    "SVC-PRICING-001": (
-        "M10 slice 1 - gold sale orders and pricing versions. Stated by the plan and not "
-        "yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-        "own pull request discharges it and removes this entry in the same commit."
-    ),
-    "SVC-PRICING-002": (
-        "M10 slice 1 - gold sale orders and pricing versions. Stated by the plan and not "
-        "yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-        "own pull request discharges it and removes this entry in the same commit."
-    ),
+    # Slice 1 shipped; its three obligations are discharged by citation.
     # Slice 2 - the trader's claim to have paid, which is not itself a payment.
     "SEC-RECEIPT-001": (
         "M10 slice 2 - incoming payment receipts. Stated by the plan and not "

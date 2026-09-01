@@ -2351,6 +2351,50 @@
         "title": "CreateDraftRequest",
         "type": "object"
       },
+      "CreateOrderRequest": {
+        "additionalProperties": false,
+        "description": "§21.1's body, field for field.\n\n**No amount and no price.** What a trader orders is a weight; what it costs is the centre's,\nthrough a pricing version. A price field here would be a number a client could disagree with,\nwhich is the shape M9 refused three times.",
+        "properties": {
+          "gold_purity": {
+            "maxLength": 16,
+            "minLength": 1,
+            "title": "Gold Purity",
+            "type": "string"
+          },
+          "gold_type": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Gold Type",
+            "type": "string"
+          },
+          "gold_weight": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Gold Weight"
+          },
+          "weight_unit": {
+            "maxLength": 16,
+            "minLength": 1,
+            "title": "Weight Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "gold_type",
+          "gold_weight",
+          "weight_unit",
+          "gold_purity"
+        ],
+        "title": "CreateOrderRequest",
+        "type": "object"
+      },
       "CreateProfileRequest": {
         "additionalProperties": false,
         "properties": {
@@ -3985,6 +4029,105 @@
         "title": "MarkSentRequest",
         "type": "object"
       },
+      "OrderResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_pricing_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Pricing Version Id"
+          },
+          "expected_amount_irr": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Amount Irr"
+          },
+          "final_amount_irr": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Amount Irr"
+          },
+          "gold_purity": {
+            "title": "Gold Purity",
+            "type": "string"
+          },
+          "gold_type": {
+            "title": "Gold Type",
+            "type": "string"
+          },
+          "gold_weight": {
+            "title": "Gold Weight",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "order_number": {
+            "title": "Order Number",
+            "type": "string"
+          },
+          "record_version": {
+            "title": "Record Version",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "trader_id": {
+            "format": "uuid",
+            "title": "Trader Id",
+            "type": "string"
+          },
+          "weight_unit": {
+            "title": "Weight Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "order_number",
+          "trader_id",
+          "status",
+          "gold_type",
+          "gold_weight",
+          "weight_unit",
+          "gold_purity",
+          "expected_amount_irr",
+          "final_amount_irr",
+          "current_pricing_version_id",
+          "record_version",
+          "created_at"
+        ],
+        "title": "OrderResponse",
+        "type": "object"
+      },
       "OutboxHealth": {
         "additionalProperties": false,
         "properties": {
@@ -4282,6 +4425,132 @@
           "warnings"
         ],
         "title": "PreviewValidation",
+        "type": "object"
+      },
+      "PricingVersionRequest": {
+        "additionalProperties": false,
+        "description": "§21.2's body.\n\n`entered_amount_value` and `_unit` are **provenance**, not the canonical value — document 04\n§4.4's rule and M5's `entered_amount` pair. The canonical amount is computed from the unit\nprice and the weight and is not a field here.",
+        "properties": {
+          "entered_amount_unit": {
+            "anyOf": [
+              {
+                "maxLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entered Amount Unit"
+          },
+          "entered_amount_value": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entered Amount Value"
+          },
+          "pricing_note": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Note"
+          },
+          "unit_price_irr": {
+            "exclusiveMinimum": 0.0,
+            "title": "Unit Price Irr",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "unit_price_irr"
+        ],
+        "title": "PricingVersionRequest",
+        "type": "object"
+      },
+      "PricingVersionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expected_amount_irr": {
+            "title": "Expected Amount Irr",
+            "type": "integer"
+          },
+          "gold_purity": {
+            "title": "Gold Purity",
+            "type": "string"
+          },
+          "gold_weight": {
+            "title": "Gold Weight",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "pricing_method": {
+            "title": "Pricing Method",
+            "type": "string"
+          },
+          "superseded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded At"
+          },
+          "unit_price_irr": {
+            "title": "Unit Price Irr",
+            "type": "integer"
+          },
+          "version_number": {
+            "title": "Version Number",
+            "type": "integer"
+          },
+          "weight_unit": {
+            "title": "Weight Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version_number",
+          "pricing_method",
+          "gold_weight",
+          "weight_unit",
+          "gold_purity",
+          "unit_price_irr",
+          "expected_amount_irr",
+          "content_hash",
+          "created_at",
+          "superseded_at"
+        ],
+        "title": "PricingVersionResponse",
         "type": "object"
       },
       "PriorDecision": {
@@ -10376,6 +10645,656 @@
         "summary": "Preview File",
         "tags": [
           "files"
+        ]
+      }
+    },
+    "/api/v1/gold-sale-orders": {
+      "get": {
+        "description": "`GET /api/v1/gold-sale-orders`, per `:1950` — \"scoped list\".\n\nA trader sees their own through `scoped()`, which takes the actor rather than an id so the\npredicate cannot be written any other way. An internal caller sees every order.",
+        "operationId": "listGoldSaleOrders",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OrderResponse"
+                  },
+                  "title": "Response Listgoldsaleorders",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The order is not in a state that permits this."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such order, or it belongs to somebody else. The two are deliberately indistinguishable."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "This order already says exactly this."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is stale or unreadable."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are required."
+          }
+        },
+        "summary": "Orders the caller may see.",
+        "tags": [
+          "gold-sale-orders"
+        ]
+      },
+      "post": {
+        "description": "`POST /api/v1/gold-sale-orders`, per `:1951`.\n\n**No `If-Match`.** There is no prior version of a thing that does not exist yet; the\n`Idempotency-Key` is what makes a retried creation return the first order rather than a second.",
+        "operationId": "createGoldSaleOrder",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The order is not in a state that permits this."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such order, or it belongs to somebody else. The two are deliberately indistinguishable."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "This order already says exactly this."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is stale or unreadable."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are required."
+          }
+        },
+        "summary": "Place a gold sale order.",
+        "tags": [
+          "gold-sale-orders"
+        ]
+      }
+    },
+    "/api/v1/gold-sale-orders/{order_id}": {
+      "get": {
+        "description": "`GET /api/v1/gold-sale-orders/{id}`, per `:1952`.\n\nA second trader gets 404 rather than 403: an authorisation error over a guessable identifier\ntells them the order exists, which `app/security/ownership.py` refuses to do.",
+        "operationId": "getGoldSaleOrder",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The order is not in a state that permits this."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such order, or it belongs to somebody else. The two are deliberately indistinguishable."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "This order already says exactly this."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is stale or unreadable."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are required."
+          }
+        },
+        "summary": "One order.",
+        "tags": [
+          "gold-sale-orders"
+        ]
+      }
+    },
+    "/api/v1/gold-sale-orders/{order_id}/pricing-versions": {
+      "post": {
+        "description": "`POST /api/v1/gold-sale-orders/{order_id}/pricing-versions`, per `:1971`.\n\n**Internal only**, and `requires(...)` rather than the dual guard above: `20260801_0008:228`\ngives `gold_sale.price` to the accountant alone, and a trader pricing their own order is the\nthing the separation exists to prevent.\n\n§21.2: \"Stores exact amount provenance and does not overwrite earlier pricing versions.\" Both\nhalves are the command's — `entered_amount_*` is the provenance and the predecessor is marked\nsuperseded rather than edited.",
+        "operationId": "createGoldSalePricingVersion",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PricingVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PricingVersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The order is not in a state that permits this."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such order, or it belongs to somebody else. The two are deliberately indistinguishable."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "This order already says exactly this."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is stale or unreadable."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are required."
+          }
+        },
+        "summary": "Price the order, as a new immutable snapshot.",
+        "tags": [
+          "gold-sale-orders"
+        ]
+      }
+    },
+    "/api/v1/gold-sale-orders/{order_id}/submit": {
+      "post": {
+        "description": "`POST /api/v1/gold-sale-orders/{id}/submit`, per `:1953` — \"trader/admin submit\".",
+        "operationId": "submitGoldSaleOrder",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The order is not in a state that permits this."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such order, or it belongs to somebody else. The two are deliberately indistinguishable."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "This order already says exactly this."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is stale or unreadable."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are required."
+          }
+        },
+        "summary": "Hand the order to the centre.",
+        "tags": [
+          "gold-sale-orders"
         ]
       }
     },

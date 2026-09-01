@@ -296,6 +296,13 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # null on every row and a route that can only 404 is a promise a client writes code
         # against. It renders now, so it exists now.
         "downloadOwnPaymentResultShareFile",
+        # M10 slice 1. Document 05 at `:1948` and `:1971`. Four of §21.1's eight — request-payment,
+        # cancel and close belong to slices that have states to guard.
+        "createGoldSaleOrder",
+        "listGoldSaleOrders",
+        "getGoldSaleOrder",
+        "submitGoldSaleOrder",
+        "createGoldSalePricingVersion",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

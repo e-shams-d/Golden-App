@@ -26,6 +26,7 @@ from app.db.models.configuration import (
 )
 from app.db.models.confirmed_evidence_link import ConfirmedEvidenceLink
 from app.db.models.file_object import FileDerivation, FileLink, FileObject
+from app.db.models.gold_sale import GoldSaleOrder, GoldSalePricingVersion
 from app.db.models.idempotency_record import IdempotencyRecord
 from app.db.models.identity import AdminUser, TraderUser
 from app.db.models.manual_review_task import ManualReviewTask
@@ -70,6 +71,8 @@ __all__ = [
     "FileDerivation",
     "FileLink",
     "FileObject",
+    "GoldSaleOrder",
+    "GoldSalePricingVersion",
     "IdempotencyRecord",
     "LegalHold",
     "ManualReviewTask",

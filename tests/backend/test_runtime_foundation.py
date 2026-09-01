@@ -87,6 +87,11 @@ EXPECTED_TABLES = frozenset(
         "payment_batch_items",
         "payment_batch_versions",
         "payment_batches",
+        # M10 slice 1, §10.1-10.2. The first tables in this project about money coming *in*, and
+        # M5's split reused: a mutable order carrying no price, and an immutable pricing snapshot
+        # nothing may update except to mark it superseded.
+        "gold_sale_orders",
+        "gold_sale_pricing_versions",
         # M9 slice 7, §13.3. The projection M2's outbox was built to feed and had no consumer for.
         # Insert-only for now, like the row below: nothing marks a notification read, and a grant
         # ahead of the command that needs it is a capability with no caller.
