@@ -806,8 +806,139 @@ PENDING: dict[str, str] = {
     # is new — the plan named the dispute's negative property and not the acknowledgement's,
     # and both get the same read-back because the safe-looking action is where a convenience
     # write gets added.
-    # Slices 7 and 7B shipped. Every M9 obligation is now discharged by citation except the
-    # share file's two, which slice 5B owns and which nothing can order until it exists.
+    # Slices 7 and 7B shipped, and so did 5B. **Every M9 obligation is discharged by
+    # citation; nothing from that milestone is left standing in this table.**
+    #
+    # --- M10, stated by `docs/handoff/M10_IMPLEMENTATION_PLAN.md` and not yet built ---
+    #
+    # Twenty-one entries, the largest block this table has carried. M10's governance is thin
+    # — two catalogued audit actions against twelve capabilities — so its plan expects
+    # `catalogued=False` declarations with written reasons, which is M8's shape rather than
+    # M9's 'every name is already approved'.
+    # Slice 1 - the order aggregate and its immutable pricing versions.
+    "DB-GOLDSALE-001": (
+        "M10 slice 1 - gold sale orders and pricing versions. Stated by the plan and not "
+        "yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+        "own pull request discharges it and removes this entry in the same commit."
+    ),
+    "SVC-PRICING-001": (
+        "M10 slice 1 - gold sale orders and pricing versions. Stated by the plan and not "
+        "yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+        "own pull request discharges it and removes this entry in the same commit."
+    ),
+    "SVC-PRICING-002": (
+        "M10 slice 1 - gold sale orders and pricing versions. Stated by the plan and not "
+        "yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+        "own pull request discharges it and removes this entry in the same commit."
+    ),
+    # Slice 2 - the trader's claim to have paid, which is not itself a payment.
+    "SEC-RECEIPT-001": (
+        "M10 slice 2 - incoming payment receipts. Stated by the plan and not "
+        "yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+        "own pull request discharges it and removes this entry in the same commit."
+    ),
+    "SVC-RECEIPT-001": (
+        "M10 slice 2 - incoming payment receipts. Stated by the plan and not "
+        "yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+        "own pull request discharges it and removes this entry in the same commit."
+    ),
+    # Slice 3 - the statement file and its versioned import runs. Closes BANK-VER-005.
+    "DB-IMPORT-001": (
+        "M10 slice 3 - bank statement files and import runs. Stated by the plan and not "
+        "yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+        "own pull request discharges it and removes this entry in the same commit."
+    ),
+    "SVC-IMPORT-001": (
+        "M10 slice 3 - bank statement files and import runs. Stated by the plan and not "
+        "yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+        "own pull request discharges it and removes this entry in the same commit."
+    ),
+    "TRACE-IMPORT-001": (
+        "M10 slice 3 - bank statement files and import runs. Stated by the plan and not "
+        "yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+        "own pull request discharges it and removes this entry in the same commit."
+    ),
+    # Slice 4 - immutable parsed rows, and the three columns document 04 forbids.
+    "DB-ROW-001": (
+        "M10 slice 4 - bank statement rows. Stated by the plan and not yet built; the slice's "
+        "own pull request discharges it and removes this entry in the same commit."
+    ),
+    "SVC-ROW-001": (
+        "M10 slice 4 - bank statement rows. Stated by the plan and not yet built; the slice's "
+        "own pull request discharges it and removes this entry in the same commit."
+    ),
+    "SVC-FINGERPRINT-001": (
+        "M10 slice 4 - bank statement rows. Stated by the plan and not yet built; the slice's "
+        "own pull request discharges it and removes this entry in the same commit."
+    ),
+    # Slice 5 - matches as their own rows: a candidate, never a truth.
+    "DB-MATCH-001": (
+        "M10 slice 5 - incoming payment matches. Stated by the plan and not yet built; the slice's "
+        "own pull request discharges it and removes this entry in the same commit."
+    ),
+    "CON-MATCH-001": (
+        "M10 slice 5 - incoming payment matches. Stated by the plan and not yet built; the slice's "
+        "own pull request discharges it and removes this entry in the same commit."
+    ),
+    # Slice 6 - confirming an incoming payment; partial and excess are never silently full.
+    "SVC-INCOMING-001": (
+        "M10 slice 6 - confirming an incoming payment. Stated by the plan and not "
+        "yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+        "own pull request discharges it and removes this entry in the same commit."
+    ),
+    "SVC-INCOMING-002": (
+        "M10 slice 6 - confirming an incoming payment. Stated by the plan and not "
+        "yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+        "own pull request discharges it and removes this entry in the same commit."
+    ),
+    "AUD-INCOMING-001": (
+        "M10 slice 6 - confirming an incoming payment. Stated by the plan and not "
+        "yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+        "own pull request discharges it and removes this entry in the same commit."
+    ),
+    # Slice 7 - dispatch, settlement, and the guard written last on purpose.
+    "SEC-DISPATCH-001": (
+        "M10 slice 7 - dispatch and the payment guard. Stated by the plan and not "
+        "yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+        "own pull request discharges it and removes this entry in the same commit."
+    ),
+    "SVC-DISPATCH-001": (
+        "M10 slice 7 - dispatch and the payment guard. Stated by the plan and not "
+        "yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+        "own pull request discharges it and removes this entry in the same commit."
+    ),
+    "SVC-SETTLEMENT-001": (
+        "M10 slice 7 - dispatch and the payment guard. Stated by the plan and not "
+        "yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+        "own pull request discharges it and removes this entry in the same commit."
+    ),
+    # Slice 8 - correction, the trader surface, and the milestone gate.
+    "SVC-GOLDCORRECT-001": (
+        "M10 slice 8 - correction and the Definition of Done. Stated by the plan and not "
+        "yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+        "own pull request discharges it and removes this entry in the same commit."
+    ),
+    "TRACE-M10-001": (
+        "M10 slice 8 - correction and the Definition of Done. Stated by the plan and not "
+        "yet built; the slice's own pull request discharges it and "
+        "removes this entry in the same commit."
+        "own pull request discharges it and removes this entry in the same commit."
+    ),
 }
 
 
