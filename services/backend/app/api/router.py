@@ -11,6 +11,7 @@ from app.api.v1.beneficiaries import router as beneficiaries_router
 from app.api.v1.center_profile import router as center_profile_router
 from app.api.v1.evidence_links import router as evidence_links_router
 from app.api.v1.files import router as files_router
+from app.api.v1.gold_sale_orders import router as gold_sale_orders_router
 from app.api.v1.health import router as health_router
 from app.api.v1.manual_review_tasks import router as manual_review_tasks_router
 from app.api.v1.matching_candidates import router as matching_candidates_router
@@ -79,3 +80,6 @@ api_v1_router.include_router(payment_publications_router)
 # the `/me/trader` prefix because document 05 puts them both there, and `test_trader_surface_
 # isolation.py` finds both by reading the routes rather than from a list either could fall off.
 api_v1_router.include_router(trader_publications_router)
+# M10 slice 1. The other direction of the business: a trader buying gold rather than paying a
+# beneficiary. Four of §21.1s eight routes; the rest belong to slices that have states to guard.
+api_v1_router.include_router(gold_sale_orders_router)

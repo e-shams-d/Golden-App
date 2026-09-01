@@ -141,4 +141,9 @@ from __future__ import annotations
 # the one grant `20260831_0031` deliberately withheld, arriving with the correction that needs it.
 # `summary_payload` and `content_hash` stay unwritable, which is what makes "the previous version
 # is preserved" a property of the database rather than of a code branch.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260903_0034"})
+# 20260904_0035 opens M10 with `gold_sale_orders` and `gold_sale_pricing_versions`, §10.1-10.2 —
+# the first tables in this project about money coming *in*. M5's split reused: a mutable aggregate
+# carrying no price, and an immutable snapshot with a monotonic version and a content hash, joined
+# by a deferrable composite foreign key so one order cannot point at another's pricing.
+# `gold_weight` is the first non-integer quantity the system stores, `NUMERIC(20, 6)` per §4.5.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260904_0035"})

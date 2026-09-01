@@ -117,6 +117,12 @@ STATUS_COLUMN_TO_AGGREGATE: dict[tuple[str, str], str] = {
     # constraint to its aggregate *exactly* — narrowing it to what one slice happens to use would
     # make the next slice's legitimate value look like drift.
     ("notifications", "status"): "notification",
+    # M10 slice 1. Eighteen canonical states, no aliases, nothing unresolved — the catalogue
+    # settles this aggregate completely, and its list is `04_Database_Schema.md:711`'s verbatim.
+    # Checked value by value before the CHECK was written, because this gate holds a constraint to
+    # its aggregate exactly and a mismatch would have failed the migration's own test rather than
+    # this one.
+    ("gold_sale_orders", "status"): "gold_sale_order",
 }
 
 # Status columns whose value set is **local to one relation** and is not a lifecycle the catalogue

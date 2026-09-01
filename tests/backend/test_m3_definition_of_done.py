@@ -328,6 +328,16 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
         "/api/v1/me/trader/payment-requests/{request_id}/acknowledge-result",
     ): OWNERSHIP,
     ("POST", "/api/v1/me/trader/payment-requests/{request_id}/dispute-result"): OWNERSHIP,
+    # M10 slice 1. Four of §21.1's eight routes. `DUAL` for the four a trader touches — a trader
+    # session holds no permission at all, so ownership does the work while the closure carries the
+    # catalogued name for `test_permission_guards.py` to see.
+    ("POST", "/api/v1/gold-sale-orders"): DUAL,
+    ("GET", "/api/v1/gold-sale-orders"): DUAL,
+    ("GET", "/api/v1/gold-sale-orders/{order_id}"): DUAL,
+    ("POST", "/api/v1/gold-sale-orders/{order_id}/submit"): DUAL,
+    # Pricing is internal only: `20260801_0008:228` gives `gold_sale.price` to the accountant
+    # alone, and a trader pricing their own order is what the separation exists to prevent.
+    ("POST", "/api/v1/gold-sale-orders/{order_id}/pricing-versions"): PERMISSION,
     # M9 slice 5B. Ownership resolved through the publication's *request*: a file id is the wrong
     # thing to authorise against, because `file_objects` has no trader column and the card is a
     # derivation that inherits its visibility.
@@ -807,6 +817,34 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
         "/api/v1/me/trader/payment-requests/{request_id}/dispute-result",
         "ownership",
     ): "test_another_trader_gets_404_and_not_403",
+    # M10 slice 1. The ownership half is one test over the routes that name an order — the claim
+    # is "a second trader cannot tell this order exists", which is a property of the surface. The
+    # list's ownership case is separate because it is about which rows come back, not about a 404.
+    ("POST", "/api/v1/gold-sale-orders", "ownership"): (
+        "test_a_traders_list_holds_only_their_own_orders"
+    ),
+    ("POST", "/api/v1/gold-sale-orders", "permission"): "test_a_manager_cannot_price_an_order",
+    ("GET", "/api/v1/gold-sale-orders", "ownership"): (
+        "test_a_traders_list_holds_only_their_own_orders"
+    ),
+    ("GET", "/api/v1/gold-sale-orders", "permission"): "test_an_accountant_sees_every_order",
+    ("GET", "/api/v1/gold-sale-orders/{order_id}", "ownership"): (
+        "test_another_trader_cannot_see_or_submit_the_order"
+    ),
+    ("GET", "/api/v1/gold-sale-orders/{order_id}", "permission"): (
+        "test_an_accountant_sees_every_order"
+    ),
+    ("POST", "/api/v1/gold-sale-orders/{order_id}/submit", "ownership"): (
+        "test_another_trader_cannot_see_or_submit_the_order"
+    ),
+    ("POST", "/api/v1/gold-sale-orders/{order_id}/submit", "permission"): (
+        "test_a_manager_cannot_price_an_order"
+    ),
+    # Pricing is internal only, and the manager is the sharp negative: it holds `gold_sale.read`
+    # and not `.price`, so a guard asking for "some gold-sale grant" would let it through.
+    ("POST", "/api/v1/gold-sale-orders/{order_id}/pricing-versions", "permission"): (
+        "test_a_manager_cannot_price_an_order"
+    ),
     # M9 slice 5B. Its own test, not the shared one: this route authorises through a *publication*
     # id rather than a request id, so it is a different chain and a separate way to get it wrong.
     (

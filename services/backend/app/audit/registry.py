@@ -965,6 +965,53 @@ CORRECT_PAYMENT_PUBLICATION = CommandNames(
 )
 
 
+# --- M10 slice 1: the gold sale order ------------------------------------------
+#
+# **None of these three is catalogued, and the M10 plan predicted it.**
+# `audit_outbox_catalog.yaml` names `gold_sale.dispatched` and `incoming_payment.confirmed` for the
+# whole milestone — two actions against §18 `:1212`'s twelve capabilities. G-3 records that ten
+# capabilities have no catalogued action and that M10 is shaped like M8, which shipped seven
+# declarations, rather than like M9, which shipped one.
+#
+# So these are declared rather than invented: each names the approved permission its route already
+# uses, and each is an instance of DOC-CONFLICT-052. M0 owes the names.
+
+_GOLD_SALE_REASON = (
+    "M10 slice 1. `audit_outbox_catalog.yaml` names only `gold_sale.dispatched` and "
+    "`incoming_payment.confirmed` for this milestone, and nothing for creating, submitting or "
+    "pricing an order — the M10 plan's G-3, which counted ten of twelve capabilities with no "
+    "catalogued action before any code was written. Implemented against {permission}, the "
+    "approved permission the route already requires. The name follows the aggregate's catalogued "
+    "spelling and must be renamed to whatever M0 approves."
+)
+
+CREATE_GOLD_SALE_ORDER = CommandNames(
+    audit_action="gold_sale.created",
+    # No outbox event. A draft order nobody has submitted is a form somebody is filling in, and
+    # nothing outside the platform can act on one.
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=_GOLD_SALE_REASON.format(permission="`gold_sale.create_own`"),
+)
+
+SUBMIT_GOLD_SALE_ORDER = CommandNames(
+    audit_action="gold_sale.submitted",
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=_GOLD_SALE_REASON.format(permission="`gold_sale.review`"),
+)
+
+PRICE_GOLD_SALE_ORDER = CommandNames(
+    audit_action="gold_sale.priced",
+    # Also none, and this one is worth stating: a price is what the *trader* must be told, and
+    # M9 slice 7's `notifications` is the mechanism for telling them. That is slice 8's wiring,
+    # not an event invented here — `audit_outbox_catalog.yaml` lists no gold-sale event at all.
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=_GOLD_SALE_REASON.format(permission="`gold_sale.price`"),
+)
+
+
 # Every `CommandNames` defined above, and the gate that reads this tuple is the only thing
 # checking any of them against the catalogue. Three M5 entries — `BEGIN_REVIEW`,
 # `RETURN_FOR_CORRECTION` and `MARK_ELIGIBLE_FOR_BATCHING` — were defined and **left out of this
@@ -1065,4 +1112,9 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     # M9 slice 7B. Catalogued on both sides; its command row's business-policy blocker is what
     # POL-002 answered.
     CORRECT_PAYMENT_PUBLICATION,
+    # M10 slice 1, same commit as the entries. **None catalogued** — the first block of that kind
+    # since M8, and the M10 plan's G-3 says why in advance.
+    CREATE_GOLD_SALE_ORDER,
+    SUBMIT_GOLD_SALE_ORDER,
+    PRICE_GOLD_SALE_ORDER,
 )
