@@ -129,6 +129,21 @@ STATUS_COLUMN_TO_AGGREGATE: dict[tuple[str, str], str] = {
     # *exactly* and narrowing it to what one slice uses would make the next slice's legitimate
     # value look like drift.
     ("incoming_payment_receipts", "status"): "incoming_payment_receipt",
+    # M10 slice 3. Document 06 §10.1's five, and the catalogue's `bank_statement_file` aggregate
+    # carries exactly those with no aliases.
+    ("bank_statement_files", "status"): "bank_statement_file",
+    # M10 slice 3, and the interesting one. The aggregate's canonical set is document 06 §10.2's
+    # five execution states; document 08 §8.3 defines nine, and the six extra sit in the
+    # catalogue's **`m0_decisions_required`** section under this aggregate's name, asking M0 to
+    # "decide whether parsing execution and accountant import review are separate state axes or one
+    # extended lifecycle".
+    #
+    # So the CHECK carries the five, and that is not the implementation preferring the shorter
+    # list: `parsing` and `parse_failed` are recorded in the aggregate as *aliases* of `running`
+    # and `failed`, and enforcing an alias would let two spellings of one state coexist. The
+    # remaining six describe an accountant reviewing what a parser produced, which is a second axis
+    # M0 has not yet approved — and this gate would fail if the slice had invented it.
+    ("bank_statement_import_runs", "status"): "bank_statement_import_run",
 }
 
 # Status columns whose value set is **local to one relation** and is not a lifecycle the catalogue

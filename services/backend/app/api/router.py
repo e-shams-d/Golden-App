@@ -7,6 +7,7 @@ from app.api.v1.auth import router as auth_router
 from app.api.v1.bank_config import router as bank_config_router
 from app.api.v1.bank_exports import router as bank_exports_router
 from app.api.v1.bank_result_bundles import router as bank_result_bundles_router
+from app.api.v1.bank_statements import router as bank_statements_router
 from app.api.v1.beneficiaries import router as beneficiaries_router
 from app.api.v1.center_profile import router as center_profile_router
 from app.api.v1.evidence_links import router as evidence_links_router
@@ -83,3 +84,8 @@ api_v1_router.include_router(trader_publications_router)
 # M10 slice 1. The other direction of the business: a trader buying gold rather than paying a
 # beneficiary. Four of §21.1s eight routes; the rest belong to slices that have states to guard.
 api_v1_router.include_router(gold_sale_orders_router)
+# M10 slice 3. The incoming counterpart of `bank_result_bundles`: that is what a bank sends back
+# about money the centre sent, and this is the bank's own record of money that arrived. Its own
+# prefix because document 05 gives it one (`:1990`) rather than nesting it under an order — one
+# statement covers many orders and belongs to none of them.
+api_v1_router.include_router(bank_statements_router)

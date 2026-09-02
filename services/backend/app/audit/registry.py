@@ -1038,6 +1038,50 @@ SUBMIT_INCOMING_RECEIPT = CommandNames(
 )
 
 
+# --- M10 slice 3: the statement the centre imports itself ---------------------
+#
+# **The first M10 slice whose main action is catalogued, and the plan predicted the opposite.** Its
+# governance survey reported two M10 audit actions; `audit_outbox_catalog.yaml` carries four, and
+# two of those are this slice's aggregate — `bank_statement.import_run_created` and
+# `bank_statement.import_run_confirmed`. The survey had searched for table names where the
+# catalogue names business objects. The plan is corrected; this comment is here so the next reader
+# does not re-derive it from an empty grep.
+#
+# The upload is the exception, and a narrow one: `command_catalog.yaml` has a row for
+# `bank_statement.create_import_run` and none for `POST /api/v1/bank-statements`, so the file a run
+# parses arrives through a route with no catalogued name.
+
+CREATE_BANK_STATEMENT_FILE = CommandNames(
+    audit_action="bank_statement.uploaded",
+    # No outbox event. An uploaded statement nobody has parsed is a file on disk; the parse is what
+    # produces facts, and the catalogue gives even the two catalogued run actions
+    # `outbox_event: null`.
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=(
+        "M10 slice 3. `05_API_Specification.md:1990` defines POST /api/v1/bank-statements and "
+        "`audit_outbox_catalog.yaml` has no action for it, while carrying two for the import runs "
+        "that follow — `bank_statement.import_run_created` and "
+        "`bank_statement.import_run_confirmed`. So the catalogue names what is done to a statement "
+        "file and not the arrival of the file itself. Implemented against "
+        "`bank_statement.upload`, the approved permission the route requires. The name follows the "
+        "catalogued `bank_statement.` prefix and must be renamed to whatever M0 approves."
+    ),
+)
+
+CREATE_STATEMENT_IMPORT_RUN = CommandNames(
+    # `audit_outbox_catalog.yaml:57`, and `command_catalog.yaml`'s
+    # `bank_statement.create_import_run` names the same action against the same route. Nothing is
+    # declared here — the first M10 command for which that is true.
+    audit_action="bank_statement.import_run_created",
+    # `outbox_event: null` in that command row, and it is right: a queued parse has produced no
+    # rows, so there is no fact for anything outside the platform to act on. Doc 08 §8.2's
+    # confirmation, which makes rows available for matching, is not this slice.
+    outbox_event_type=None,
+    catalogued=True,
+)
+
+
 # Every `CommandNames` defined above, and the gate that reads this tuple is the only thing
 # checking any of them against the catalogue. Three M5 entries — `BEGIN_REVIEW`,
 # `RETURN_FOR_CORRECTION` and `MARK_ELIGIBLE_FOR_BATCHING` — were defined and **left out of this
@@ -1145,4 +1189,8 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     PRICE_GOLD_SALE_ORDER,
     # M10 slice 2. Also uncatalogued: the catalogue names the confirmation, not the claim.
     SUBMIT_INCOMING_RECEIPT,
+    # M10 slice 3. The second is fully catalogued — the first M10 name that is — and the first is
+    # not, because the catalogue names what happens to a statement file and not its arrival.
+    CREATE_BANK_STATEMENT_FILE,
+    CREATE_STATEMENT_IMPORT_RUN,
 )

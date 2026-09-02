@@ -96,6 +96,11 @@ EXPECTED_TABLES = frozenset(
         # from the order so `scoped()` has a column to constrain, and a composite foreign key
         # keeps the copy honest.
         "incoming_payment_receipts",
+        # M10 slice 3, §10.4-10.5. The other side of the same question: the trader's claim above,
+        # and here the bank's own record of what arrived. One run per parse, and
+        # `UNIQUE(bank_statement_file_id, run_number)` is why a reparse cannot edit an earlier one.
+        "bank_statement_files",
+        "bank_statement_import_runs",
         # M9 slice 7, §13.3. The projection M2's outbox was built to feed and had no consumer for.
         # Insert-only for now, like the row below: nothing marks a notification read, and a grant
         # ahead of the command that needs it is a capability with no caller.
