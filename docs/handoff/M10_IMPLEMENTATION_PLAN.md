@@ -38,6 +38,15 @@ specification, `doc 06` the workflows document, `doc 12` the security document.*
 | doc 05 `:2011` | `05_API_Specification.md:2011` | confirm an incoming payment |
 | doc 05 `:2025` | `05_API_Specification.md:2025` | partial and excess are never silently full |
 | doc 05 `:2029` | `05_API_Specification.md:2029` | dispatch or settlement |
+| doc 06 `:451` | `06_Workflows_and_State_Machines.md:451` | the statement-import workflow: file states, run states, five rules |
+| doc 08 `:435` | `08_Bank_File_and_Result_Processing.md:435` | **§8, incoming bank statement processing** — the detailed specification |
+| doc 08 `:1601` | `08_Bank_File_and_Result_Processing.md:1601` | §26.2's ten statement-import test cases |
+
+**Documents 06 and 08 were added on 2026-09-02, at the start of slice 3, and the omission is
+recorded rather than quietly repaired.** The plan as merged cited neither, and document 08 §8 is
+the detailed specification for slices 3, 4 and 5 — twelve sections of it. Section 6 below says
+what that changed. This is the third time in two milestones that reading a citation before
+writing against it found the specification the plan had missed; it is cheap and it keeps working.
 
 ---
 
@@ -48,26 +57,39 @@ by saying every name it needed was already approved, and therefore "a slice that
 wanting to invent a name has drifted". That was true of M9 and is false here. Surveyed before this
 plan was written:
 
-| Governance artifact | M10 coverage |
+| Governance artifact | M10 coverage, **as re-surveyed 2026-09-02** |
 |---|---|
 | `permission_catalog.yaml` | seventeen mentions — the best-covered of the four |
-| `status_catalog.yaml` | three aggregates: `gold_sale_order`, `incoming_payment_receipt`, `gold_dispatch`. **None** for import runs, statement rows or matches |
-| `audit_outbox_catalog.yaml` | **two** actions — `gold_sale.dispatched`, `incoming_payment.confirmed` — against §18 `:1212`'s twelve capabilities |
+| `status_catalog.yaml` | **seven** aggregates: `gold_sale_order`, `incoming_payment_receipt`, `gold_dispatch`, `bank_statement_file`, `bank_statement_import_run`, `incoming_match_candidate`, `incoming_confirmed_match`. Only `bank_statement_rows` has none |
+| `audit_outbox_catalog.yaml` | **four** actions — `gold_sale.dispatched`, `incoming_payment.confirmed`, `bank_statement.import_run_created`, `bank_statement.import_run_confirmed` — against §18 `:1212`'s twelve capabilities |
 | `command_catalog.yaml` | six mentions, against eight endpoints in doc 05 `:1948` alone |
 
-So M10 is shaped like **M8**, which shipped seven `catalogued=False` names with a written reason
-apiece, rather than like M9, which shipped one. The rule this plan sets for itself is therefore the
-M8 rule and not the M9 one:
+**The first survey was wrong, and this is the corrected one.** It reported three status aggregates
+and two audit actions; there are seven and four. What it missed is exactly the statement-import
+half of the milestone — the two aggregates and the two actions that slices 3, 4 and 5 need. The
+error had one cause: the survey searched for `bank_statement_row` and `incoming_payment_match`,
+the *table* names, and the catalogues name aggregates after the business object rather than the
+table (`bank_statement_import_run`, `incoming_confirmed_match`). A count of absences is worth no
+more than the search that produced it, and this one set each slice's naming rule.
+
+The consequence for slice 3 is not small: **it was expected to need declared names and it needs
+almost none.** Its statuses, its permissions and its import-run audit action are all approved
+already. Compare M9, where the same expectation was correct.
+
+So M10 is still shaped like **M8** rather than M9 — the gold-sale half genuinely has nothing, and
+slices 1 and 2 shipped four declared names between them. The rule stands:
 
 > An M10 slice that needs a name no catalogue carries must **declare it**, against the nearest
 > approved identifier, with the reason recorded in `app/audit/registry.py` and a DOC-CONFLICT-052
 > instance in the register. It must not quietly invent one, and it must not stop.
 
-**Three tables have no status aggregate at all**, which matters more than it sounds:
-`test_status_catalogue_drift.py` holds every enforced CHECK to its catalogued aggregate exactly,
-and for a column with no aggregate it can hold it to nothing. Each of those three needs a
-`LOCAL_LIFECYCLES` entry with its reasoning — the shape M8's `bank_result_bundle_batch_links` and
-M9's `payment_result_publications` both used.
+**One table has no status aggregate at all** — `bank_statement_rows`, slice 4's — which matters
+more than it sounds: `test_status_catalogue_drift.py` holds every enforced CHECK to its catalogued
+aggregate exactly, and for a column with no aggregate it can hold it to nothing. It needs a
+`LOCAL_LIFECYCLES` entry with its reasoning, the shape M8's `bank_result_bundle_batch_links` and
+M9's `payment_result_publications` both used. The other two the first survey named do not: they
+are catalogued, and a `LOCAL_LIFECYCLES` entry for a catalogued aggregate would be a local copy
+that drifts from the thing it duplicates.
 
 ---
 
@@ -82,8 +104,24 @@ that this milestone has to notice.
   milestones after it was written.
 - **`RECORDED_GAPS` carries `BANK-VER-005`, and its text was corrected at M8's close** precisely
   because a statement *parser* had been confused with M8's evidence *renderer*. That entry names no
-  milestone now. **M10 is the milestone that closes it**, and the plan should say so rather than
+  milestone now. **M10 is the milestone that can close it**, and the plan should say so rather than
   leaving the register to be read hopefully.
+
+  **Narrowed 2026-09-02, at slice 3, by the traceability gate.** Slice 3 named the id in a test
+  docstring and `test_no_recorded_gap_is_actually_covered` failed — correctly. The gap is document
+  08 §6.4's *activation* rule: "Activation requires validation against representative anonymized
+  fixtures", meaning a bank version may not become active until its mappings are shown to parse
+  real files. Slice 3 checks something adjacent and different — that a mapping and the statement it
+  is asked to parse name the same bank version, at import time. Both matter and neither is the
+  other.
+
+  So closing `BANK-VER-005` needs three things, and this plan should stop implying one slice
+  supplies them: a deterministic parser (slice 4), a set of approved anonymized fixtures (nobody's
+  yet — the owner's, since they must come from a real bank file), and the parser wired into
+  `bank_profile_version` activation (M2's surface, not M10's). **The honest statement is that M10
+  builds the parser the gap has been waiting for and does not by itself discharge the gap.** The
+  slice that changes that must remove the `RECORDED_GAPS` entry in the same commit, which is what
+  the entry already says.
 - **`file_purpose_catalog.yaml` already has `bank_statement` and `incoming_payment_receipt`**, both
   approved, and `gold_dispatch_evidence` besides. Unlike M9 slice 5B, M10 needs **no new file
   purpose** — the three it wants are in document 05's seven.
@@ -181,25 +219,86 @@ the control now removes both.
 
 ## Slice 3 — `bank_statement_files` and the import run
 
+**Rewritten 2026-09-02 against doc 06 `:451` and doc 08 `:435`, which the merged plan did not
+cite.** What follows replaces a section written from doc 04 and §18 alone.
+
 ### Goal
 
 The centre's own copy of what the bank says happened, imported as a versioned run.
 
+### The statuses are catalogued, and they are document 06's, not document 08's
+
+This is the finding that shapes the slice. Document 08 §8.3 lists **nine** import-run states
+(`draft`, `queued`, `parsing`, `preview_ready`, `partial_preview`, `parse_failed`, `confirmed`,
+`rejected`, `superseded`) and document 06 §10.2 lists **five** (`queued`, `running`, `succeeded`,
+`failed`, `cancelled`). They are not the same lifecycle and neither is a superset.
+
+`status_catalog.yaml` has already ruled on this, and the entry is worth quoting because it is the
+slice's design:
+
+> Document 06 models technical execution states. Document 08 defines a richer preview/confirmation
+> lifecycle and is intentionally not silently collapsed.
+
+The five document-06 states are canonical, `parsing` and `parse_failed` are recorded as *aliases*
+of `running` and `failed`, and the remaining six document-08 states sit in `unresolved_aliases`
+with `canonical: null` and this note: *"M0 must choose a two-axis model or extend the canonical
+lifecycle."*
+
+So the CHECK this slice writes carries the **five canonical states**, and the human confirmation
+§18 `:1232` requires ("human confirmation is required") is **not a status value in this slice**.
+Two reasons, and the second is the stronger:
+
+- Using `preview_ready` or `confirmed` as a status would enforce a value M0 has explicitly not
+  approved, and `test_status_catalogue_drift.py` would fail — correctly.
+- A `review_status` column added here would be a column nothing writes. That is the defect this
+  project has shipped five times and named: complete machinery with no caller. Confirmation
+  belongs to the slice where rows exist to confirm, because "confirmed rows become available for
+  matching" (doc 08 §8.2) is a statement about rows.
+
+`bank_statement_file` is catalogued too — `uploaded`, `parsed`, `parse_failed`,
+`ready_for_matching`, `archived` — and doc 06 `:451` draws the transitions, including
+`parse_failed → parsed` when a later run succeeds. This slice writes `uploaded` and nothing else,
+for the same reason: no parse exists yet to move it.
+
 ### What it changes
 
 - Both tables (doc 04 `:758`, `:764`) with `UNIQUE(bank_statement_file_id, run_number)`.
-- Upload and start-import (doc 05 `:1990`), the second as a `processing_jobs` job — M8's crop is
-  the precedent for a long parse that must not run inside a request.
+- Upload and create-import-run (doc 05 `:1990`), plus the two reads §21.4 lists.
+- `bank_statement.create_import_run` is **catalogued** (`command_catalog.yaml`, audit action
+  `bank_statement.import_run_created`, `outbox_event: null`, `idempotency: required`). The upload
+  is not, and is the one declared name this slice needs.
+
+### The guards, which come from document 08 §8.1–8.2 and are new to this plan
+
+A run is parsed "with exact BankProfileVersion and BankMapping" (§8.2), from ".xlsx for approved
+bank mappings" (§8.1), against "a selected destination center account". That is four guards the
+earlier section did not have:
+
+1. the mapping must be **approved** — an unapproved draft mapping is not a parser;
+2. the mapping must belong to **the file's own** bank-profile version — a mapping from another
+   bank's version parsing this file is precisely the mismatch `BANK-VER-005` is about;
+3. the destination account must be a **centre incoming account** (`account_role` in
+   `incoming_destination`, `both` — M2's approved set);
+4. the file must not be archived.
+
+A fifth is the implementation's own and is recorded as such: **no second run may start while one
+is `queued` or `running`.** Nothing in either document forbids it, but two concurrent parses of
+one file produce two row sets and nothing in Phase 1A says which is authoritative. A reparse after
+one finishes is the specified workflow and is unaffected.
 
 ### What proves it
 
 - `DB-IMPORT-001` — the unique per file, and a second run getting `run_number` 2.
 - `SVC-IMPORT-001` — **a reparse creates a new run and does not touch the old one** (§18 `:1227`,
-  doc 04 `:774`). Run 1's rows are read back byte-for-byte after run 2 completes. This is §18
-  `:1240`'s "reparse does not overwrite prior rows" and it is the slice's whole point.
+  doc 04 `:774`, doc 06 `:471`, doc 08 `:463`). **Split, and the split is recorded:** at the *run*
+  level here — run 1's `status`, `row_count`, `parser_version`, `source_hash` and `finished_at`
+  read back unchanged after run 2 exists — and at the *row* level in slice 4, which is where rows
+  exist. §18 `:1241`'s "reparse does not overwrite prior rows" is not fully closed until then, and
+  the DoD slice must not record it as closed here. The plan anticipated this split at §5.
 - `TRACE-IMPORT-001` — the run records `parser_version` and `source_hash`, so a row can be told
   apart from one produced by a later parser against the same file. M8's `renderer_version`
   precedent, and the same argument.
+- `SEC-IMPORT-001` — **new.** The four guards above, each refused independently.
 
 ## Slice 4 — `bank_statement_rows`
 
@@ -364,11 +463,38 @@ drift. M0 owes the names.
 The register's entry now names no milestone, having been corrected at M8's close when a statement
 *parser* was confused with an evidence *renderer*. Slice 3 builds the parser.
 
-**Not fully taken.** What "the mappings fit a file" means operationally — how a mapping mismatch is
-reported, and whether a run may partially succeed — is a product decision doc 04 `:764` leaves to
-`status` and `error_summary` without enumerating either. The plan's position is that a run either
-completes or fails with a summary, and a partial run is not a state; if the owner wants partial
-runs, that is a status value and a set of tests.
+**Superseded 2026-09-02 — the documents answer most of this, and the plan's position was wrong.**
+
+What this said: that doc 04 `:764` leaves `status` unenumerated, that a run either completes or
+fails, that "a partial run is not a state", and that partial runs would be the owner's call.
+
+Three of the four are contradicted by documents the merged plan did not cite:
+
+- **`status` is enumerated, twice.** Doc 06 §10.2 gives five states and doc 08 §8.3 gives nine;
+  `status_catalog.yaml` already canonicalises the first set and records the second as unresolved.
+  Nothing here was open.
+- **A partial run is a state.** Doc 08 §8.3 names `partial_preview`, §8.6 says "Partial import
+  requires explicit confirmation and an audit note", and §26.2 lists "partial blank template rows"
+  and "partial preview confirmation" among its ten statement-import test cases. Whether the
+  platform supports partial imports is not a question; only *where the state lives* is.
+- **A mapping mismatch has a specified report.** §22.2: preserve the original file, preserve the
+  import-run errors, allow a new import run after mapping correction, **never partially hide
+  invalid rows**, keep the manual workflow available. That is `error_summary`'s contract.
+
+**What remains genuinely open, and it is narrower and sharper.** `status_catalog.yaml`'s own note:
+*"M0 must choose a two-axis model or extend the canonical lifecycle."* Document 06's five states
+describe a parser running; document 08's six extra describe an accountant reviewing what it
+produced. Both are needed and they are not one column. The decision is which:
+
+- **a second column** — `status` stays document 06's, a review column carries document 08's six; or
+- **one extended lifecycle** — M0 approves nine canonical states and document 06's five become a
+  subset.
+
+**Taken, for slice 3, on the narrowest possible reading:** the CHECK carries the five canonical
+states and this slice adds no review column, because it has nothing to review — see the slice. The
+choice above is still M0's, and it must be made before slice 4 confirms a run. Recording it as an
+owner debt rather than choosing it in a migration is the point; a two-axis model invented in
+`alembic/` is a schema decision wearing a governance decision's clothes.
 
 ---
 
@@ -392,3 +518,40 @@ The M9 lessons that apply here specifically, rather than the whole list.
 - **A slice splits when its parts have different blockers.** M9 grew from seven slices to ten that
   way. Expect the same here; slice 3 and slice 4 in particular may separate if the parser's
   dependencies are not settled when it is reached.
+
+---
+
+# 6. Documents 06 and 08, added at slice 3
+
+The merged plan cited neither, and both specify the statement-import half of the milestone. What
+they changed, so a reader of slices 4 through 8 does not rediscover it:
+
+| Section | What it settles | Whose slice |
+|---|---|---|
+| doc 06 `:451` §10.1–10.3 | the canonical file and run state machines, and five import rules | 3 |
+| doc 08 §8.1 | the supported input, and what an upload must select | 3 |
+| doc 08 §8.2 | the workflow, ending "confirmed rows become available for matching" | 4, 5 |
+| doc 08 §8.3 | the nine review states — unresolved against document 06's five | 3, and M0's |
+| doc 08 §8.4 | the canonical parsed row, field by field, and "missing fields must not be guessed" | 4 |
+| doc 08 §8.5 | six normalization rules, including "do not silently convert debit to credit" | 4 |
+| doc 08 §8.6 | the five row states and "partial import requires explicit confirmation and an audit note" | 4 |
+| doc 08 §8.7 | five duplicate-detection signals, and "a warning does not automatically delete or merge" | 4, 5 |
+| doc 08 §8.8 | six requirements of a confirmed incoming match | 5, 6 |
+| doc 08 §8.9 | eight incoming edge cases the workflow must support | 5, 6 |
+| doc 08 §22.2 | what an import failure must preserve | 3, 4 |
+| doc 08 §26.2 | ten statement-import test cases, by name | 3, 4 |
+
+**Two of these change a later slice materially, and they are flagged here rather than left to be
+found:**
+
+- **Slice 5 gains a precondition it did not have.** Doc 08 §8.2: only rows from a *confirmed* run
+  become available for matching. The plan's slice 5 lets a match name any statement row. That is a
+  guard, and by this project's own count the sixteenth mechanism whose input would otherwise be
+  ungoverned.
+- **Slice 4's row states are catalogued nowhere and document 08 names five of them** (`valid`,
+  `warning`, `invalid`, `ignored_empty`, `possible_duplicate`). That is the `LOCAL_LIFECYCLES`
+  entry §1 now points at, and its reasoning is written: the states exist in an approved document
+  and no catalogue aggregate carries them.
+
+§26.2's ten cases are the closest thing this milestone has to an acceptance list for the parser,
+and slices 3 and 4 should be able to name which of the ten each of their tests covers.
