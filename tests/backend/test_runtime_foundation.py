@@ -101,6 +101,11 @@ EXPECTED_TABLES = frozenset(
         # `UNIQUE(bank_statement_file_id, run_number)` is why a reparse cannot edit an earlier one.
         "bank_statement_files",
         "bank_statement_import_runs",
+        # M10 slice 4, §10.6. The rows themselves, and the second table in this list the runtime
+        # holds **no** UPDATE grant on — `payment_result_publications` is the other. §10.6 calls
+        # them immutable and a correction is a new run, so the privilege is withheld rather than
+        # the immutability being a rule somebody could edit out.
+        "bank_statement_rows",
         # M9 slice 7, §13.3. The projection M2's outbox was built to feed and had no consumer for.
         # Insert-only for now, like the row below: nothing marks a notification read, and a grant
         # ahead of the command that needs it is a capability with no caller.

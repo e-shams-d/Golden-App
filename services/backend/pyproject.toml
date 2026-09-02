@@ -153,6 +153,14 @@ ignore = ["B008"]
 # file rather than against these constants.
 "**/exports/excel.py" = ["RUF001"]
 "**/test_excel_writer.py" = ["RUF001"]
+# M10 slice 4, and the same argument read the other way round: `excel.py` writes a file an Iranian
+# bank reads, and these two read a file an Iranian bank wrote. The Persian digits are the input
+# under test — one row of the fixture statement is written in them precisely so the fold to ASCII
+# is asserted against a real workbook, and so the raw copy can be asserted to have survived it.
+# Writing that row in ASCII would delete the test while leaving it green, which is the failure the
+# M5 entry above records. The parser's own fold table names both digit ranges for the same reason.
+"**/statements/parser.py" = ["RUF001"]
+"**/test_bank_statement_rows.py" = ["RUF001"]
 
 [tool.mypy]
 python_version = "3.12"

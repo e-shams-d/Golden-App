@@ -158,4 +158,11 @@ from __future__ import annotations
 # `bank_mapping_id`, so a finished run's provenance cannot be rewritten into a different parse.
 # The status CHECKs carry document 06's five canonical states, not document 08's nine review
 # states: `status_catalog.yaml` records the latter as `canonical: null` pending an M0 decision.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260906_0037"})
+# 20260907_0038 adds `bank_statement_rows`, §10.6 — the parsed rows themselves, and the first
+# table in this project the runtime holds **no UPDATE grant on at all** except
+# `payment_result_publications`. §10.6 calls them "immutable rows tied to one import run", and a
+# correction is a new run rather than an edit; withholding the privilege is what makes that a
+# property of the database instead of a discipline. The three columns doc 04 `:796` forbids —
+# `matched_entity_type`, `matched_entity_id`, `is_matched` — are absent, and their absence is
+# asserted by a model walk rather than left to review.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260907_0038"})
