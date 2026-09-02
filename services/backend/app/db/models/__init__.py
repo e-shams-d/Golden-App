@@ -16,7 +16,11 @@ from app.db.models.bank_result_bundle import (
     BankResultBundleBatchLink,
     BankResultBundleFile,
 )
-from app.db.models.bank_statement import BankStatementFile, BankStatementImportRun
+from app.db.models.bank_statement import (
+    BankStatementFile,
+    BankStatementImportRun,
+    BankStatementRow,
+)
 from app.db.models.beneficiary import Beneficiary
 from app.db.models.center_profile import CenterProfile
 from app.db.models.configuration import (
@@ -67,6 +71,7 @@ __all__ = [
     "BankResultBundleFile",
     "BankStatementFile",
     "BankStatementImportRun",
+    "BankStatementRow",
     "BatchApproval",
     "Beneficiary",
     "CenterProfile",

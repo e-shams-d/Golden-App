@@ -821,18 +821,18 @@ PENDING: dict[str, str] = {
     # `tests/integration/test_bank_statement_import.py`. `SEC-IMPORT-001` is new: the plan as
     # merged cited neither document 06 nor document 08, and document 08 §8.1-8.2 turned out to
     # specify four guards on an import that nothing had been written to enforce.
-    # Slice 4 - immutable parsed rows, and the three columns document 04 forbids.
-    "DB-ROW-001": (
-        "M10 slice 4 - bank statement rows. Stated by the plan and not yet built; the slice's "
-        "own pull request discharges it and removes this entry in the same commit."
-    ),
-    "SVC-ROW-001": (
-        "M10 slice 4 - bank statement rows. Stated by the plan and not yet built; the slice's "
-        "own pull request discharges it and removes this entry in the same commit."
-    ),
+    # Slice 4 shipped the table, the parser and the worker; DB-ROW-001 and SVC-ROW-001 are
+    # discharged by citation. SVC-FINGERPRINT-001 is deliberately not, and the split is recorded
+    # in the plan: slice 4 computes and stores the fingerprint, and the obligation's own words are
+    # that "a duplicate creates a **task** rather than a refusal" — a workflow, needing a review
+    # task entity type that does not exist yet.
     "SVC-FINGERPRINT-001": (
-        "M10 slice 4 - bank statement rows. Stated by the plan and not yet built; the slice's "
-        "own pull request discharges it and removes this entry in the same commit."
+        "M10 slice 4B - duplicate detection over the row fingerprint. Slice 4 stores the "
+        "fingerprint and indexes it; the obligation is about what happens when two of them "
+        "collide, which is `08_Bank_File_and_Result_Processing.md` section 8.7's 'a warning does "
+        "not automatically delete or merge data' and a manual review task for an entity type "
+        "`manual_review_tasks` does not carry yet. Slice 4B discharges it and removes this entry "
+        "in the same commit."
     ),
     # Slice 5 - matches as their own rows: a candidate, never a truth.
     "DB-MATCH-001": (

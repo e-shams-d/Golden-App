@@ -175,6 +175,20 @@ LOCAL_LIFECYCLES: dict[tuple[str, str], str] = {
         "one to approved M0 governance under a checksum chain is not an implementer's decision. "
         "G-6 in the M9 plan records it."
     ),
+    ("bank_statement_rows", "status"): (
+        "M10 slice 4. Five values - valid, warning, invalid, ignored_empty, possible_duplicate - "
+        "from `08_Bank_File_and_Result_Processing.md:514`, and `status_catalog.yaml` has "
+        "**no** `bank_statement_row` aggregate at all. It is the only M10 table for which that is "
+        "true: the plan's first governance survey said three of them had none and the corrected "
+        "survey found aggregates for the other two, which is how this entry came to be written "
+        "with a reason instead of by habit. "
+        "Unlike `bank_result_bundle_batch_links` above this is not a two-value local flag - it is "
+        "a real validation lifecycle an approved document enumerates, and the right fix is for the "
+        "catalogue to gain the aggregate. Recorded rather than papered over, because adding one to "
+        "approved M0 governance under a checksum chain is not an implementer's decision. Section 1 "
+        "of the M10 plan records it, and `test_statement_row_shape.py` is what holds the set to "
+        "document 08 in the meantime."
+    ),
 }
 
 # Columns whose aggregate the catalogue records with `canonical: null`, and which

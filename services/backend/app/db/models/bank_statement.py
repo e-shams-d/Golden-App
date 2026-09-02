@@ -25,12 +25,14 @@ from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
+    BigInteger,
     Date,
     DateTime,
     ForeignKey,
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -77,6 +79,29 @@ RUN_RUNNING = "running"
 # of them would produce a second row set for the same file with nothing to say which is
 # authoritative — see `app/commands/bank_statement.py`, where the guard lives and is argued.
 RUN_IN_FLIGHT: tuple[str, ...] = (RUN_QUEUED, RUN_RUNNING)
+
+RUN_SUCCEEDED = "succeeded"
+RUN_FAILED = "failed"
+
+FILE_PARSED = "parsed"
+FILE_PARSE_FAILED = "parse_failed"
+
+# Document 08 §8.6's five row states, and the only M10 table `status_catalog.yaml` carries no
+# aggregate for. Document 08 is therefore this CHECK's sole source, which is why
+# `test_status_catalogue_drift.py` holds it as a `LOCAL_LIFECYCLES` entry rather than to a
+# catalogue that has nothing to say about it.
+ROW_STATUSES: tuple[str, ...] = (
+    "valid",
+    "warning",
+    "invalid",
+    "ignored_empty",
+    "possible_duplicate",
+)
+
+ROW_VALID = "valid"
+ROW_WARNING = "warning"
+ROW_INVALID = "invalid"
+ROW_IGNORED_EMPTY = "ignored_empty"
 
 
 def _quoted(values: tuple[str, ...]) -> str:
@@ -231,14 +256,107 @@ class BankStatementImportRun(Base):
     )
 
 
+class BankStatementRow(Base):
+    """One parsed row of one run. §10.6.
+
+    **Immutable, and the migration says so by granting no UPDATE on any column.** A correction is
+    a new import run, not an edit — document 08 §8.2 — and slice 3's unique on
+    `(bank_statement_file_id, run_number)` is what makes that the cheap path.
+
+    **`matched_entity_type`, `matched_entity_id` and `is_matched` are absent**, per §10.6 `:796`:
+    "Match state is derived from dedicated match records." Slice 5 builds those records. A flag
+    here would be a second, mutable answer to a question the match rows already answer, and the
+    two would disagree the first time a match was corrected.
+
+    No `record_version` and no `updated_at`: both describe a row somebody edits.
+    """
+
+    __tablename__ = "bank_statement_rows"
+
+    id: Mapped[uuid.UUID] = uuid_primary_key()
+
+    bank_statement_import_run_id: Mapped[uuid.UUID] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("bank_statement_import_runs.id", name="fk_statement_rows_run"),
+        nullable=False,
+    )
+    # One-based, and the bank's own numbering: "row 42 is invalid" must send an operator to row 42
+    # of the spreadsheet they uploaded.
+    row_number: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # §10.6's "normalized and raw date/time", and doc 08 §8.5's "Preserve raw Jalali/Gregorian
+    # strings". A row whose raw date was discarded cannot be re-normalised when the mapping is
+    # corrected — which §8.9 requires to be possible.
+    transaction_at_normalized: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    transaction_date_raw: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    transaction_time_raw: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    amount_in_irr: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    amount_out_irr: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Signed, unlike the two above: a balance may legitimately be negative.
+    balance_irr: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
+    document_number: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    tracking_number: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    counterparty_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    counterparty_account: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    counterparty_iban: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # Every cell as the bank wrote it, including columns the mapping does not name. §8.5's first
+    # rule, and §22.2's refusal to "partially hide invalid rows".
+    raw_data: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+    # §8.4's `normalized_fingerprint`.
+    row_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    created_at: Mapped[datetime] = created_at_column()
+
+    __table_args__ = (
+        UniqueConstraint(
+            "bank_statement_import_run_id",
+            "row_number",
+            name="uq_statement_rows_run_row_number",
+        ),
+        named_check(f"status IN ({_quoted(ROW_STATUSES)})", name="status_value"),
+        named_check("row_number >= 1", name="row_number_is_positive"),
+        named_check(
+            "amount_in_irr IS NULL OR amount_in_irr >= 0", name="amount_in_not_negative"
+        ),
+        named_check(
+            "amount_out_irr IS NULL OR amount_out_irr >= 0", name="amount_out_not_negative"
+        ),
+        # §8.6's "mutually coherent deposit/withdrawal values". Both positive describes a transfer
+        # that went two ways at once.
+        named_check(
+            "amount_in_irr IS NULL OR amount_out_irr IS NULL"
+            " OR amount_in_irr = 0 OR amount_out_irr = 0",
+            name="one_direction_per_row",
+        ),
+        Index(
+            "idx_bank_statement_rows_match",
+            "amount_in_irr",
+            "transaction_at_normalized",
+            "tracking_number",
+        ),
+        Index("idx_bank_statement_rows_fingerprint", "row_fingerprint"),
+    )
+
+
 __all__ = [
     "FILE_ARCHIVED",
     "FILE_STATUSES",
     "FILE_UPLOADED",
+    "ROW_STATUSES",
+    "ROW_VALID",
     "RUN_IN_FLIGHT",
     "RUN_QUEUED",
     "RUN_RUNNING",
     "RUN_STATUSES",
     "BankStatementFile",
     "BankStatementImportRun",
+    "BankStatementRow",
 ]
