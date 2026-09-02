@@ -56,6 +56,17 @@ TASK_TYPES: tuple[str, ...] = (
     "bundle_unresolved_segment",
     "segment_privacy_review",
     "payment_result_discrepancy",
+    # M10 slice 4B, and the first value **added** to this tuple rather than named from it. Every
+    # earlier slice that wanted a type found an accurate one already here, and the M8 comment below
+    # explains why inventing one would have been wrong in its case. This is the other case: none of
+    # the four describes a statement row suspected of being a duplicate, and the nearest —
+    # `payment_result_discrepancy` — is about an *outgoing* payment's result, which is a different
+    # direction of money and a different person's queue.
+    #
+    # Reusing it would break the one thing this tuple exists for, stated in its own comment above:
+    # the kind of attention needed, so a queue can be filtered by skill. Declared, spelled to the
+    # existing `<subject>_<kind>` pattern, and recorded as a name M0 owes.
+    "statement_duplicate_review",
 )
 
 TASK_TYPE_EXPORT_INTEGRITY = "bank_export_integrity"
@@ -98,6 +109,13 @@ ENTITY_TYPES: tuple[str, ...] = (
     # list's own stated rule — `payment_result_publications` is now a table that exists — rather
     # than against any document: §13.1 lists the columns and enumerates no values.
     "payment_result_publication",
+    # M10 slice 4B, both by the same rule as the value above: they are tables that exist. A
+    # duplicate-file warning names the statement file, and a duplicate-row warning names the
+    # **run** rather than each row — an accountant wants "run 3 has seven possible duplicates",
+    # not seven items in a queue, and `20260824_0025:1324` limits this reference to queue
+    # navigation.
+    "bank_statement_file",
+    "bank_statement_import_run",
 )
 
 ENTITY_BANK_EXPORT = "bank_excel_export"
@@ -114,6 +132,15 @@ ENTITY_PAYMENT_ATTEMPT = "payment_attempt"
 # trader is complaining about. It would also put the *attempt's* version in
 # `entity_record_version`, where §17 `:1185` requires the exact publication version.
 ENTITY_PAYMENT_PUBLICATION = "payment_result_publication"
+# M10 slice 4B. The file-level signal — §8.7's "same original file checksum" — names the file,
+# because the thing an operator must decide is whether this upload should exist at all.
+ENTITY_BANK_STATEMENT_FILE = "bank_statement_file"
+# The row-level signals name the run, not the row. One task per run rather than one per duplicate:
+# a statement with forty repeated lines is one question ("did this file overlap the last one?"),
+# and forty queue items would bury it.
+ENTITY_STATEMENT_IMPORT_RUN = "bank_statement_import_run"
+
+TASK_TYPE_STATEMENT_DUPLICATE = "statement_duplicate_review"
 
 
 def _quoted(values: tuple[str, ...]) -> str:

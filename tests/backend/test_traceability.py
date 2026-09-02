@@ -826,14 +826,8 @@ PENDING: dict[str, str] = {
     # in the plan: slice 4 computes and stores the fingerprint, and the obligation's own words are
     # that "a duplicate creates a **task** rather than a refusal" — a workflow, needing a review
     # task entity type that does not exist yet.
-    "SVC-FINGERPRINT-001": (
-        "M10 slice 4B - duplicate detection over the row fingerprint. Slice 4 stores the "
-        "fingerprint and indexes it; the obligation is about what happens when two of them "
-        "collide, which is `08_Bank_File_and_Result_Processing.md` section 8.7's 'a warning does "
-        "not automatically delete or merge data' and a manual review task for an entity type "
-        "`manual_review_tasks` does not carry yet. Slice 4B discharges it and removes this entry "
-        "in the same commit."
-    ),
+    # Slice 4B shipped; SVC-FINGERPRINT-001 is discharged by citation in
+    # `tests/integration/test_statement_duplicates.py`.
     # Slice 5 - matches as their own rows: a candidate, never a truth.
     "DB-MATCH-001": (
         "M10 slice 5 - incoming payment matches. Stated by the plan and not yet built; the slice's "
