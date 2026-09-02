@@ -150,4 +150,12 @@ from __future__ import annotations
 # doc 05 §21.3 separates from payment in five words: "Uploading evidence never confirms payment."
 # So `amount_irr` (claimed) and `confirmed_amount_irr` (verified) are different columns, and the
 # grant covers the confirmation and the lifecycle while every field of the claim stays frozen.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260905_0036"})
+# 20260906_0037 adds `bank_statement_files` and `bank_statement_import_runs`, §10.4-10.5 — the
+# centre's own copy of what the bank says arrived, and one run per parse of it.
+# `UNIQUE(bank_statement_file_id, run_number)` is §10.5's constraint and the reason the pair is
+# shaped this way: "A reparse does not update old rows; it creates a new run and row set." The run
+# grants cover its execution result and **not** `run_number`, `parser_version`, `source_hash` or
+# `bank_mapping_id`, so a finished run's provenance cannot be rewritten into a different parse.
+# The status CHECKs carry document 06's five canonical states, not document 08's nine review
+# states: `status_catalog.yaml` records the latter as `canonical: null` pending an M0 decision.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260906_0037"})

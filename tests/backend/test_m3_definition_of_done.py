@@ -342,6 +342,16 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # internal caller outright: "the centre says the trader paid" is a different claim from "the
     # trader says so", and an audit trail must not blur the two.
     ("POST", "/api/v1/gold-sale-orders/{order_id}/incoming-payment-receipts"): DUAL,
+    # M10 slice 3. `PERMISSION` throughout, and the reason is the opposite of the row above: a
+    # statement is the centre's own record of what a bank says, not anybody's property, so there is
+    # no ownership question to answer. `permission_catalog.yaml` gives `bank_statement.upload` and
+    # `bank_statement.import` to the accountant and `bank_statement.read` to the accountant and the
+    # manager, and gives a trader none of the three.
+    ("POST", "/api/v1/bank-statements"): PERMISSION,
+    ("GET", "/api/v1/bank-statements"): PERMISSION,
+    ("GET", "/api/v1/bank-statements/{statement_id}"): PERMISSION,
+    ("POST", "/api/v1/bank-statements/{statement_id}/import-runs"): PERMISSION,
+    ("GET", "/api/v1/bank-statements/{statement_id}/import-runs"): PERMISSION,
     # M9 slice 5B. Ownership resolved through the publication's *request*: a file id is the wrong
     # thing to authorise against, because `file_objects` has no trader column and the card is a
     # derivation that inherits its visibility.
@@ -862,6 +872,32 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
         "/api/v1/gold-sale-orders/{order_id}/incoming-payment-receipts",
         "permission",
     ): "test_an_accountant_cannot_claim_on_a_traders_behalf",
+    # M10 slice 3. **One test for all five**, and deliberately so: the property is that a trader
+    # holds none of the three `bank_statement.*` permissions, and checking four routes while
+    # leaving the fifth is how a list endpoint becomes the leak. A single test that walks every
+    # route in the surface cannot be half-updated when a sixth route is added — it will simply
+    # not cover it, and this table will say so.
+    (
+        "POST",
+        "/api/v1/bank-statements",
+        "permission",
+    ): "test_no_trader_can_see_or_touch_a_statement",
+    ("GET", "/api/v1/bank-statements", "permission"): "test_no_trader_can_see_or_touch_a_statement",
+    (
+        "GET",
+        "/api/v1/bank-statements/{statement_id}",
+        "permission",
+    ): "test_no_trader_can_see_or_touch_a_statement",
+    (
+        "POST",
+        "/api/v1/bank-statements/{statement_id}/import-runs",
+        "permission",
+    ): "test_no_trader_can_see_or_touch_a_statement",
+    (
+        "GET",
+        "/api/v1/bank-statements/{statement_id}/import-runs",
+        "permission",
+    ): "test_no_trader_can_see_or_touch_a_statement",
     # M9 slice 5B. Its own test, not the shared one: this route authorises through a *publication*
     # id rather than a request id, so it is a different chain and a separate way to get it wrong.
     (

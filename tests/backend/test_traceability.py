@@ -817,25 +817,10 @@ PENDING: dict[str, str] = {
     # M9's 'every name is already approved'.
     # Slice 1 shipped; its three obligations are discharged by citation.
     # Slice 2 shipped; both obligations are discharged by citation.
-    # Slice 3 - the statement file and its versioned import runs. Closes BANK-VER-005.
-    "DB-IMPORT-001": (
-        "M10 slice 3 - bank statement files and import runs. Stated by the plan and not "
-        "yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-        "own pull request discharges it and removes this entry in the same commit."
-    ),
-    "SVC-IMPORT-001": (
-        "M10 slice 3 - bank statement files and import runs. Stated by the plan and not "
-        "yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-        "own pull request discharges it and removes this entry in the same commit."
-    ),
-    "TRACE-IMPORT-001": (
-        "M10 slice 3 - bank statement files and import runs. Stated by the plan and not "
-        "yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-        "own pull request discharges it and removes this entry in the same commit."
-    ),
+    # Slice 3 shipped; its four obligations are discharged by citation in
+    # `tests/integration/test_bank_statement_import.py`. `SEC-IMPORT-001` is new: the plan as
+    # merged cited neither document 06 nor document 08, and document 08 §8.1-8.2 turned out to
+    # specify four guards on an import that nothing had been written to enforce.
     # Slice 4 - immutable parsed rows, and the three columns document 04 forbids.
     "DB-ROW-001": (
         "M10 slice 4 - bank statement rows. Stated by the plan and not yet built; the slice's "

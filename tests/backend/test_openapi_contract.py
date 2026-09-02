@@ -306,6 +306,19 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # M10 slice 2. Document 05 at `:1983`. No `If-Match`: a receipt is a new row, not an edit,
         # and a trader may legitimately pay in instalments.
         "submitIncomingPaymentReceipt",
+        # M10 slice 3. Document 05 at `:1990`, four of its five — the fifth reads an import run's
+        # rows, and rows are slice 4's. `listStatementImportRuns` is **not** in §21.4 and is here
+        # because `SVC-IMPORT-001` is a claim about the *set* of runs: an operator with no way to
+        # see run 1 beside run 2 has to take "a reparse does not overwrite it" on trust.
+        #
+        # No `If-Match` on either write. `command_catalog.yaml` gives the import-run command
+        # `concurrency: immutable_new_import_run_per_parse`; a record version guards an edit, and
+        # both of these create a row.
+        "createBankStatement",
+        "listBankStatements",
+        "getBankStatement",
+        "createStatementImportRun",
+        "listStatementImportRuns",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

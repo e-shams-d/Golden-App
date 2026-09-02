@@ -3485,6 +3485,140 @@
         "title": "FinalizeVersionRequest",
         "type": "object"
       },
+      "ImportRunRequest": {
+        "additionalProperties": false,
+        "description": "§21.4's import-run body: the mapping to parse with, and that is all.\n\n**No `run_number`.** `04_Database_Schema.md:774` makes a reparse a new run, and a caller that\ncould name the number could aim a new run at an old one's slot. The platform chooses it.",
+        "properties": {
+          "bank_mapping_id": {
+            "format": "uuid",
+            "title": "Bank Mapping Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bank_mapping_id"
+        ],
+        "title": "ImportRunRequest",
+        "type": "object"
+      },
+      "ImportRunResponse": {
+        "additionalProperties": false,
+        "description": "What comes back. `row_count` is included **and will be null**.\n\nPresent rather than omitted so a caller can see that this run has parsed nothing yet — zero\nwould say it parsed and found none, and omitting the field would say the question was never\nasked.",
+        "properties": {
+          "bank_mapping_id": {
+            "format": "uuid",
+            "title": "Bank Mapping Id",
+            "type": "string"
+          },
+          "bank_statement_file_id": {
+            "format": "uuid",
+            "title": "Bank Statement File Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Job Id"
+          },
+          "error_summary": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Summary"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "parser_version": {
+            "title": "Parser Version",
+            "type": "string"
+          },
+          "row_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Count"
+          },
+          "run_number": {
+            "title": "Run Number",
+            "type": "integer"
+          },
+          "source_hash": {
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "bank_statement_file_id",
+          "bank_mapping_id",
+          "run_number",
+          "status",
+          "row_count",
+          "parser_version",
+          "source_hash",
+          "started_at",
+          "finished_at",
+          "error_summary",
+          "created_by_job_id",
+          "created_at"
+        ],
+        "title": "ImportRunResponse",
+        "type": "object"
+      },
       "IncomingReceiptRequest": {
         "additionalProperties": false,
         "description": "§21.3's body: \"structured fields\" and a reference to an available file.\n\n**No `confirmed_amount_irr` and no `status`.** §21.3 in five words: \"Uploading evidence never\nconfirms payment.\" A trader cannot submit a confirmation, and the strongest way to say so is\nto have nowhere for one to arrive.",
@@ -6117,6 +6251,133 @@
           "sessions_revoked"
         ],
         "title": "StateChangeResponse",
+        "type": "object"
+      },
+      "StatementFileRequest": {
+        "additionalProperties": false,
+        "description": "§8.1's four selections, and nothing else.\n\n**No `status`, no `parser_version`, no `source_hash`.** A statement arrives `uploaded`; the\nother two describe a parse that has not happened. Every one of them would be a value the\ncommand then had to refuse, and the strongest refusal is having nowhere for it to arrive.",
+        "properties": {
+          "bank_account_id": {
+            "format": "uuid",
+            "title": "Bank Account Id",
+            "type": "string"
+          },
+          "bank_profile_version_id": {
+            "format": "uuid",
+            "title": "Bank Profile Version Id",
+            "type": "string"
+          },
+          "date_range_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Range End"
+          },
+          "date_range_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Range Start"
+          },
+          "original_file_id": {
+            "format": "uuid",
+            "title": "Original File Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bank_profile_version_id",
+          "bank_account_id",
+          "original_file_id"
+        ],
+        "title": "StatementFileRequest",
+        "type": "object"
+      },
+      "StatementFileResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "bank_account_id": {
+            "format": "uuid",
+            "title": "Bank Account Id",
+            "type": "string"
+          },
+          "bank_profile_version_id": {
+            "format": "uuid",
+            "title": "Bank Profile Version Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "date_range_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Range End"
+          },
+          "date_range_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Range Start"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "original_file_id": {
+            "format": "uuid",
+            "title": "Original File Id",
+            "type": "string"
+          },
+          "record_version": {
+            "title": "Record Version",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "bank_profile_version_id",
+          "bank_account_id",
+          "original_file_id",
+          "status",
+          "date_range_start",
+          "date_range_end",
+          "record_version",
+          "created_at"
+        ],
+        "title": "StatementFileResponse",
         "type": "object"
       },
       "TaskDetail": {
@@ -9582,6 +9843,510 @@
         "summary": "Attach an already-uploaded file as evidence, whole.",
         "tags": [
           "receipt-segments"
+        ]
+      }
+    },
+    "/api/v1/bank-statements": {
+      "get": {
+        "description": "`GET /api/v1/bank-statements`, per `:1990`.\n\nNo scoping predicate, and that is not an omission: a statement belongs to the centre, not to a\ntrader, and `bank_statement.read` is granted to internal roles alone.",
+        "operationId": "listBankStatements",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StatementFileResponse"
+                  },
+                  "title": "Response Listbankstatements",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The mapping, the account or the statement is not one this import can use."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such statement, mapping, account or file."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Idempotency-Key is required."
+          }
+        },
+        "summary": "Statements the centre has uploaded.",
+        "tags": [
+          "bank-statements"
+        ]
+      },
+      "post": {
+        "description": "`POST /api/v1/bank-statements`, per `:1990`.\n\n201: the record exists and the file is preserved. Nothing has been read out of it — §8.2 makes\nthe parse a separate step, and this route deliberately does not start one. An upload that\nparsed itself would give an operator no place to choose the mapping, which is the selection\n§8.2 calls exact.",
+        "operationId": "createBankStatement",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatementFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatementFileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The mapping, the account or the statement is not one this import can use."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such statement, mapping, account or file."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Idempotency-Key is required."
+          }
+        },
+        "summary": "Record a statement file the centre uploaded.",
+        "tags": [
+          "bank-statements"
+        ]
+      }
+    },
+    "/api/v1/bank-statements/{statement_id}": {
+      "get": {
+        "description": "`GET /api/v1/bank-statements/{statement_id}`, per `:1990`.",
+        "operationId": "getBankStatement",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "statement_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Statement Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatementFileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The mapping, the account or the statement is not one this import can use."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such statement, mapping, account or file."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Idempotency-Key is required."
+          }
+        },
+        "summary": "One statement file.",
+        "tags": [
+          "bank-statements"
+        ]
+      }
+    },
+    "/api/v1/bank-statements/{statement_id}/import-runs": {
+      "get": {
+        "description": "Not in §21.4's five, and the reason it is here is `SVC-IMPORT-001`.\n\n§21.4 lists the rows of *one* run, which is slice 4's. But \"a reparse creates a new run and\ndoes not overwrite the old one\" is a claim about the *set* of runs, and an operator with no way\nto see run 1 beside run 2 has to take that on trust. Ordered oldest first, so the history reads\nforwards.",
+        "operationId": "listStatementImportRuns",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "statement_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Statement Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ImportRunResponse"
+                  },
+                  "title": "Response Liststatementimportruns",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The mapping, the account or the statement is not one this import can use."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such statement, mapping, account or file."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Idempotency-Key is required."
+          }
+        },
+        "summary": "Every parse of this statement, oldest first.",
+        "tags": [
+          "bank-statements"
+        ]
+      },
+      "post": {
+        "description": "`POST /api/v1/bank-statements/{statement_id}/import-runs`, per `:1990`.\n\n**No `If-Match`.** `command_catalog.yaml` gives this command\n`concurrency: immutable_new_import_run_per_parse`, not an If-Match rule, and the difference is\nthe design: a record version guards an edit, and this creates a row rather than editing one.\nWhat stops two parses colliding is `UNIQUE(bank_statement_file_id, run_number)`, which a stale\nversion header could not have expressed.\n\n202: the run is `queued`. §8.2 puts the parse after the run exists, and this route creates the\nrun and enqueues the job — it does not parse.",
+        "operationId": "createStatementImportRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "statement_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Statement Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The mapping, the account or the statement is not one this import can use."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such statement, mapping, account or file."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Idempotency-Key is required."
+          }
+        },
+        "summary": "Parse the statement, as a new run.",
+        "tags": [
+          "bank-statements"
         ]
       }
     },
