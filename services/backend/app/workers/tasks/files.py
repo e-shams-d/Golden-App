@@ -318,7 +318,18 @@ def _parse_one(runtime: RuntimeServices, worker_id: str) -> StatementParseReport
         run_id = uuid.UUID(str(job.input_payload["bank_statement_import_run_id"]))
 
         try:
-            report = parse_pending_run(run_id, uow=uow, storage=runtime.storage, now=utc_now())
+            report = parse_pending_run(
+                run_id,
+                uow=uow,
+                storage=runtime.storage,
+                now=utc_now(),
+                # M10 slice 4B. The parse may open a duplicate review, and a task carries an
+                # actor. `system_worker` rather than `system_maintenance`, on the crop's
+                # precedent: this row was written by a worker doing the job it was asked to do.
+                policy=RENDER_REDACTION,
+                actor=RENDER_ACTOR,
+                context=AuditContext(causation_id=str(job.id)),
+            )
         except Exception as error:
             # Broad for the same reason `_render_one` is broad: a statement can fail to open in
             # ways this module cannot enumerate, and every one of them must leave the job

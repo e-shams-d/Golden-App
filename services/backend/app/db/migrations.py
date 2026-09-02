@@ -165,4 +165,10 @@ from __future__ import annotations
 # property of the database instead of a discipline. The three columns doc 04 `:796` forbids —
 # `matched_entity_type`, `matched_entity_id`, `is_matched` — are absent, and their absence is
 # asserted by a model walk rather than left to review.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260907_0038"})
+# 20260908_0039 creates nothing. It widens two CHECKs on `manual_review_tasks` so doc 08 §8.7's
+# "A warning does not automatically delete or merge data" has somewhere to put the warning: two
+# entity types added by the list's own stated rule — they are tables that exist — and one
+# **declared** task type, the first value that tuple has ever gained. None of its four described a
+# statement row suspected of being a duplicate, and reusing `payment_result_discrepancy` would
+# have filed an incoming-statement question in the outgoing-payment queue.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260908_0039"})

@@ -31,6 +31,9 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
+from app.audit.redaction import RedactionPolicy
+from app.audit.writer import AuditActor, AuditContext
+from app.commands.manual_review_task import OpenTask, open_task
 from app.core.errors import NotFoundError
 from app.db.models.bank import BankMapping
 from app.db.models.bank_statement import (
@@ -45,9 +48,24 @@ from app.db.models.bank_statement import (
     BankStatementRow,
 )
 from app.db.models.file_object import FileObject
+from app.db.models.manual_review_task import (
+    ENTITY_BANK_STATEMENT_FILE,
+    ENTITY_STATEMENT_IMPORT_RUN,
+    TASK_TYPE_STATEMENT_DUPLICATE,
+)
 from app.db.unit_of_work import SqlAlchemyUnitOfWork
 from app.files.download import open_stream
-from app.statements.parser import MappingConfigurationError, ParsedRow, parse_statement
+from app.statements.duplicates import (
+    ROW_POSSIBLE_DUPLICATE,
+    DuplicateReport,
+    find_duplicates,
+)
+from app.statements.parser import (
+    ROW_INVALID,
+    MappingConfigurationError,
+    ParsedRow,
+    parse_statement,
+)
 from app.storage.interface import StorageBackend
 
 
@@ -62,6 +80,10 @@ class ParseReport:
     warned: int
     invalid: int
     ignored: int
+    # M10 slice 4B. Counted separately rather than folded into `warned`, so a caller can tell "nine
+    # rows need a second look" from "nine rows may already be here" — different work, different
+    # person.
+    duplicates: int = 0
 
 
 def parse_pending_run(
@@ -70,6 +92,9 @@ def parse_pending_run(
     uow: SqlAlchemyUnitOfWork,
     storage: StorageBackend,
     now: datetime,
+    policy: RedactionPolicy,
+    actor: AuditActor,
+    context: AuditContext,
 ) -> ParseReport:
     """Read the statement this run points at and write its rows.
 
@@ -108,8 +133,14 @@ def parse_pending_run(
     except MappingConfigurationError as error:
         return _fail(uow, run=run, statement=statement, now=now, reason=str(error))
 
+    # **Before the rows are written, not after.** The cross-statement query looks for fingerprints
+    # already stored; running it after the insert would find this run's own rows and report every
+    # line as a duplicate of itself.
+    duplicates = find_duplicates(session, run=run, statement=statement, rows=result.rows)
+    flagged = duplicates.flagged_rows
+
     for parsed in result.rows:
-        session.add(_row_of(run, parsed))
+        session.add(_row_of(run, parsed, flagged=parsed.row_number in flagged))
     uow.flush()
 
     run.status = RUN_SUCCEEDED
@@ -118,12 +149,25 @@ def parse_pending_run(
     # §22.2: "preserve import-run errors". Recorded even on a successful run, because a run that
     # read every line and flagged nine of them is not the same event as one that read every line
     # cleanly — and only this column can say which happened after the fact.
-    run.error_summary = _summary(result.rows, unmapped=result.unmapped_headers)
+    run.error_summary = _summary(
+        result.rows, unmapped=result.unmapped_headers, duplicates=duplicates
+    )
     statement.status = FILE_PARSED
     statement.record_version += 1
     uow.flush()
 
-    return _report(run, list(result.rows))
+    _open_duplicate_review(
+        session,
+        run=run,
+        statement=statement,
+        duplicates=duplicates,
+        policy=policy,
+        actor=actor,
+        context=context,
+        now=now,
+    )
+
+    return _report(run, list(result.rows), flagged=flagged)
 
 
 def _fail(
@@ -168,7 +212,9 @@ def _statement_bytes(
     return b"".join(open_stream(storage, record).chunks)
 
 
-def _row_of(run: BankStatementImportRun, parsed: ParsedRow) -> BankStatementRow:
+def _row_of(
+    run: BankStatementImportRun, parsed: ParsedRow, *, flagged: bool = False
+) -> BankStatementRow:
     return BankStatementRow(
         bank_statement_import_run_id=run.id,
         row_number=parsed.row_number,
@@ -186,15 +232,29 @@ def _row_of(run: BankStatementImportRun, parsed: ParsedRow) -> BankStatementRow:
         counterparty_iban=parsed.counterparty_iban,
         raw_data=parsed.raw_data,
         row_fingerprint=parsed.row_fingerprint,
-        status=parsed.status,
+        # **A duplicate signal never overrides `invalid`.** A row that could not be read is a
+        # bigger problem than a row that looks familiar, and §8.6 gives `invalid` to the first.
+        # `possible_duplicate` replaces `valid` and `warning` only.
+        status=(
+            ROW_POSSIBLE_DUPLICATE
+            if flagged and parsed.status != ROW_INVALID
+            else parsed.status
+        ),
     )
 
 
-def _summary(rows: tuple[ParsedRow, ...], *, unmapped: tuple[str, ...]) -> dict[str, object]:
+def _summary(
+    rows: tuple[ParsedRow, ...],
+    *,
+    unmapped: tuple[str, ...],
+    duplicates: DuplicateReport | None = None,
+) -> dict[str, object]:
     """What an operator needs to see in preview, and nothing they would have to guess at.
 
     Rows are named by number and reason. `unmapped_headers` is not an error — §22.2 refuses to hide
-    anything — and is usually the first sign a bank changed its file format.
+    anything — and is usually the first sign a bank changed its file format. The duplicate
+    findings name **which signal** fired, because "row 14 looks familiar" and "row 14 has the
+    tracking number row 9 has" are different things to check.
     """
 
     problems = [
@@ -202,16 +262,114 @@ def _summary(rows: tuple[ParsedRow, ...], *, unmapped: tuple[str, ...]) -> dict[
         for row in rows
         if row.problems
     ]
-    return {
+    summary: dict[str, object] = {
         "rows_with_problems": problems,
         "unmapped_headers": list(unmapped),
     }
+    if duplicates is not None:
+        summary["duplicate_signals"] = [
+            {
+                "row_number": finding.row_number,
+                "signal": finding.signal,
+                "matched_row_id": str(finding.matched_row_id) if finding.matched_row_id else None,
+                "matched_row_number": finding.matched_row_number,
+            }
+            for finding in duplicates.findings
+        ]
+        summary["duplicate_of_statement_file_id"] = (
+            str(duplicates.duplicate_of_statement_file_id)
+            if duplicates.duplicate_of_statement_file_id
+            else None
+        )
+    return summary
 
 
-def _report(run: BankStatementImportRun, rows: list[ParsedRow]) -> ParseReport:
-    counted = {status: 0 for status in ("valid", "warning", "invalid", "ignored_empty")}
+def _open_duplicate_review(
+    session: Session,
+    *,
+    run: BankStatementImportRun,
+    statement: BankStatementFile,
+    duplicates: DuplicateReport,
+    policy: RedactionPolicy,
+    actor: AuditActor,
+    context: AuditContext,
+    now: datetime,
+) -> None:
+    """§8.7: "A warning does not automatically delete or merge data." So a person decides.
+
+    **One task per run, not one per duplicate.** A statement whose last week overlaps the previous
+    upload produces forty findings and one question — "did this file overlap the last one?" — and
+    forty queue items would bury it. `20260824_0025:1324` limits the entity reference to queue
+    navigation, which is exactly what pointing at the run does.
+
+    **A separate task for the file-checksum signal**, because it is a different question with a
+    different answer: not "are these rows already here" but "should this upload exist at all". It
+    names the statement file, and it is raised even when no row was flagged — an identical file
+    whose rows have all been superseded still means somebody uploaded the same thing twice.
+    """
+
+    if duplicates.duplicate_of_statement_file_id is not None:
+        open_task(
+            OpenTask(
+                task_type=TASK_TYPE_STATEMENT_DUPLICATE,
+                entity_type=ENTITY_BANK_STATEMENT_FILE,
+                entity_id=statement.id,
+                title="This statement file has already been uploaded",
+                description=(
+                    f"the uploaded file has the same sha256 as statement "
+                    f"{duplicates.duplicate_of_statement_file_id}. Nothing has been deleted or "
+                    "merged; document 08 §8.7 leaves that decision to a person."
+                ),
+                priority=4,
+                entity_record_version=statement.record_version,
+            ),
+            session=session,
+            policy=policy,
+            actor=actor,
+            context=context,
+            now=now,
+        )
+
+    if not duplicates.findings:
+        return
+
+    signals = sorted({finding.signal for finding in duplicates.findings})
+    numbers = ", ".join(str(finding.row_number) for finding in duplicates.findings)
+    open_task(
+        OpenTask(
+            task_type=TASK_TYPE_STATEMENT_DUPLICATE,
+            entity_type=ENTITY_STATEMENT_IMPORT_RUN,
+            entity_id=run.id,
+            title=f"{len(duplicates.findings)} row(s) in this import may be duplicates",
+            description=(
+                f"rows {numbers} matched on: {', '.join(signals)}. They are recorded as "
+                "`possible_duplicate` and nothing has been removed or merged."
+            ),
+            priority=5,
+        ),
+        session=session,
+        policy=policy,
+        actor=actor,
+        context=context,
+        now=now,
+    )
+
+
+def _report(
+    run: BankStatementImportRun, rows: list[ParsedRow], *, flagged: frozenset[int] | None = None
+) -> ParseReport:
+    marked = flagged or frozenset()
+    counted = {
+        status: 0
+        for status in ("valid", "warning", "invalid", "ignored_empty", "possible_duplicate")
+    }
     for row in rows:
-        counted[row.status] = counted.get(row.status, 0) + 1
+        status = (
+            ROW_POSSIBLE_DUPLICATE
+            if row.row_number in marked and row.status != ROW_INVALID
+            else row.status
+        )
+        counted[status] = counted.get(status, 0) + 1
     return ParseReport(
         import_run_id=run.id,
         status=run.status,
@@ -220,4 +378,5 @@ def _report(run: BankStatementImportRun, rows: list[ParsedRow]) -> ParseReport:
         warned=counted["warning"],
         invalid=counted["invalid"],
         ignored=counted["ignored_empty"],
+        duplicates=counted["possible_duplicate"],
     )

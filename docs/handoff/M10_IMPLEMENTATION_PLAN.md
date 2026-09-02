@@ -324,6 +324,52 @@ Immutable parsed rows, with both what the bank wrote and what the platform made 
   rather than a refusal (§18 `:1227`). A bank statement legitimately contains two identical
   transfers; the fingerprint says "look at this", not "this is wrong".
 
+**Split at build time into 4 and 4B**, by §5's rule that a slice splits when its parts have
+different blockers. Slice 4 computes, stores and indexes the fingerprint; slice 4B is what looks at
+it, and it needed values on two M0-owned lists that slice 4 did not.
+
+## Slice 4B — duplicate detection, and the task a warning becomes
+
+### Goal
+
+`SVC-FINGERPRINT-001`. Document 08 §8.7 in nine lines, the last of which governs the rest:
+**"A warning does not automatically delete or merge data."**
+
+### What it changes
+
+- No new table. `20260908_0039` widens two CHECKs on `manual_review_tasks`.
+- **Three of §8.7's five signals**, and the two omissions are recorded rather than left implicit:
+  *same bank account and statement period* is skipped because the period is optional operator
+  input and a signal that fires on `NULL = NULL` never fires; *same timestamp, amount and
+  description* is already covered by the fingerprint wherever a timestamp exists.
+- Two entity types added by the list's own stated rule — they are tables that exist, which is how
+  M9 slice 6 added `payment_result_publication`.
+- **One task type declared**, and it is the first value `TASK_TYPES` has ever gained. None of its
+  four describes a statement row suspected of being a duplicate, and the nearest —
+  `payment_result_discrepancy` — is about an *outgoing* payment's result. Reusing it would file an
+  incoming-statement question in the queue an accountant filters for payment results, which breaks
+  the one thing that list exists for. Recorded as a name M0 owes.
+
+### The property the whole detector is shaped around
+
+**A reparse is not a duplicate of itself.** Document 08 §8.2 makes reprocessing the *specified*
+workflow, so run 2 of a file produces the same fingerprints as run 1 every single time. A detector
+comparing against every earlier row would flag every reparse completely — the documented workflow
+reporting itself as an error — and an accountant who sees that twice learns to ignore the warning,
+which is worse than not having one. Rows of other runs of the **same statement file** are therefore
+excluded, and the overlapping-period case across two different files is not.
+
+### What proves it
+
+Eight integration tests, and two of them are there to keep the other six honest: a clean statement
+must produce no flag, no task and an empty signal list, and a repeated *unreadable* row must stay
+`invalid` rather than becoming `possible_duplicate` — §22.2's "never partially hide invalid rows"
+applied to the detector itself.
+
+This closes two of §26.2's ten statement-import cases: **duplicate file checksum** and **duplicate
+normalized rows**. Two more — *partial preview confirmation* and *rejected import run* — remain
+blocked on the two-axis status decision G-4 records as M0's.
+
 ## Slice 5 — `incoming_payment_matches`
 
 ### Goal

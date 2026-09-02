@@ -100,6 +100,28 @@ def migrated(module_provisioned_database: RuntimeIdentities) -> RuntimeIdentitie
     return module_provisioned_database
 
 
+def unique(rows: list[list[Any]]) -> list[list[Any]]:
+    """The same statement, with tracking numbers nothing else in this module has used.
+
+    **Added when slice 4B started detecting duplicates**, which immediately found that most of
+    these tests upload byte-identical statements. That is a real duplicate and the detector is
+    right to say so — but it made the *status* of every row depend on which tests had run before,
+    and a test whose result depends on its neighbours is a test that will fail for the wrong reason
+    one day. `test_a_repeated_statement_is_flagged` asserts the detection deliberately instead.
+
+    The tracking number is part of the fingerprint, so changing it is enough.
+    """
+
+    marker = uuid.uuid4().hex[:8]
+    return [
+        [
+            f"{cell}-{marker}" if isinstance(cell, str) and cell.startswith("TRK-") else cell
+            for cell in row
+        ]
+        for row in rows
+    ]
+
+
 def _workbook_bytes(rows: list[list[Any]], headers: list[str] | None = None) -> bytes:
     workbook = Workbook()
     sheet = workbook.active
@@ -333,7 +355,7 @@ def test_every_source_line_becomes_a_row(world: dict[str, Any]) -> None:
     """
 
     sign_in_admin(world)
-    run_id, report = a_parsed_run(world, _workbook_bytes(STATEMENT_ROWS))
+    run_id, report = a_parsed_run(world, _workbook_bytes(unique(STATEMENT_ROWS)))
 
     assert report.parsed == 1 and report.failed == 0
 
@@ -399,7 +421,7 @@ def test_raw_and_normalized_values_are_both_kept(world: dict[str, Any]) -> None:
     """
 
     sign_in_admin(world)
-    run_id, _ = a_parsed_run(world, _workbook_bytes(STATEMENT_ROWS))
+    run_id, _ = a_parsed_run(world, _workbook_bytes(unique(STATEMENT_ROWS)))
     stored = parsed_rows(world, run_id)
 
     persian = stored[1]
@@ -434,7 +456,7 @@ def test_an_unmapped_column_still_reaches_raw_data(world: dict[str, Any]) -> Non
     """
 
     sign_in_admin(world)
-    run_id, _ = a_parsed_run(world, _workbook_bytes(STATEMENT_ROWS))
+    run_id, _ = a_parsed_run(world, _workbook_bytes(unique(STATEMENT_ROWS)))
     stored = parsed_rows(world, run_id)
 
     assert stored[0]["raw_data"]["شعبه"] == "۱۲", (
@@ -459,7 +481,7 @@ def test_a_debit_is_never_read_as_a_credit(world: dict[str, Any]) -> None:
     """
 
     sign_in_admin(world)
-    run_id, _ = a_parsed_run(world, _workbook_bytes(STATEMENT_ROWS))
+    run_id, _ = a_parsed_run(world, _workbook_bytes(unique(STATEMENT_ROWS)))
     outgoing = parsed_rows(world, run_id)[3]
 
     assert outgoing["amount_out_irr"] == 750_000_000
@@ -478,7 +500,7 @@ def test_a_fractional_amount_is_flagged_and_not_rounded(world: dict[str, Any]) -
     """
 
     sign_in_admin(world)
-    run_id, _ = a_parsed_run(world, _workbook_bytes(STATEMENT_ROWS))
+    run_id, _ = a_parsed_run(world, _workbook_bytes(unique(STATEMENT_ROWS)))
     fractional = parsed_rows(world, run_id)[4]
 
     assert fractional["amount_in_irr"] is None, (
@@ -508,7 +530,7 @@ def test_an_empty_line_is_ignored_rather_than_invalid(world: dict[str, Any]) -> 
 
     sign_in_admin(world)
     run_id, _ = a_parsed_run(
-        world, _workbook_bytes([*STATEMENT_ROWS, [None] * len(HEADERS)])
+        world, _workbook_bytes([*unique(STATEMENT_ROWS), [None] * len(HEADERS)])
     )
     stored = parsed_rows(world, run_id)
 
@@ -545,7 +567,7 @@ def test_two_identical_transfers_share_a_fingerprint(world: dict[str, Any]) -> N
         ["2026-08-20", "09:00:00", "4,000,000,000", "", "1", "TRK-2001", "واریز", "الف", "۱"],
         ["2026-08-20", "09:00:00", "۴۰۰۰۰۰۰۰۰۰", "", "1", "TRK-2001", "واریز", "الف", "۱"],
     ]
-    run_id, _ = a_parsed_run(world, _workbook_bytes(twin))
+    run_id, _ = a_parsed_run(world, _workbook_bytes(unique(twin)))
     stored = parsed_rows(world, run_id)
 
     assert len(stored) == 2
@@ -586,7 +608,7 @@ def test_a_mapping_that_does_not_fit_fails_the_run_and_writes_no_rows(
 
     sign_in_admin(world)
     run_id, report = a_parsed_run(
-        world, _workbook_bytes(STATEMENT_ROWS), mapping_key="broken_mapping"
+        world, _workbook_bytes(unique(STATEMENT_ROWS)), mapping_key="broken_mapping"
     )
 
     assert report.parsed == 1, (
@@ -636,7 +658,7 @@ def test_a_corrected_mapping_reparses_the_same_file(world: dict[str, Any]) -> No
     from app.workers.tasks.files import parse_statements
 
     sign_in_admin(world)
-    content = _workbook_bytes(STATEMENT_ROWS)
+    content = _workbook_bytes(unique(STATEMENT_ROWS))
     statement_id = an_uploaded_statement(world, content)
 
     first = world["client"].post(
@@ -759,7 +781,7 @@ def test_a_mapping_naming_an_unknown_field_never_reaches_a_row(world: dict[str, 
         )
         connection.commit()
 
-    statement_id = an_uploaded_statement(world, _workbook_bytes(STATEMENT_ROWS))
+    statement_id = an_uploaded_statement(world, _workbook_bytes(unique(STATEMENT_ROWS)))
     response = world["client"].post(
         f"/api/v1/bank-statements/{statement_id}/import-runs",
         json={"bank_mapping_id": str(hostile_id)},
