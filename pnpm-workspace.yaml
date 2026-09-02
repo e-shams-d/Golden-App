@@ -71,6 +71,19 @@ allowBuilds:
 # kept passing because the pin looked deliberate. An override is only as current as the
 # advisory it was read from, which is the argument for re-reading them on every finding
 # rather than trusting the comment beside them.
+#
+# browserslist is pinned to 4.28.7 for CVE-2026-73088 (GHSA-73wf-gq98-2v4g, prototype write
+# from an untrusted query) and CVE-2026-73089 (GHSA-c83g-rgw3-j3cx, unbounded memory growth
+# because the query cache never evicts). Both advisories name `<= 4.28.6` affected and 4.28.7
+# first patched. It reaches the tree only through `@babel/helper-compilation-targets`, which
+# Next.js pulls in, so nothing here feeds it a query from a request — but a fixed release
+# exists, and this repository pins rather than files an exception whenever one does.
+#
+# 4.28.8 is the current latest and is not what this pins to. The policy above is the lowest
+# fixed release, and the nanoid entry is the reason: a floor chosen for any reason other than
+# "this is where the advisory says the fix landed" stops being checkable against the advisory.
+# Both 4.28.7 and 4.28.8 were read from the GitHub advisory database on 2026-09-02, and no
+# advisory lists either as affected.
 overrides:
   "postcss@<8.5.18": "8.5.18"
   "nanoid@<3.3.18": "3.3.18"
@@ -78,3 +91,4 @@ overrides:
   "brace-expansion@^5.0.0": "5.0.9"
   "brace-expansion@^1.0.0": "1.1.18"
   "js-yaml@<4.3.1": "4.3.1"
+  "browserslist@<4.28.7": "4.28.7"

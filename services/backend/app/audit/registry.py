@@ -1012,6 +1012,32 @@ PRICE_GOLD_SALE_ORDER = CommandNames(
 )
 
 
+# --- M10 slice 2: the trader's claim ------------------------------------------
+#
+# The fourth uncatalogued name in two slices, and the plan's G-3 said to expect it.
+# `audit_outbox_catalog.yaml` names `incoming_payment.confirmed` — the *confirmation*, which is
+# slice 6 — and nothing for the claim that precedes it. That gap is the milestone's whole shape in
+# miniature: the catalogue names the moments money is decided and not the moments it is claimed.
+
+SUBMIT_INCOMING_RECEIPT = CommandNames(
+    audit_action="incoming_receipt.submitted",
+    # No outbox event. Doc 05 §21.3: "Uploading evidence never confirms payment", so nothing
+    # outside the platform can act on a claim — and the catalogue lists no gold-sale event at all.
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=(
+        "M10 slice 2. `05_API_Specification.md:1981` defines "
+        "POST /gold-sale-orders/{order_id}/incoming-payment-receipts and "
+        "`audit_outbox_catalog.yaml` has no action for it — it names "
+        "`incoming_payment.confirmed`, which is slice 6's confirmation against a bank statement, "
+        "and nothing for the claim that precedes it. Implemented against "
+        "`incoming_receipt.create_own`, the approved permission the route requires and the one "
+        "`20260801_0008:377` gives the trader. The name follows the aggregate's catalogued "
+        "spelling and must be renamed to whatever M0 approves."
+    ),
+)
+
+
 # Every `CommandNames` defined above, and the gate that reads this tuple is the only thing
 # checking any of them against the catalogue. Three M5 entries — `BEGIN_REVIEW`,
 # `RETURN_FOR_CORRECTION` and `MARK_ELIGIBLE_FOR_BATCHING` — were defined and **left out of this
@@ -1117,4 +1143,6 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     CREATE_GOLD_SALE_ORDER,
     SUBMIT_GOLD_SALE_ORDER,
     PRICE_GOLD_SALE_ORDER,
+    # M10 slice 2. Also uncatalogued: the catalogue names the confirmation, not the claim.
+    SUBMIT_INCOMING_RECEIPT,
 )

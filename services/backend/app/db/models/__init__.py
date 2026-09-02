@@ -29,6 +29,7 @@ from app.db.models.file_object import FileDerivation, FileLink, FileObject
 from app.db.models.gold_sale import GoldSaleOrder, GoldSalePricingVersion
 from app.db.models.idempotency_record import IdempotencyRecord
 from app.db.models.identity import AdminUser, TraderUser
+from app.db.models.incoming_payment import IncomingPaymentReceipt
 from app.db.models.manual_review_task import ManualReviewTask
 from app.db.models.matching_candidate import MatchingCandidate
 from app.db.models.notification import Notification
@@ -74,6 +75,7 @@ __all__ = [
     "GoldSaleOrder",
     "GoldSalePricingVersion",
     "IdempotencyRecord",
+    "IncomingPaymentReceipt",
     "LegalHold",
     "ManualReviewTask",
     "MatchingCandidate",

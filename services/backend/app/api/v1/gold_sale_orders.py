@@ -33,6 +33,7 @@ from app.api.v1.auth import authenticated_actor, requires
 from app.audit.redaction import RedactionPolicy
 from app.audit.writer import AuditActor, AuditContext
 from app.commands import gold_sale as gold_sale_commands
+from app.commands import incoming_payment as incoming_payment_commands
 from app.core.errors import (
     BusinessRuleViolationError,
     ErrorEnvelope,
@@ -472,6 +473,133 @@ def create_pricing_version(
         )
         assert result.pricing_version is not None
         response = _rendered_version(result.pricing_version)
+        uow.commit()
+
+    return response
+
+
+class IncomingReceiptRequest(BaseModel):
+    """§21.3's body: "structured fields" and a reference to an available file.
+
+    **No `confirmed_amount_irr` and no `status`.** §21.3 in five words: "Uploading evidence never
+    confirms payment." A trader cannot submit a confirmation, and the strongest way to say so is
+    to have nowhere for one to arrive.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    amount_irr: int = Field(gt=0)
+    evidence_file_id: uuid.UUID | None = None
+    tracking_number: str | None = Field(default=None, max_length=128)
+    # The date as the trader's receipt shows it, beside the instant the platform derives. ADR-006:
+    # a Jalali presentation must not become the stored value, and discarding it would make a later
+    # mismatch unexaminable.
+    raw_payment_date: str | None = Field(default=None, max_length=64)
+    payment_at_normalized: datetime | None = None
+    source_bank_name: str | None = Field(default=None, max_length=160)
+    source_account_hint: str | None = Field(default=None, max_length=64)
+    destination_bank_account_id: uuid.UUID | None = None
+    sender_name: str | None = Field(default=None, max_length=255)
+    entered_amount_value: int | None = Field(default=None, gt=0)
+    entered_amount_unit: str | None = Field(default=None, max_length=8)
+
+
+class IncomingReceiptResponse(BaseModel):
+    """What comes back. `confirmed_amount_irr` is included **and will be null**.
+
+    Present rather than omitted so a client can see that the centre has not agreed with the figure
+    yet — a response that simply left it out would read as though the question had not been asked.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    gold_sale_order_id: uuid.UUID
+    amount_irr: int
+    confirmed_amount_irr: int | None
+    status: str
+    tracking_number: str | None
+    evidence_file_id: uuid.UUID | None
+    order_status: str
+    record_version: int
+    created_at: datetime
+
+
+@router.post(
+    "/{order_id}/incoming-payment-receipts",
+    response_model=IncomingReceiptResponse,
+    status_code=201,
+    operation_id="submitIncomingPaymentReceipt",
+    summary="Tell the centre the order has been paid for, with evidence.",
+    responses=RESPONSES,
+    dependencies=[owned_or_permitted("incoming_receipt.create_own", "incoming_receipt.read")],
+)
+def submit_incoming_payment_receipt(
+    order_id: uuid.UUID,
+    payload: IncomingReceiptRequest,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> IncomingReceiptResponse:
+    """`POST /api/v1/gold-sale-orders/{order_id}/incoming-payment-receipts`, per `:1983`.
+
+    **No `If-Match`.** §21.3 shows only an idempotency key, and it is right to: a receipt is a new
+    row rather than a change to an existing one, and the order's version is not what a second
+    receipt would conflict with — a trader may legitimately pay in two instalments.
+
+    The trader is taken from the session. §21.3's body has no `trader_id`, which is the defence
+    `app/security/ownership.py` describes: the attack is not validated, it is unrepresentable.
+    """
+
+    key = _require_key(idempotency_key)
+    now = utc_now()
+
+    if not actor.is_trader or actor.trader_id is None:
+        # An internal caller submitting a claim on a trader's behalf is a different command with a
+        # different audit meaning — "the centre says the trader paid" is not "the trader says so".
+        # Refused rather than quietly attributed.
+        raise ForbiddenError()
+
+    with runtime.uow_factory() as uow:
+        order = uow.session.get(GoldSaleOrder, order_id)
+        require_owned(order, order.trader_id if order else None, actor)
+
+        result = incoming_payment_commands.submit_receipt(
+            incoming_payment_commands.SubmitIncomingReceipt(
+                gold_sale_order_id=order_id,
+                trader_id=actor.trader_id,
+                amount_irr=payload.amount_irr,
+                evidence_file_id=payload.evidence_file_id,
+                tracking_number=payload.tracking_number,
+                raw_payment_date=payload.raw_payment_date,
+                payment_at_normalized=payload.payment_at_normalized,
+                source_bank_name=payload.source_bank_name,
+                source_account_hint=payload.source_account_hint,
+                destination_bank_account_id=payload.destination_bank_account_id,
+                sender_name=payload.sender_name,
+                entered_amount_value=payload.entered_amount_value,
+                entered_amount_unit=payload.entered_amount_unit,
+            ),
+            uow=uow,
+            policy=GOLD_SALE_REDACTION,
+            actor=_audit_actor(actor),
+            context=AuditContext(request_id=get_request_id()),
+            idempotency_key=key,
+            now=now,
+        )
+        receipt = result.receipt
+        response = IncomingReceiptResponse(
+            id=receipt.id,
+            gold_sale_order_id=receipt.gold_sale_order_id,
+            amount_irr=receipt.amount_irr,
+            confirmed_amount_irr=receipt.confirmed_amount_irr,
+            status=receipt.status,
+            tracking_number=receipt.tracking_number,
+            evidence_file_id=receipt.evidence_file_id,
+            order_status=result.order_status,
+            record_version=receipt.record_version,
+            created_at=receipt.created_at,
+        )
         uow.commit()
 
     return response

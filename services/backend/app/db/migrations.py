@@ -146,4 +146,8 @@ from __future__ import annotations
 # carrying no price, and an immutable snapshot with a monotonic version and a content hash, joined
 # by a deferrable composite foreign key so one order cannot point at another's pricing.
 # `gold_weight` is the first non-integer quantity the system stores, `NUMERIC(20, 6)` per §4.5.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260904_0035"})
+# 20260905_0036 adds `incoming_payment_receipts`, §10.3 — a trader's *claim* to have paid, which
+# doc 05 §21.3 separates from payment in five words: "Uploading evidence never confirms payment."
+# So `amount_irr` (claimed) and `confirmed_amount_irr` (verified) are different columns, and the
+# grant covers the confirmation and the lifecycle while every field of the claim stays frozen.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260905_0036"})
