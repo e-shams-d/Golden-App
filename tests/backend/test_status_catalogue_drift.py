@@ -144,6 +144,18 @@ STATUS_COLUMN_TO_AGGREGATE: dict[tuple[str, str], str] = {
     # remaining six describe an accountant reviewing what a parser produced, which is a second axis
     # M0 has not yet approved — and this gate would fail if the slice had invented it.
     ("bank_statement_import_runs", "status"): "bank_statement_import_run",
+    # M10 slice 5, and the aggregate is chosen rather than obvious. `status_catalog.yaml` carries
+    # **two** for this one table — `incoming_match_candidate` (document 06 §11.1's five states) and
+    # `incoming_confirmed_match` (§11.2's three) — because document 04 §10.7 collapses into one
+    # table what the outgoing direction splits into `matching_candidates` and
+    # `confirmed_evidence_links`.
+    #
+    # The CHECK enforces the candidate set, exactly, because that is what slice 5 writes: it
+    # proposes and rejects, and §21.5 keeps acceptance separate from financial confirmation. Slice
+    # 6 inherits the same two-axis question `bank_statement_import_run` above already put to M0 —
+    # whether `active/replaced/revoked` becomes a second column or extends this one — and this gate
+    # is what will refuse a slice that answers it by widening a CHECK.
+    ("incoming_payment_matches", "status"): "incoming_match_candidate",
 }
 
 # Status columns whose value set is **local to one relation** and is not a lifecycle the catalogue

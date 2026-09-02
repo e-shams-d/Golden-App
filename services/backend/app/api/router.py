@@ -14,6 +14,7 @@ from app.api.v1.evidence_links import router as evidence_links_router
 from app.api.v1.files import router as files_router
 from app.api.v1.gold_sale_orders import router as gold_sale_orders_router
 from app.api.v1.health import router as health_router
+from app.api.v1.incoming_matches import router as incoming_matches_router
 from app.api.v1.manual_review_tasks import router as manual_review_tasks_router
 from app.api.v1.matching_candidates import router as matching_candidates_router
 from app.api.v1.matching_candidates import (
@@ -89,3 +90,8 @@ api_v1_router.include_router(gold_sale_orders_router)
 # prefix because document 05 gives it one (`:1990`) rather than nesting it under an order — one
 # statement covers many orders and belongs to none of them.
 api_v1_router.include_router(bank_statements_router)
+# M10 slice 5. The two halves of the incoming direction meet here: a trader's claim and the bank's
+# own record. Its own prefix because document 05 puts creation under the receipt (`:2002`), which
+# is the same call `matching_candidates` made for the outgoing direction and for the same reason —
+# a candidate has no address of its own until something proposes it.
+api_v1_router.include_router(incoming_matches_router)

@@ -352,6 +352,15 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     ("GET", "/api/v1/bank-statements/{statement_id}"): PERMISSION,
     ("POST", "/api/v1/bank-statements/{statement_id}/import-runs"): PERMISSION,
     ("GET", "/api/v1/bank-statements/{statement_id}/import-runs"): PERMISSION,
+    # M10 slice 5. `PERMISSION` throughout, for the same reason as the statements above: which bank
+    # row proves a claim is the centre's judgement, not the trader's property. A trader may say
+    # they paid — slice 2 — and holds neither `incoming_payment.match` nor `incoming_receipt.read`.
+    ("POST", "/api/v1/incoming-payment-receipts/{receipt_id}/matches"): PERMISSION,
+    ("GET", "/api/v1/incoming-payment-receipts/{receipt_id}/matches"): PERMISSION,
+    (
+        "POST",
+        "/api/v1/incoming-payment-receipts/{receipt_id}/matches/{match_id}/reject",
+    ): PERMISSION,
     # M9 slice 5B. Ownership resolved through the publication's *request*: a file id is the wrong
     # thing to authorise against, because `file_objects` has no trader column and the card is a
     # derivation that inherits its visibility.
@@ -882,6 +891,24 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
         "/api/v1/bank-statements",
         "permission",
     ): "test_no_trader_can_see_or_touch_a_statement",
+    # M10 slice 5, and one test for all three for the same reason as the block above: the property
+    # is that a trader holds neither matching permission, and checking two routes while leaving the
+    # third is how a list endpoint becomes the leak.
+    (
+        "POST",
+        "/api/v1/incoming-payment-receipts/{receipt_id}/matches",
+        "permission",
+    ): "test_no_trader_can_reach_the_matching_surface",
+    (
+        "GET",
+        "/api/v1/incoming-payment-receipts/{receipt_id}/matches",
+        "permission",
+    ): "test_no_trader_can_reach_the_matching_surface",
+    (
+        "POST",
+        "/api/v1/incoming-payment-receipts/{receipt_id}/matches/{match_id}/reject",
+        "permission",
+    ): "test_no_trader_can_reach_the_matching_surface",
     ("GET", "/api/v1/bank-statements", "permission"): "test_no_trader_can_see_or_touch_a_statement",
     (
         "GET",

@@ -96,6 +96,14 @@ NON_MONETARY_NUMERIC: dict[tuple[str, str], str] = {
         "A confidence between 0 and 1 for a later phase that guesses. "
         "04_Database_Schema.md:1228 specifies NUMERIC(5,4). Never money, and never a rial."
     ),
+    ("incoming_match.py", "match_score"): (
+        "M10 slice 5, and the incoming twin of the entry below. A match score between 0 and 1, "
+        "bounded by 04_Database_Schema.md:807's own CHECK. It ranks a suggestion and cannot "
+        "become a payment: 05_API_Specification.md:2009 keeps candidate acceptance and financial "
+        "confirmation separate, and no command in that slice writes a confirmed amount at all. "
+        "NUMERIC rather than a float for the same reason as the entry below: the CHECK's bounds "
+        "have to hold exactly at 0 and at 1."
+    ),
     ("matching_candidate.py", "score"): (
         "A match score between 0 and 1, bounded by 04_Database_Schema.md:1268's own CHECK. It "
         "ranks a suggestion and cannot become a payment: :1274 says accepting a candidate does "

@@ -319,6 +319,17 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "getBankStatement",
         "createStatementImportRun",
         "listStatementImportRuns",
+        # M10 slice 5. Document 05 at `:2002`, which spells one route. The reject and the list are
+        # not in it and are here for the same reason `listStatementImportRuns` is: `:2009` — the
+        # sentence the whole slice exists for — describes *two* decisions, and a surface offering
+        # only the first leaves an accountant no way to record a judgement that a suggestion is
+        # wrong. The list is what makes a rejected candidate history rather than a deletion.
+        #
+        # `If-Match` on the reject and not on the propose: one edits a row and the other creates
+        # one, and §10.7's unique on the pair is what makes two simultaneous proposals safe.
+        "proposeIncomingPaymentMatch",
+        "rejectIncomingPaymentMatch",
+        "listIncomingPaymentMatches",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas
