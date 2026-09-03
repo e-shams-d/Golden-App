@@ -334,6 +334,10 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # `incoming_payment_match_id`, which §8.9's "evidence before statement availability" is
         # the reason for.
         "confirmIncomingPayment",
+        # M10 slice 7. Document 05 at `:2029`. Guarded by `gold_sale.dispatch` alone; the override
+        # permission is checked inside the command and only on the path where the payment guard
+        # fails, because a `requires(...)` for it would deny every ordinary dispatch.
+        "recordGoldDispatch",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

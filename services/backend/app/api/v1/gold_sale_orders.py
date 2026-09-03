@@ -32,6 +32,7 @@ from app.api.dependencies import get_runtime
 from app.api.v1.auth import authenticated_actor, requires
 from app.audit.redaction import RedactionPolicy
 from app.audit.writer import AuditActor, AuditContext
+from app.commands import gold_dispatch as gold_dispatch_commands
 from app.commands import gold_sale as gold_sale_commands
 from app.commands import incoming_payment as incoming_payment_commands
 from app.core.errors import (
@@ -168,6 +169,45 @@ def owned_or_permitted(trader_permission: str, internal_permission: str) -> Any:
         if required not in actor.permissions:
             raise ForbiddenError()
         return None
+
+    return Depends(guard)
+
+
+def dispatch_or_override() -> Any:
+    """Either authority may reach the dispatch route, and neither implies the other.
+
+    **Found by a failing test rather than by design, and the failure was the useful kind.** The
+    first version required `gold_sale.dispatch` alone, which `permission_catalog.yaml` grants to
+    `warehouse_operator` only — so the manager who holds `gold_sale.dispatch_override` could not
+    open the route at all, and the override was unreachable by everybody entitled to it.
+
+    That is evidence for what `app/commands/gold_dispatch.py` records: in a single-request design
+    the person authorising the override is necessarily the person recording the dispatch. Real dual
+    control needs two commands, which no document names.
+
+    So the route admits either permission and the **command** decides which path the caller may
+    take: without `gold_sale.dispatch_override`, an unpaid order is still refused. A manager
+    dispatching a paid order is ordinary and allowed; a warehouse operator overriding is not.
+
+    Both names are read inside the closure, on `owned_or_permitted`'s precedent above:
+    `test_permission_guards.py` walks it for approved codes, and a name it does not carry is one
+    the gate cannot see.
+    """
+
+    declared_dispatch = declare("gold_sale.dispatch")
+    declared_override = declare("gold_sale.dispatch_override")
+
+    def guard(
+        actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    ) -> None:
+        if actor.is_trader:
+            # A trader holds neither, and saying so here rather than falling through the set
+            # comparison keeps the refusal about the audience rather than about a missing grant.
+            raise ForbiddenError()
+        if declared_dispatch not in actor.permissions and declared_override not in (
+            actor.permissions
+        ):
+            raise ForbiddenError()
 
     return Depends(guard)
 
@@ -473,6 +513,139 @@ def create_pricing_version(
         )
         assert result.pricing_version is not None
         response = _rendered_version(result.pricing_version)
+        uow.commit()
+
+    return response
+
+
+class DispatchRequest(BaseModel):
+    """§21.7's body.
+
+    **No `status`.** A physical movement is born `dispatched` and a settlement `settled`, derived
+    from `dispatch_type` — which is the one thing `SVC-SETTLEMENT-001` says must not be collapsed.
+    A caller that could name the status could dispatch an offset.
+
+    **`guard_override_reason` is the only override field.** Who authorised it and when are the
+    platform's to record from the session: a caller that could name the authoriser could name
+    somebody who never agreed, which is a forged authorisation rather than a recorded one.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    dispatch_type: str
+    # A string for the same reason the order's weight is one: `app/core/hashing.py` refuses floats,
+    # and a weight that reached Python as a float would already have lost its exactness.
+    gold_weight: Decimal | None = Field(default=None, gt=0)
+    weight_unit: str | None = Field(default=None, max_length=16)
+    gold_purity: str | None = Field(default=None, max_length=16)
+    recipient_name: str | None = Field(default=None, max_length=255)
+    tracking_or_delivery_note: str | None = None
+    evidence_file_id: uuid.UUID | None = None
+    dispatched_at: datetime | None = None
+    guard_override_reason: str | None = Field(default=None, max_length=2000)
+
+
+class DispatchResponse(BaseModel):
+    """What moved, and what the order was paid.
+
+    `confirmed_total_irr` and `expected_amount_irr` are both here so a client can see *why* the
+    dispatch was allowed. A response carrying only the dispatch would make an override
+    indistinguishable from a guard that passed.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    gold_sale_order_id: uuid.UUID
+    dispatch_type: str
+    status: str
+    gold_weight: Decimal | None
+    weight_unit: str | None
+    dispatched_at: datetime | None
+    guard_override_at: datetime | None
+    guard_override_reason: str | None
+    order_status: str
+    confirmed_total_irr: int
+    expected_amount_irr: int | None
+    record_version: int
+    created_at: datetime
+
+
+@router.post(
+    "/{order_id}/dispatches",
+    response_model=DispatchResponse,
+    status_code=201,
+    operation_id="recordGoldDispatch",
+    summary="Record that gold moved, or that the order was settled without it.",
+    responses=RESPONSES,
+    dependencies=[dispatch_or_override()],
+)
+def record_gold_dispatch(
+    order_id: uuid.UUID,
+    payload: DispatchRequest,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> DispatchResponse:
+    """`POST /api/v1/gold-sale-orders/{order_id}/dispatches`, per `:2029`.
+
+    **Either permission opens the route; only one of them opens the override.** See
+    `dispatch_or_override` above for why the first version was wrong — it admitted the warehouse
+    operator alone, which locked out the only role entitled to override.
+
+    The actor's permission set is passed down rather than re-read inside the command:
+    `ActorContext` already carries it, and a command that fetched its own would be asking a second
+    question of a different source than the one the route was guarded by.
+    """
+
+    expected = _parse_record_version(if_match)
+    key = _require_key(idempotency_key)
+    now = utc_now()
+
+    if actor.actor_id is None:
+        raise ForbiddenError()
+
+    with runtime.uow_factory() as uow:
+        result = gold_dispatch_commands.record_dispatch(
+            gold_dispatch_commands.RecordDispatch(
+                gold_sale_order_id=order_id,
+                dispatch_type=payload.dispatch_type,
+                expected_record_version=expected,
+                weight=payload.gold_weight,
+                weight_unit=payload.weight_unit,
+                gold_purity=payload.gold_purity,
+                receiver_name=payload.recipient_name,
+                tracking_or_delivery_note=payload.tracking_or_delivery_note,
+                evidence_file_id=payload.evidence_file_id,
+                dispatched_at=payload.dispatched_at,
+                guard_override_reason=payload.guard_override_reason,
+            ),
+            uow=uow,
+            policy=GOLD_SALE_REDACTION,
+            actor=_audit_actor(actor),
+            context=AuditContext(request_id=get_request_id()),
+            actor_permissions=frozenset(actor.permissions),
+            idempotency_key=key,
+            now=now,
+        )
+        dispatch = result.dispatch
+        response = DispatchResponse(
+            id=dispatch.id,
+            gold_sale_order_id=dispatch.gold_sale_order_id,
+            dispatch_type=dispatch.dispatch_type,
+            status=dispatch.status,
+            gold_weight=dispatch.weight,
+            weight_unit=dispatch.weight_unit,
+            dispatched_at=dispatch.dispatched_at,
+            guard_override_at=dispatch.guard_override_at,
+            guard_override_reason=dispatch.guard_override_reason,
+            order_status=result.order_status,
+            confirmed_total_irr=result.confirmed_total_irr,
+            expected_amount_irr=result.expected_amount_irr,
+            record_version=dispatch.record_version,
+            created_at=dispatch.created_at,
+        )
         uow.commit()
 
     return response

@@ -1069,6 +1069,18 @@ CREATE_BANK_STATEMENT_FILE = CommandNames(
     ),
 )
 
+DISPATCH_GOLD_SALE = CommandNames(
+    # `audit_outbox_catalog.yaml:51`. **The third fully catalogued M10 command**, and the one this
+    # milestone was built toward: M0 named the two moments money is decided and the one moment gold
+    # moves, which is exactly the set an auditor would ask for.
+    audit_action="gold_sale.dispatched",
+    # `command_catalog.yaml`'s `gold_sale.dispatch` gives `outbox_event: null`, right for the same
+    # reason slice 6's is: a trader learning their gold has been dispatched is a notification, and
+    # M9 slice 7's projection is the mechanism for one.
+    outbox_event_type=None,
+    catalogued=True,
+)
+
 CONFIRM_INCOMING_PAYMENT = CommandNames(
     # `audit_outbox_catalog.yaml:50`, and `command_catalog.yaml`'s `incoming_payment.confirm` names
     # the same action against the same route. **The second fully catalogued M10 command**, after
@@ -1240,4 +1252,6 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     REJECT_INCOMING_MATCH,
     # M10 slice 6, and fully catalogued — the second M10 name that is.
     CONFIRM_INCOMING_PAYMENT,
+    # M10 slice 7, the third and last catalogued one: the moment gold moves.
+    DISPATCH_GOLD_SALE,
 )

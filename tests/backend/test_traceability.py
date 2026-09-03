@@ -836,25 +836,10 @@ PENDING: dict[str, str] = {
     # `tests/integration/test_incoming_confirmation.py`. The overpayment half of SVC-INCOMING-002
     # is asserted twice deliberately — once on a single receipt and once across two, because a
     # guard reading only the receipt in front of it passes the first and fails the second.
-    # Slice 7 - dispatch, settlement, and the guard written last on purpose.
-    "SEC-DISPATCH-001": (
-        "M10 slice 7 - dispatch and the payment guard. Stated by the plan and not "
-        "yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-        "own pull request discharges it and removes this entry in the same commit."
-    ),
-    "SVC-DISPATCH-001": (
-        "M10 slice 7 - dispatch and the payment guard. Stated by the plan and not "
-        "yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-        "own pull request discharges it and removes this entry in the same commit."
-    ),
-    "SVC-SETTLEMENT-001": (
-        "M10 slice 7 - dispatch and the payment guard. Stated by the plan and not "
-        "yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-        "own pull request discharges it and removes this entry in the same commit."
-    ),
+    # Slice 7 shipped; all three are discharged by citation in
+    # `tests/integration/test_gold_dispatch.py`. `SEC-DISPATCH-001` holds because of the seed
+    # rather than a branch — `gold_sale.dispatch_override` is the manager's alone — so deleting
+    # the command's check would not let a warehouse operator through.
     # Slice 8 - correction, the trader surface, and the milestone gate.
     "SVC-GOLDCORRECT-001": (
         "M10 slice 8 - correction and the Definition of Done. Stated by the plan and not "

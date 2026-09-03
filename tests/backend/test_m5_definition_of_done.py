@@ -249,6 +249,18 @@ def test_the_manager_only_set_is_real(manager_only: frozenset[str]) -> None:
     same separation `FINANCIAL_INTEGRITY_BASELINE.md` §5 makes non-configurable between
     finalizing and approving. The other three are the approval verbs; this is the verb that
     unmakes them, which is why it sits here rather than beside `payment_batch.cancel_draft`.
+
+    **The fifth arrived the same way, and this is the record of having looked again.** M10 slice 7
+    added `gold_sale.dispatch_override` on the owner's decision of 2026-09-03: releasing gold when
+    the payment guard has not passed. It belongs here for the fourth entry's reason read from the
+    other direction of the business — `permission_catalog.yaml`'s `dispatch_control` constraint
+    says "warehouse cannot override financial verification", so the operator who records dispatches
+    holding it would defeat a separation that file states outright.
+
+    Not the accountant either, which is worth recording because the accountant is the obvious
+    candidate: they are the ones who confirm that money arrived. Releasing metal when it did not is
+    a decision about accepting risk rather than about reconciling a figure, and the manager's
+    `baseline_purpose` names "configured high-risk decisions".
     """
 
     assert manager_only == frozenset(
@@ -257,6 +269,7 @@ def test_the_manager_only_set_is_real(manager_only: frozenset[str]) -> None:
             "payment_batch_version.reject",
             "payment_batch_version.invalidate_approval",
             "payment_batch.cancel_approved",
+            "gold_sale.dispatch_override",
         }
     ), sorted(manager_only)
 

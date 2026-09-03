@@ -171,4 +171,9 @@ from __future__ import annotations
 # **declared** task type, the first value that tuple has ever gained. None of its four described a
 # statement row suspected of being a duplicate, and reusing `payment_result_discrepancy` would
 # have filed an incoming-statement question in the outgoing-payment queue.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260910_0041"})
+# 20260911_0042 adds `gold_dispatches`, the last table M10 needs, and seeds
+# `gold_sale.dispatch_override` granted to `manager` on the owner's 2026-09-03 decision.
+# `dispatch_type` gets no UPDATE grant: doc 06 section 12.3 forbids converting a physical
+# dispatch *silently* into a settlement, and a column the runtime cannot write is the
+# strongest form of not-silently available.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260911_0042"})

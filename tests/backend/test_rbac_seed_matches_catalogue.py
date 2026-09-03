@@ -36,6 +36,13 @@ ACTIVATION_MIGRATION = (
 CANCELLATION_MIGRATION = (
     BACKEND_ROOT / "alembic" / "versions" / "20260828_0027_cancel_approved_permission.py"
 )
+# The fourth. M10 slice 7's `gold_sale.dispatch_override`, granted to `manager` on the owner's
+# 2026-09-03 decision, so that §18 `:1236`'s "explicitly authorized override" is reachable at all
+# under deny-by-default. Named here for the reason the three above are: this gate loads revisions
+# by path, so a seeding migration it is not told about is one it silently does not check.
+DISPATCH_OVERRIDE_MIGRATION = (
+    BACKEND_ROOT / "alembic" / "versions" / "20260911_0042_gold_dispatches.py"
+)
 
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
@@ -67,6 +74,12 @@ def load_cancellation_seed() -> object:
     """The third seeding revision. See `CANCELLATION_MIGRATION`."""
 
     return _load(CANCELLATION_MIGRATION, "seed_cancellation_permission")
+
+
+def load_dispatch_override_seed() -> object:
+    """The fourth seeding revision. See `DISPATCH_OVERRIDE_MIGRATION`."""
+
+    return _load(DISPATCH_OVERRIDE_MIGRATION, "seed_dispatch_override_permission")
 
 
 def _load(path: Path, name: str) -> object:
@@ -113,6 +126,7 @@ class TestSeedMatchesCatalogue:
 
         activation = load_activation_seed()
         cancellation = load_cancellation_seed()
+        dispatch_override = load_dispatch_override_seed()
         catalogue_codes = {permission.code for permission in permissions()}
         seeded_codes = {code for code, _domain in seed.PERMISSIONS}  # type: ignore[attr-defined]
         seeded_codes |= {
@@ -122,6 +136,10 @@ class TestSeedMatchesCatalogue:
         seeded_codes |= {
             code
             for code, _domain in cancellation.CANCELLATION_PERMISSIONS  # type: ignore[attr-defined]
+        }
+        seeded_codes |= {
+            code
+            for code, _domain in dispatch_override.OVERRIDE_PERMISSIONS  # type: ignore[attr-defined]
         }
 
         assert seeded_codes == catalogue_codes
@@ -136,6 +154,7 @@ class TestSeedMatchesCatalogue:
         """
 
         cancellation = load_cancellation_seed()
+        dispatch_override = load_dispatch_override_seed()
         expected = {
             (role_code, permission.code)
             for permission in permissions()
@@ -143,6 +162,10 @@ class TestSeedMatchesCatalogue:
         }
         seeded = set(seed.ROLE_PERMISSIONS)  # type: ignore[attr-defined]
         seeded |= set(cancellation.CANCELLATION_GRANTS)  # type: ignore[attr-defined]
+        # M10 slice 7, the second revision to seed a grant. `gold_sale.dispatch_override` goes to
+        # `manager` on the owner's 2026-09-03 decision, for the reason the cancellation did: a
+        # permission that authorises nobody is a rule nobody can follow.
+        seeded |= set(dispatch_override.OVERRIDE_GRANTS)  # type: ignore[attr-defined]
 
         assert seeded == expected
 
