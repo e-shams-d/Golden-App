@@ -282,6 +282,29 @@ WRITTEN_BY_EXACTLY_ONE_COMMAND: dict[str, str] = {
     "retry_of_attempt_id": "commands/payment_retry.py",
 }
 
+# **Modules that write one of these names onto a different table entirely.**
+#
+# The scan's docstring below already records that `confirmed_at` and `confirmed_by_admin_user_id`
+# are not unique to `payment_attempts` — `confirmed_evidence_links` carries them too — and that the
+# AST walk fixed the *constructor* half of that collision. It did not fix the other half: an
+# attribute write like `receipt.confirmed_at = now` is indistinguishable from
+# `attempt.confirmed_at = now` without type inference the scan deliberately does not attempt.
+#
+# M10 slice 6 is the first module to hit it. `incoming_confirmation.py` confirms an incoming
+# payment: it writes both names on `incoming_payment_receipts` and `incoming_payment_matches`, and
+# `04_Database_Schema.md` §10.3 and §10.7 name those columns on both tables.
+#
+# **The exemption is per module and per column, and it checks itself.** A module listed here that
+# can reach `PaymentAttempt` fails `test_an_exempt_module_cannot_reach_payment_attempts` below, so
+# this is not a promise that the module writes another table — it is a proof that it cannot write
+# this one.
+WRITES_ANOTHER_TABLES_COLUMN: dict[str, tuple[str, ...]] = {
+    "commands/incoming_confirmation.py": (
+        "confirmed_at",
+        "confirmed_by_admin_user_id",
+    ),
+}
+
 
 def test_every_lineage_column_exists_and_is_nullable() -> None:
     """`DB-ATTEMPT-001`, the half that is a property of the schema.
@@ -338,9 +361,14 @@ def test_nothing_in_the_application_writes_a_lineage_column() -> None:
         where = source.relative_to(application)
 
         for node in ast.walk(tree):
+            exempt = WRITES_ANOTHER_TABLES_COLUMN.get(where.as_posix(), ())
             if isinstance(node, ast.Assign):
                 for target in node.targets:
-                    if isinstance(target, ast.Attribute) and target.attr in lineage:
+                    if (
+                        isinstance(target, ast.Attribute)
+                        and target.attr in lineage
+                        and target.attr not in exempt
+                    ):
                         offenders.append(f"{where} assigns {target.attr}")
             elif isinstance(node, ast.Call):
                 callee = node.func
@@ -445,3 +473,46 @@ def test_the_lineage_scan_catches_both_shapes_and_ignores_the_third(tmp_path: Pa
         "PaymentAttempt keyword, and must not catch the same keyword on another constructor or "
         "a dictionary key."
     )
+
+
+def test_an_exempt_module_cannot_reach_payment_attempts() -> None:
+    """Guard the exemption above, so it cannot become the hole it looks like.
+
+    `WRITES_ANOTHER_TABLES_COLUMN` takes a module's word that its `confirmed_at` belongs to a
+    different table. That word is worth nothing on its own — the next slice could add one line to
+    the same module and write the attempt's column with the scan looking away.
+
+    So the exemption is checked rather than trusted: an exempt module must not import
+    `PaymentAttempt` at all. Enforcement by absence, which is what this repository reaches for
+    whenever a rule would otherwise be a promise. A module that genuinely needs both would have to
+    be split, and that is the right outcome — confirming an incoming payment and confirming an
+    outgoing attempt are different acts on different money.
+    """
+
+    application = Path(__file__).resolve().parents[2] / "services" / "backend" / "app"
+
+    assert WRITES_ANOTHER_TABLES_COLUMN, (
+        "the exemption map is empty, so this guard asserts nothing. A gate whose input is empty "
+        "passes."
+    )
+
+    for module, columns in WRITES_ANOTHER_TABLES_COLUMN.items():
+        source = application / module
+        assert source.exists(), f"{module} is exempted and does not exist"
+        assert columns, f"{module} is exempted for no column"
+
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        imported: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom | ast.Import):
+                imported.update(alias.name for alias in node.names)
+
+        assert "PaymentAttempt" not in imported, (
+            f"{module} is exempted from the lineage scan and imports PaymentAttempt. The "
+            "exemption exists because the module writes another table's identically named "
+            "column; if it can reach an attempt, the scan is looking away from exactly what it "
+            "was written to catch."
+        )
+        assert not any(name.endswith("payment_attempt") for name in imported), (
+            f"{module} is exempted and imports the payment attempt module"
+        )

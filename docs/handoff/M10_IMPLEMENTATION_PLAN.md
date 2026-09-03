@@ -442,6 +442,49 @@ A person decides the money arrived, and the order's state says exactly what arri
 - `AUD-INCOMING-001` — `incoming_payment.confirmed`, one of only two M10 actions the catalogue
   carries.
 
+### The two-axis question, answered
+
+G-4 recorded it for the import run and slice 5 inherited it: `status_catalog.yaml` carries
+`incoming_match_candidate` and `incoming_confirmed_match` as separate aggregates for one table, and
+slice 5 could defer the second because it wrote no confirmations. This slice writes them, so it
+answers: **a second column, `confirmation_status`, carrying document 06 §11.2's three states.**
+
+Three reasons, and the third decides it. The candidate lifecycle has no state meaning "confirmed" —
+§11.3's first rule is that even `accepted_for_review` is not financial confirmation. The catalogue
+names the two as separate lifecycles, and collapsing them would make its own distinction
+unreadable from the schema. And **the two axes move independently and both matter afterwards**: a
+match that was `proposed` and then confirmed is a different record from one that was
+`accepted_for_review` first, and slice 8's correction sets `confirmation_status` to `replaced`
+while the candidate's own history stays put. One column cannot hold both without losing one.
+
+**This is an implementation taking the shape the catalogue's own note suggested, not M0 deciding.**
+The same choice is still open for `bank_statement_import_run`, and the register should say that
+this table has been answered one way while that one has not.
+
+### Two guards from document 06 §11.3 that this section did not name
+
+- **A row already in an active match cannot fund a second claim** (§11.3's third rule). The guard
+  is in the command and **not** a partial unique index, because an index would also answer §10.7
+  `:809`'s open cardinality question — which is what slice 5's absence test exists to prevent, and
+  this slice would have been the one to trip it. A guard a business decision can lift beats an
+  index a migration must remove.
+- **The confirmation is one transaction** (§11.3's second rule): the match, the receipt and the
+  order move together, and the order is locked before the sum is read. Two accountants confirming
+  two receipts of one order would otherwise both read the old total and both pass the overpayment
+  check.
+
+### Two names declared, and one gate widened
+
+`incoming_payment_discrepancy` and the `incoming_payment_receipt` entity type. The first draft
+borrowed 4B's `statement_duplicate_review` with `bank_statement_import_run` while passing a receipt
+id — a task whose type described something else and whose reference pointed nowhere.
+
+`test_nothing_in_the_application_writes_a_lineage_column` also had to gain a per-module exemption:
+`confirmed_at` and `confirmed_by_admin_user_id` are `payment_attempts` columns *and* §10.3/§10.7
+columns, and the scan's AST walk had only ever fixed the constructor half of that collision. The
+exemption checks itself — an exempt module that can reach `PaymentAttempt` fails a new test — so it
+is a proof rather than a promise.
+
 ## Slice 7 — dispatch, settlement, and the guard
 
 ### Goal

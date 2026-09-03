@@ -1069,6 +1069,19 @@ CREATE_BANK_STATEMENT_FILE = CommandNames(
     ),
 )
 
+CONFIRM_INCOMING_PAYMENT = CommandNames(
+    # `audit_outbox_catalog.yaml:50`, and `command_catalog.yaml`'s `incoming_payment.confirm` names
+    # the same action against the same route. **The second fully catalogued M10 command**, after
+    # slice 3's import run — and the milestone's most important moment is one of the two the
+    # catalogue anticipated, which is not a coincidence: M0 named the places money is decided.
+    audit_action="incoming_payment.confirmed",
+    # `outbox_event: null` in that command row. A trader learning their payment was accepted is a
+    # notification, and M9 slice 7's projection is the mechanism — slice 8's wiring, not an event
+    # invented here.
+    outbox_event_type=None,
+    catalogued=True,
+)
+
 _MATCH_REASON = (
     "M10 slice 5. `05_API_Specification.md:2002` defines "
     "POST /incoming-payment-receipts/{receipt_id}/matches and `audit_outbox_catalog.yaml` has no "
@@ -1225,4 +1238,6 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     # and not the suggestion that precedes it.
     PROPOSE_INCOMING_MATCH,
     REJECT_INCOMING_MATCH,
+    # M10 slice 6, and fully catalogued — the second M10 name that is.
+    CONFIRM_INCOMING_PAYMENT,
 )

@@ -330,6 +330,10 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "proposeIncomingPaymentMatch",
         "rejectIncomingPaymentMatch",
         "listIncomingPaymentMatches",
+        # M10 slice 6. Document 05 at `:2011`, spelled exactly — including the nullable
+        # `incoming_payment_match_id`, which §8.9's "evidence before statement availability" is
+        # the reason for.
+        "confirmIncomingPayment",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

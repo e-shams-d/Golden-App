@@ -67,6 +67,13 @@ TASK_TYPES: tuple[str, ...] = (
     # the kind of attention needed, so a queue can be filtered by skill. Declared, spelled to the
     # existing `<subject>_<kind>` pattern, and recorded as a name M0 owes.
     "statement_duplicate_review",
+    # M10 slice 6, and the second value declared here. The nearest existing name is
+    # `payment_result_discrepancy`, which is about an **outgoing** result, and 4B's
+    # `statement_duplicate_review` is about a statement row rather than a claim. An overpayment on
+    # a gold-sale order is neither. Declared rather than borrowed: a task filed under a name that
+    # describes something else is invisible to the person who filters for it, which is the whole
+    # reason this tuple exists.
+    "incoming_payment_discrepancy",
 )
 
 TASK_TYPE_EXPORT_INTEGRITY = "bank_export_integrity"
@@ -116,6 +123,9 @@ ENTITY_TYPES: tuple[str, ...] = (
     # navigation.
     "bank_statement_file",
     "bank_statement_import_run",
+    # M10 slice 6, by the same rule: a table that exists. An overpayment task points at the
+    # **receipt** whose confirmation was refused, which is the row an accountant opens.
+    "incoming_payment_receipt",
 )
 
 ENTITY_BANK_EXPORT = "bank_excel_export"
@@ -141,6 +151,9 @@ ENTITY_BANK_STATEMENT_FILE = "bank_statement_file"
 ENTITY_STATEMENT_IMPORT_RUN = "bank_statement_import_run"
 
 TASK_TYPE_STATEMENT_DUPLICATE = "statement_duplicate_review"
+# M10 slice 6. An overpayment refused by `app/commands/incoming_confirmation.py`.
+TASK_TYPE_INCOMING_DISCREPANCY = "incoming_payment_discrepancy"
+ENTITY_INCOMING_RECEIPT = "incoming_payment_receipt"
 
 
 def _quoted(values: tuple[str, ...]) -> str:

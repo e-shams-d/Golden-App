@@ -491,6 +491,10 @@ def test_the_runtime_cannot_rewrite_a_candidates_evidence(world: dict[str, Any])
         world["app_role"],
     )
     assert [row[0] for row in granted] == [
+        # M10 slice 6 added this one, and the list is asserted exactly so that adding it had to be
+        # a decision. It is the confirmation axis — document 06 §11.2's `active / replaced /
+        # revoked` — and it moves for the same reason `status` does.
+        "confirmation_status",
         "confirmed_amount_irr",
         "confirmed_at",
         "confirmed_by_admin_user_id",

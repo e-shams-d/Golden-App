@@ -1913,45 +1913,64 @@
         "title": "ConfirmPaidRequest",
         "type": "object"
       },
-      "ConfirmRequest": {
+      "ConfirmationResponse": {
         "additionalProperties": false,
-        "description": "§19.7's body, verbatim in its field names.",
+        "description": "What the order now believes, not only what this receipt did.\n\n`confirmed_total_irr` beside `expected_amount_irr` is the whole point of §21.6's \"not silently\ntreated as fully paid\": a client that saw only this receipt's figure could not tell a partial\npayment from a complete one.",
         "properties": {
-          "confirmation_note": {
+          "confirmed_amount_irr": {
             "anyOf": [
               {
-                "maxLength": 4000,
-                "type": "string"
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Confirmation Note"
+            "title": "Confirmed Amount Irr"
           },
-          "link_type": {
-            "default": "primary",
-            "maxLength": 24,
-            "minLength": 1,
-            "title": "Link Type",
+          "confirmed_total_irr": {
+            "title": "Confirmed Total Irr",
+            "type": "integer"
+          },
+          "expected_amount_irr": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Amount Irr"
+          },
+          "order_status": {
+            "title": "Order Status",
             "type": "string"
           },
-          "payment_attempt_id": {
+          "receipt_id": {
             "format": "uuid",
-            "title": "Payment Attempt Id",
+            "title": "Receipt Id",
             "type": "string"
           },
-          "receipt_segment_id": {
-            "format": "uuid",
-            "title": "Receipt Segment Id",
+          "receipt_status": {
+            "title": "Receipt Status",
             "type": "string"
+          },
+          "record_version": {
+            "title": "Record Version",
+            "type": "integer"
           }
         },
         "required": [
-          "payment_attempt_id",
-          "receipt_segment_id"
+          "receipt_id",
+          "receipt_status",
+          "confirmed_amount_irr",
+          "order_status",
+          "confirmed_total_irr",
+          "expected_amount_irr",
+          "record_version"
         ],
-        "title": "ConfirmRequest",
+        "title": "ConfirmationResponse",
         "type": "object"
       },
       "CorrectionRequest": {
@@ -7354,6 +7373,87 @@
         "title": "WorkersResponse",
         "type": "object"
       },
+      "app__api__v1__evidence_links__ConfirmRequest": {
+        "additionalProperties": false,
+        "description": "§19.7's body, verbatim in its field names.",
+        "properties": {
+          "confirmation_note": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Note"
+          },
+          "link_type": {
+            "default": "primary",
+            "maxLength": 24,
+            "minLength": 1,
+            "title": "Link Type",
+            "type": "string"
+          },
+          "payment_attempt_id": {
+            "format": "uuid",
+            "title": "Payment Attempt Id",
+            "type": "string"
+          },
+          "receipt_segment_id": {
+            "format": "uuid",
+            "title": "Receipt Segment Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "payment_attempt_id",
+          "receipt_segment_id"
+        ],
+        "title": "ConfirmRequest",
+        "type": "object"
+      },
+      "app__api__v1__incoming_matches__ConfirmRequest": {
+        "additionalProperties": false,
+        "description": "§21.6's body, field for field.\n\n`incoming_payment_match_id` is **nullable in the specification itself**, and the reason is\ndocument 08 §8.9's first edge case: evidence can arrive before the statement does. A\nconfirmation with no match is a person taking responsibility without a bank row to point at,\nwhich is a different act from one with a row — and the audit entry records which.",
+        "properties": {
+          "confirmation_note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Note"
+          },
+          "confirmed_amount_irr": {
+            "exclusiveMinimum": 0.0,
+            "title": "Confirmed Amount Irr",
+            "type": "integer"
+          },
+          "incoming_payment_match_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incoming Payment Match Id"
+          }
+        },
+        "required": [
+          "confirmed_amount_irr"
+        ],
+        "title": "ConfirmRequest",
+        "type": "object"
+      },
       "app__api__v1__manual_review_tasks__CancelRequest": {
         "additionalProperties": false,
         "properties": {
@@ -11186,7 +11286,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ConfirmRequest"
+                "$ref": "#/components/schemas/app__api__v1__evidence_links__ConfirmRequest"
               }
             }
           },
@@ -12767,6 +12867,152 @@
         "summary": "Workers",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/v1/incoming-payment-receipts/{receipt_id}/confirm": {
+      "post": {
+        "description": "`POST /api/v1/incoming-payment-receipts/{receipt_id}/confirm`, per `:2011`.\n\n**A different permission from the matching routes above.** `incoming_payment.match` proposes;\n`incoming_payment.confirm` decides. `permission_catalog.yaml` separates them and gives the\nmanager a different conditional on each — `exception_policy_only` against\n`exception_or_policy_approval_only` — which is M0 saying the two acts are not one.\n\n**The overpayment refusal commits its own review task.** `OverpaymentRefused` is caught here\nrather than in the command so the transaction carrying the task can commit before the error\nbecomes a 400. M9's first version raised a plain business error and lost the task with the\nrolled-back transaction; §21.6 requires both the refusal and the task, and a refusal nobody\nfollows up is the outcome that rule exists to prevent.",
+        "operationId": "confirmIncomingPayment",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "receipt_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Receipt Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__api__v1__incoming_matches__ConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The receipt is closed, the run did not succeed, or the match is not a proposal."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such receipt, row or match."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "This pair is already matched, or the match moved under the caller."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Idempotency-Key or If-Match is required."
+          }
+        },
+        "summary": "Record that the money arrived, and what the order now totals.",
+        "tags": [
+          "incoming-payment-matches"
         ]
       }
     },

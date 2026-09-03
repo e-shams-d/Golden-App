@@ -74,6 +74,14 @@ MATCH_EXPIRED = "expired"
 # set so the difference is visible rather than discovered.
 SLICE_FIVE_REACHABLE: tuple[str, ...] = (MATCH_PROPOSED, MATCH_REJECTED)
 
+# `status_catalog.yaml`'s `incoming_confirmed_match` aggregate, all three, in its order. Document
+# 06 §11.2's states, on the second axis M10 slice 6 added.
+CONFIRMATION_STATUSES: tuple[str, ...] = ("active", "replaced", "revoked")
+
+CONFIRMATION_ACTIVE = "active"
+CONFIRMATION_REPLACED = "replaced"
+CONFIRMATION_REVOKED = "revoked"
+
 # Phase 1A's only method. Document 08 §8.8: "Phase 1A allows manual search and confirmation.
 # Candidate rules may help but remain non-final." There is no CHECK on the column — no document
 # enumerates the values — so this constant is what the command writes rather than what the schema
@@ -104,6 +112,16 @@ class IncomingPaymentMatch(Base):
     )
 
     status: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    # **The second axis, added by M10 slice 6.** `status_catalog.yaml`'s `incoming_confirmed_match`
+    # aggregate: `active`, `replaced`, `revoked`. Null until somebody confirms.
+    #
+    # A separate column rather than five more values on `status`, because the two lifecycles move
+    # independently and both matter afterwards: a match that was `proposed` and then confirmed is a
+    # different record from one that was `accepted_for_review` first, and slice 8's correction sets
+    # this to `replaced` while the candidate's own history stays where it was. The catalogue names
+    # them as two aggregates for the same reason.
+    confirmation_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     match_method: Mapped[str] = mapped_column(String(64), nullable=False)
     # Nullable, and that is the point: a human who searched and found the row has no score to give,
@@ -162,6 +180,17 @@ class IncomingPaymentMatch(Base):
         ),
         named_check(f"status IN ({_quoted(MATCH_STATUSES)})", name="status_value"),
         named_check(
+            f"confirmation_status IS NULL OR confirmation_status IN "
+            f"({_quoted(CONFIRMATION_STATUSES)})",
+            name="confirmation_status_value",
+        ),
+        named_check(
+            "(confirmation_status IS NULL AND confirmed_at IS NULL)"
+            " OR "
+            "(confirmation_status IS NOT NULL AND confirmed_at IS NOT NULL)",
+            name="confirmation_status_needs_a_time",
+        ),
+        named_check(
             "match_score IS NULL OR (match_score >= 0 AND match_score <= 1)",
             name="match_score_in_range",
         ),
@@ -196,6 +225,10 @@ class IncomingPaymentMatch(Base):
 
 
 __all__ = [
+    "CONFIRMATION_ACTIVE",
+    "CONFIRMATION_REPLACED",
+    "CONFIRMATION_REVOKED",
+    "CONFIRMATION_STATUSES",
     "MATCH_ACCEPTED_FOR_REVIEW",
     "MATCH_EXPIRED",
     "MATCH_PROPOSED",

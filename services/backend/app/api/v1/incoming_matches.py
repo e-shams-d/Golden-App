@@ -31,6 +31,7 @@ from app.api.dependencies import get_runtime
 from app.api.v1.auth import authenticated_actor, requires
 from app.audit.redaction import RedactionPolicy
 from app.audit.writer import AuditActor, AuditContext
+from app.commands import incoming_confirmation as confirmation_commands
 from app.commands import incoming_match as match_commands
 from app.core.errors import (
     ErrorEnvelope,
@@ -286,6 +287,114 @@ def reject_incoming_match(
             now=now,
         )
         response = _rendered(result.match, result.receipt_status)
+        uow.commit()
+
+    return response
+
+
+class ConfirmRequest(BaseModel):
+    """§21.6's body, field for field.
+
+    `incoming_payment_match_id` is **nullable in the specification itself**, and the reason is
+    document 08 §8.9's first edge case: evidence can arrive before the statement does. A
+    confirmation with no match is a person taking responsibility without a bank row to point at,
+    which is a different act from one with a row — and the audit entry records which.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    confirmed_amount_irr: int = Field(gt=0)
+    incoming_payment_match_id: uuid.UUID | None = None
+    confirmation_note: str | None = Field(default=None, max_length=2000)
+
+
+class ConfirmationResponse(BaseModel):
+    """What the order now believes, not only what this receipt did.
+
+    `confirmed_total_irr` beside `expected_amount_irr` is the whole point of §21.6's "not silently
+    treated as fully paid": a client that saw only this receipt's figure could not tell a partial
+    payment from a complete one.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    receipt_id: uuid.UUID
+    receipt_status: str
+    confirmed_amount_irr: int | None
+    order_status: str
+    confirmed_total_irr: int
+    expected_amount_irr: int | None
+    record_version: int
+
+
+@router.post(
+    "/{receipt_id}/confirm",
+    response_model=ConfirmationResponse,
+    operation_id="confirmIncomingPayment",
+    summary="Record that the money arrived, and what the order now totals.",
+    responses=RESPONSES,
+    dependencies=[requires(declare("incoming_payment.confirm"))],
+)
+def confirm_incoming_payment(
+    receipt_id: uuid.UUID,
+    payload: ConfirmRequest,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> ConfirmationResponse:
+    """`POST /api/v1/incoming-payment-receipts/{receipt_id}/confirm`, per `:2011`.
+
+    **A different permission from the matching routes above.** `incoming_payment.match` proposes;
+    `incoming_payment.confirm` decides. `permission_catalog.yaml` separates them and gives the
+    manager a different conditional on each — `exception_policy_only` against
+    `exception_or_policy_approval_only` — which is M0 saying the two acts are not one.
+
+    **The overpayment refusal commits its own review task.** `OverpaymentRefused` is caught here
+    rather than in the command so the transaction carrying the task can commit before the error
+    becomes a 400. M9's first version raised a plain business error and lost the task with the
+    rolled-back transaction; §21.6 requires both the refusal and the task, and a refusal nobody
+    follows up is the outcome that rule exists to prevent.
+    """
+
+    expected = _parse_record_version(if_match)
+    key = _require_key(idempotency_key)
+    now = utc_now()
+
+    if actor.actor_id is None:
+        raise ForbiddenError()
+
+    with runtime.uow_factory() as uow:
+        try:
+            result = confirmation_commands.confirm_incoming_payment(
+                confirmation_commands.ConfirmIncomingPayment(
+                    incoming_payment_receipt_id=receipt_id,
+                    expected_record_version=expected,
+                    confirmed_amount_irr=payload.confirmed_amount_irr,
+                    incoming_payment_match_id=payload.incoming_payment_match_id,
+                    confirmation_note=payload.confirmation_note,
+                ),
+                uow=uow,
+                policy=MATCH_REDACTION,
+                actor=_audit_actor(actor),
+                context=AuditContext(request_id=get_request_id()),
+                idempotency_key=key,
+                now=now,
+            )
+        except confirmation_commands.OverpaymentRefused:
+            # The task is the point of the refusal. Commit it, then let the error become a 400.
+            uow.commit()
+            raise
+
+        response = ConfirmationResponse(
+            receipt_id=result.receipt.id,
+            receipt_status=result.receipt.status,
+            confirmed_amount_irr=result.receipt.confirmed_amount_irr,
+            order_status=result.order_status,
+            confirmed_total_irr=result.confirmed_total_irr,
+            expected_amount_irr=result.expected_amount_irr,
+            record_version=result.receipt.record_version,
+        )
         uow.commit()
 
     return response
