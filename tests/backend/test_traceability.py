@@ -832,25 +832,10 @@ PENDING: dict[str, str] = {
     # `tests/integration/test_incoming_payment_matches.py`. `SVC-MATCH-001` is new there: the plan
     # named no service obligation for the wall between a candidate and a confirmation, which is the
     # one sentence document 05 `:2009` gives the slice.
-    # Slice 6 - confirming an incoming payment; partial and excess are never silently full.
-    "SVC-INCOMING-001": (
-        "M10 slice 6 - confirming an incoming payment. Stated by the plan and not "
-        "yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-        "own pull request discharges it and removes this entry in the same commit."
-    ),
-    "SVC-INCOMING-002": (
-        "M10 slice 6 - confirming an incoming payment. Stated by the plan and not "
-        "yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-        "own pull request discharges it and removes this entry in the same commit."
-    ),
-    "AUD-INCOMING-001": (
-        "M10 slice 6 - confirming an incoming payment. Stated by the plan and not "
-        "yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-        "own pull request discharges it and removes this entry in the same commit."
-    ),
+    # Slice 6 shipped; all three are discharged by citation in
+    # `tests/integration/test_incoming_confirmation.py`. The overpayment half of SVC-INCOMING-002
+    # is asserted twice deliberately — once on a single receipt and once across two, because a
+    # guard reading only the receipt in front of it passes the first and fails the second.
     # Slice 7 - dispatch, settlement, and the guard written last on purpose.
     "SEC-DISPATCH-001": (
         "M10 slice 7 - dispatch and the payment guard. Stated by the plan and not "

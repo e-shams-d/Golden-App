@@ -361,6 +361,10 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
         "POST",
         "/api/v1/incoming-payment-receipts/{receipt_id}/matches/{match_id}/reject",
     ): PERMISSION,
+    # M10 slice 6. A different permission from the three above — `incoming_payment.confirm`, which
+    # `permission_catalog.yaml` separates from `.match` and gives the manager a different
+    # conditional on. Still `PERMISSION`: deciding that money arrived is the centre's act.
+    ("POST", "/api/v1/incoming-payment-receipts/{receipt_id}/confirm"): PERMISSION,
     # M9 slice 5B. Ownership resolved through the publication's *request*: a file id is the wrong
     # thing to authorise against, because `file_objects` has no trader column and the card is a
     # derivation that inherits its visibility.
@@ -909,6 +913,14 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
         "/api/v1/incoming-payment-receipts/{receipt_id}/matches/{match_id}/reject",
         "permission",
     ): "test_no_trader_can_reach_the_matching_surface",
+    # M10 slice 6, and its own test rather than the matching one: the permission is different
+    # (`incoming_payment.confirm`), so a test that only proved `.match` is denied would prove
+    # nothing about this route.
+    (
+        "POST",
+        "/api/v1/incoming-payment-receipts/{receipt_id}/confirm",
+        "permission",
+    ): "test_no_trader_can_confirm_their_own_payment",
     ("GET", "/api/v1/bank-statements", "permission"): "test_no_trader_can_see_or_touch_a_statement",
     (
         "GET",
