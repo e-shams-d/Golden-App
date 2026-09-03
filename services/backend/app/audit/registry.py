@@ -1069,6 +1069,33 @@ CREATE_BANK_STATEMENT_FILE = CommandNames(
     ),
 )
 
+_CLOSURE_REASON = (
+    "M10 slice 8. Document 06 §8.2 draws both edges — `dispatched -> received_by_trader` and "
+    "`received_by_trader | settled_or_offset -> closed` — and `audit_outbox_catalog.yaml` names "
+    "an action for neither. It carries `gold_sale.dispatched`, which is the movement, and nothing "
+    "for the trader agreeing it arrived or for the order ending. The gap is the milestone's shape "
+    "in miniature and the plan's G-3 predicted it: the catalogue names the moments money is "
+    "decided, not the moments a workflow finishes. Implemented against {permission}, the approved "
+    "permission the route requires. The name follows the aggregate's catalogued spelling and must "
+    "be renamed to whatever M0 approves."
+)
+
+ACKNOWLEDGE_GOLD_DISPATCH = CommandNames(
+    audit_action="gold_dispatch.acknowledged",
+    # No outbox event. The trader confirming receipt is the end of the chain, not a trigger: the
+    # catalogue's one M10 event is `GoldOrderReadyForDispatch` and nothing is waiting on this.
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=_CLOSURE_REASON.format(permission="`gold_sale.read` through ownership"),
+)
+
+CLOSE_GOLD_SALE_ORDER = CommandNames(
+    audit_action="gold_sale.closed",
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=_CLOSURE_REASON.format(permission="`gold_sale.review`"),
+)
+
 DISPATCH_GOLD_SALE = CommandNames(
     # `audit_outbox_catalog.yaml:51`. **The third fully catalogued M10 command**, and the one this
     # milestone was built toward: M0 named the two moments money is decided and the one moment gold
@@ -1260,4 +1287,7 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     CONFIRM_INCOMING_PAYMENT,
     # M10 slice 7, the third and last catalogued one: the moment gold moves.
     DISPATCH_GOLD_SALE,
+    # M10 slice 8. Both uncatalogued: the catalogue names the movement and neither end of it.
+    ACKNOWLEDGE_GOLD_DISPATCH,
+    CLOSE_GOLD_SALE_ORDER,
 )

@@ -560,6 +560,45 @@ History survives a correction, the trader can see and acknowledge, and the chain
 - `TRACE-M10-001` — the Definition of Done (§18 `:1250`): an order can be **priced, paid or
   settled, verified, dispatched and closed**, walked in SQL for one order so that each hop resolves.
 
+### The finding this slice opened with: a merged slice was missing an event
+
+`command_catalog.yaml`'s `incoming_payment.confirm` names `outbox_event:
+GoldOrderReadyForDispatch` — the milestone's only outbox event. **Slice 6 declared `None`** after
+reading `audit_outbox_catalog.yaml`'s *action* list instead of the *command* row, and merged green.
+
+**No gate could see it.** The registry test asked whether a declared event was real; nothing asked
+whether a required event was declared. A missing event is silent in a way a wrong one is not:
+nothing fires, nobody is told, and every test passes because none was asked to observe an absence.
+
+`test_a_command_row_that_names_an_event_has_one_declared` closes it, joining the two catalogues on
+the audit action. It failed on exactly one entry — which is how a gate should arrive.
+
+### What slice 8 built
+
+Document 06 §8.2's last two edges, `dispatched → received_by_trader → closed` and
+`settled_or_offset → closed`, plus the event, its emission and its consumer. No migration for the
+closure: every column already existed with a grant.
+
+**Two states of §8.2 that no command reaches**, recorded rather than skipped quietly.
+`incoming_payment_confirmed → ready_for_dispatch` is evaluated at dispatch time instead, so an
+order never sits in `ready_for_dispatch`; `manager_approval_required` needs a risk policy no
+document defines.
+
+**Three §21.1 routes remain unbuilt** — `request-payment`, `cancel` and `close`'s siblings — and
+none of them is named by any obligation in this plan. `close` was built because the Definition of
+Done cannot terminate without it. The other two are remaining M10 surface.
+
+### The controls found the same shape twice more
+
+- **Two guards masked each other.** Removing either the status check or the in-transit sweep left
+  the other refusing, so both controls went NOT CAUGHT. The same finding slice 7 met — defence in
+  depth hiding which layer is load-bearing — and the fix is the same: one control removes both, and
+  a new test isolates the sweep on the one case only it can see, an order at `received_by_trader`
+  with a *second* dispatch still moving.
+- **A control named a variable that does not exist** (`superseded` for `previous`) and reported
+  NOT CAUGHT against an untouched file. The second meaning, and the reason the rule is to diff
+  before concluding.
+
 ---
 
 # 4. Decisions this plan takes, and questions it does not

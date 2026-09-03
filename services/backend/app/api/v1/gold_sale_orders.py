@@ -34,6 +34,7 @@ from app.audit.redaction import RedactionPolicy
 from app.audit.writer import AuditActor, AuditContext
 from app.commands import gold_dispatch as gold_dispatch_commands
 from app.commands import gold_sale as gold_sale_commands
+from app.commands import gold_sale_closure as closure_commands
 from app.commands import incoming_payment as incoming_payment_commands
 from app.core.errors import (
     BusinessRuleViolationError,
@@ -649,6 +650,153 @@ def record_gold_dispatch(
         uow.commit()
 
     return response
+
+
+class ClosureResponse(BaseModel):
+    """Where the order and the dispatch ended up.
+
+    Both, because §8.2's edges move both rows and a response naming only one would leave a client
+    guessing whether the other followed.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    gold_sale_order_id: uuid.UUID
+    order_status: str
+    order_record_version: int
+    dispatch_id: uuid.UUID | None
+    dispatch_status: str | None
+    closed_at: datetime | None
+
+
+class CloseOrderRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    closure_note: str | None = Field(default=None, max_length=2000)
+
+
+@router.post(
+    "/{order_id}/dispatches/{dispatch_id}/acknowledge",
+    response_model=ClosureResponse,
+    operation_id="acknowledgeGoldDispatch",
+    summary="The trader confirms the gold arrived.",
+    responses=RESPONSES,
+    dependencies=[owned_or_permitted("gold_sale.read", "gold_sale.read")],
+)
+def acknowledge_gold_dispatch(
+    order_id: uuid.UUID,
+    dispatch_id: uuid.UUID,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> ClosureResponse:
+    """Document 06 §8.2's `dispatched --> received_by_trader`.
+
+    **The trader's own route**, guarded by ownership like the create and submit routes above rather
+    than by a permission: a trader session holds no grants, and the thing being asserted is that
+    the gold arrived at *their* business. `owned_or_permitted` carries the permission name for the
+    gate to see while ownership does the work.
+
+    §12.3: "Trader acknowledgment is not required to prove that dispatch occurred." So this adds a
+    fact rather than completing one — slice 7 already recorded the movement, and a dispatch nobody
+    acknowledges stays real.
+    """
+
+    expected = _parse_record_version(if_match)
+    key = _require_key(idempotency_key)
+    now = utc_now()
+
+    if actor.actor_id is None:
+        raise ForbiddenError()
+    if not actor.is_trader or actor.trader_id is None:
+        # The centre cannot acknowledge on a trader's behalf. "The trader says it arrived" is a
+        # different assertion from "the centre says so", and the audit row is where that
+        # difference has to survive — the same call slice 2 made for the payment claim.
+        raise ForbiddenError()
+
+    with runtime.uow_factory() as uow:
+        result = closure_commands.acknowledge_dispatch(
+            closure_commands.AcknowledgeDispatch(
+                gold_dispatch_id=dispatch_id,
+                trader_id=actor.trader_id,
+                expected_record_version=expected,
+            ),
+            uow=uow,
+            policy=GOLD_SALE_REDACTION,
+            actor=_audit_actor(actor),
+            context=AuditContext(request_id=get_request_id()),
+            idempotency_key=key,
+            now=now,
+        )
+        if result.order.id != order_id:
+            uow.rollback()
+            raise NotFoundError()
+        response = _rendered_closure(result)
+        uow.commit()
+
+    return response
+
+
+@router.post(
+    "/{order_id}/close",
+    response_model=ClosureResponse,
+    operation_id="closeGoldSaleOrder",
+    summary="Close the order, once nothing is still moving.",
+    responses=RESPONSES,
+    dependencies=[requires(declare("gold_sale.review"))],
+)
+def close_gold_sale_order(
+    order_id: uuid.UUID,
+    payload: CloseOrderRequest,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> ClosureResponse:
+    """`POST /api/v1/gold-sale-orders/{order_id}/close`, per `:1956` — "closure guards".
+
+    **The centre's, not the trader's.** Acknowledging receipt is the trader saying the gold
+    arrived; closing is the centre saying the business is finished, and `gold_sale.review` is the
+    permission the catalogue gives that judgement.
+    """
+
+    expected = _parse_record_version(if_match)
+    key = _require_key(idempotency_key)
+    now = utc_now()
+
+    if actor.actor_id is None:
+        raise ForbiddenError()
+
+    with runtime.uow_factory() as uow:
+        result = closure_commands.close_order(
+            closure_commands.CloseGoldSaleOrder(
+                gold_sale_order_id=order_id,
+                expected_record_version=expected,
+                closure_note=payload.closure_note,
+            ),
+            uow=uow,
+            policy=GOLD_SALE_REDACTION,
+            actor=_audit_actor(actor),
+            context=AuditContext(request_id=get_request_id()),
+            idempotency_key=key,
+            now=now,
+        )
+        response = _rendered_closure(result)
+        uow.commit()
+
+    return response
+
+
+def _rendered_closure(result: Any) -> ClosureResponse:
+    return ClosureResponse(
+        gold_sale_order_id=result.order.id,
+        order_status=result.order.status,
+        order_record_version=result.order.record_version,
+        dispatch_id=result.dispatch.id if result.dispatch else None,
+        dispatch_status=result.dispatch.status if result.dispatch else None,
+        closed_at=result.order.closed_at,
+    )
 
 
 class IncomingReceiptRequest(BaseModel):

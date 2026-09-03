@@ -368,6 +368,14 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # M10 slice 7. `gold_sale.dispatch`, held by `warehouse_operator` alone. A trader whose gold it
     # is holds nothing here: dispatching is the centre recording that it released metal.
     ("POST", "/api/v1/gold-sale-orders/{order_id}/dispatches"): PERMISSION,
+    # M10 slice 8. The acknowledgement is `DUAL` because it is the *trader's* assertion — the same
+    # shape as create, submit and the payment receipt — while closing is the centre saying the
+    # business is finished, which `gold_sale.review` authorises.
+    (
+        "POST",
+        "/api/v1/gold-sale-orders/{order_id}/dispatches/{dispatch_id}/acknowledge",
+    ): DUAL,
+    ("POST", "/api/v1/gold-sale-orders/{order_id}/close"): PERMISSION,
     # M9 slice 5B. Ownership resolved through the publication's *request*: a file id is the wrong
     # thing to authorise against, because `file_objects` has no trader column and the card is a
     # derivation that inherits its visibility.
@@ -932,6 +940,22 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
         "/api/v1/gold-sale-orders/{order_id}/dispatches",
         "permission",
     ): "test_a_warehouse_operator_cannot_override_the_guard",
+    # M10 slice 8.
+    (
+        "POST",
+        "/api/v1/gold-sale-orders/{order_id}/dispatches/{dispatch_id}/acknowledge",
+        "ownership",
+    ): "test_a_second_trader_cannot_acknowledge_somebody_elses_gold",
+    (
+        "POST",
+        "/api/v1/gold-sale-orders/{order_id}/dispatches/{dispatch_id}/acknowledge",
+        "permission",
+    ): "test_the_centre_cannot_acknowledge_on_a_traders_behalf",
+    (
+        "POST",
+        "/api/v1/gold-sale-orders/{order_id}/close",
+        "permission",
+    ): "test_no_trader_can_close_their_own_order",
     ("GET", "/api/v1/bank-statements", "permission"): "test_no_trader_can_see_or_touch_a_statement",
     (
         "GET",

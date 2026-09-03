@@ -299,6 +299,11 @@ WRITTEN_BY_EXACTLY_ONE_COMMAND: dict[str, str] = {
 # this is not a promise that the module writes another table — it is a proof that it cannot write
 # this one.
 WRITES_ANOTHER_TABLES_COLUMN: dict[str, tuple[str, ...]] = {
+    # M10 slice 8. `gold_dispatches.confirmed_at` is the *trader* acknowledging that gold arrived
+    # — document 06 §12.3 — and has nothing to do with a payment attempt. The second module to need
+    # this exemption, and the guard below is what keeps a second one from becoming a habit: it
+    # imports no PaymentAttempt, so it cannot reach the table the scan protects.
+    "commands/gold_sale_closure.py": ("confirmed_at",),
     "commands/incoming_confirmation.py": (
         "confirmed_at",
         "confirmed_by_admin_user_id",
