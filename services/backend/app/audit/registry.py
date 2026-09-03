@@ -1087,10 +1087,16 @@ CONFIRM_INCOMING_PAYMENT = CommandNames(
     # slice 3's import run — and the milestone's most important moment is one of the two the
     # catalogue anticipated, which is not a coincidence: M0 named the places money is decided.
     audit_action="incoming_payment.confirmed",
-    # `outbox_event: null` in that command row. A trader learning their payment was accepted is a
-    # notification, and M9 slice 7's projection is the mechanism — slice 8's wiring, not an event
-    # invented here.
-    outbox_event_type=None,
+    # **`GoldOrderReadyForDispatch`, and slice 6 shipped this as `None` by mistake.** The comment
+    # here said the command row gave it null; it does not — `command_catalog.yaml`'s
+    # `incoming_payment.confirm` names the event outright. The error was reading
+    # `audit_outbox_catalog.yaml`'s *action* list and concluding something about the *event*, and
+    # no gate could catch it because none asked this direction of the question.
+    #
+    # `test_a_command_row_that_names_an_event_has_one_declared` now does, and it is the only entry
+    # it reports. A missing event is silent in a way a wrong one is not: nothing fires, nobody is
+    # told, and every test passes because nothing was asked to observe an absence.
+    outbox_event_type="GoldOrderReadyForDispatch",
     catalogued=True,
 )
 

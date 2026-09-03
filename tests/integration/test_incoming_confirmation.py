@@ -451,6 +451,110 @@ def test_the_audit_entry_carries_both_figures(world: dict[str, Any]) -> None:
     assert entry[3] == "checked against row 14"
 
 
+# --- The outbox event slice 6 was meant to publish ----------------------------
+
+
+def test_a_completed_order_publishes_the_event_the_catalogue_names(
+    world: dict[str, Any],
+) -> None:
+    """`GoldOrderReadyForDispatch`, and M10 slice 8 added it because slice 6 did not.
+
+    `command_catalog.yaml`'s `incoming_payment.confirm` names the event; slice 6 declared
+    `outbox_event_type=None` after reading the wrong catalogue file, and no gate could see the
+    absence — the registry test asked whether a *declared* event was real and never whether a
+    *required* one was declared. `test_a_command_row_that_names_an_event_has_one_declared` asks the
+    second question now.
+
+    A missing event is silent in a way a wrong one is not: nothing fires, nobody is told, and every
+    test passes because none of them was asked to observe an absence.
+    """
+
+    sign_in_admin(world)
+    order_id = an_order(world)
+    receipt_id = a_receipt(world, order_id, PRICED)
+
+    assert confirm(world, receipt_id, PRICED).status_code == 200
+
+    events = rows(
+        world,
+        "SELECT event_type, aggregate_type, payload FROM outbox_events WHERE aggregate_id = %s",
+        order_id,
+    )
+    assert len(events) == 1, (
+        f"{len(events)} outbox events for a completed order; the catalogue names exactly one."
+    )
+    assert events[0][0] == "GoldOrderReadyForDispatch"
+    assert events[0][1] == "gold_sale_order"
+    assert events[0][2]["confirmed_total_irr"] == str(PRICED)
+    assert events[0][2]["order_status"] == "incoming_payment_confirmed"
+
+
+def test_a_partial_confirmation_publishes_nothing(world: dict[str, Any]) -> None:
+    """The event's name is a claim that the order may now move, so it fires on the transition only.
+
+    Publishing on every confirmation would say "ready for dispatch" while money is still
+    outstanding, and a trigger that is wrong half the time is one nothing downstream can act on.
+    """
+
+    sign_in_admin(world)
+    order_id = an_order(world)
+    receipt_id = a_receipt(world, order_id, 30_000_000_000)
+
+    assert confirm(world, receipt_id, 30_000_000_000).status_code == 200
+
+    assert rows(
+        world, "SELECT count(*) FROM outbox_events WHERE aggregate_id = %s", order_id
+    )[0][0] == 0, "a partially paid order announced itself ready for dispatch"
+
+
+def test_the_trader_is_told_their_order_is_ready(world: dict[str, Any]) -> None:
+    """The projection's first non-payment-request aggregate, end to end.
+
+    M9 slice 7 built the projection around `payment_request_id`; a gold sale order has none, so
+    `_gold_order_message` resolves the trader through the order instead. The whole path is asserted
+    — confirm, enqueue, dispatch, notification — because each half alone has been green while the
+    other was missing, which is the defect this slice exists to close.
+    """
+
+    from app.notifications.projection import notification_deliverer
+    from app.workers.dispatcher import dispatch_once
+
+    sign_in_admin(world)
+    order_id = an_order(world)
+    receipt_id = a_receipt(world, order_id, PRICED)
+    assert confirm(world, receipt_id, PRICED).status_code == 200
+
+    runtime = world["runtime"]
+    dispatch_once(
+        runtime.uow_factory,
+        notification_deliverer(runtime.uow_factory),
+        worker_id="test-dispatcher",
+    )
+
+    messages = rows(
+        world,
+        "SELECT notification_type, title, body, entity_type, status FROM notifications "
+        "WHERE entity_id = %s",
+        order_id,
+    )
+    assert len(messages) == 1, (
+        f"{len(messages)} notifications for a completed order; the trader is told once."
+    )
+    notification_type, title, body, entity_type, status = messages[0]
+    assert notification_type == "gold_order_ready_for_dispatch"
+    assert entity_type == "gold_sale_order"
+    assert status == "unread"
+
+    order_number = rows(
+        world, "SELECT order_number FROM gold_sale_orders WHERE id = %s", order_id
+    )[0][0]
+    assert order_number in title, (
+        f"the title is {title!r} and does not name the order. The order number is what the trader "
+        "recognises."
+    )
+    assert str(PRICED) in body
+
+
 # --- Document 06 §11.2 and §11.3 ---------------------------------------------
 
 

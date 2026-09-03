@@ -39,6 +39,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.audit.outbox import OutboxMessage, OutboxWriter
 from app.audit.redaction import RedactionPolicy
 from app.audit.registry import CONFIRM_INCOMING_PAYMENT
 from app.audit.writer import AuditActor, AuditContext, AuditEntry, AuditWriter
@@ -267,6 +268,34 @@ def confirm_incoming_payment(
         now=now,
         previous=previous,
     )
+
+    # **`GoldOrderReadyForDispatch`, and only when the order actually is.** M10 slice 8 added this;
+    # slice 6 declared `outbox_event_type=None` by mistake and no gate could see the absence — see
+    # `test_a_command_row_that_names_an_event_has_one_declared`, which now can.
+    #
+    # Emitted on the transition, not on every confirmation. A partial payment leaves the order
+    # `incoming_payment_partially_confirmed` and nothing outside the platform should act on it: the
+    # event's name is a claim that the order may now move, and saying it twice — or saying it while
+    # money is still outstanding — would make it useless as a trigger.
+    if order.status == ORDER_CONFIRMED and previous["order_status"] != ORDER_CONFIRMED:
+        OutboxWriter(session, policy).enqueue(
+            OutboxMessage(
+                aggregate_type="gold_sale_order",
+                aggregate_id=order.id,
+                aggregate_version=order.record_version,
+                event_type=str(CONFIRM_INCOMING_PAYMENT.outbox_event_type),
+                payload={
+                    "gold_sale_order_id": str(order.id),
+                    "order_number": order.order_number,
+                    "trader_id": str(order.trader_id),
+                    "confirmed_total_irr": str(total),
+                    "expected_amount_irr": str(order.expected_amount_irr),
+                    "order_status": order.status,
+                },
+                payload_version=1,
+                headers={},
+            )
+        )
 
     resolver.complete(
         claim,
