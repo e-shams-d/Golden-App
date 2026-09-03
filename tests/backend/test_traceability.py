@@ -840,6 +840,62 @@ PENDING: dict[str, str] = {
     # `tests/integration/test_gold_dispatch.py`. `SEC-DISPATCH-001` holds because of the seed
     # rather than a branch — `gold_sale.dispatch_override` is the manager's alone — so deleting
     # the command's check would not let a warehouse operator through.
+    # --- M11, recorded before the first slice ---------------------------------------------
+    #
+    # The milestone's own obligations, each named by `docs/handoff/M11_IMPLEMENTATION_PLAN.md`
+    # and none built. Recorded here at plan time rather than at slice time, because an
+    # obligation nothing tracks is one a milestone can finish without meeting — which is what
+    # `PENDING` exists to prevent.
+    "SEC-NOTIFY-001": (
+        "M11 slice 1 - the notification API M9 left unreachable. Stated by "
+        "`docs/handoff/M11_IMPLEMENTATION_PLAN.md` and not yet built; the slice's own pull "
+        "request discharges it and removes this entry in the same commit."
+    ),
+    "SVC-NOTIFY-001": (
+        "M11 slice 1 - the notification API M9 left unreachable. Stated by "
+        "`docs/handoff/M11_IMPLEMENTATION_PLAN.md` and not yet built; the slice's own pull "
+        "request discharges it and removes this entry in the same commit."
+    ),
+    "API-NOTIFY-001": (
+        "M11 slice 1 - the notification API M9 left unreachable. Stated by "
+        "`docs/handoff/M11_IMPLEMENTATION_PLAN.md` and not yet built; the slice's own pull "
+        "request discharges it and removes this entry in the same commit."
+    ),
+    "API-QUEUE-001": (
+        "M11 slice 2 - the queue contract and its six query rules. Stated by "
+        "`docs/handoff/M11_IMPLEMENTATION_PLAN.md` and not yet built; the slice's own pull "
+        "request discharges it and removes this entry in the same commit."
+    ),
+    "SEC-QUEUE-001": (
+        "M11 slice 2 - the queue contract and its six query rules. Stated by "
+        "`docs/handoff/M11_IMPLEMENTATION_PLAN.md` and not yet built; the slice's own pull "
+        "request discharges it and removes this entry in the same commit."
+    ),
+    "SVC-QUEUE-002": (
+        "M11 slice 4 - the manager and warehouse queues. Stated by "
+        " and not yet built; the slice own pull "
+        "request discharges it and removes this entry in the same commit."
+    ),
+    "SVC-QUEUE-001": (
+        "M11 slice 3 - the accountant's eleven queues. Stated by "
+        "`docs/handoff/M11_IMPLEMENTATION_PLAN.md` and not yet built; the slice's own pull "
+        "request discharges it and removes this entry in the same commit."
+    ),
+    "SEC-QUEUE-003": (
+        "M11 slice 5 - what technical operations may not see. Stated by "
+        "`docs/handoff/M11_IMPLEMENTATION_PLAN.md` and not yet built; the slice's own pull "
+        "request discharges it and removes this entry in the same commit."
+    ),
+    "OPS-JOB-001": (
+        "M11 slice 6 - the six maintenance jobs nothing schedules. Stated by "
+        "`docs/handoff/M11_IMPLEMENTATION_PLAN.md` and not yet built; the slice's own pull "
+        "request discharges it and removes this entry in the same commit."
+    ),
+    "TRACE-M11-001": (
+        "M11 slice 7 - reports and the Definition of Done. Stated by "
+        "`docs/handoff/M11_IMPLEMENTATION_PLAN.md` and not yet built; the slice's own pull "
+        "request discharges it and removes this entry in the same commit."
+    ),
     # Slice 8 shipped, and with it the last two obligations M10 owed. Both are discharged by
     # citation in `tests/integration/test_gold_sale_closure.py`.
     #
