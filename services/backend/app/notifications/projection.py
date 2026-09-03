@@ -38,12 +38,15 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 
+from app.db.models.gold_sale import GoldSaleOrder
 from app.db.models.notification import (
+    ENTITY_GOLD_SALE_ORDER,
     ENTITY_PAYMENT_PUBLICATION,
     ENTITY_PAYMENT_REQUEST,
     NOTIFICATION_UNREAD,
     RECIPIENT_TRADER_USER,
     TYPE_ATTEMPT_FAILED,
+    TYPE_GOLD_ORDER_READY,
     TYPE_RESULT_CORRECTED,
     TYPE_RESULT_PUBLISHED,
     Notification,
@@ -60,6 +63,10 @@ HANDLED_EVENTS: dict[str, str] = {
     "PaymentResultPublicationCreated": TYPE_RESULT_PUBLISHED,
     "TraderResultCorrected": TYPE_RESULT_CORRECTED,
     "PaymentAttemptFailed": TYPE_ATTEMPT_FAILED,
+    # M10 slice 8, and the first event here whose aggregate is not a payment request. Everything
+    # above is about money the centre sent; this is about gold a trader bought and has now paid
+    # for. `_recipient_and_subject` is what the difference cost — see its docstring.
+    "GoldOrderReadyForDispatch": TYPE_GOLD_ORDER_READY,
 }
 
 
@@ -84,18 +91,23 @@ def project(event: OutboxEvent, *, session: Session) -> Notification | None:
         return None
 
     payload: dict[str, Any] = dict(event.payload or {})
-    request = _request_for(session, payload)
-    recipient = _primary_trader_user(session, request.trader_id)
+
+    if notification_type == TYPE_GOLD_ORDER_READY:
+        title, body, entity_type, entity_id, trader_id = _gold_order_message(session, payload)
+    else:
+        request = _request_for(session, payload)
+        trader_id = request.trader_id
+        title, body, entity_type, entity_id = _message(
+            notification_type, request=request, payload=payload
+        )
+
+    recipient = _primary_trader_user(session, trader_id)
     if recipient is None:
         raise NotificationProjectionError(
-            f"trader {request.trader_id} has no primary user, so there is nobody to tell about "
+            f"trader {trader_id} has no primary user, so there is nobody to tell about "
             f"{event.event_type}. `traders.primary_phone` and `trader_users.is_primary` are what "
             "make a business reachable; a business with neither cannot be notified."
         )
-
-    title, body, entity_type, entity_id = _message(
-        notification_type, request=request, payload=payload
-    )
 
     notification = Notification(
         recipient_actor_type=RECIPIENT_TRADER_USER,
@@ -187,6 +199,43 @@ def notification_deliverer(uow_factory: UnitOfWorkFactory) -> Any:
     # invite somebody to give it its own session.
     _ = uow_factory
     return deliver
+
+
+def _gold_order_message(
+    session: Session, payload: dict[str, Any]
+) -> tuple[str, str, str, uuid.UUID, uuid.UUID]:
+    """The first subject in this projection that is not a payment request.
+
+    **Resolved from the database rather than from the payload**, for the reason
+    `_request_for` gives below: an event carries what was true when it was written, and a
+    notification names a row a person is about to open. The order number in particular is what the
+    trader recognises, and reading it back is what keeps the message true if the row moved.
+
+    The amounts stay from the payload. They describe the moment the order became payable and are
+    the one thing that must *not* drift — a message saying "we received 50,000,000,000" has to keep
+    saying it even after a correction, because that is what the trader was told.
+    """
+
+    raw = payload.get("gold_sale_order_id")
+    if raw is None:
+        raise NotificationProjectionError(
+            "GoldOrderReadyForDispatch carried no gold_sale_order_id, so there is no order to "
+            "tell anybody about"
+        )
+
+    order = session.get(GoldSaleOrder, uuid.UUID(str(raw)))
+    if order is None:
+        raise NotificationProjectionError(
+            f"gold sale order {raw} does not exist, so the event and the database disagree"
+        )
+
+    confirmed = payload.get("confirmed_total_irr")
+    title = f"Payment confirmed for order {order.order_number}"
+    body = (
+        f"The centre has confirmed {confirmed} IRR against order {order.order_number}. "
+        "It is ready for dispatch."
+    )
+    return title, body, ENTITY_GOLD_SALE_ORDER, order.id, order.trader_id
 
 
 def _request_for(session: Session, payload: dict[str, Any]) -> PaymentRequest:

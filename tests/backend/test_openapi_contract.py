@@ -338,6 +338,11 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # permission is checked inside the command and only on the path where the payment guard
         # fails, because a `requires(...)` for it would deny every ordinary dispatch.
         "recordGoldDispatch",
+        # M10 slice 8, and the two ends of document 06 §8.2's chain: the trader confirms the gold
+        # arrived, and the centre closes the order. §21.1 names `close`; the acknowledgement is not
+        # in that table and is what makes `received_by_trader` reachable at all.
+        "acknowledgeGoldDispatch",
+        "closeGoldSaleOrder",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

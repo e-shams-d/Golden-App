@@ -176,4 +176,4 @@ from __future__ import annotations
 # `dispatch_type` gets no UPDATE grant: doc 06 section 12.3 forbids converting a physical
 # dispatch *silently* into a settlement, and a column the runtime cannot write is the
 # strongest form of not-silently available.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260911_0042"})
+EXPECTED_MIGRATION_HEADS = frozenset({"20260912_0043"})

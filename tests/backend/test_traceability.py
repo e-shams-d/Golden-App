@@ -840,19 +840,14 @@ PENDING: dict[str, str] = {
     # `tests/integration/test_gold_dispatch.py`. `SEC-DISPATCH-001` holds because of the seed
     # rather than a branch — `gold_sale.dispatch_override` is the manager's alone — so deleting
     # the command's check would not let a warehouse operator through.
-    # Slice 8 - correction, the trader surface, and the milestone gate.
-    "SVC-GOLDCORRECT-001": (
-        "M10 slice 8 - correction and the Definition of Done. Stated by the plan and not "
-        "yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-        "own pull request discharges it and removes this entry in the same commit."
-    ),
-    "TRACE-M10-001": (
-        "M10 slice 8 - correction and the Definition of Done. Stated by the plan and not "
-        "yet built; the slice's own pull request discharges it and "
-        "removes this entry in the same commit."
-        "own pull request discharges it and removes this entry in the same commit."
-    ),
+    # Slice 8 shipped, and with it the last two obligations M10 owed. Both are discharged by
+    # citation in `tests/integration/test_gold_sale_closure.py`.
+    #
+    # `TRACE-M10-001` is the milestone's own Definition of Done and is deliberately a *walk*: one
+    # order created, priced, paid, matched, confirmed, dispatched, acknowledged and closed through
+    # the eight routes that own those steps, then joined across six tables and checked against the
+    # audit trail. Nothing intermediate is inserted directly, because a walk that wrote its own
+    # states would prove the states exist rather than that anything can reach them.
 }
 
 

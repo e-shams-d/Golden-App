@@ -40,16 +40,29 @@ NOTIFICATION_TYPES: tuple[str, ...] = (
     # plan's decision that a failure is *told* rather than published is only honest if something
     # reads it. This is that something.
     "payment_attempt_failed",
+    # M10 slice 8, and the same shape as the entry above it. `GoldOrderReadyForDispatch` has been
+    # in `audit_outbox_catalog.yaml` since M0 with nothing publishing it, and slice 6 was meant to.
+    # This is the consumer, and slice 8 fixes the publisher in the same change — a type with no
+    # producer would be the mirror image of the defect it exists to close.
+    "gold_order_ready_for_dispatch",
 )
 
 TYPE_RESULT_PUBLISHED = "payment_result_published"
 TYPE_RESULT_CORRECTED = "payment_result_corrected"
 TYPE_ATTEMPT_FAILED = "payment_attempt_failed"
+TYPE_GOLD_ORDER_READY = "gold_order_ready_for_dispatch"
 
-ENTITY_TYPES: tuple[str, ...] = ("payment_request", "payment_result_publication")
+ENTITY_TYPES: tuple[str, ...] = (
+    "payment_request",
+    "payment_result_publication",
+    # M10 slice 8. The other direction of the business reaching the trader's own surface at last:
+    # everything above is about money leaving, and this is about gold they bought.
+    "gold_sale_order",
+)
 
 ENTITY_PAYMENT_REQUEST = "payment_request"
 ENTITY_PAYMENT_PUBLICATION = "payment_result_publication"
+ENTITY_GOLD_SALE_ORDER = "gold_sale_order"
 
 # `audit_log.ACTOR_TYPES`' two human values. `system_worker` has nobody to read a message.
 RECIPIENT_ACTOR_TYPES: tuple[str, ...] = ("trader_user", "admin_user")

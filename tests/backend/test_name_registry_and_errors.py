@@ -45,6 +45,20 @@ def catalogued_audit_actions() -> frozenset[str]:
     return frozenset(str(action) for action in actions)
 
 
+def command_catalog() -> dict:
+    """`command_catalog.yaml`, which is JSON in a .yaml file like its neighbours."""
+
+    import json
+
+    path = (
+        Path(__file__).resolve().parents[2]
+        / "docs"
+        / "governance"
+        / "command_catalog.yaml"
+    )
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def catalogued_outbox_events() -> frozenset[str]:
     events = catalog()["outbox_events"]
     assert isinstance(events, list)
@@ -66,6 +80,55 @@ class TestNameRegistry:
             )
             if names.outbox_event_type is not None:
                 assert names.outbox_event_type in catalogued_events
+
+    def test_a_command_row_that_names_an_event_has_one_declared(self) -> None:
+        """The other direction, and the direction that was missing.
+
+        The test above asks "is the event you declared real?". Nothing asked "did you declare the
+        event the catalogue asks for?", and the difference is not academic: **M10 slice 6 shipped
+        without one and merged green.** `command_catalog.yaml`'s `incoming_payment.confirm` row
+        carries `outbox_event: GoldOrderReadyForDispatch`; `CONFIRM_INCOMING_PAYMENT` was written
+        with `outbox_event_type=None` and a comment asserting the catalogue gave it null. The
+        comment was wrong — it had been checked against `audit_outbox_catalog.yaml`'s action list
+        rather than against the command row — and no gate could tell.
+
+        A missing event is silent in a way a wrong one is not: nothing downstream fires, no
+        notification is sent, and every test passes because nothing was asked to observe an
+        absence.
+
+        Matched on the **audit action**, which is the one field both files agree on. Command rows
+        are keyed by an `id` that is not the audit action and not the route, so joining on the
+        action is what makes the two comparable without a hand-maintained mapping.
+        """
+
+        commands = command_catalog()["commands"]
+        declared = {
+            names.audit_action: names.outbox_event_type for names in ALL_COMMAND_NAMES
+        }
+
+        assert len(commands) > 20, (
+            "the command catalogue parsed to almost nothing, so this gate would assert about an "
+            "empty set — the incomplete-input failure this repository keeps meeting"
+        )
+
+        missing: list[str] = []
+        for row in commands:
+            action = row.get("audit_action")
+            wanted = row.get("outbox_event")
+            if not action or not wanted or action not in declared:
+                # A command this milestone has not built yet, or one the catalogue gives no event.
+                continue
+            if declared[action] is None:
+                missing.append(
+                    f"{row.get('id')}: command_catalog names outbox_event {wanted!r} and "
+                    f"{action!r} declares none"
+                )
+
+        assert missing == [], (
+            "a catalogued command asks for an outbox event that no CommandNames declares. Nothing "
+            "downstream fires and no test observes the absence:\n"
+            + "\n".join(f"  {entry}" for entry in missing)
+        )
 
     def test_an_uncatalogued_name_must_give_a_reason(self) -> None:
         """A typo must not become a permanent audit action string in silence."""
