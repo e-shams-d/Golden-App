@@ -1069,6 +1069,34 @@ CREATE_BANK_STATEMENT_FILE = CommandNames(
     ),
 )
 
+_MATCH_REASON = (
+    "M10 slice 5. `05_API_Specification.md:2002` defines "
+    "POST /incoming-payment-receipts/{receipt_id}/matches and `audit_outbox_catalog.yaml` has no "
+    "action for it — it names `incoming_payment.confirmed`, which is slice 6, and nothing for the "
+    "suggestion that precedes it. The same gap as the claim in slice 2, one step further along: "
+    "the catalogue names the moments money is decided and not the moments it is proposed. "
+    "Implemented against `incoming_payment.match`, the approved permission the route requires. "
+    "The name follows the aggregate's catalogued spelling and must be renamed to whatever M0 "
+    "approves."
+)
+
+PROPOSE_INCOMING_MATCH = CommandNames(
+    audit_action="incoming_match.proposed",
+    # No outbox event. A suggestion nobody has agreed with is not a fact about money, and §21.5
+    # keeps candidate acceptance and financial confirmation separate — an event here would let
+    # something outside the platform act on the first as though it were the second.
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=_MATCH_REASON,
+)
+
+REJECT_INCOMING_MATCH = CommandNames(
+    audit_action="incoming_match.rejected",
+    outbox_event_type=None,
+    catalogued=False,
+    provisional_reason=_MATCH_REASON,
+)
+
 CREATE_STATEMENT_IMPORT_RUN = CommandNames(
     # `audit_outbox_catalog.yaml:57`, and `command_catalog.yaml`'s
     # `bank_statement.create_import_run` names the same action against the same route. Nothing is
@@ -1193,4 +1221,8 @@ ALL_COMMAND_NAMES: tuple[CommandNames, ...] = (
     # not, because the catalogue names what happens to a statement file and not its arrival.
     CREATE_BANK_STATEMENT_FILE,
     CREATE_STATEMENT_IMPORT_RUN,
+    # M10 slice 5. Uncatalogued, one step past slice 2's gap: the catalogue names the confirmation
+    # and not the suggestion that precedes it.
+    PROPOSE_INCOMING_MATCH,
+    REJECT_INCOMING_MATCH,
 )

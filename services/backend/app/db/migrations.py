@@ -171,4 +171,4 @@ from __future__ import annotations
 # **declared** task type, the first value that tuple has ever gained. None of its four described a
 # statement row suspected of being a duplicate, and reusing `payment_result_discrepancy` would
 # have filed an incoming-statement question in the outgoing-payment queue.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260908_0039"})
+EXPECTED_MIGRATION_HEADS = frozenset({"20260909_0040"})

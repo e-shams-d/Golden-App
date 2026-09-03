@@ -397,6 +397,26 @@ would be a business decision this milestone must not take. G-2.
   constrains the rest, asserted as an absence with the reason cited.
 - `CON-MATCH-001` — two accountants proposing the same pair concurrently: one wins, on the unique
   rather than on a read-then-insert.
+- `SVC-MATCH-001` — **added at build time.** The plan named no service obligation for the wall
+  §21.5 describes, and that sentence is the whole slice: a proposal writes no confirmation on the
+  match *or* on the receipt, and the test reads both back. Slices 2, 3 and 4 each met the same
+  shape; naming it here means the next reader does not have to notice it again.
+
+### Three things the documents added that this section did not have
+
+- **`status` has two aggregates to choose between, and the choice is not obvious.**
+  `status_catalog.yaml` carries `incoming_match_candidate` *and* `incoming_confirmed_match` for
+  this one table, because doc 04 §10.7 collapses into one table what the outgoing direction splits
+  into `matching_candidates` and `confirmed_evidence_links`. Slice 5 enforces the candidate set
+  exactly; **slice 6 inherits the same two-axis question G-4 records for the import run** and must
+  answer it rather than widen a CHECK.
+- **A match may only cite a row from a run that succeeded.** Doc 08 §8.2's workflow ends "confirmed
+  rows become available for matching", and the *confirmation* half needs the review axis M0 owes.
+  The execution half is enforceable today and is enforced; the rest is recorded, not claimed.
+- **Doc 06 §11.3 has four rules and this slice implements one.** The others belong to slice 6 — an
+  accountant's confirmation writes the authoritative match in one transaction, and a row already in
+  an active match raises a conflict guard — and to slice 8, where changing the receipt, the run or
+  the row interpretation supersedes stale candidates. Named here so they are not rediscovered.
 
 ## Slice 6 — confirming an incoming payment
 

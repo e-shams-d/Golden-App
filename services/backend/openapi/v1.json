@@ -4384,6 +4384,143 @@
         "title": "MarkSentRequest",
         "type": "object"
       },
+      "MatchResponse": {
+        "additionalProperties": false,
+        "description": "What comes back. The confirmation columns are included **and will be null**.\n\nPresent rather than omitted so a client can see that nobody has agreed with the suggestion yet\n— a response that left them out would read as though the question had not been asked.",
+        "properties": {
+          "bank_statement_row_id": {
+            "format": "uuid",
+            "title": "Bank Statement Row Id",
+            "type": "string"
+          },
+          "confirmed_amount_irr": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Amount Irr"
+          },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "incoming_payment_receipt_id": {
+            "format": "uuid",
+            "title": "Incoming Payment Receipt Id",
+            "type": "string"
+          },
+          "match_method": {
+            "title": "Match Method",
+            "type": "string"
+          },
+          "match_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Match Reasons",
+            "type": "array"
+          },
+          "match_score": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match Score"
+          },
+          "receipt_status": {
+            "title": "Receipt Status",
+            "type": "string"
+          },
+          "record_version": {
+            "title": "Record Version",
+            "type": "integer"
+          },
+          "rejected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejected At"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason"
+          },
+          "replaces_match_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaces Match Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "incoming_payment_receipt_id",
+          "bank_statement_row_id",
+          "status",
+          "match_method",
+          "match_score",
+          "match_reasons",
+          "confirmed_amount_irr",
+          "confirmed_at",
+          "rejected_at",
+          "rejection_reason",
+          "replaces_match_id",
+          "receipt_status",
+          "record_version",
+          "created_at"
+        ],
+        "title": "MatchResponse",
+        "type": "object"
+      },
       "OrderResponse": {
         "additionalProperties": false,
         "properties": {
@@ -4980,6 +5117,45 @@
         "title": "ProfileCreatedResponse",
         "type": "object"
       },
+      "ProposeMatchRequest": {
+        "additionalProperties": false,
+        "description": "§21.5's body.\n\n**No `status` and no `confirmed_amount_irr`.** §21.5: \"Candidate acceptance and financial\nconfirmation remain separate.\" A field for either would be a value the command then had to\nrefuse, and the strongest refusal is having nowhere for one to arrive.\n\n**No `match_method` either**, and that one is different: Phase 1A has exactly one method,\ndocument 08 §8.8's manual search. A field would invite a caller to claim a machine found it.",
+        "properties": {
+          "bank_statement_row_id": {
+            "format": "uuid",
+            "title": "Bank Statement Row Id",
+            "type": "string"
+          },
+          "match_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Match Reasons",
+            "type": "array"
+          },
+          "match_score": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match Score"
+          }
+        },
+        "required": [
+          "bank_statement_row_id"
+        ],
+        "title": "ProposeMatchRequest",
+        "type": "object"
+      },
       "ProposeRequest": {
         "additionalProperties": false,
         "description": "§19.4's body.\n\n`method` defaults to `manual` because Phase 1A has no engine: §12.5 says a candidate \"may be\nmanually created in Phase 1A and AI-assisted later\", and the column is the third member of the\nunique that lets a later engine suggest the same pair without colliding with a person.\n\n`score` is optional and stays `None` for a manual proposal. A default of 1.0 would make a\nhuman guess indistinguishable from a certainty something computed.",
@@ -5428,6 +5604,22 @@
           "pending_approval"
         ],
         "title": "RegisterTraderResponse",
+        "type": "object"
+      },
+      "RejectMatchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "rejection_reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Rejection Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rejection_reason"
+        ],
+        "title": "RejectMatchRequest",
         "type": "object"
       },
       "RejectVersionRequest": {
@@ -12575,6 +12767,398 @@
         "summary": "Workers",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/v1/incoming-payment-receipts/{receipt_id}/matches": {
+      "get": {
+        "description": "Not in §21.5's one line, and it is what makes the other two reviewable.\n\nA rejected candidate is history rather than a deletion — §10.7's whole shape is \"Multiple\nrecords support partial/combined scenarios and corrections\" — and history nobody can read is\nindistinguishable from a row that was removed. Ordered oldest first, so the sequence of\njudgements reads forwards.\n\n`incoming_receipt.read` rather than `incoming_payment.match`: reading who suggested what is a\nmanager's and an auditor's question as much as an accountant's, and the catalogue gives the\nread permission to all three.",
+        "operationId": "listIncomingPaymentMatches",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "receipt_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Receipt Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MatchResponse"
+                  },
+                  "title": "Response Listincomingpaymentmatches",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The receipt is closed, the run did not succeed, or the match is not a proposal."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such receipt, row or match."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "This pair is already matched, or the match moved under the caller."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Idempotency-Key or If-Match is required."
+          }
+        },
+        "summary": "Every candidate proposed for this claim.",
+        "tags": [
+          "incoming-payment-matches"
+        ]
+      },
+      "post": {
+        "description": "`POST /api/v1/incoming-payment-receipts/{receipt_id}/matches`, per `:2002`.\n\n**No `If-Match`.** A proposal creates a row rather than editing one, and what makes two\nsimultaneous proposals safe is §10.7's unique on the pair — a record version could not have\nexpressed that, because there is no prior version of a row that does not exist yet.\n\n201: a suggestion exists. Nothing has been confirmed, and the response says so by carrying a\nnull `confirmed_amount_irr` rather than omitting the field.",
+        "operationId": "proposeIncomingPaymentMatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "receipt_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Receipt Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposeMatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The receipt is closed, the run did not succeed, or the match is not a proposal."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such receipt, row or match."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "This pair is already matched, or the match moved under the caller."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Idempotency-Key or If-Match is required."
+          }
+        },
+        "summary": "Suggest which statement row proves this claim.",
+        "tags": [
+          "incoming-payment-matches"
+        ]
+      }
+    },
+    "/api/v1/incoming-payment-receipts/{receipt_id}/matches/{match_id}/reject": {
+      "post": {
+        "description": "Not a path §21.5 spells out, and the reason it exists is `:2002`'s own sentence.\n\n\"Candidate acceptance and financial confirmation remain separate\" describes two decisions, and\na surface offering only the first would leave an accountant no way to record the second half of\na judgement — a wrong suggestion would have to be left sitting or silently ignored. The address\nfollows §21.5's own shape: the candidate under the receipt it belongs to.\n\n**`If-Match` is required here and not on the proposal**, because this edits a row that already\nexists and two accountants deciding the same candidate must not overwrite each other.",
+        "operationId": "rejectIncomingPaymentMatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "receipt_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Receipt Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "match_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Match Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectMatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The receipt is closed, the run did not succeed, or the match is not a proposal."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such receipt, row or match."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "This pair is already matched, or the match moved under the caller."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Idempotency-Key or If-Match is required."
+          }
+        },
+        "summary": "Refuse a suggested match, with a reason.",
+        "tags": [
+          "incoming-payment-matches"
         ]
       }
     },

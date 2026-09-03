@@ -828,15 +828,10 @@ PENDING: dict[str, str] = {
     # task entity type that does not exist yet.
     # Slice 4B shipped; SVC-FINGERPRINT-001 is discharged by citation in
     # `tests/integration/test_statement_duplicates.py`.
-    # Slice 5 - matches as their own rows: a candidate, never a truth.
-    "DB-MATCH-001": (
-        "M10 slice 5 - incoming payment matches. Stated by the plan and not yet built; the slice's "
-        "own pull request discharges it and removes this entry in the same commit."
-    ),
-    "CON-MATCH-001": (
-        "M10 slice 5 - incoming payment matches. Stated by the plan and not yet built; the slice's "
-        "own pull request discharges it and removes this entry in the same commit."
-    ),
+    # Slice 5 shipped; both obligations are discharged by citation in
+    # `tests/integration/test_incoming_payment_matches.py`. `SVC-MATCH-001` is new there: the plan
+    # named no service obligation for the wall between a candidate and a confirmation, which is the
+    # one sentence document 05 `:2009` gives the slice.
     # Slice 6 - confirming an incoming payment; partial and excess are never silently full.
     "SVC-INCOMING-001": (
         "M10 slice 6 - confirming an incoming payment. Stated by the plan and not "

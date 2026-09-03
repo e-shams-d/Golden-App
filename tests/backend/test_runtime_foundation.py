@@ -106,6 +106,11 @@ EXPECTED_TABLES = frozenset(
         # them immutable and a correction is a new run, so the privilege is withheld rather than
         # the immutability being a rule somebody could edit out.
         "bank_statement_rows",
+        # M10 slice 5, §10.7. The two halves of the incoming direction meet here — the trader's
+        # claim and the bank's record — as a candidate rather than a truth. One plain unique on the
+        # pair and **no** partial unique: §10.7 `:809` leaves strict one-row/one-receipt matching
+        # to the business, and the plan's G-2 records it as the owner's.
+        "incoming_payment_matches",
         # M9 slice 7, §13.3. The projection M2's outbox was built to feed and had no consumer for.
         # Insert-only for now, like the row below: nothing marks a notification read, and a grant
         # ahead of the command that needs it is a capability with no caller.
