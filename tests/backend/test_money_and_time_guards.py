@@ -111,6 +111,14 @@ NON_MONETARY_NUMERIC: dict[tuple[str, str], str] = {
         "payment_attempts, so no arithmetic on this column can reach money. NUMERIC rather than "
         "a float because the CHECK's bounds have to hold exactly at 0 and at 1."
     ),
+    ("gold_dispatch.py", "weight"): (
+        "M10 slice 7. The same mass the order carries, recorded again on the row that says it "
+        "left: 04_Database_Schema.md:814 lists `weight` beside `weight_unit` on gold_dispatches "
+        "and section 4.5 fixes the type at NUMERIC(20, 6). Nullable here because a settlement "
+        "that moves no metal has no weight, and a NOT NULL column would make an offset invent "
+        "one. Never money: every rial on this table is absent, because a dispatch records what "
+        "moved and not what it cost."
+    ),
     ("gold_sale.py", "gold_weight"): (
         "A mass, not money. 04_Database_Schema.md:178 specifies NUMERIC(20, 6) verbatim under "
         "§4.5 'Weight and purity', with the unit stored explicitly beside it. Every amount M1 "

@@ -156,6 +156,11 @@ STATUS_COLUMN_TO_AGGREGATE: dict[tuple[str, str], str] = {
     # whether `active/replaced/revoked` becomes a second column or extends this one — and this gate
     # is what will refuse a slice that answers it by widening a CHECK.
     ("incoming_payment_matches", "status"): "incoming_match_candidate",
+    # M10 slice 7. Catalogued, and completely: `gold_dispatch` carries all six of document 06
+    # section 12.2's states with no unresolved aliases at all — unlike the import run and the
+    # match, both of which needed an argument about which aggregate applied. The last table this
+    # milestone adds is the one the catalogue had ready.
+    ("gold_dispatches", "status"): "gold_dispatch",
 }
 
 # Status columns whose value set is **local to one relation** and is not a lifecycle the catalogue

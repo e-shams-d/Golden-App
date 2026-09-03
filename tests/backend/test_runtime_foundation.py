@@ -111,6 +111,11 @@ EXPECTED_TABLES = frozenset(
         # pair and **no** partial unique: §10.7 `:809` leaves strict one-row/one-receipt matching
         # to the business, and the plan's G-2 records it as the owner's.
         "incoming_payment_matches",
+        # M10 slice 7, section 10.8. The last table M10 adds, and the one the whole milestone was
+        # built toward: gold leaves only when the payment guard passes or a manager records an
+        # override with a reason. `dispatch_type` carries no UPDATE grant, so a physical dispatch
+        # cannot be converted into a settlement without a new row.
+        "gold_dispatches",
         # M9 slice 7, §13.3. The projection M2's outbox was built to feed and had no consumer for.
         # Insert-only for now, like the row below: nothing marks a notification read, and a grant
         # ahead of the command that needs it is a capability with no caller.

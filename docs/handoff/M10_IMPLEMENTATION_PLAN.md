@@ -509,6 +509,39 @@ Gold moves, and only when it may.
   Four types exist and two of them move no metal; a test that treated them alike would pass against
   an implementation that dispatched gold for an offset.
 
+### The override permission, decided by the owner on 2026-09-03
+
+The catalogue had **none**, and its `dispatch_control` constraint says why one was needed:
+`separation_of_duties: warehouse cannot override financial verification`, while
+`gold_sale.dispatch` is granted to `warehouse_operator` alone. So `SEC-DISPATCH-001` was answered
+by governance before any code was written — the sharp negative this section describes is a property
+of who holds what, not of a branch somebody could delete.
+
+`gold_sale.dispatch_override` is added to `permission_catalog.yaml` and seeded to `manager` by
+`20260911_0042`, on `20260828_0027`'s precedent: an owner decision becomes a catalogue entry *and*
+a grant, because a permission that authorises nobody is a rule nobody can follow. It is the fifth
+member of `test_m5_definition_of_done.py`'s manager-only set, and that gate exists so a new one has
+to be looked at rather than absorbed.
+
+**Dual control was intended and is deliberately absent.** In a single-request design there is one
+actor, so "two different humans" cannot be checked; making the caller *name* an authoriser would
+let them forge one, which is a bigger hole than the one it closes. Real dual control needs a
+manager to record an authorisation first and the dispatch to cite it — two commands, a second
+record, and a route no document names. Recorded as an owner debt rather than invented.
+
+### Three findings, all from controls, all in the tests rather than the code
+
+- **The guard's column was untestable.** The fixture wrote `amount_irr` and `confirmed_amount_irr`
+  equal on every order, so reading the trader's *claim* instead of the centre's *confirmation*
+  changed nothing — the fourth meaning of NOT CAUGHT, on the most important arithmetic in the
+  milestone.
+- **A privilege query asked about `current_user`**, which is the owner the test connects as. Every
+  `not in` assertion about grants was true of a role nobody runs the application under.
+- **The route's permission guard could not be isolated with a trader**, because audiences are
+  separated by host and no trader request reaches an `admin.localhost` route at all. An accountant
+  — internal, holding neither dispatch permission — is the caller that isolates it. Worth carrying
+  forward: a trader-based test proves nothing about an internal route's permission check.
+
 ## Slice 8 — correction, the trader surface, and the Definition of Done
 
 ### Goal

@@ -31,6 +31,7 @@ from app.db.models.configuration import (
 )
 from app.db.models.confirmed_evidence_link import ConfirmedEvidenceLink
 from app.db.models.file_object import FileDerivation, FileLink, FileObject
+from app.db.models.gold_dispatch import GoldDispatch
 from app.db.models.gold_sale import GoldSaleOrder, GoldSalePricingVersion
 from app.db.models.idempotency_record import IdempotencyRecord
 from app.db.models.identity import AdminUser, TraderUser
@@ -81,6 +82,7 @@ __all__ = [
     "FileDerivation",
     "FileLink",
     "FileObject",
+    "GoldDispatch",
     "GoldSaleOrder",
     "GoldSalePricingVersion",
     "IdempotencyRecord",

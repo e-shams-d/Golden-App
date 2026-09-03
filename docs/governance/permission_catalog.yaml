@@ -372,6 +372,30 @@ permission_groups:
       gold_sale.dispatch:
         default_roles: [warehouse_operator]
         constraints: [authenticated_active, dispatch_control, state_guarded_command]
+      # The owner's decision of 2026-09-03, recorded on the same footing as
+      # payment_batch.cancel_approved: a stated rule with no permission is unreachable under
+      # deny-by-default, and 15_Agent_Implementation_Plan.md:1236 states one — "Gold cannot be
+      # dispatched unless the approved payment/settlement condition is satisfied or an explicitly
+      # authorized override is recorded with reason and audit."
+      #
+      # Not warehouse_operator, and that is this file's own rule rather than a preference: the
+      # dispatch_control constraint reads "warehouse cannot override financial verification". An
+      # operator who could authorise the override would hold both halves of the separation that
+      # sentence describes.
+      #
+      # Not accountant either. The accountant confirms that money arrived —
+      # incoming_payment.confirm — and releasing gold when it did not is a decision about accepting
+      # risk rather than about reconciling a figure. The manager's baseline_purpose names
+      # "configured high-risk decisions", and this is one.
+      #
+      # Manageable afterwards, deliberately: the grant is a role_permissions row like every other,
+      # so an administrator can move it without a deploy. That also means an administrator can
+      # grant both this and gold_sale.dispatch to one person, which no permission check can
+      # prevent — app/commands/gold_dispatch.py records why real dual control would need a second
+      # command and a route no document names.
+      gold_sale.dispatch_override:
+        default_roles: [manager]
+        constraints: [authenticated_active, dispatch_control, state_guarded_command]
       incoming_receipt.create_own:
         default_roles: [trader_owner]
         constraints: [authenticated_active, own_actor_scope, state_guarded_command]

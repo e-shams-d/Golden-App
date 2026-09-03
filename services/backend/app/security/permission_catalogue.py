@@ -71,6 +71,10 @@ APPROVED_PERMISSIONS: frozenset[str] = frozenset(
         "gold_sale.cancel",
         "gold_sale.create_own",
         "gold_sale.dispatch",
+        # M10 slice 7, the owner's decision of 2026-09-03. `manager` alone: the `dispatch_control`
+        # constraint forbids giving it to the warehouse operator who holds `gold_sale.dispatch`
+        # above.
+        "gold_sale.dispatch_override",
         "gold_sale.price",
         "gold_sale.read",
         "gold_sale.review",

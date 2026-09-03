@@ -365,6 +365,9 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # `permission_catalog.yaml` separates from `.match` and gives the manager a different
     # conditional on. Still `PERMISSION`: deciding that money arrived is the centre's act.
     ("POST", "/api/v1/incoming-payment-receipts/{receipt_id}/confirm"): PERMISSION,
+    # M10 slice 7. `gold_sale.dispatch`, held by `warehouse_operator` alone. A trader whose gold it
+    # is holds nothing here: dispatching is the centre recording that it released metal.
+    ("POST", "/api/v1/gold-sale-orders/{order_id}/dispatches"): PERMISSION,
     # M9 slice 5B. Ownership resolved through the publication's *request*: a file id is the wrong
     # thing to authorise against, because `file_objects` has no trader column and the card is a
     # derivation that inherits its visibility.
@@ -921,6 +924,14 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
         "/api/v1/incoming-payment-receipts/{receipt_id}/confirm",
         "permission",
     ): "test_no_trader_can_confirm_their_own_payment",
+    # M10 slice 7. The sharp one, and the plan names it: somebody who may *record* a dispatch and
+    # may not *authorise an override*. The test covers the trader too, but the warehouse operator
+    # is the case `SEC-DISPATCH-001` is about.
+    (
+        "POST",
+        "/api/v1/gold-sale-orders/{order_id}/dispatches",
+        "permission",
+    ): "test_a_warehouse_operator_cannot_override_the_guard",
     ("GET", "/api/v1/bank-statements", "permission"): "test_no_trader_can_see_or_touch_a_statement",
     (
         "GET",

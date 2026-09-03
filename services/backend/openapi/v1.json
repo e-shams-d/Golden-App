@@ -2772,6 +2772,246 @@
         "title": "DependencyStatus",
         "type": "object"
       },
+      "DispatchRequest": {
+        "additionalProperties": false,
+        "description": "§21.7's body.\n\n**No `status`.** A physical movement is born `dispatched` and a settlement `settled`, derived\nfrom `dispatch_type` — which is the one thing `SVC-SETTLEMENT-001` says must not be collapsed.\nA caller that could name the status could dispatch an offset.\n\n**`guard_override_reason` is the only override field.** Who authorised it and when are the\nplatform's to record from the session: a caller that could name the authoriser could name\nsomebody who never agreed, which is a forged authorisation rather than a recorded one.",
+        "properties": {
+          "dispatch_type": {
+            "title": "Dispatch Type",
+            "type": "string"
+          },
+          "dispatched_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dispatched At"
+          },
+          "evidence_file_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence File Id"
+          },
+          "gold_purity": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gold Purity"
+          },
+          "gold_weight": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gold Weight"
+          },
+          "guard_override_reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guard Override Reason"
+          },
+          "recipient_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Name"
+          },
+          "tracking_or_delivery_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracking Or Delivery Note"
+          },
+          "weight_unit": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Unit"
+          }
+        },
+        "required": [
+          "dispatch_type"
+        ],
+        "title": "DispatchRequest",
+        "type": "object"
+      },
+      "DispatchResponse": {
+        "additionalProperties": false,
+        "description": "What moved, and what the order was paid.\n\n`confirmed_total_irr` and `expected_amount_irr` are both here so a client can see *why* the\ndispatch was allowed. A response carrying only the dispatch would make an override\nindistinguishable from a guard that passed.",
+        "properties": {
+          "confirmed_total_irr": {
+            "title": "Confirmed Total Irr",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dispatch_type": {
+            "title": "Dispatch Type",
+            "type": "string"
+          },
+          "dispatched_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dispatched At"
+          },
+          "expected_amount_irr": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Amount Irr"
+          },
+          "gold_sale_order_id": {
+            "format": "uuid",
+            "title": "Gold Sale Order Id",
+            "type": "string"
+          },
+          "gold_weight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gold Weight"
+          },
+          "guard_override_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guard Override At"
+          },
+          "guard_override_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guard Override Reason"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "order_status": {
+            "title": "Order Status",
+            "type": "string"
+          },
+          "record_version": {
+            "title": "Record Version",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "weight_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Unit"
+          }
+        },
+        "required": [
+          "id",
+          "gold_sale_order_id",
+          "dispatch_type",
+          "status",
+          "gold_weight",
+          "weight_unit",
+          "dispatched_at",
+          "guard_override_at",
+          "guard_override_reason",
+          "order_status",
+          "confirmed_total_irr",
+          "expected_amount_irr",
+          "record_version",
+          "created_at"
+        ],
+        "title": "DispatchResponse",
+        "type": "object"
+      },
       "DisputeRequest": {
         "additionalProperties": false,
         "description": "§20.6's body, minus `attachment_file_ids`.\n\nDocument 05 shows that field. Accepting a file id here would let a trader name a file this\ncommand never checks the ownership of — the IDOR case `14_Testing_QA_Acceptance.md:1274`\ndescribes, arriving through a field that looks helpful. M4's upload path is where a trader's\nfile gets an owner; linking one to a dispute needs that path, not this one.",
@@ -12269,6 +12509,162 @@
           }
         },
         "summary": "One order.",
+        "tags": [
+          "gold-sale-orders"
+        ]
+      }
+    },
+    "/api/v1/gold-sale-orders/{order_id}/dispatches": {
+      "post": {
+        "description": "`POST /api/v1/gold-sale-orders/{order_id}/dispatches`, per `:2029`.\n\n**Either permission opens the route; only one of them opens the override.** See\n`dispatch_or_override` above for why the first version was wrong — it admitted the warehouse\noperator alone, which locked out the only role entitled to override.\n\nThe actor's permission set is passed down rather than re-read inside the command:\n`ActorContext` already carries it, and a command that fetched its own would be asking a second\nquestion of a different source than the one the route was guarded by.",
+        "operationId": "recordGoldDispatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The order is not in a state that permits this."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such order, or it belongs to somebody else. The two are deliberately indistinguishable."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "This order already says exactly this."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match is stale or unreadable."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "If-Match and Idempotency-Key are required."
+          }
+        },
+        "summary": "Record that gold moved, or that the order was settled without it.",
         "tags": [
           "gold-sale-orders"
         ]
