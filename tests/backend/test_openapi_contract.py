@@ -354,6 +354,12 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "listNotifications",
         "markNotificationRead",
         "markAllNotificationsRead",
+        # M11 slice 2, and the first operation id in this project that names a *queue* rather than
+        # an aggregate. §19.2 names twenty-four and document 05 defines a route for none of them;
+        # the plan's G-1 takes one endpoint per queue under `/queues/`, so this id is the shape
+        # the remaining twenty-three will follow. Slice 2 ships exactly one so that reversing the
+        # decision costs one slice.
+        "listNewRequestsQueue",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas
