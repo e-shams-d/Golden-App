@@ -376,6 +376,21 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
         "/api/v1/gold-sale-orders/{order_id}/dispatches/{dispatch_id}/acknowledge",
     ): DUAL,
     ("POST", "/api/v1/gold-sale-orders/{order_id}/close"): PERMISSION,
+    # M11 slice 1. `OWNERSHIP` and not `DUAL`, which is the substantive claim in this block.
+    #
+    # These are the first routes both audiences reach *by the same mechanism*. Everywhere else a
+    # shared path is `DUAL` because a trader arrives by ownership and staff arrive by a granted
+    # permission; here `permission_catalog.yaml` has no notification permission at all, so an admin
+    # reading their own notifications is doing exactly what a trader does — reading rows that name
+    # them in `recipient_actor_id`. Classifying them `DUAL` would demand a permission negative for
+    # a permission that does not exist, and a test asserting a refusal that no code path produces
+    # proves nothing. That is the same argument this file already makes for the profile routes.
+    #
+    # The ownership negative is owed once and written for both audiences, because the scope column
+    # is the same one in both cases.
+    ("GET", "/api/v1/notifications"): OWNERSHIP,
+    ("POST", "/api/v1/notifications/{notification_id}/mark-read"): OWNERSHIP,
+    ("POST", "/api/v1/notifications/mark-all-read"): OWNERSHIP,
     # M9 slice 5B. Ownership resolved through the publication's *request*: a file id is the wrong
     # thing to authorise against, because `file_objects` has no trader column and the card is a
     # derivation that inherits its visibility.
@@ -956,6 +971,26 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
         "/api/v1/gold-sale-orders/{order_id}/close",
         "permission",
     ): "test_no_trader_can_close_their_own_order",
+    # M11 slice 1. Three separate tests rather than one shared name, because the three routes fail
+    # in three different ways. A leaky list returns rows; a leaky mark-read edits one row that is
+    # not the caller's; a leaky mark-all-read edits *every* row in the table and returns a count
+    # that looks plausible. The third is the one a single shared test would most easily miss, and
+    # it is the only one whose damage is unbounded.
+    (
+        "GET",
+        "/api/v1/notifications",
+        "ownership",
+    ): "test_a_recipient_sees_only_notifications_addressed_to_them",
+    (
+        "POST",
+        "/api/v1/notifications/{notification_id}/mark-read",
+        "ownership",
+    ): "test_marking_somebody_elses_notification_read_is_not_found",
+    (
+        "POST",
+        "/api/v1/notifications/mark-all-read",
+        "ownership",
+    ): "test_marking_all_read_leaves_every_other_recipient_untouched",
     ("GET", "/api/v1/bank-statements", "permission"): "test_no_trader_can_see_or_touch_a_statement",
     (
         "GET",

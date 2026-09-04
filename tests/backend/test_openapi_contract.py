@@ -343,6 +343,17 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # in that table and is what makes `received_by_trader` reachable at all.
         "acknowledgeGoldDispatch",
         "closeGoldSaleOrder",
+        # M11 slice 1. Document 05 §22.3 at `:2077`, and the three routes are spelled exactly as
+        # that block spells them — `/notifications`, not `/me/notifications` and not a `/me/trader`
+        # twin, because the row already names its recipient and taking the audience from the URL
+        # is what `12_Security_RBAC_Audit.md:316` forbids trusting.
+        #
+        # The table has existed since M9 slice 7 and has been written to by two milestones with no
+        # way to read a single row. These operation ids are the first time anything a person uses
+        # can reach it.
+        "listNotifications",
+        "markNotificationRead",
+        "markAllNotificationsRead",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

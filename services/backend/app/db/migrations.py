@@ -176,4 +176,9 @@ from __future__ import annotations
 # `dispatch_type` gets no UPDATE grant: doc 06 section 12.3 forbids converting a physical
 # dispatch *silently* into a settlement, and a column the runtime cannot write is the
 # strongest form of not-silently available.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260912_0043"})
+# 20260913_0044 is the narrowest revision in this project: two column grants and no DDL at all.
+# `20260902_0033` built `notifications` and withheld the UPDATE grant in writing, because nothing
+# could mark one read; M11 slice 1 is that command, so the grant arrives with it. `status` and
+# `read_at` only — a notification is a record of what somebody was told, and a title the runtime
+# could rewrite afterwards would be a message that says something other than what was sent.
+EXPECTED_MIGRATION_HEADS = frozenset({"20260913_0044"})
