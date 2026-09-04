@@ -874,11 +874,14 @@ PENDING: dict[str, str] = {
     # M11 slice 3B discharged `SVC-QUEUE-001` in `tests/integration/test_queue_contract.py`. Slice
     # 3 had left it pending on six of eleven queues for want of fixtures; 3B built the three
     # chains and every predicate is now asserted on which rows it selects.
-    "SEC-QUEUE-003": (
-        "M11 slice 5 - what technical operations may not see. Stated by "
-        "`docs/handoff/M11_IMPLEMENTATION_PLAN.md` and not yet built; the slice's own pull "
-        "request discharges it and removes this entry in the same commit."
-    ),
+    # M11 slice 5 discharged `SEC-QUEUE-003` in `tests/integration/test_queue_contract.py`.
+    #
+    # Unlike `SVC-QUEUE-002`, this obligation is a **property** rather than a count: technical
+    # queue rows carry no amount, no IBAN and no trader name. It is asserted over the response
+    # body for the one technical queue that exists, and the other four §19.2 names have no session
+    # permission or no table, so they have no rows to leak. A property that holds for every
+    # instance is discharged even when there is one instance — which is a different claim from
+    # slice 3's, and the distinction is why that one stayed pending and this one does not.
     "OPS-JOB-001": (
         "M11 slice 6 - the six maintenance jobs nothing schedules. Stated by "
         "`docs/handoff/M11_IMPLEMENTATION_PLAN.md` and not yet built; the slice's own pull "

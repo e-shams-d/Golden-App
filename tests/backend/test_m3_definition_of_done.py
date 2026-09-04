@@ -417,6 +417,10 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     ("GET", "/api/v1/queues/orders-ready-for-dispatch"): PERMISSION,
     ("GET", "/api/v1/queues/blocked-dispatches"): PERMISSION,
     ("GET", "/api/v1/queues/receipt-confirmation-work"): PERMISSION,
+    # M11 slice 5. `file.quarantine_review` is `technical_admin`'s alone, and its catalogue row
+    # carries `financial_content_access_is_not_implied` — the grant itself says what §19 `:1298`'s
+    # last rule says. No trader audience, so `PERMISSION` rather than `DUAL`.
+    ("GET", "/api/v1/queues/quarantined-files-exports"): PERMISSION,
     ("GET", "/api/v1/notifications"): OWNERSHIP,
     ("POST", "/api/v1/notifications/{notification_id}/mark-read"): OWNERSHIP,
     ("POST", "/api/v1/notifications/mark-all-read"): OWNERSHIP,
@@ -1029,6 +1033,8 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
             "orders-ready-for-dispatch",
             "blocked-dispatches",
             "receipt-confirmation-work",
+            # M11 slice 5.
+            "quarantined-files-exports",
         )
     },
     # M11 slice 1. Three separate tests rather than one shared name, because the three routes fail

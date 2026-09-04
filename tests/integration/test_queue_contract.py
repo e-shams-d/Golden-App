@@ -72,6 +72,7 @@ ACCOUNTANT = "queue_accountant"
 # permission negative — a role that exists rather than one invented for the test.
 UNGRANTED_ADMIN = "queue_warehouse"
 MANAGER = "queue_manager"
+TECHNICAL_ADMIN = "queue_technical"
 
 # M11 slice 4. Which role is expected to reach which queue. Written out rather than derived from
 # the registry, because deriving it from the thing under test would make the assertion circular —
@@ -97,6 +98,8 @@ ACCOUNTANT_QUEUES = frozenset(
 WAREHOUSE_QUEUES = frozenset(
     {"orders-ready-for-dispatch", "blocked-dispatches", "receipt-confirmation-work"}
 )
+# M11 slice 5. One queue, and the role that holds it holds nothing else here.
+TECHNICAL_QUEUES = frozenset({"quarantined-files-exports"})
 
 QUEUE = "/api/v1/queues/new-requests"
 
@@ -184,6 +187,7 @@ def world(migrated: RuntimeIdentities, tmp_path_factory: Any) -> Iterator[dict[s
             (ACCOUNTANT, "accountant"),
             (UNGRANTED_ADMIN, "warehouse_operator"),
             (MANAGER, "manager"),
+            (TECHNICAL_ADMIN, "technical_admin"),
         ):
             connection.execute(
                 "INSERT INTO admin_users (username, full_name, password_hash, status) "
@@ -354,6 +358,9 @@ def an_empty_queue(world: dict[str, Any]) -> Iterator[None]:
         connection.execute("DELETE FROM incoming_payment_receipts")
         connection.execute("DELETE FROM payment_requests")
         connection.execute("DELETE FROM manual_review_tasks")
+        connection.execute(
+            "DELETE FROM file_objects WHERE storage_key LIKE 'files/%'"
+        )
         connection.execute("DELETE FROM bank_result_bundles")
         # Dispatches before orders: the dispatch's foreign key points at the order.
         connection.execute("DELETE FROM gold_dispatches")
@@ -532,6 +539,36 @@ def receipt_row(world: dict[str, Any], *, status: str, trader: str = "trader") -
     return receipt_id
 
 
+def quarantined_file(
+    world: dict[str, Any], *, filename: str, scan_status: str = "quarantined"
+) -> uuid.UUID:
+    """One file object in a named scan state. `file_objects` carries no `trader_id`."""
+
+    file_id = uuid.uuid4()
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            "INSERT INTO file_objects (id, storage_provider, storage_bucket, storage_key, "
+            "original_filename, mime_type_declared, size_bytes, sha256_hash, category, "
+            "visibility_scope, storage_status, scan_status, uploaded_by_actor_type, "
+            "original_or_derived_relation, metadata) "
+            # `ck_file_objects_available_requires_clean_scan`: a file cannot be `available` while
+            # its scan says `quarantined`. The constraint is the schema refusing to let an
+            # unchecked file look usable, which is ADR-008's interim rule in DDL.
+            "VALUES (%s, 'local', 'gold', %s, %s, 'application/pdf', 2048, %s, "
+            "'payment_evidence', 'internal', %s, %s, 'trader_user', 'original', '{}')",
+            (
+                file_id,
+                f"files/{file_id}",
+                filename,
+                uuid.uuid4().hex * 2,
+                "available" if scan_status == "clean" else "quarantined",
+                scan_status,
+            ),
+        )
+        connection.commit()
+    return file_id
+
+
 def batch_version_row(world: dict[str, Any], *, status: str) -> uuid.UUID:
     """One more version of the seeded batch. Version numbers climb so the unique holds."""
 
@@ -663,12 +700,17 @@ def test_each_role_reaches_its_own_queues_and_no_others(world: dict[str, Any]) -
     """
 
     names = set(built_queue_names())
-    assert names == ACCOUNTANT_QUEUES | WAREHOUSE_QUEUES, (
+    assert names == ACCOUNTANT_QUEUES | WAREHOUSE_QUEUES | TECHNICAL_QUEUES, (
         "the expected sets have drifted from the registry; a queue was added without deciding "
-        f"whose it is: {sorted(names ^ (ACCOUNTANT_QUEUES | WAREHOUSE_QUEUES))}"
+        f"whose it is: "
+        f"{sorted(names ^ (ACCOUNTANT_QUEUES | WAREHOUSE_QUEUES | TECHNICAL_QUEUES))}"
     )
 
-    audiences = ((ACCOUNTANT, ACCOUNTANT_QUEUES), (UNGRANTED_ADMIN, WAREHOUSE_QUEUES))
+    audiences = (
+        (ACCOUNTANT, ACCOUNTANT_QUEUES),
+        (UNGRANTED_ADMIN, WAREHOUSE_QUEUES),
+        (TECHNICAL_ADMIN, TECHNICAL_QUEUES),
+    )
     for username, expected in audiences:
         sign_in(world, username)
         reached = {
@@ -1125,6 +1167,72 @@ def test_receipt_confirmation_work_is_metal_that_left_and_was_never_acknowledged
     assert {i["id"] for i in body["items"]} == {str(moving)}
 
 
+def test_a_technical_admin_queue_carries_no_financial_detail(world: dict[str, Any]) -> None:
+    """**SEC-QUEUE-003.** §19 `:1298`'s last rule, asserted over the response body.
+
+    "Technical admin does not receive full financial detail by default." The catalogue says it in
+    the grant — `file.quarantine_review` carries `financial_content_access_is_not_implied` — and
+    doc 12 `:616` says the role has "no implicit financial authority".
+
+    **Over the body, not the query.** A redaction applied after serialisation is one a later
+    serialiser change removes silently, and a test that inspected the SQL would pass against a
+    response that leaked. So this reads the JSON and asserts on what a caller actually receives:
+    no amount, no IBAN, no trader, no business name — searched as raw text, so a field renamed or
+    nested still fails.
+    """
+
+    quarantined_file(world, filename="suspicious-receipt.pdf")
+
+    sign_in(world, TECHNICAL_ADMIN)
+    response = world["client"].get("/api/v1/queues/quarantined-files-exports")
+    assert response.status_code == 200, response.text
+
+    body = response.json()
+    assert len(body["items"]) == 1
+    item = body["items"][0]
+
+    assert item["trader_id"] is None, "a technical admin was told whose business the file is"
+    assert item["reference"] == "suspicious-receipt.pdf"
+
+    # The raw payload, so a leak through a renamed or nested field fails too.
+    raw = response.text
+    for forbidden, what in (
+        (IBANS["trader"], "an IBAN"),
+        ("First Business", "a trader's name"),
+        ("1000000", "an amount"),
+    ):
+        assert forbidden not in raw, f"the technical queue disclosed {what}"
+
+
+def test_the_technical_admin_reaches_only_the_technical_queue(world: dict[str, Any]) -> None:
+    """The other half: holding one technical grant is not holding the accountant's eleven.
+
+    Without this, the redaction test above would pass just as well against a role that could read
+    every financial queue in full — it only ever looks at one response.
+    """
+
+    sign_in(world, TECHNICAL_ADMIN)
+    reached = {
+        name
+        for name in built_queue_names()
+        if world["client"].get(f"/api/v1/queues/{name}").status_code == 200
+    }
+    assert reached == {"quarantined-files-exports"}, (
+        f"the technical admin reached {sorted(reached - {'quarantined-files-exports'})}"
+    )
+
+
+def test_a_clean_file_is_not_quarantine_work(world: dict[str, Any]) -> None:
+    """The exclusion. A queue of every file would be a file browser, not a queue."""
+
+    flagged = quarantined_file(world, filename="flagged.pdf")
+    quarantined_file(world, filename="fine.pdf", scan_status="clean")
+
+    sign_in(world, TECHNICAL_ADMIN)
+    body = world["client"].get("/api/v1/queues/quarantined-files-exports").json()
+    assert {i["id"] for i in body["items"]} == {str(flagged)}
+
+
 def test_every_queue_returns_the_same_five_fields(world: dict[str, Any]) -> None:
     """§19 `:1298`'s last rule, made checkable by there being one row shape.
 
@@ -1140,7 +1248,12 @@ def test_every_queue_returns_the_same_five_fields(world: dict[str, Any]) -> None
         # Slice 4 split the surface across two roles, so the sweep signs in as whichever one owns
         # the queue. Reading every queue as one caller would silently degrade into asserting the
         # shape of 403 bodies.
-        sign_in(world, ACCOUNTANT if name in ACCOUNTANT_QUEUES else UNGRANTED_ADMIN)
+        if name in ACCOUNTANT_QUEUES:
+            sign_in(world, ACCOUNTANT)
+        elif name in WAREHOUSE_QUEUES:
+            sign_in(world, UNGRANTED_ADMIN)
+        else:
+            sign_in(world, TECHNICAL_ADMIN)
         body = world["client"].get(f"/api/v1/queues/{name}").json()
         assert set(body) == {"queue", "items", "next_cursor", "total"}
         for item in body["items"]:
