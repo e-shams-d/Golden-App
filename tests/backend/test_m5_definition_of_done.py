@@ -57,6 +57,14 @@ _STATUS = re.compile(r"^\s*status:\s*(\S+)", re.M)
 # owner approving one of these must change this gate deliberately rather than silently.
 PROPOSED = frozenset({"proposed_pending_owner_decision"})
 
+# The tag `app/api/v1/payment_requests.py` constructs its router with. The payment-request
+# aggregate's own routes are the ones that carry it — see `request_prefix` for why the prefix is
+# read from the router's identity rather than computed from where its permissions happen to appear.
+AGGREGATE_TAG = "payment-requests"
+
+# Where the versioned API is mounted. Used only to refuse a derived prefix that is no deeper.
+API_ROOT = "/api/v1"
+
 # The permissions a request route may declare that `manager` can also hold, with the reason.
 # Recorded by **equality**, not merely permitted: a new manager-touched permission on a
 # request route fails until a person writes down why it is not manager approval.
@@ -172,23 +180,53 @@ def request_prefix(app_factory: Any) -> str:
     request-scoped. A falsy prefix disabling half a union is exactly the kind of silence this
     file exists to refuse.
 
-    So it is derived: the common parent of every route that declares a `payment_request.*`
-    permission. Nothing to keep in step with the router, and it cannot be empty while those
-    routes exist — which the guard below asserts.
+    So it is derived — but **not from the permission any more**, and M11 slice 2 is why.
+
+    The previous derivation took the common parent of every route declaring a `payment_request.*`
+    permission. That held while all of them lived under one router, and collapsed the moment one
+    did not: `/api/v1/queues/new-requests` legitimately declares `payment_request.read`, the common
+    parent of it and `/api/v1/payment-requests/...` is **`/api/v1`**, and since the classification
+    below matches with `in` rather than a segment-wise prefix test, every route in the application
+    became "request-scoped". Four unrelated manager-only routes failed a gate about payment
+    requests.
+
+    That failure was loud, which is the only reason it is a footnote rather than an incident — an
+    over-wide derivation fails; an over-narrow one passes. But it was still wrong, and the lesson
+    is that a *computed* prefix is only as stable as the assumption that one aggregate owns one
+    subtree, which nothing enforces.
+
+    So the prefix now comes from the router's own declared identity: the tag
+    `payment_requests.router` is constructed with. A renamed tag empties `paths` and trips the
+    assertion below; a new route mounted elsewhere no longer moves it. The permission half of the
+    union is untouched, so a request route mounted outside this prefix — the queue route included —
+    is still classified and still checked.
     """
 
     app, _runtime, _settings = app_factory()
     paths = [
         path
         for _method, path, route in routes_of(app)
-        if any(name.startswith("payment_request.") for name in declared_permissions(route))
+        if AGGREGATE_TAG in getattr(route, "tags", [])
     ]
-    assert paths, "no route declares a payment_request permission, so no prefix can be derived"
+    assert paths, (
+        f"no route carries the {AGGREGATE_TAG!r} tag, so no prefix can be derived. If the "
+        "router's tag was renamed, rename it here too — this fixture reads the router's own "
+        "identity on purpose."
+    )
     common = paths[0]
     for path in paths[1:]:
         while not path.startswith(common):
             common = common[: common.rfind("/")]
-    return common.rstrip("/")
+    common = common.rstrip("/")
+
+    # Guarding the guard, in this file's own habit. A prefix no deeper than the mounted API root
+    # matches every path under it, which would silently widen the gate to the whole application
+    # instead of narrowing it to one aggregate. That is precisely what happened above.
+    assert common.count("/") > API_ROOT.count("/"), (
+        f"the derived request prefix {common!r} is no deeper than the API root {API_ROOT!r}, so "
+        "it would classify every route in the application as request-scoped"
+    )
+    return common
 
 
 def _request_scoped(

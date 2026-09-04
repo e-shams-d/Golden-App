@@ -388,6 +388,12 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     #
     # The ownership negative is owed once and written for both audiences, because the scope column
     # is the same one in both cases.
+    # M11 slice 2. `PERMISSION`, and the classification is the same argument the accountant's
+    # three made in M5 slice 7: this queue has no trader audience at all. `payment_request.read`
+    # goes to `accountant, manager, business_admin, read_only_auditor` and no trader role holds it,
+    # so there is no ownership scope to filter and no ownership negative to owe. A trader's own
+    # requests are `GET /payment-requests`, which is `DUAL` and does scope.
+    ("GET", "/api/v1/queues/new-requests"): PERMISSION,
     ("GET", "/api/v1/notifications"): OWNERSHIP,
     ("POST", "/api/v1/notifications/{notification_id}/mark-read"): OWNERSHIP,
     ("POST", "/api/v1/notifications/mark-all-read"): OWNERSHIP,
@@ -971,6 +977,14 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
         "/api/v1/gold-sale-orders/{order_id}/close",
         "permission",
     ): "test_no_trader_can_close_their_own_order",
+    # M11 slice 2. The permission negative for the first queue. Its own test rather than a shared
+    # one: the refusal that matters here is a *trader* being refused an internal work surface,
+    # which is a different chain from an admin missing a grant.
+    (
+        "GET",
+        "/api/v1/queues/new-requests",
+        "permission",
+    ): "test_no_trader_can_reach_an_internal_queue",
     # M11 slice 1. Three separate tests rather than one shared name, because the three routes fail
     # in three different ways. A leaky list returns rows; a leaky mark-read edits one row that is
     # not the caller's; a leaky mark-all-read edits *every* row in the table and returns a count

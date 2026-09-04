@@ -848,16 +848,10 @@ PENDING: dict[str, str] = {
     # `PENDING` exists to prevent.
     # M11 slice 1 discharged `SEC-NOTIFY-001`, `SVC-NOTIFY-001` and `API-NOTIFY-001` in
     # `tests/integration/test_notification_reading.py`, as this block promised it would.
-    "API-QUEUE-001": (
-        "M11 slice 2 - the queue contract and its six query rules. Stated by "
-        "`docs/handoff/M11_IMPLEMENTATION_PLAN.md` and not yet built; the slice's own pull "
-        "request discharges it and removes this entry in the same commit."
-    ),
-    "SEC-QUEUE-001": (
-        "M11 slice 2 - the queue contract and its six query rules. Stated by "
-        "`docs/handoff/M11_IMPLEMENTATION_PLAN.md` and not yet built; the slice's own pull "
-        "request discharges it and removes this entry in the same commit."
-    ),
+    # M11 slice 2 discharged `API-QUEUE-001` and `SEC-QUEUE-001` in
+    # `tests/integration/test_queue_contract.py`, as this block promised it would. The accountant's
+    # eleven-queue obligation stays below and is slice 3's: slice 2 asserts the
+    # state/adjacent-state rule for one queue, which is not the same claim.
     "SVC-QUEUE-002": (
         "M11 slice 4 - the manager and warehouse queues. Stated by "
         " and not yet built; the slice own pull "

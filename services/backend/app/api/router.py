@@ -27,6 +27,7 @@ from app.api.v1.payment_attempts import router as payment_attempts_router
 from app.api.v1.payment_batches import router as payment_batches_router
 from app.api.v1.payment_publications import router as payment_publications_router
 from app.api.v1.payment_requests import router as payment_requests_router
+from app.api.v1.queues import router as queues_router
 from app.api.v1.receipt_segments import router as receipt_segments_router
 from app.api.v1.roles import router as roles_router
 from app.api.v1.trader_publications import router as trader_publications_router
@@ -102,3 +103,8 @@ api_v1_router.include_router(incoming_matches_router)
 # have to take the audience from the URL, which is what `12_Security_RBAC_Audit.md:316` forbids
 # trusting.
 api_v1_router.include_router(notifications_router)
+# M11 slice 2. Its own prefix because §19.2's queues are a surface in their own right, not a view
+# of one aggregate: `/queues/new-requests` reads `payment_requests` and `/queues/failed-jobs` will
+# read `processing_jobs`. Nesting each under its table would scatter one contract across seven
+# routers and make "which queues exist" unanswerable from the route table.
+api_v1_router.include_router(queues_router)

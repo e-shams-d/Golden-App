@@ -61,6 +61,26 @@ SCOPE_EXEMPT: dict[str, str] = {
         "trader role. `tests/integration/test_batch_finalization.py` asserts that no trader can "
         "reach the route at all, which is the ownership question answered where it belongs."
     ),
+    "api/v1/queues.py::list_new_requests": (
+        "M11 slice 2's queue, and the exemption turns entirely on there being no trader who "
+        "could be scoped. §19.2's queues are the centre's daily work surface: this one is "
+        "guarded by `payment_request.read`, which `permission_catalog.yaml:444` gives to "
+        "`accountant, manager, business_admin, read_only_auditor` under an "
+        "`internal_business_scope` constraint. No trader role holds it — a trader holds "
+        "`payment_request.read_own` (`:441`) and resolves no permissions at all in "
+        "`ActorContext` — so `requires(...)` refuses every trader before the query runs.\n"
+        "\n"
+        "Adding `scoped()` here would therefore be a filter that never fires, and that is worse "
+        "than leaving it out: `scoped()` reads as the ownership answer, so a call that cannot "
+        "execute would make this route *look* protected by a mechanism doing nothing, while the "
+        "real protection — the grant — went unexamined. The queue is deliberately cross-trader; "
+        "an accountant's whole job here is to see every business's new requests in one list.\n"
+        "\n"
+        "It is not unbounded: `read_queue_page` applies `app/db/pagination.py`'s cursor, limit "
+        "cap and allowlists to every queue. `tests/integration/test_queue_contract.py` asserts "
+        "that a trader cannot reach the route at all, which is the ownership question answered "
+        "where it belongs."
+    ),
 }
 
 
