@@ -21,24 +21,28 @@ names *and to exclude the adjacent one* — the first half alone passes against 
 everything, which is why the exclusions are separate assertions, and why `new-requests` and
 `correction-responses` are checked as a **partition** rather than one at a time.
 
-**Six of the eleven have seeded rows; five do not, and that is stated rather than papered over.**
-`payment_requests`, `manual_review_tasks` and `bank_result_bundles` seed in one or two statements.
-`bank_excel_exports` needs five foreign keys (a batch version, a bank profile version, a mapping, a
-file object and an admin), `payment_attempts` needs a revision and a bank account, and
-`incoming_payment_receipts` needs a gold-sale order. Their predicates are therefore exercised only
-for reachability and row shape, not for which rows they select.
+**Slice 3B built the three fixture chains slice 3 could not**, so all eleven queues now have rows
+and every predicate is asserted on which rows it selects. `bank_excel_exports` needs a batch
+version, a bank profile version, a mapping, a file object, an approval and an admin;
+`payment_attempts` needs a request and a revision behind a composite key;
+`incoming_payment_receipts` needs a gold-sale order.
 
-That gap is real and was found by a negative control, not by reading: deleting
-`sent_to_bank_marked_at IS NULL` from the exports queue — the condition carrying M7's "downloading
-does not mean sent" — went **NOT CAUGHT**. So the milestone obligation for all eleven stays pending
-with those five named; discharging it on six would be the incomplete-input failure this project
-keeps finding.
+**Slice 3 blamed the wrong cause for its uncaught control, and the fixture is what showed it.**
+That commit said deleting `sent_to_bank_marked_at IS NULL` from the exports queue went NOT CAUGHT
+because no export row existed. With rows, it still would: `mark_sent` sets the timestamp *and*
+`status = sent_to_bank_marked` in one statement (`app/commands/bank_export.py:657`), so the status
+filter already excludes every sent export and the timestamp can never be what excludes one. That is
+a sabotage which does not break the property — meaning 3 of the four — rather than a missing test.
 
-Covers: API-QUEUE-001, SEC-QUEUE-001.
+The condition stays, because it is free and it is what would matter if the two facts ever stopped
+moving together. `test_marking_sent_moves_both_facts_together` is the assertion that would notice.
+
+Covers: API-QUEUE-001, SEC-QUEUE-001, SVC-QUEUE-001.
 """
 
 from __future__ import annotations
 
+import inspect
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -159,13 +163,130 @@ def world(migrated: RuntimeIdentities, tmp_path_factory: Any) -> Iterator[dict[s
                 "WHERE u.username = %s AND r.code = %s",
                 (username, role),
             )
-        # One bank profile, so `bank_result_bundles` can be seeded for its queue.
-        ids["bank"] = uuid.uuid4()
+        # --- The chains slice 3 could not build -------------------------------------------
+        #
+        # M11 slice 3B. Slice 3 seeded only `payment_requests`, `manual_review_tasks` and
+        # `bank_result_bundles`, because those need one or two statements. The other three queue
+        # tables need four to six rows of scaffolding each, and the consequence was not a gap
+        # anybody would have noticed — it was a negative control going **NOT CAUGHT**: deleting
+        # `sent_to_bank_marked_at IS NULL` from the exports queue changed nothing, because no
+        # export row existed for the predicate to filter.
+        #
+        # Everything below exists so that three queue predicates have rows to select. None of it
+        # is asserted on; it is scaffolding, written once here rather than per test so the tests
+        # read as statements about queues.
+        for key in ("bank", "version", "mapping", "account", "batch", "batch_version", "file"):
+            ids[key] = uuid.uuid4()
+
         connection.execute(
             "INSERT INTO bank_profiles (id, code, name, status) "
             "VALUES (%s, 'queuebank', 'Queue Bank', 'active')",
             (ids["bank"],),
         )
+        connection.execute(
+            "INSERT INTO bank_profile_versions (id, bank_profile_id, version_number, status, "
+            "config_hash) VALUES (%s, %s, 1, 'active', %s)",
+            (ids["version"], ids["bank"], "a" * 64),
+        )
+        connection.execute(
+            "INSERT INTO bank_mappings (id, bank_profile_version_id, file_type, "
+            "template_version, status, mapping, config_hash) "
+            "VALUES (%s, %s, 'payment_export', 1, 'active', '{}', %s)",
+            (ids["mapping"], ids["version"], "b" * 64),
+        )
+        connection.execute(
+            "INSERT INTO bank_accounts (id, bank_profile_id, display_name, account_role, status) "
+            "VALUES (%s, %s, 'Outgoing', 'outgoing_source', 'active')",
+            (ids["account"], ids["bank"]),
+        )
+        connection.execute(
+            "INSERT INTO payment_batches (id, batch_number, status, created_by_admin_user_id) "
+            "SELECT %s, 'B-QUEUE-1', 'draft', u.id FROM admin_users u WHERE u.username = %s",
+            (ids["batch"], ACCOUNTANT),
+        )
+        connection.execute(
+            "INSERT INTO payment_batch_versions (id, payment_batch_id, version_number, "
+            "bank_profile_version_id, bank_account_id, bank_mapping_id, status, row_count, "
+            "total_amount_irr, content_hash, created_by_admin_user_id) "
+            # `ck_payment_batch_versions_row_count` refuses an empty version — a batch version
+            # with no rows is not a thing anybody would send to a bank.
+            "SELECT %s, %s, 1, %s, %s, %s, 'draft', 1, 1000000, %s, u.id FROM admin_users u "
+            "WHERE u.username = %s",
+            (
+                ids["batch_version"],
+                ids["batch"],
+                ids["version"],
+                ids["account"],
+                ids["mapping"],
+                "c" * 64,
+                ACCOUNTANT,
+            ),
+        )
+        # A **final** export must name an approval: `ck_bank_excel_exports_approval_matches_type`
+        # is M7's separation-of-duties rule expressed as a CHECK, and the approval's composite
+        # foreign keys tie it to the exact version's finalizer, creator and content hash. So the
+        # version has to record a finalizer before an approval can reference one.
+        # A second version, because `uq_active_final_export_per_version` permits one live final
+        # export per version and one test needs two exports.
+        ids["second"] = uuid.uuid4()
+        connection.execute(
+            "INSERT INTO payment_batch_versions (id, payment_batch_id, version_number, "
+            "bank_profile_version_id, bank_account_id, bank_mapping_id, status, row_count, "
+            "total_amount_irr, content_hash, created_by_admin_user_id) "
+            "SELECT %s, %s, 2, %s, %s, %s, 'approved', 1, 1000000, %s, u.id FROM admin_users u "
+            "WHERE u.username = %s",
+            (
+                ids["second"],
+                ids["batch"],
+                ids["version"],
+                ids["account"],
+                ids["mapping"],
+                "9" * 64,
+                ACCOUNTANT,
+            ),
+        )
+        for version_key, content_hash in (("batch_version", "c" * 64), ("second", "9" * 64)):
+            approval_id = uuid.uuid4()
+            connection.execute(
+                "UPDATE payment_batch_versions SET finalized_by_admin_user_id = "
+                "(SELECT id FROM admin_users WHERE username = %s) WHERE id = %s",
+                (ACCOUNTANT, ids[version_key]),
+            )
+            connection.execute(
+                "INSERT INTO batch_approvals (id, payment_batch_version_id, decision, "
+                "decided_by_admin_user_id, decided_at, authentication_context, "
+                "version_finalized_by_admin_user_id, version_created_by_admin_user_id, "
+                "approved_content_hash) "
+                "SELECT %s, %s, 'approved', d.id, now(), '{}', a.id, a.id, %s "
+                "FROM admin_users d, admin_users a WHERE d.username = %s AND a.username = %s",
+                (
+                    approval_id,
+                    ids[version_key],
+                    content_hash,
+                    UNGRANTED_ADMIN,
+                    ACCOUNTANT,
+                ),
+            )
+            ids[f"approval_{version_key}"] = approval_id
+        connection.execute(
+            "INSERT INTO file_objects (id, storage_provider, storage_bucket, storage_key, "
+            "original_filename, mime_type_declared, size_bytes, sha256_hash, category, "
+            "visibility_scope, storage_status, scan_status, uploaded_by_actor_type, "
+            "original_or_derived_relation, metadata) "
+            "VALUES (%s, 'local', 'gold', %s, 'export.xlsx', "
+            "'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 4096, %s, "
+            "'bank_export', 'internal', 'available', 'clean', 'admin_user', 'original', '{}')",
+            (ids["file"], f"exports/{ids['file']}", "d" * 64),
+        )
+        for key in ("trader", "other"):
+            order_id = uuid.uuid4()
+            connection.execute(
+                "INSERT INTO gold_sale_orders (id, trader_id, order_number, status, gold_type, "
+                "gold_weight, weight_unit, gold_purity, created_by_actor_type) "
+                "VALUES (%s, %s, %s, 'draft', 'bullion', 10.0, 'GRAM', '750', 'trader_user')",
+                (order_id, ids[key], f"GS-{uuid.uuid4().hex[:8]}"),
+            )
+            ids[f"{key}_order"] = order_id
         connection.commit()
 
     app = create_app(settings=settings)
@@ -190,6 +311,12 @@ def an_empty_queue(world: dict[str, Any]) -> Iterator[None]:
     """The database is module-scoped, so a count assertion counts earlier tests without this."""
 
     with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        # Order matters: attempts reference requests, and exports reference nothing that is
+        # deleted here, but deleting requests first would violate the attempt's foreign key.
+        connection.execute("DELETE FROM bank_excel_exports")
+        connection.execute("DELETE FROM payment_attempts")
+        connection.execute("DELETE FROM payment_request_revisions")
+        connection.execute("DELETE FROM incoming_payment_receipts")
         connection.execute("DELETE FROM payment_requests")
         connection.execute("DELETE FROM manual_review_tasks")
         connection.execute("DELETE FROM bank_result_bundles")
@@ -263,6 +390,104 @@ def bundle_row(world: dict[str, Any], *, status: str) -> uuid.UUID:
         )
         connection.commit()
     return bundle_id
+
+
+def export_row(
+    world: dict[str, Any],
+    *,
+    status: str,
+    export_type: str = "final",
+    sent: bool = False,
+    version: str = "batch_version",
+) -> uuid.UUID:
+    """One bank export. `sent` sets `sent_to_bank_marked_at`, which is the queue's third condition.
+
+    `version` selects which batch version the export belongs to, because
+    `uq_active_final_export_per_version` permits one live final export per version — a real rule,
+    and the reason two exports in one test need two versions.
+    """
+
+    export_id = uuid.uuid4()
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            "INSERT INTO bank_excel_exports (id, payment_batch_version_id, batch_approval_id, "
+            "bank_profile_version_id, bank_mapping_id, file_id, export_number, export_type, "
+            "row_count, total_amount_irr, content_hash, file_sha256_hash, status, "
+            "generated_by_admin_user_id, generated_at, sent_to_bank_marked_at) "
+            "SELECT %s, %s, %s, %s, %s, %s, %s, %s, 1, 1000000, %s, %s, %s, u.id, now(), %s "
+            "FROM admin_users u WHERE u.username = %s",
+            (
+                export_id,
+                world[f"{version}_id"],
+                # A preview must carry no approval; a final must carry one. The same CHECK reads
+                # both ways, which is why this follows `export_type` rather than being constant.
+                world[f"approval_{version}_id"] if export_type == "final" else None,
+                world["version_id"],
+                world["mapping_id"],
+                world["file_id"],
+                f"EX-{uuid.uuid4().hex[:8]}",
+                export_type,
+                "e" * 64,
+                "f" * 64,
+                status,
+                datetime.now(UTC) if sent else None,
+                ACCOUNTANT,
+            ),
+        )
+        connection.commit()
+    return export_id
+
+
+def attempt_row(world: dict[str, Any], *, status: str) -> uuid.UUID:
+    """One payment attempt, with the request and revision its composite key needs."""
+
+    attempt_id = uuid.uuid4()
+    request_id = request_row(world, status="batched")
+    revision_id = uuid.uuid4()
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            "INSERT INTO payment_request_revisions (id, payment_request_id, revision_number, "
+            "beneficiary_id, beneficiary_name_snapshot, beneficiary_iban_snapshot, amount_irr, "
+            "content_hash, created_by_actor_type) "
+            "VALUES (%s, %s, 1, %s, 'Payee', %s, 1000000, %s, 'trader_user')",
+            (
+                revision_id,
+                request_id,
+                world["trader_beneficiary_id"],
+                IBANS["trader"],
+                "1" * 64,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO payment_attempts (id, payment_request_id, payment_request_revision_id, "
+            "attempt_number, attempt_type, amount_irr, beneficiary_name_snapshot, "
+            "beneficiary_iban_snapshot, bank_profile_version_id, status) "
+            "VALUES (%s, %s, %s, 1, 'original', 1000000, 'Payee', %s, %s, %s)",
+            (
+                attempt_id,
+                request_id,
+                revision_id,
+                IBANS["trader"],
+                world["version_id"],
+                status,
+            ),
+        )
+        connection.commit()
+    return attempt_id
+
+
+def receipt_row(world: dict[str, Any], *, status: str, trader: str = "trader") -> uuid.UUID:
+    """One incoming payment receipt against a seeded gold-sale order."""
+
+    receipt_id = uuid.uuid4()
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            "INSERT INTO incoming_payment_receipts (id, gold_sale_order_id, trader_id, "
+            "amount_irr, status) VALUES (%s, %s, %s, 5000000, %s)",
+            (receipt_id, world[f"{trader}_order_id"], world[f"{trader}_id"], status),
+        )
+        connection.commit()
+    return receipt_id
 
 
 def sign_in(world: dict[str, Any], username: str) -> None:
@@ -607,6 +832,119 @@ def test_unresolved_bundles_excludes_the_answered_and_the_still_running(
     sign_in(world, ACCOUNTANT)
     body = world["client"].get("/api/v1/queues/unresolved-bundles-segments").json()
     assert {i["id"] for i in body["items"]} == {str(ready), str(partial)}
+    assert body["total"] == 2
+
+
+def test_an_export_already_carried_to_the_bank_leaves_the_send_queue(
+    world: dict[str, Any],
+) -> None:
+    """The assertion whose absence made a negative control pass. M11 slice 3B.
+
+    **Slice 3 blamed the wrong thing, and building the fixture is what showed it.** The commit
+    said control 6 went NOT CAUGHT because no export row existed. With rows, it still would:
+    `mark_sent_to_bank` sets `sent_to_bank_marked_at` *and* `status = sent_to_bank_marked` in the
+    same statement (`app/commands/bank_export.py:657`), so the queue's status filter already
+    excludes every sent export and the timestamp condition can never be the thing that excludes
+    one. That is a sabotage which does not break the property, not a missing test.
+
+    The condition stays — it is free, and it is the guard that would matter if a later command ever
+    set one without the other. `test_marking_sent_moves_both_facts_together` is what would notice.
+
+    What this test asserts is the reachable rule: an export already carried to the bank is not in
+    the queue of exports waiting to be carried.
+    """
+
+    waiting = export_row(world, status="downloaded")
+    export_row(world, status="sent_to_bank_marked", sent=True, version="second")
+
+    sign_in(world, ACCOUNTANT)
+    body = world["client"].get("/api/v1/queues/approved-exports-awaiting-send").json()
+    assert {i["id"] for i in body["items"]} == {str(waiting)}
+    assert body["total"] == 1
+
+
+def test_marking_sent_moves_both_facts_together(world: dict[str, Any]) -> None:
+    """The assumption the queue's redundant condition rests on, asserted rather than believed.
+
+    `bank_excel_exports` has a status and a timestamp that mean the same thing, and the queue
+    filters on both. That is safe only while nothing can set one without the other. Checked
+    against the command rather than the schema, because it is the command that writes them.
+    """
+
+    from app.commands import bank_export
+
+    source = inspect.getsource(bank_export.mark_sent)
+    assert "export.sent_to_bank_marked_at = " in source
+    assert "export.status = STATUS_SENT" in source, (
+        "mark-sent no longer moves the status with the timestamp, so an export can be sent and "
+        "still look unsent to a status filter — the queue's `sent_to_bank_marked_at IS NULL` "
+        "condition stops being redundant and starts being load-bearing"
+    )
+
+
+def test_a_preview_is_never_work_somebody_can_do(world: dict[str, Any]) -> None:
+    """The type condition, isolated from the status and timestamp ones.
+
+    A preview is unsendable by construction — `bank_excel_exports` has no grant that could promote
+    one — so a preview in the send queue would be a row nobody could act on.
+    """
+
+    final = export_row(world, status="validated")
+    export_row(world, status="validated", export_type="preview")
+
+    sign_in(world, ACCOUNTANT)
+    body = world["client"].get("/api/v1/queues/approved-exports-awaiting-send").json()
+    assert {i["id"] for i in body["items"]} == {str(final)}
+
+
+def test_the_two_attempt_queues_do_not_overlap(world: dict[str, Any]) -> None:
+    """§19.2 gives the accountant two attempt queues, and they answer opposite questions.
+
+    One is money that left and has no answer yet; the other is money that came back needing a
+    decision. A row in both would be work counted twice, and `superseded` must be in neither — a
+    retry that replaced an attempt already carries the work.
+    """
+
+    waiting = attempt_row(world, status="sent_to_bank")
+    pending = attempt_row(world, status="bank_result_pending")
+    failed = attempt_row(world, status="failed")
+    retry = attempt_row(world, status="retry_required")
+    attempt_row(world, status="superseded")
+    attempt_row(world, status="paid")
+
+    sign_in(world, ACCOUNTANT)
+    awaiting = {
+        i["id"]
+        for i in world["client"].get("/api/v1/queues/sent-attempts-awaiting-result").json()["items"]
+    }
+    decisions = {
+        i["id"]
+        for i in world["client"].get("/api/v1/queues/failed-partial-retry-payments").json()["items"]
+    }
+
+    assert awaiting == {str(waiting), str(pending)}
+    assert decisions == {str(failed), str(retry)}
+    assert awaiting & decisions == set(), "an attempt is in both queues, so it is worked twice"
+
+
+def test_incoming_receipts_waits_for_a_person_not_for_a_bank(world: dict[str, Any]) -> None:
+    """Two inclusions and two exclusions, and the exclusions carry the meaning.
+
+    `duplicate_suspected` is included because the catalogue calls it a warning that "does not
+    reject or confirm automatically" — it waits for a person, which is what a queue is.
+    `waiting_for_bank_statement` is excluded because the thing it waits for is a bank, and
+    `candidate_match` because nobody has been asked to choose yet.
+    """
+
+    review = receipt_row(world, status="needs_review")
+    duplicate = receipt_row(world, status="duplicate_suspected")
+    receipt_row(world, status="waiting_for_bank_statement")
+    receipt_row(world, status="candidate_match")
+    receipt_row(world, status="confirmed")
+
+    sign_in(world, ACCOUNTANT)
+    body = world["client"].get("/api/v1/queues/incoming-receipts-requiring-review").json()
+    assert {i["id"] for i in body["items"]} == {str(review), str(duplicate)}
     assert body["total"] == 2
 
 
