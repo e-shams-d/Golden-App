@@ -61,25 +61,45 @@ SCOPE_EXEMPT: dict[str, str] = {
         "trader role. `tests/integration/test_batch_finalization.py` asserts that no trader can "
         "reach the route at all, which is the ownership question answered where it belongs."
     ),
-    "api/v1/queues.py::list_new_requests": (
-        "M11 slice 2's queue, and the exemption turns entirely on there being no trader who "
-        "could be scoped. §19.2's queues are the centre's daily work surface: this one is "
-        "guarded by `payment_request.read`, which `permission_catalog.yaml:444` gives to "
+}
+
+# --- Queues, which the AST scan above cannot see ------------------------------------------
+#
+# M11 slice 2 wrote one queue route by hand, `select(PaymentRequest)` and all, and the scan above
+# flagged it — correctly, and it was recorded as an exemption. Slice 3 generates eleven routes from
+# the registry, so the query is now `select(definition.entity)`: a name the AST cannot resolve.
+#
+# **That made the route invisible to the gate, not safe.** The exemption became stale and the check
+# silently stopped applying — which is the failure this file's own `test_every_exemption_still_
+# names_live_code` exists to refuse one level up. So the property is re-established here against
+# the registry instead of against the source text, which is also the more honest place: a queue's
+# scoping is a property of the queue, and there are twenty-three more coming.
+#
+# Every queue over a model carrying `trader_id` must appear here with a reason.
+QUEUE_SCOPE_EXEMPT: dict[str, str] = {
+    "new-requests": (
+        "Guarded by `payment_request.read`, which `permission_catalog.yaml:444` gives to "
         "`accountant, manager, business_admin, read_only_auditor` under an "
         "`internal_business_scope` constraint. No trader role holds it — a trader holds "
         "`payment_request.read_own` (`:441`) and resolves no permissions at all in "
-        "`ActorContext` — so `requires(...)` refuses every trader before the query runs.\n"
-        "\n"
-        "Adding `scoped()` here would therefore be a filter that never fires, and that is worse "
-        "than leaving it out: `scoped()` reads as the ownership answer, so a call that cannot "
-        "execute would make this route *look* protected by a mechanism doing nothing, while the "
-        "real protection — the grant — went unexamined. The queue is deliberately cross-trader; "
-        "an accountant's whole job here is to see every business's new requests in one list.\n"
-        "\n"
-        "It is not unbounded: `read_queue_page` applies `app/db/pagination.py`'s cursor, limit "
-        "cap and allowlists to every queue. `tests/integration/test_queue_contract.py` asserts "
-        "that a trader cannot reach the route at all, which is the ownership question answered "
-        "where it belongs."
+        "`ActorContext` — so `requires(...)` refuses every trader before the query runs. "
+        "`scoped()` here would be a filter that never fires, which is worse than its absence: it "
+        "reads as the ownership answer while doing nothing, leaving the real protection — the "
+        "grant — unexamined. The queue is deliberately cross-trader; seeing every business's new "
+        "requests in one list is the accountant's job."
+    ),
+    "correction-responses": "Same aggregate, same grant, same argument as `new-requests`.",
+    "eligible-for-batching": "Same aggregate, same grant, same argument as `new-requests`.",
+    "trader-disputes": (
+        "Same aggregate and grant as `new-requests`. Named separately rather than folded into a "
+        "pattern because a disputes queue is the one most likely to be shown to a trader some "
+        "day, and if that happens it needs scoping rather than a shared exemption."
+    ),
+    "incoming-receipts-requiring-review": (
+        "`incoming_payment_receipts` carries `trader_id`, and the queue is guarded by "
+        "`incoming_payment.match` (`permission_catalog.yaml:405`) — an accountant/manager grant "
+        "that no trader role holds. A trader's own claim is visible through the gold-sale order "
+        "routes, which do scope."
     ),
 }
 
@@ -151,6 +171,46 @@ def test_there_are_owned_models_to_check() -> None:
         "trader_users carries trader_id and must be recognised as owned; if this "
         "fails the metadata reader is broken and the gate below checks nothing"
     )
+
+
+def test_every_queue_over_owned_rows_is_scoped_or_recorded() -> None:
+    """The property the AST scan lost when queue routes became generated code.
+
+    Reads the registry rather than the source: for every built queue whose entity carries
+    `trader_id`, either the queue scopes by the actor or it appears in `QUEUE_SCOPE_EXEMPT` with a
+    reason. A queue added over an owned table with neither fails here and names itself, which is
+    what the source scan did for hand-written routes and can no longer do for these.
+    """
+
+    from app.queues.registry import BUILT
+
+    owned = owned_models()
+    unrecorded = sorted(
+        name
+        for name, definition in BUILT.items()
+        if definition.entity is not None
+        and definition.entity.__name__ in owned
+        and name not in QUEUE_SCOPE_EXEMPT
+    )
+
+    assert unrecorded == [], (
+        "these queues read trader-owned rows and neither scope nor record why they do not:\n"
+        + "\n".join(f"  {entry}" for entry in unrecorded)
+    )
+
+
+def test_no_queue_exemption_names_a_queue_that_is_gone() -> None:
+    """The same stale-entry rule as below, for the collection above it.
+
+    An exemption for a deleted or renamed queue reads as a considered decision about something
+    that no longer exists — and the next queue to take that name inherits an argument nobody made
+    about it.
+    """
+
+    from app.queues.registry import BUILT
+
+    stale = sorted(name for name in QUEUE_SCOPE_EXEMPT if name not in BUILT)
+    assert stale == [], f"queue exemptions naming queues that are not built: {stale}"
 
 
 def test_every_exemption_still_names_live_code() -> None:

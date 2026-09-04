@@ -394,6 +394,22 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # so there is no ownership scope to filter and no ownership negative to owe. A trader's own
     # requests are `GET /payment-requests`, which is `DUAL` and does scope.
     ("GET", "/api/v1/queues/new-requests"): PERMISSION,
+    # M11 slice 3, the other ten. All `PERMISSION` and all for the same reason: §19.2's accountant
+    # queues are the centre's internal work surface, and every grant behind them
+    # (`payment_request.read`, `payment_batch.read`, `bank_export.read`, `payment_attempt.read`,
+    # `bank_result_bundle.read`, `incoming_payment.match`, `manual_review.read`) goes to internal
+    # roles only. No trader holds any of them, so there is no ownership scope to filter and no
+    # ownership negative to owe — the argument M5 slice 7 made for the accountant's three.
+    ("GET", "/api/v1/queues/correction-responses"): PERMISSION,
+    ("GET", "/api/v1/queues/eligible-for-batching"): PERMISSION,
+    ("GET", "/api/v1/queues/draft-invalid-batch-versions"): PERMISSION,
+    ("GET", "/api/v1/queues/approved-exports-awaiting-send"): PERMISSION,
+    ("GET", "/api/v1/queues/sent-attempts-awaiting-result"): PERMISSION,
+    ("GET", "/api/v1/queues/unresolved-bundles-segments"): PERMISSION,
+    ("GET", "/api/v1/queues/failed-partial-retry-payments"): PERMISSION,
+    ("GET", "/api/v1/queues/incoming-receipts-requiring-review"): PERMISSION,
+    ("GET", "/api/v1/queues/trader-disputes"): PERMISSION,
+    ("GET", "/api/v1/queues/reconciliation-tasks"): PERMISSION,
     ("GET", "/api/v1/notifications"): OWNERSHIP,
     ("POST", "/api/v1/notifications/{notification_id}/mark-read"): OWNERSHIP,
     ("POST", "/api/v1/notifications/mark-all-read"): OWNERSHIP,
@@ -980,11 +996,29 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     # M11 slice 2. The permission negative for the first queue. Its own test rather than a shared
     # one: the refusal that matters here is a *trader* being refused an internal work surface,
     # which is a different chain from an admin missing a grant.
-    (
-        "GET",
-        "/api/v1/queues/new-requests",
-        "permission",
-    ): "test_no_trader_can_reach_an_internal_queue",
+    # M11 slices 2 and 3. All eleven point at the same two sweep tests, which iterate the queue
+    # registry rather than naming paths. That is deliberate and stronger than eleven separate
+    # tests: a queue added in slice 4 is covered the moment it is registered, where a per-path test
+    # would have to be remembered. The sweep asserts both refusals — a trader, and an
+    # authenticated admin holding no grant.
+    **{
+        ("GET", f"/api/v1/queues/{queue}", "permission"): (
+            "test_no_trader_can_reach_any_queue"
+        )
+        for queue in (
+            "new-requests",
+            "correction-responses",
+            "eligible-for-batching",
+            "draft-invalid-batch-versions",
+            "approved-exports-awaiting-send",
+            "sent-attempts-awaiting-result",
+            "unresolved-bundles-segments",
+            "failed-partial-retry-payments",
+            "incoming-receipts-requiring-review",
+            "trader-disputes",
+            "reconciliation-tasks",
+        )
+    },
     # M11 slice 1. Three separate tests rather than one shared name, because the three routes fail
     # in three different ways. A leaky list returns rows; a leaky mark-read edits one row that is
     # not the caller's; a leaky mark-all-read edits *every* row in the table and returns a count
@@ -1332,10 +1366,22 @@ class TestSurfaceWideProperties:
             "logout",
         )
 
+        # **Tokens, not substrings.** M11 slice 3 added `/queues/approved-exports-awaiting-send`
+        # — a read — and the substring form flagged it, because "approve" is inside "approved".
+        # This repository has now been bitten by a text scan matching a word inside a word often
+        # enough to have a rule about it: a prohibition scan compares *tokens*.
+        #
+        # Splitting on `/` and `-` is exact for this surface, because every path here is kebab-case
+        # and every action verb is its own segment (`/traders/{id}/approve`). The check stays
+        # sensitive to what it is for — a GET named for an action — and stops firing on adjectives
+        # that describe a noun.
+        def tokens(path: str) -> set[str]:
+            return {token for part in path.lower().split("/") for token in part.split("-")}
+
         offenders = [
             f"GET {path}"
             for method, path in sorted(live_routes)
-            if method == "GET" and any(verb in path.lower() for verb in writing_verbs)
+            if method == "GET" and tokens(path) & set(writing_verbs)
         ]
 
         assert offenders == [], (

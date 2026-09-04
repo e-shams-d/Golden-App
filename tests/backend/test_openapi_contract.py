@@ -360,6 +360,21 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # the remaining twenty-three will follow. Slice 2 ships exactly one so that reversing the
         # decision costs one slice.
         "listNewRequestsQueue",
+        # M11 slice 3, completing §19.2's accountant eleven. Listed by hand even though
+        # `app/api/v1/queues.py` derives each id from the queue's name: the derivation keeps a
+        # queue's path and id from disagreeing, and this list is what keeps a *new* queue from
+        # entering the published contract without somebody writing it down. Two mechanisms
+        # answering two different questions.
+        "listCorrectionResponsesQueue",
+        "listEligibleForBatchingQueue",
+        "listDraftInvalidBatchVersionsQueue",
+        "listApprovedExportsAwaitingSendQueue",
+        "listSentAttemptsAwaitingResultQueue",
+        "listUnresolvedBundlesSegmentsQueue",
+        "listFailedPartialRetryPaymentsQueue",
+        "listIncomingReceiptsRequiringReviewQueue",
+        "listTraderDisputesQueue",
+        "listReconciliationTasksQueue",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

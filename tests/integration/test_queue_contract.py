@@ -16,6 +16,24 @@ second apart passes against a sort with no tiebreak at all, because every page b
 somewhere unambiguous. Ties are the only condition under which instability is observable, and a
 work queue — where a trader submits several requests in one sitting — is where ties actually occur.
 
+**Slice 3 added the accountant's other ten.** Each queue is asserted to return rows in the state it
+names *and to exclude the adjacent one* — the first half alone passes against a query returning
+everything, which is why the exclusions are separate assertions, and why `new-requests` and
+`correction-responses` are checked as a **partition** rather than one at a time.
+
+**Six of the eleven have seeded rows; five do not, and that is stated rather than papered over.**
+`payment_requests`, `manual_review_tasks` and `bank_result_bundles` seed in one or two statements.
+`bank_excel_exports` needs five foreign keys (a batch version, a bank profile version, a mapping, a
+file object and an admin), `payment_attempts` needs a revision and a bank account, and
+`incoming_payment_receipts` needs a gold-sale order. Their predicates are therefore exercised only
+for reachability and row shape, not for which rows they select.
+
+That gap is real and was found by a negative control, not by reading: deleting
+`sent_to_bank_marked_at IS NULL` from the exports queue — the condition carrying M7's "downloading
+does not mean sent" — went **NOT CAUGHT**. So the milestone obligation for all eleven stays pending
+with those five named; discharging it on six would be the incomplete-input failure this project
+keeps finding.
+
 Covers: API-QUEUE-001, SEC-QUEUE-001.
 """
 
@@ -141,6 +159,13 @@ def world(migrated: RuntimeIdentities, tmp_path_factory: Any) -> Iterator[dict[s
                 "WHERE u.username = %s AND r.code = %s",
                 (username, role),
             )
+        # One bank profile, so `bank_result_bundles` can be seeded for its queue.
+        ids["bank"] = uuid.uuid4()
+        connection.execute(
+            "INSERT INTO bank_profiles (id, code, name, status) "
+            "VALUES (%s, 'queuebank', 'Queue Bank', 'active')",
+            (ids["bank"],),
+        )
         connection.commit()
 
     app = create_app(settings=settings)
@@ -166,6 +191,8 @@ def an_empty_queue(world: dict[str, Any]) -> Iterator[None]:
 
     with psycopg.connect(_psycopg(world["owner_url"])) as connection:
         connection.execute("DELETE FROM payment_requests")
+        connection.execute("DELETE FROM manual_review_tasks")
+        connection.execute("DELETE FROM bank_result_bundles")
         connection.commit()
     yield
 
@@ -204,6 +231,40 @@ def request_row(
     return request_id
 
 
+def task_row(world: dict[str, Any], *, task_type: str, status: str = "open") -> uuid.UUID:
+    """One manual review task. No foreign keys of its own, so it seeds in a single statement."""
+
+    task_id = uuid.uuid4()
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            # `record_version` is NOT NULL with no server default — the ORM supplies it, and a raw
+            # insert has to say so.
+            "INSERT INTO manual_review_tasks (id, task_type, priority, status, entity_type, "
+            "entity_id, title, record_version) "
+            "VALUES (%s, %s, 3, %s, 'payment_attempt', %s, 'seeded', 1)",
+            (task_id, task_type, status, uuid.uuid4()),
+        )
+        connection.commit()
+    return task_id
+
+
+def bundle_row(world: dict[str, Any], *, status: str) -> uuid.UUID:
+    """One bank result bundle. Needs a bank profile and an uploader, both seeded in `world`."""
+
+    bundle_id = uuid.uuid4()
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            "INSERT INTO bank_result_bundles (id, bundle_number, bank_profile_id, status, "
+            "source_type, uploaded_by_admin_user_id, uploaded_at, segment_count, "
+            "resolved_segment_count, unresolved_segment_count, record_version) "
+            "SELECT %s, %s, %s, %s, 'manual_upload', u.id, now(), 0, 0, 0, 1 FROM admin_users u "
+            "WHERE u.username = %s",
+            (bundle_id, f"B-{uuid.uuid4().hex[:8]}", world["bank_id"], status, ACCOUNTANT),
+        )
+        connection.commit()
+    return bundle_id
+
+
 def sign_in(world: dict[str, Any], username: str) -> None:
     client = world["client"]
     client.cookies.clear()
@@ -225,19 +286,76 @@ def sign_in_trader(world: dict[str, Any], phone: str = TRADER_PHONE) -> None:
 # --- SEC-QUEUE-001: who may read it, and what the allowlist does with an unknown key -------
 
 
-def test_no_trader_can_reach_an_internal_queue(world: dict[str, Any]) -> None:
-    """The ownership question, answered where `test_ownership_scope.py`'s exemption says it is.
+def built_queue_names() -> list[str]:
+    from app.queues.registry import BUILT
 
-    That exemption argues the queue needs no `scoped()` call because no trader can reach it. This
-    is the assertion the argument rests on; without it the exemption is a claim about a grant
-    nobody checked.
+    return sorted(BUILT)
+
+
+def test_no_trader_can_reach_any_queue(world: dict[str, Any]) -> None:
+    """**Every** queue, swept from the registry rather than named path by path.
+
+    This is the assertion `test_ownership_scope.py`'s `QUEUE_SCOPE_EXEMPT` rests on. Each entry
+    there argues a queue needs no `scoped()` call *because no trader can reach it*; without this
+    sweep those are claims about grants nobody checked.
+
+    Swept rather than enumerated so that a queue added in slice 4 is covered the moment it is
+    registered. A per-path test would have to be remembered, and the one nobody remembers is the
+    one that leaks.
     """
 
-    request_row(world)
-    sign_in_trader(world)
+    names = built_queue_names()
+    assert len(names) >= 11, f"the sweep is checking almost nothing: {names}"
 
-    response = world["client"].get(QUEUE)
-    assert response.status_code == 403, response.text
+    sign_in_trader(world)
+    reachable = [
+        name
+        for name in names
+        if world["client"].get(f"/api/v1/queues/{name}").status_code != 403
+    ]
+    assert reachable == [], f"a trader reached these internal queues: {reachable}"
+
+
+def test_no_admin_without_a_grant_can_reach_any_queue(world: dict[str, Any]) -> None:
+    """Authenticated is not authorised, across the whole surface.
+
+    The warehouse operator holds none of the seven grants behind the accountant's eleven. A queue
+    that answers anything but 403 here is one whose `requires(...)` is missing or names a
+    permission this role happens to hold — and the second is the failure a single-queue test would
+    miss entirely.
+    """
+
+    names = built_queue_names()
+    sign_in(world, UNGRANTED_ADMIN)
+
+    reachable = [
+        name
+        for name in names
+        if world["client"].get(f"/api/v1/queues/{name}").status_code != 403
+    ]
+    assert reachable == [], f"an ungranted admin reached these queues: {reachable}"
+
+
+def test_the_accountant_can_reach_every_queue_the_document_gives_them(
+    world: dict[str, Any],
+) -> None:
+    """The positive half, and it is not redundant.
+
+    Two 403 sweeps pass perfectly against a router that refuses everybody — including against one
+    where a queue is guarded by a permission *nobody* holds, which is a mistake this project has
+    shipped before (`bank_profile.activate_version` is granted to no role and its route denies
+    every caller). §19.2 says these eleven are the accountant's; this asserts they actually are.
+    """
+
+    names = built_queue_names()
+    sign_in(world, ACCOUNTANT)
+
+    refused = [
+        f"{name} -> {world['client'].get(f'/api/v1/queues/{name}').status_code}"
+        for name in names
+        if world["client"].get(f"/api/v1/queues/{name}").status_code != 200
+    ]
+    assert refused == [], f"the accountant cannot reach their own queues: {refused}"
 
 
 def test_an_admin_without_the_grant_is_refused(world: dict[str, Any]) -> None:
@@ -357,6 +475,166 @@ def _any_actor(world: dict[str, Any]) -> Any:
         session_id=uuid.uuid4(),
         security_stamp_version=1,
     )
+
+
+def test_new_requests_and_correction_responses_partition_the_same_status(
+    world: dict[str, Any],
+) -> None:
+    """The defect slice 2 merged, and the reason these two queues are written next to each other.
+
+    §19.2 lists "new requests" and "correction responses" as **two** queues. Both are
+    `submitted_to_center`: a request handed back for correction returns to that status when the
+    trader resubmits. Slice 2's queue filtered on status alone, so it returned both, and the
+    correction-responses queue would have returned a subset of it.
+
+    Two overlapping queues are worse than one that is too wide — the accountant works the first,
+    the second still shows the same rows, and the work is done twice or not at all. The assertion
+    is therefore on the **partition**: every row appears in exactly one of them, and together they
+    are the whole status.
+    """
+
+    fresh = request_row(world)
+    returned = request_row(world)
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            "UPDATE payment_requests SET review_note = 'please fix the IBAN' WHERE id = %s",
+            (returned,),
+        )
+        connection.commit()
+
+    sign_in(world, ACCOUNTANT)
+    new = {i["id"] for i in world["client"].get(QUEUE).json()["items"]}
+    corrections = {
+        i["id"]
+        for i in world["client"].get("/api/v1/queues/correction-responses").json()["items"]
+    }
+
+    assert new == {str(fresh)}
+    assert corrections == {str(returned)}
+    assert new & corrections == set(), "a request is in both queues, so it is worked twice"
+    assert new | corrections == {str(fresh), str(returned)}, "a request is in neither queue"
+
+
+def test_a_request_under_review_is_in_neither_submitted_queue(world: dict[str, Any]) -> None:
+    """Somebody has it. `under_accountant_review` is the adjacent state for both queues above."""
+
+    claimed = request_row(world, status=UNDER_REVIEW)
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            "UPDATE payment_requests SET review_note = 'looking at it' WHERE id = %s",
+            (claimed,),
+        )
+        connection.commit()
+
+    sign_in(world, ACCOUNTANT)
+    for name in ("new-requests", "correction-responses"):
+        body = world["client"].get(f"/api/v1/queues/{name}").json()
+        assert body["items"] == [], f"{name} returned a request under review"
+        assert body["total"] == 0
+
+
+def test_eligible_for_batching_names_its_own_state(world: dict[str, Any]) -> None:
+    """And excludes the state before it, which is the half a permissive query passes."""
+
+    ready = request_row(world, status="eligible_for_batching")
+    request_row(world)
+
+    sign_in(world, ACCOUNTANT)
+    body = world["client"].get("/api/v1/queues/eligible-for-batching").json()
+    assert {i["id"] for i in body["items"]} == {str(ready)}
+
+
+def test_trader_disputes_is_a_timestamp_not_a_status(world: dict[str, Any]) -> None:
+    """§19.2's one accountant queue that no status can express.
+
+    Disputing does not move a request: `status_catalog.yaml` has no disputed state, and M9 recorded
+    it as `trader_disputed_at`. The seeded rows share a status deliberately — a queue built on
+    status would return both or neither, and only the timestamp separates them.
+    """
+
+    disputed = request_row(world, status="eligible_for_batching")
+    request_row(world, status="eligible_for_batching")
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            "UPDATE payment_requests SET trader_disputed_at = now() WHERE id = %s", (disputed,)
+        )
+        connection.commit()
+
+    sign_in(world, ACCOUNTANT)
+    body = world["client"].get("/api/v1/queues/trader-disputes").json()
+    assert {i["id"] for i in body["items"]} == {str(disputed)}
+    assert body["total"] == 1
+
+
+def test_reconciliation_tasks_excludes_other_task_types_and_finished_work(
+    world: dict[str, Any],
+) -> None:
+    """Two exclusions, and the first is the one §19.2's wording makes easy to get wrong.
+
+    `manual_review_task.task_type` has no value spelled `reconciliation`; the queue names the two
+    discrepancy types the catalogue actually holds. A queue that returned every task would put
+    privacy reviews and export-integrity work in the accountant's reconciliation list, which is the
+    failure `TASK_TYPES` exists to prevent — a task filed under a name that describes something
+    else is invisible to the person who filters for it.
+    """
+
+    mine = task_row(world, task_type="payment_result_discrepancy")
+    incoming = task_row(world, task_type="incoming_payment_discrepancy")
+    task_row(world, task_type="segment_privacy_review")
+    task_row(world, task_type="payment_result_discrepancy", status="cancelled")
+
+    sign_in(world, ACCOUNTANT)
+    body = world["client"].get("/api/v1/queues/reconciliation-tasks").json()
+    assert {i["id"] for i in body["items"]} == {str(mine), str(incoming)}
+    assert body["total"] == 2
+
+
+def test_unresolved_bundles_excludes_the_answered_and_the_still_running(
+    world: dict[str, Any],
+) -> None:
+    """`processing` is excluded because nothing is waiting on a *person* yet.
+
+    The two exclusions pull in opposite directions and both matter: a closed bundle is finished
+    work, and a processing one is work a job still holds. A queue that included either would show
+    an accountant rows they cannot act on, which is how a queue stops being read.
+    """
+
+    ready = bundle_row(world, status="ready_for_manual_review")
+    partial = bundle_row(world, status="partially_matched")
+    bundle_row(world, status="processing")
+    bundle_row(world, status="matched")
+
+    sign_in(world, ACCOUNTANT)
+    body = world["client"].get("/api/v1/queues/unresolved-bundles-segments").json()
+    assert {i["id"] for i in body["items"]} == {str(ready), str(partial)}
+    assert body["total"] == 2
+
+
+def test_every_queue_returns_the_same_five_fields(world: dict[str, Any]) -> None:
+    """§19 `:1298`'s last rule, made checkable by there being one row shape.
+
+    Swept over every built queue that has rows, and asserted by **equality** on the key set. A
+    queue that grew an amount field would be a disclosure decision made once and inherited by all
+    twenty-four, which is how a technical admin ends up reading financial detail in slice 5.
+    """
+
+    request_row(world)
+    sign_in(world, ACCOUNTANT)
+
+    expected = {"id", "reference", "status", "created_at", "trader_id"}
+    for name in built_queue_names():
+        body = world["client"].get(f"/api/v1/queues/{name}").json()
+        assert set(body) == {"queue", "items", "next_cursor", "total"}
+        for item in body["items"]:
+            # `new-requests` carries two compatibility keys, and exactly one queue may. Subtracting
+            # them rather than skipping the queue keeps the disclosure assertion applying to it.
+            assert set(item) - {"request_number"} == expected, (
+                f"{name} returned a different row shape"
+            )
+            if name != "new-requests":
+                assert "request_number" not in item, (
+                    f"{name} grew the compatibility field, which belongs to new-requests alone"
+                )
 
 
 def test_the_queue_returns_its_own_state_and_excludes_the_adjacent_one(
@@ -501,13 +779,28 @@ def test_the_row_carries_only_what_triage_needs(world: dict[str, Any]) -> None:
     Asserted by equality on the key set. A queue row that grew an amount field would be a
     disclosure decision made by whoever added it, and slice 5's technical-admin redaction is the
     same rule where it bites hardest.
+
+    **This queue carries two extra keys and it is the only one that does.** Slice 2 published
+    `request_number` and a non-nullable `trader_id` here; slice 3's unified row renames the first
+    to `reference`, and removing the old name is a breaking change CI gate 3 refuses. The
+    compatibility fields are added rather than the new ones withheld — see
+    `RequestQueueRowResponse`. `test_every_queue_returns_the_same_five_fields` asserts the unified
+    shape everywhere else, so this exception cannot spread without failing that.
     """
 
     request_row(world)
     sign_in(world, ACCOUNTANT)
 
     item = world["client"].get(QUEUE).json()["items"][0]
-    assert set(item) == {"id", "request_number", "trader_id", "status", "created_at"}
+    assert set(item) == {
+        "id",
+        "reference",
+        "status",
+        "created_at",
+        "trader_id",
+        "request_number",
+    }
+    assert item["request_number"] == item["reference"], "the compatibility field has drifted"
 
 
 def test_the_response_names_the_queue_it_answered(world: dict[str, Any]) -> None:

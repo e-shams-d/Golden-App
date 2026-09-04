@@ -31,8 +31,10 @@ permission-aware by construction: there is no second predicate that could disagr
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import Select, func, select
@@ -45,6 +47,31 @@ from app.db.pagination import (
     build_page,
 )
 from app.security.actor import ActorContext
+
+
+@dataclass(frozen=True, slots=True)
+class QueueRow:
+    """One row of any queue. **The same five fields for all twenty-four.**
+
+    M11 slice 3, and the shape is a disclosure decision rather than a convenience. §19 `:1298`'s
+    last rule — "technical admin does not receive full financial detail by default" — is easy to
+    honour when every queue answers the same narrow question and impossible to audit when each
+    returns its own aggregate. A queue exists to be *triaged*: what is it, whose is it, what state
+    is it in, how long has it waited. The detail route answers everything else.
+
+    `reference` is the number a person says out loud — `request_number`, `batch_number`,
+    `export_number`. `trader_id` is nullable because not every queue is about one business: a batch
+    version deliberately spans many, and a maintenance task belongs to none.
+
+    **No amount field, on any queue.** Adding one would be a decision made once and inherited
+    twenty-four times, which is precisely how a technical admin ends up reading financial detail.
+    """
+
+    id: uuid.UUID
+    reference: str
+    status: str
+    created_at: datetime
+    trader_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +97,12 @@ class QueueDefinition[RowT]:
     spec: ListSpec
     predicate: Callable[[Select[tuple[RowT]], ActorContext], Select[tuple[RowT]]]
     source: str
+    # M11 slice 3. The mapped class the queue draws from, and how one of its rows becomes the
+    # response. Both moved onto the definition when the second queue arrived: with eleven of them
+    # the route body is identical apart from these two, and eleven copies of one function is how
+    # the envelope drifts. `app/api/v1/queues.py` now generates a route per registry entry.
+    entity: Any = None
+    render: Callable[[Any], QueueRow] | None = None
     # Every allowlisted filter name, bound to the column it filters on. Separate from `spec.sorts`
     # because a field may be filterable without being sortable — `status` is the obvious one, and
     # resolving filters through the sort list would have quietly required every filter to also be
