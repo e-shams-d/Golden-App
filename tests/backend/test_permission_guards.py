@@ -78,6 +78,24 @@ UNGUARDED_ROUTES: dict[tuple[str, str], str] = {
     # the purpose and resource bindings are what stop it authorising anything
     # other than the one action it was obtained for.
     ("POST", "/api/v1/auth/reauthenticate"): "raises assurance; grants nothing",
+    # M11 slice 1. `permission_catalog.yaml` contains no notification permission — not for a
+    # trader, not for an accountant, not for the manager — and `declare()` refuses a name the
+    # catalogue does not hold, so `requires("notification.read_own")` would not have imported.
+    #
+    # Inventing one would be a governance act rather than an implementation, and it would also be
+    # the wrong shape: a permission answers "may this kind of person do this", and the question
+    # here is "is this message addressed to you". That is `recipient_actor_id`, which
+    # `app/notifications/reading.py` takes as a keyword argument so no caller can omit it.
+    ("GET", "/api/v1/notifications"): (
+        "scoped to the caller's own recipient row; the catalogue holds no notification "
+        "permission and inventing one would be a governance act"
+    ),
+    ("POST", "/api/v1/notifications/{notification_id}/mark-read"): (
+        "acts only on a notification addressed to the caller; somebody else's is 404"
+    ),
+    ("POST", "/api/v1/notifications/mark-all-read"): (
+        "the recipient predicate is in the UPDATE itself, so there is no id to authorise against"
+    ),
     ("GET", "/api/v1/me/trader/profile"): "ownership-scoped to the caller's own trader",
     ("PATCH", "/api/v1/me/trader/profile"): "ownership-scoped; allowlist excludes identity",
     # Public by design (`05_API_Specification.md:890`): there is no actor yet, and

@@ -30,6 +30,11 @@ from app.db.base import Base, created_at_column, named_check, uuid_primary_key
 NOTIFICATION_STATUSES: tuple[str, ...] = ("unread", "read", "dismissed")
 
 NOTIFICATION_UNREAD = "unread"
+# M11 slice 1. Named when something could finally reach them: M9 wrote every row `unread` and no
+# route existed to move one. `dismissed` stays unnamed — it is a different act from reading and no
+# command performs it yet, so a constant for it would be the name half of a mechanism with no
+# caller.
+NOTIFICATION_READ = "read"
 
 # One value per outbox event this projection consumes. Enumerated for the reason M8 gave for
 # `manual_review_tasks.entity_type`: a type nothing can navigate is worse than no type.

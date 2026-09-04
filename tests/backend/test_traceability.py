@@ -846,21 +846,8 @@ PENDING: dict[str, str] = {
     # and none built. Recorded here at plan time rather than at slice time, because an
     # obligation nothing tracks is one a milestone can finish without meeting — which is what
     # `PENDING` exists to prevent.
-    "SEC-NOTIFY-001": (
-        "M11 slice 1 - the notification API M9 left unreachable. Stated by "
-        "`docs/handoff/M11_IMPLEMENTATION_PLAN.md` and not yet built; the slice's own pull "
-        "request discharges it and removes this entry in the same commit."
-    ),
-    "SVC-NOTIFY-001": (
-        "M11 slice 1 - the notification API M9 left unreachable. Stated by "
-        "`docs/handoff/M11_IMPLEMENTATION_PLAN.md` and not yet built; the slice's own pull "
-        "request discharges it and removes this entry in the same commit."
-    ),
-    "API-NOTIFY-001": (
-        "M11 slice 1 - the notification API M9 left unreachable. Stated by "
-        "`docs/handoff/M11_IMPLEMENTATION_PLAN.md` and not yet built; the slice's own pull "
-        "request discharges it and removes this entry in the same commit."
-    ),
+    # M11 slice 1 discharged `SEC-NOTIFY-001`, `SVC-NOTIFY-001` and `API-NOTIFY-001` in
+    # `tests/integration/test_notification_reading.py`, as this block promised it would.
     "API-QUEUE-001": (
         "M11 slice 2 - the queue contract and its six query rules. Stated by "
         "`docs/handoff/M11_IMPLEMENTATION_PLAN.md` and not yet built; the slice's own pull "

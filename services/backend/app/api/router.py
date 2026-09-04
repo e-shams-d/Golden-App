@@ -21,6 +21,7 @@ from app.api.v1.matching_candidates import (
     segment_scoped_router as matching_candidates_segment_router,
 )
 from app.api.v1.metadata import router as metadata_router
+from app.api.v1.notifications import router as notifications_router
 from app.api.v1.operations import router as operations_router
 from app.api.v1.payment_attempts import router as payment_attempts_router
 from app.api.v1.payment_batches import router as payment_batches_router
@@ -95,3 +96,9 @@ api_v1_router.include_router(bank_statements_router)
 # is the same call `matching_candidates` made for the outgoing direction and for the same reason —
 # a candidate has no address of its own until something proposes it.
 api_v1_router.include_router(incoming_matches_router)
+# M11 slice 1. The only router here that serves both audiences on one prefix without splitting the
+# path, because the row names its own recipient: `notifications.recipient_actor_type` is
+# `trader_user` or `admin_user` and the session says which the caller is. A `/me/trader` twin would
+# have to take the audience from the URL, which is what `12_Security_RBAC_Audit.md:316` forbids
+# trusting.
+api_v1_router.include_router(notifications_router)

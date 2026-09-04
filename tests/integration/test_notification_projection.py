@@ -429,13 +429,24 @@ def test_an_event_naming_no_request_is_a_retryable_fault(world: dict[str, Any]) 
     assert report.failed == 1, f"a malformed payload was published anyway: {report}"
 
 
-def test_the_runtime_role_cannot_change_a_notification(world: dict[str, Any]) -> None:
-    """Insert-only, and nothing checked it until a negative control went uncaught.
+def test_the_runtime_role_cannot_change_what_a_notification_says(world: dict[str, Any]) -> None:
+    """Insert-only in every column except the two that record having read it.
 
-    The migration grants no UPDATE — nothing marks a notification read yet, so a grant would be a
-    capability with no caller. But a negative control that added `GRANT UPDATE` to the migration
-    was **NOT CAUGHT**: no gate covered this table's privileges at all, because
-    `test_batching_table_privileges.py`'s matrix is M6's and stops at the batching tables.
+    Nothing checked this table's privileges until a negative control went uncaught: adding
+    `GRANT UPDATE` to M9's migration was **NOT CAUGHT**, because
+    `test_batching_table_privileges.py`'s matrix is M6's and stops at the batching tables. This
+    test was written then, and asserted that the runtime role could update nothing at all.
+
+    **M11 slice 1 narrowed it rather than deleting it**, which is the point of this note. The
+    slice's `20260913_0044` grants UPDATE on `status` and `read_at`, because a notification can now
+    be marked read — so the old assertion is now false, and the honest response to a gate that
+    contradicts a deliberate change is to make it say the sharper thing rather than to remove it.
+
+    The sharper thing is: everything a person was *told* is still unwritable. The title, the body,
+    the type, the entity it points at, the recipient it was addressed to, and the deduplication key
+    that makes at-least-once delivery produce one message. A notification whose text could change
+    after it was sent is not a record of what somebody was told, and a writable
+    `deduplication_key` is one a redelivery could dodge.
 
     Asserted against the **runtime role**, not the owner, for the reason that file records at
     length: `SET ROLE` does not survive a `ROLLBACK`, and a check run as the owner would pass
@@ -454,10 +465,58 @@ def test_the_runtime_role_cannot_change_a_notification(world: dict[str, Any]) ->
     )
     assert run_dispatch(world).published == 1
 
+    # Every column of the table except the two the slice granted. Listed rather than derived, so
+    # that a column added later is a test failure asking which side of the line it belongs on.
+    withheld = {
+        "recipient_actor_type": "'admin_user'",
+        "recipient_actor_id": "gen_random_uuid()",
+        "notification_type": "'payment_result_published'",
+        "title": "'something else'",
+        "body": "'something else'",
+        "entity_type": "'payment_request'",
+        "entity_id": "gen_random_uuid()",
+        "deduplication_key": "'forged'",
+        "created_at": "now()",
+    }
+
     with psycopg.connect(_psycopg(world["owner_url"])) as connection:
         connection.execute(f'SET ROLE "{world["app_role"]}"')
-        with pytest.raises(psycopg.errors.InsufficientPrivilege):
-            connection.execute("UPDATE notifications SET status = 'read'")
+        for column, value in withheld.items():
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                connection.execute(f"UPDATE notifications SET {column} = {value}")
+            connection.rollback()
+            connection.execute(f'SET ROLE "{world["app_role"]}"')
+        connection.rollback()
+
+
+def test_the_runtime_role_can_record_that_one_was_read(world: dict[str, Any]) -> None:
+    """The other half, and the reason it is a separate test.
+
+    A grant nothing exercises is indistinguishable from a grant that was never written — and this
+    project has shipped that mistake enough times to name it. `20260913_0044` claims the runtime
+    can write `status` and `read_at`; if it could not, `mark-all-read` would fail in production
+    against a schema every migration test calls correct.
+
+    The test above and this one are the two directions of one line, and neither is sufficient
+    alone: the first passes against a table with no grants at all, and the second against a table
+    with every grant.
+    """
+
+    case = a_request_with_a_failed_attempt(world)
+    an_event(
+        world,
+        "PaymentAttemptFailed",
+        {
+            "payment_attempt_id": str(case["attempt_id"]),
+            "payment_request_id": str(case["request_id"]),
+        },
+        case["attempt_id"],
+    )
+    assert run_dispatch(world).published == 1
+
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(f'SET ROLE "{world["app_role"]}"')
+        connection.execute("UPDATE notifications SET status = 'read', read_at = now()")
         connection.rollback()
 
 
