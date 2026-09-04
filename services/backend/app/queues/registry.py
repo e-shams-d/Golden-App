@@ -20,6 +20,12 @@ from __future__ import annotations
 from typing import Any
 
 from app.queues.contract import QueueDefinition
+from app.queues.manager_and_warehouse import (
+    BATCH_VERSIONS_AWAITING_APPROVAL,
+    BLOCKED_DISPATCHES,
+    ORDERS_READY_FOR_DISPATCH,
+    RECEIPT_CONFIRMATION_WORK,
+)
 from app.queues.money_movement import (
     APPROVED_EXPORTS_AWAITING_SEND,
     DRAFT_INVALID_BATCH_VERSIONS,
@@ -55,7 +61,49 @@ _ACCOUNTANT: tuple[QueueDefinition[Any], ...] = (
     RECONCILIATION_TASKS,
 )
 
-BUILT: dict[str, QueueDefinition[Any]] = {queue.name: queue for queue in _ACCOUNTANT}
+# M11 slice 4. The manager's one buildable queue and the warehouse's three.
+_MANAGER_AND_WAREHOUSE: tuple[QueueDefinition[Any], ...] = (
+    BATCH_VERSIONS_AWAITING_APPROVAL,
+    ORDERS_READY_FOR_DISPATCH,
+    BLOCKED_DISPATCHES,
+    RECEIPT_CONFIRMATION_WORK,
+)
+
+BUILT: dict[str, QueueDefinition[Any]] = {
+    queue.name: queue for queue in (*_ACCOUNTANT, *_MANAGER_AND_WAREHOUSE)
+}
+
+# Queues §19.2 names that **cannot** be built as specified, each with what would unblock it.
+#
+# Separate from `PLANNED` on purpose. `PLANNED` means "a later slice does this"; these three have
+# no later slice that could, because what is missing is a governance decision rather than work.
+# Recording them as planned would be a promise nobody can keep, and dropping them would make the
+# registry disagree with the document.
+BLOCKED: dict[str, str] = {
+    "sensitive-publication-corrections": (
+        "§19.2 gives the manager this queue and `permission_catalog.yaml:625` gives "
+        "`payment_publication.correct` `default_roles: []` — **no role holds it**, by design: "
+        "POL-002 requires the preparer and approver permissions to be split and defers the split "
+        "to ADR-SEC-009, which is unresolved. A queue guarded by that name would deny every "
+        "caller, which is the `bank_profile.activate_version` shape this project already carries "
+        "once. Guarding it by a *different* permission would be inventing an authority the "
+        "catalogue withholds on purpose. Unblocked by ADR-SEC-009."
+    ),
+    "approved-exception-tasks": (
+        "§19.2 names it and nothing defines it. `manual_review_task.task_type` has six values and "
+        "none is an exception; `resolution_code` has no approval concept; no table records an "
+        "'approved exception'. The nearest reading — a task a manager resolved by permitting "
+        "something — is a guess about what the centre wants to review, and a queue built on a "
+        "guess is one nobody opens twice. Unblocked by the owner saying which rows belong in it."
+    ),
+    "operational-warning-summaries": (
+        "A **summary**, not a list of rows, and this contract returns rows. §19.2 does not say "
+        "what is summarised or over what period, and `QueueRow`'s five fields cannot express an "
+        "aggregate. Building it as a row list would answer a different question in the right "
+        "place, which is worse than not answering. Unblocked by the owner defining the summary; "
+        "it may not belong under `/queues/` at all."
+    ),
+}
 
 # §19.2's remaining twenty-three, each spelled as the document spells it. This is a list of names,
 # not of decisions: which permission guards each, and what "requiring review" means for a
@@ -64,18 +112,8 @@ BUILT: dict[str, QueueDefinition[Any]] = {queue.name: queue for queue in _ACCOUN
 # Kept in §19.2's order and grouped by its four roles, because the grouping is the document's and
 # regrouping it by table would lose the one fact that matters here — which role's day this queue is.
 PLANNED: dict[str, str] = {
-    # The accountant's eleven are all in `BUILT` as of slice 3.
-    # Manager — §19.2's four. Slice 4.
-    "batch-versions-awaiting-approval": "manager",
-    "sensitive-publication-corrections": "manager",
-    "approved-exception-tasks": "manager",
-    "operational-warning-summaries": "manager",
-    # Warehouse — §19.2's three. Slice 4, and the plan's G-2 lives in the first of them: M10
-    # records that no order ever sits in `ready_for_dispatch`, so that queue cannot be a status
-    # filter.
-    "orders-ready-for-dispatch": "warehouse",
-    "blocked-dispatches": "warehouse",
-    "receipt-confirmation-work": "warehouse",
+    # The accountant's eleven are in `BUILT` as of slice 3. Slice 4 took the manager's one
+    # buildable queue and the warehouse's three; its other three are in `BLOCKED` above.
     # Technical operations — §19.2's six, less AI status. Slice 5, under §19 `:1298`'s last rule.
     "failed-jobs": "technical",
     "stale-outbox-records": "technical",

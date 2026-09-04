@@ -375,6 +375,13 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "listIncomingReceiptsRequiringReviewQueue",
         "listTraderDisputesQueue",
         "listReconciliationTasksQueue",
+        # M11 slice 4. The manager's one buildable queue and the warehouse's three. The other
+        # three §19.2 names are in the registry's `BLOCKED` with their reasons — one is guarded by
+        # a permission the catalogue grants to nobody on purpose, and two have no table.
+        "listBatchVersionsAwaitingApprovalQueue",
+        "listOrdersReadyForDispatchQueue",
+        "listBlockedDispatchesQueue",
+        "listReceiptConfirmationWorkQueue",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

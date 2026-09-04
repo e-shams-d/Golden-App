@@ -95,6 +95,15 @@ QUEUE_SCOPE_EXEMPT: dict[str, str] = {
         "pattern because a disputes queue is the one most likely to be shown to a trader some "
         "day, and if that happens it needs scoping rather than a shared exemption."
     ),
+    "orders-ready-for-dispatch": (
+        "M11 slice 4. `gold_sale_orders` carries `trader_id`, and the queue is guarded by "
+        "`gold_sale.dispatch` (`permission_catalog.yaml:372`) — the warehouse operator's alone. "
+        "Deliberately **not** `gold_sale.read`, which at `:353` includes `trader_owner`: a queue "
+        "behind that grant would be reachable by every trader and would need real scoping. "
+        "Releasing metal is the centre's act across all businesses, so the warehouse sees every "
+        "order it may move."
+    ),
+    "blocked-dispatches": "Same table, same `gold_sale.dispatch` grant, same argument.",
     "incoming-receipts-requiring-review": (
         "`incoming_payment_receipts` carries `trader_id`, and the queue is guarded by "
         "`incoming_payment.match` (`permission_catalog.yaml:405`) — an accountant/manager grant "

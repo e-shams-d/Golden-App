@@ -410,6 +410,13 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     ("GET", "/api/v1/queues/incoming-receipts-requiring-review"): PERMISSION,
     ("GET", "/api/v1/queues/trader-disputes"): PERMISSION,
     ("GET", "/api/v1/queues/reconciliation-tasks"): PERMISSION,
+    # M11 slice 4. `PERMISSION` for the same reason as the accountant's eleven, and the warehouse
+    # three turn on a deliberate grant choice: `gold_sale.dispatch` is the warehouse operator's
+    # alone, where `gold_sale.read` would have included `trader_owner` and made these `DUAL`.
+    ("GET", "/api/v1/queues/batch-versions-awaiting-approval"): PERMISSION,
+    ("GET", "/api/v1/queues/orders-ready-for-dispatch"): PERMISSION,
+    ("GET", "/api/v1/queues/blocked-dispatches"): PERMISSION,
+    ("GET", "/api/v1/queues/receipt-confirmation-work"): PERMISSION,
     ("GET", "/api/v1/notifications"): OWNERSHIP,
     ("POST", "/api/v1/notifications/{notification_id}/mark-read"): OWNERSHIP,
     ("POST", "/api/v1/notifications/mark-all-read"): OWNERSHIP,
@@ -1017,6 +1024,11 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
             "incoming-receipts-requiring-review",
             "trader-disputes",
             "reconciliation-tasks",
+            # M11 slice 4.
+            "batch-versions-awaiting-approval",
+            "orders-ready-for-dispatch",
+            "blocked-dispatches",
+            "receipt-confirmation-work",
         )
     },
     # M11 slice 1. Three separate tests rather than one shared name, because the three routes fail

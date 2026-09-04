@@ -71,6 +71,32 @@ ACCOUNTANT = "queue_accountant"
 # holds none of them, which makes it the honest "authenticated but ungranted" admin for the
 # permission negative — a role that exists rather than one invented for the test.
 UNGRANTED_ADMIN = "queue_warehouse"
+MANAGER = "queue_manager"
+
+# M11 slice 4. Which role is expected to reach which queue. Written out rather than derived from
+# the registry, because deriving it from the thing under test would make the assertion circular —
+# a queue guarded by the wrong permission would move in both the code and the expectation.
+ACCOUNTANT_QUEUES = frozenset(
+    {
+        "new-requests",
+        "correction-responses",
+        "eligible-for-batching",
+        "draft-invalid-batch-versions",
+        "approved-exports-awaiting-send",
+        "sent-attempts-awaiting-result",
+        "unresolved-bundles-segments",
+        "failed-partial-retry-payments",
+        "incoming-receipts-requiring-review",
+        "trader-disputes",
+        "reconciliation-tasks",
+        # The manager's approval queue is `payment_batch_version.read_approval_view`, which the
+        # catalogue gives to the accountant as well — reading who is waiting is not approving.
+        "batch-versions-awaiting-approval",
+    }
+)
+WAREHOUSE_QUEUES = frozenset(
+    {"orders-ready-for-dispatch", "blocked-dispatches", "receipt-confirmation-work"}
+)
 
 QUEUE = "/api/v1/queues/new-requests"
 
@@ -151,7 +177,14 @@ def world(migrated: RuntimeIdentities, tmp_path_factory: Any) -> Iterator[dict[s
             )
             ids[f"{key}_beneficiary"] = beneficiary_id
 
-        for username, role in ((ACCOUNTANT, "accountant"), (UNGRANTED_ADMIN, "warehouse_operator")):
+        # M11 slice 4 adds a manager and a warehouse operator, because its queues are theirs. The
+        # "ungranted" admin is now the *manager* for warehouse queues and the *warehouse* for the
+        # accountant's — no single role is ungranted everywhere, which is the point of the split.
+        for username, role in (
+            (ACCOUNTANT, "accountant"),
+            (UNGRANTED_ADMIN, "warehouse_operator"),
+            (MANAGER, "manager"),
+        ):
             connection.execute(
                 "INSERT INTO admin_users (username, full_name, password_hash, status) "
                 "VALUES (%s, %s, %s, 'active')",
@@ -283,8 +316,10 @@ def world(migrated: RuntimeIdentities, tmp_path_factory: Any) -> Iterator[dict[s
             connection.execute(
                 "INSERT INTO gold_sale_orders (id, trader_id, order_number, status, gold_type, "
                 "gold_weight, weight_unit, gold_purity, created_by_actor_type) "
+                # `SEED-`, so the per-test cleanup can delete every `GS-` order without taking the
+                # two the receipt helper depends on with it.
                 "VALUES (%s, %s, %s, 'draft', 'bullion', 10.0, 'GRAM', '750', 'trader_user')",
-                (order_id, ids[key], f"GS-{uuid.uuid4().hex[:8]}"),
+                (order_id, ids[key], f"SEED-{uuid.uuid4().hex[:8]}"),
             )
             ids[f"{key}_order"] = order_id
         connection.commit()
@@ -320,6 +355,13 @@ def an_empty_queue(world: dict[str, Any]) -> Iterator[None]:
         connection.execute("DELETE FROM payment_requests")
         connection.execute("DELETE FROM manual_review_tasks")
         connection.execute("DELETE FROM bank_result_bundles")
+        # Dispatches before orders: the dispatch's foreign key points at the order.
+        connection.execute("DELETE FROM gold_dispatches")
+        connection.execute("DELETE FROM incoming_payment_receipts")
+        connection.execute("DELETE FROM gold_sale_orders WHERE order_number LIKE 'GS-%'")
+        connection.execute(
+            "DELETE FROM payment_batch_versions WHERE version_number > 2"
+        )
         connection.commit()
     yield
 
@@ -490,6 +532,71 @@ def receipt_row(world: dict[str, Any], *, status: str, trader: str = "trader") -
     return receipt_id
 
 
+def batch_version_row(world: dict[str, Any], *, status: str) -> uuid.UUID:
+    """One more version of the seeded batch. Version numbers climb so the unique holds."""
+
+    version_id = uuid.uuid4()
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        row = connection.execute(
+            "SELECT COALESCE(MAX(version_number), 0) + 1 FROM payment_batch_versions "
+            "WHERE payment_batch_id = %s",
+            (world["batch_id"],),
+        ).fetchone()
+        assert row is not None
+        connection.execute(
+            "INSERT INTO payment_batch_versions (id, payment_batch_id, version_number, "
+            "bank_profile_version_id, bank_account_id, bank_mapping_id, status, row_count, "
+            "total_amount_irr, content_hash, created_by_admin_user_id) "
+            "SELECT %s, %s, %s, %s, %s, %s, %s, 1, 1000000, %s, u.id FROM admin_users u "
+            "WHERE u.username = %s",
+            (
+                version_id,
+                world["batch_id"],
+                row[0],
+                world["version_id"],
+                world["account_id"],
+                world["mapping_id"],
+                status,
+                uuid.uuid4().hex + uuid.uuid4().hex,
+                ACCOUNTANT,
+            ),
+        )
+        connection.commit()
+    return version_id
+
+
+def order_row(world: dict[str, Any], *, status: str, trader: str = "trader") -> uuid.UUID:
+    """One gold sale order in a named state."""
+
+    order_id = uuid.uuid4()
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            "INSERT INTO gold_sale_orders (id, trader_id, order_number, status, gold_type, "
+            "gold_weight, weight_unit, gold_purity, created_by_actor_type) "
+            "VALUES (%s, %s, %s, %s, 'bullion', 10.0, 'GRAM', '750', 'trader_user')",
+            (order_id, world[f"{trader}_id"], f"GS-{uuid.uuid4().hex[:8]}", status),
+        )
+        connection.commit()
+    return order_id
+
+
+def dispatch_row(world: dict[str, Any], *, status: str) -> uuid.UUID:
+    """One gold dispatch against a freshly seeded order."""
+
+    dispatch_id = uuid.uuid4()
+    order_id = order_row(world, status="dispatched")
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            "INSERT INTO gold_dispatches (id, gold_sale_order_id, dispatch_type, status, "
+            "created_by_admin_user_id) "
+            "SELECT %s, %s, 'physical_dispatch', %s, u.id FROM admin_users u "
+            "WHERE u.username = %s",
+            (dispatch_id, order_id, status, UNGRANTED_ADMIN),
+        )
+        connection.commit()
+    return dispatch_id
+
+
 def sign_in(world: dict[str, Any], username: str) -> None:
     client = world["client"]
     client.cookies.clear()
@@ -541,46 +648,38 @@ def test_no_trader_can_reach_any_queue(world: dict[str, Any]) -> None:
     assert reachable == [], f"a trader reached these internal queues: {reachable}"
 
 
-def test_no_admin_without_a_grant_can_reach_any_queue(world: dict[str, Any]) -> None:
-    """Authenticated is not authorised, across the whole surface.
+def test_each_role_reaches_its_own_queues_and_no_others(world: dict[str, Any]) -> None:
+    """The positive and negative halves together, per role. M11 slice 4.
 
-    The warehouse operator holds none of the seven grants behind the accountant's eleven. A queue
-    that answers anything but 403 here is one whose `requires(...)` is missing or names a
-    permission this role happens to hold — and the second is the failure a single-queue test would
-    miss entirely.
+    **A 403 sweep alone proves nothing about correctness.** It passes perfectly against a router
+    that refuses everybody — including one where a queue is guarded by a permission *nobody* holds,
+    which this project has shipped before: `bank_profile.activate_version` is granted to no role
+    and its route denies every caller. So each role is asserted to reach exactly its own set.
+
+    Slice 4 is where this stops being one set. The warehouse's three are guarded by
+    `gold_sale.dispatch`, so the accountant must *not* reach them — before slice 4 the accountant
+    reached everything, and a single "the accountant can reach every queue" assertion would now be
+    wrong rather than merely weak.
     """
 
-    names = built_queue_names()
-    sign_in(world, UNGRANTED_ADMIN)
+    names = set(built_queue_names())
+    assert names == ACCOUNTANT_QUEUES | WAREHOUSE_QUEUES, (
+        "the expected sets have drifted from the registry; a queue was added without deciding "
+        f"whose it is: {sorted(names ^ (ACCOUNTANT_QUEUES | WAREHOUSE_QUEUES))}"
+    )
 
-    reachable = [
-        name
-        for name in names
-        if world["client"].get(f"/api/v1/queues/{name}").status_code != 403
-    ]
-    assert reachable == [], f"an ungranted admin reached these queues: {reachable}"
-
-
-def test_the_accountant_can_reach_every_queue_the_document_gives_them(
-    world: dict[str, Any],
-) -> None:
-    """The positive half, and it is not redundant.
-
-    Two 403 sweeps pass perfectly against a router that refuses everybody — including against one
-    where a queue is guarded by a permission *nobody* holds, which is a mistake this project has
-    shipped before (`bank_profile.activate_version` is granted to no role and its route denies
-    every caller). §19.2 says these eleven are the accountant's; this asserts they actually are.
-    """
-
-    names = built_queue_names()
-    sign_in(world, ACCOUNTANT)
-
-    refused = [
-        f"{name} -> {world['client'].get(f'/api/v1/queues/{name}').status_code}"
-        for name in names
-        if world["client"].get(f"/api/v1/queues/{name}").status_code != 200
-    ]
-    assert refused == [], f"the accountant cannot reach their own queues: {refused}"
+    audiences = ((ACCOUNTANT, ACCOUNTANT_QUEUES), (UNGRANTED_ADMIN, WAREHOUSE_QUEUES))
+    for username, expected in audiences:
+        sign_in(world, username)
+        reached = {
+            name
+            for name in names
+            if world["client"].get(f"/api/v1/queues/{name}").status_code == 200
+        }
+        assert reached == expected, (
+            f"{username} reached {sorted(reached - expected)} it should not, and could not reach "
+            f"{sorted(expected - reached)} it should"
+        )
 
 
 def test_an_admin_without_the_grant_is_refused(world: dict[str, Any]) -> None:
@@ -948,6 +1047,84 @@ def test_incoming_receipts_waits_for_a_person_not_for_a_bank(world: dict[str, An
     assert body["total"] == 2
 
 
+def test_the_manager_sees_versions_awaiting_a_decision_and_not_the_accountants_work(
+    world: dict[str, Any],
+) -> None:
+    """M11 slice 4. The manager's queue and the accountant's slice-3 queue partition the versions.
+
+    `draft` and `rejected` are the accountant's; `ready_for_approval` is the manager's; `approved`
+    and `superseded` are nobody's. The two seeded versions in `world` are `draft` and `approved`,
+    so this adds the one in between and asserts both queues at once — a version in both would be
+    work two people think is theirs.
+    """
+
+    waiting = batch_version_row(world, status="ready_for_approval")
+
+    sign_in(world, ACCOUNTANT)
+    manager_queue = {
+        i["id"]
+        for i in world["client"]
+        .get("/api/v1/queues/batch-versions-awaiting-approval")
+        .json()["items"]
+    }
+    accountant_queue = {
+        i["id"]
+        for i in world["client"]
+        .get("/api/v1/queues/draft-invalid-batch-versions")
+        .json()["items"]
+    }
+
+    assert manager_queue == {str(waiting)}
+    assert str(waiting) not in accountant_queue
+    assert manager_queue & accountant_queue == set()
+
+
+def test_ready_for_dispatch_is_computed_from_the_guard_not_from_a_status(
+    world: dict[str, Any],
+) -> None:
+    """**G-2, asserted.** §19 `:1283`, and the decision recorded in `manager_and_warehouse.py`.
+
+    No order ever sits in `ready_for_dispatch` — M10 evaluates the dispatch guard at dispatch time
+    — so this queue asks the guard's own question instead: is the incoming payment confirmed.
+
+    The seeded orders make the choice observable. An order literally in `ready_for_dispatch` is
+    included in neither direction of this test, because nothing writes that status; what the queue
+    must return is the `incoming_payment_confirmed` one. And
+    `incoming_payment_partially_confirmed` must be **excluded** — releasing gold against part of
+    the money is exactly what the guard refuses, so a queue that offered it would invite the
+    mistake the guard exists to prevent.
+    """
+
+    ready = order_row(world, status="incoming_payment_confirmed")
+    order_row(world, status="incoming_payment_partially_confirmed")
+    order_row(world, status="waiting_for_incoming_payment")
+    blocked = order_row(world, status="manager_approval_required")
+
+    sign_in(world, UNGRANTED_ADMIN)
+    body = world["client"].get("/api/v1/queues/orders-ready-for-dispatch").json()
+    assert {i["id"] for i in body["items"]} == {str(ready)}
+    assert body["total"] == 1
+
+    # The blocked order is the next queue's, not this one's — an order waiting on a manager is not
+    # work the warehouse can do.
+    other = world["client"].get("/api/v1/queues/blocked-dispatches").json()
+    assert {i["id"] for i in other["items"]} == {str(blocked)}
+
+
+def test_receipt_confirmation_work_is_metal_that_left_and_was_never_acknowledged(
+    world: dict[str, Any],
+) -> None:
+    """`dispatched` and not `delivered`, which is the trader's word rather than the centre's."""
+
+    moving = dispatch_row(world, status="dispatched")
+    dispatch_row(world, status="delivered")
+    dispatch_row(world, status="pending")
+
+    sign_in(world, UNGRANTED_ADMIN)
+    body = world["client"].get("/api/v1/queues/receipt-confirmation-work").json()
+    assert {i["id"] for i in body["items"]} == {str(moving)}
+
+
 def test_every_queue_returns_the_same_five_fields(world: dict[str, Any]) -> None:
     """§19 `:1298`'s last rule, made checkable by there being one row shape.
 
@@ -957,10 +1134,13 @@ def test_every_queue_returns_the_same_five_fields(world: dict[str, Any]) -> None
     """
 
     request_row(world)
-    sign_in(world, ACCOUNTANT)
 
     expected = {"id", "reference", "status", "created_at", "trader_id"}
     for name in built_queue_names():
+        # Slice 4 split the surface across two roles, so the sweep signs in as whichever one owns
+        # the queue. Reading every queue as one caller would silently degrade into asserting the
+        # shape of 403 bodies.
+        sign_in(world, ACCOUNTANT if name in ACCOUNTANT_QUEUES else UNGRANTED_ADMIN)
         body = world["client"].get(f"/api/v1/queues/{name}").json()
         assert set(body) == {"queue", "items", "next_cursor", "total"}
         for item in body["items"]:
@@ -1160,15 +1340,56 @@ def test_every_queue_in_the_document_is_built_or_planned() -> None:
     is silent, and silence is what `PLANNED` exists to convert into a failure.
     """
 
-    from app.queues.registry import BUILT, PLANNED
+    from app.queues.registry import BLOCKED, BUILT, PLANNED
 
-    assert not (BUILT.keys() & PLANNED.keys()), (
-        f"queues both built and planned: {sorted(BUILT.keys() & PLANNED.keys())}. A built queue "
-        "must be removed from PLANNED in the same commit."
-    )
+    collections = {"BUILT": set(BUILT), "PLANNED": set(PLANNED), "BLOCKED": set(BLOCKED)}
+    for first, second in (("BUILT", "PLANNED"), ("BUILT", "BLOCKED"), ("PLANNED", "BLOCKED")):
+        overlap = collections[first] & collections[second]
+        assert not overlap, (
+            f"queues in both {first} and {second}: {sorted(overlap)}. A queue has exactly one "
+            "status, and moving it between collections is a decision somebody makes deliberately."
+        )
+
     # Twenty-four in §19.2, less `ai-status`, which the document admits "only when enabled" and no
-    # AI path exists to enable.
-    assert len(BUILT) + len(PLANNED) == 23
+    # AI path exists to enable. `BLOCKED` joined the sum in slice 4: three of the manager's and
+    # warehouse's queues cannot be built as specified, and a registry that dropped them would
+    # disagree with the document while still passing this count.
+    assert len(BUILT) + len(PLANNED) + len(BLOCKED) == 23
+
+
+def test_every_blocked_queue_says_what_would_unblock_it() -> None:
+    """A blocked entry is a decision, and a decision with no reason is a shrug.
+
+    `PLANNED` means a later slice does it; `BLOCKED` means no slice can until somebody decides
+    something. The difference is only worth recording if the entry says *what* — otherwise the next
+    person re-derives the blocker, or worse, builds the queue on a guess.
+    """
+
+    from app.queues.registry import BLOCKED
+
+    assert BLOCKED, "the blocked collection is empty, so this gate checks nothing"
+    vague = sorted(name for name, reason in BLOCKED.items() if "Unblocked by" not in reason)
+    assert vague == [], f"blocked queues that do not say what would unblock them: {vague}"
+
+
+def test_no_blocked_queue_is_quietly_served(world: dict[str, Any]) -> None:
+    """The registry says these have no route; the route table has to agree.
+
+    Without this, `BLOCKED` is a comment. Somebody adding one of these under a borrowed permission
+    — which is precisely what its reason forbids — would leave the registry claiming it is blocked
+    while the endpoint answers.
+    """
+
+    from app.queues.registry import BLOCKED
+
+    # Asserted against the **running** application rather than a freshly built one: `create_app()`
+    # with no settings needs the whole environment, and the app under test is the honest subject.
+    sign_in(world, ACCOUNTANT)
+    for name in BLOCKED:
+        response = world["client"].get(f"/api/v1/queues/{name}")
+        assert response.status_code == 404, (
+            f"{name} is recorded as blocked but the route answered {response.status_code}"
+        )
 
 
 def test_no_queue_allowlists_a_filter_it_cannot_apply() -> None:
