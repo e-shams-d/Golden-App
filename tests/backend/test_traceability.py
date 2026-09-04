@@ -853,9 +853,23 @@ PENDING: dict[str, str] = {
     # eleven-queue obligation stays below and is slice 3's: slice 2 asserts the
     # state/adjacent-state rule for one queue, which is not the same claim.
     "SVC-QUEUE-002": (
-        "M11 slice 4 - the manager and warehouse queues. Stated by "
-        " and not yet built; the slice own pull "
-        "request discharges it and removes this entry in the same commit."
+        "M11 slice 4 built four of the seven and proved this obligation for them: the manager's "
+        "`batch-versions-awaiting-approval` and the warehouse's three, including the derived "
+        "`orders-ready-for-dispatch` that answers G-2.\n"
+        "\n"
+        "It stays pending because the obligation names the manager's *four* and the warehouse's "
+        "*three*, and three of the manager's cannot be built as specified. They are recorded in "
+        "`app/queues/registry.py`'s `BLOCKED` with what would unblock each: "
+        "`sensitive-publication-corrections` is guarded by `payment_publication.correct`, which "
+        "`permission_catalog.yaml:625` grants to **no role** on purpose — POL-002 requires the "
+        "preparer and approver permissions to be split and defers the split to the security "
+        "decision record named in that row, which is unresolved. `approved-exception-tasks` has "
+        "no task type, resolution code or table that defines it, and "
+        "`operational-warning-summaries` is a summary, which this row-shaped contract cannot "
+        "express.\n"
+        "\n"
+        "Discharging on four of seven would be the same over-claim slice 3 made and slice 3B had "
+        "to correct. Unblocked by that security decision and by the owner defining the other two."
     ),
     # M11 slice 3B discharged `SVC-QUEUE-001` in `tests/integration/test_queue_contract.py`. Slice
     # 3 had left it pending on six of eleven queues for want of fixtures; 3B built the three
