@@ -857,21 +857,9 @@ PENDING: dict[str, str] = {
         " and not yet built; the slice own pull "
         "request discharges it and removes this entry in the same commit."
     ),
-    "SVC-QUEUE-001": (
-        "M11 slice 3 built the accountant's eleven queues and proved this obligation for **six** "
-        "of them: the four over `payment_requests`, plus `reconciliation-tasks` and "
-        "`unresolved-bundles-segments`. It stays pending for the other five — "
-        "`approved-exports-awaiting-send`, `sent-attempts-awaiting-result`, "
-        "`failed-partial-retry-payments`, `incoming-receipts-requiring-review` and the export "
-        "half of the bundle work — because their tables need long foreign-key chains that "
-        "`tests/integration/test_queue_contract.py` does not yet seed, so no row ever reaches "
-        "their predicates. Reachability and row shape are asserted for all eleven; *which rows* "
-        "is not.\n"
-        "\n"
-        "Found by a negative control rather than by review: deleting `sent_to_bank_marked_at IS "
-        "NULL` from the exports queue went NOT CAUGHT. Discharging on six would be the "
-        "incomplete-input failure — a gate whose input is incomplete passes."
-    ),
+    # M11 slice 3B discharged `SVC-QUEUE-001` in `tests/integration/test_queue_contract.py`. Slice
+    # 3 had left it pending on six of eleven queues for want of fixtures; 3B built the three
+    # chains and every predicate is now asserted on which rows it selects.
     "SEC-QUEUE-003": (
         "M11 slice 5 - what technical operations may not see. Stated by "
         "`docs/handoff/M11_IMPLEMENTATION_PLAN.md` and not yet built; the slice's own pull "
