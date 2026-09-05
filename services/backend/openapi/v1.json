@@ -21836,6 +21836,151 @@
         ]
       }
     },
+    "/api/v1/queues/quarantined-files-exports": {
+      "get": {
+        "description": "**Oldest first.** `descending=False`, and this is the one place it is correct.\n\nAn audit log is read from the top because the newest entry is the interesting one; a work\nqueue is drained from the bottom because the oldest item is the one somebody has been\nwaiting on. A newest-first queue quietly starves its tail.\n\n`limit` carries no `ge`/`le`: `normalise_limit` refuses an out-of-range value with a 400\nthat says what the bounds are, and duplicating the bounds here would let FastAPI answer 422\nfirst — a different status for the same mistake, decided by which validator ran.\n\nThe two filter parameters are declared for every queue and **allowlisted per queue**. A\nqueue whose spec does not hold `task_type` refuses it rather than ignoring it, which is\n`read_queue_page`'s job.",
+        "operationId": "listQuarantinedFilesExportsQueue",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "trader_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trader Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "task_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueuePageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The cursor, sort, filter or limit is not allowlisted. Refused rather than ignored."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The session does not hold the queue's grant."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Section 19.2's quarantined files exports queue.",
+        "tags": [
+          "queues"
+        ]
+      }
+    },
     "/api/v1/queues/receipt-confirmation-work": {
       "get": {
         "description": "**Oldest first.** `descending=False`, and this is the one place it is correct.\n\nAn audit log is read from the top because the newest entry is the interesting one; a work\nqueue is drained from the bottom because the oldest item is the one somebody has been\nwaiting on. A newest-first queue quietly starves its tail.\n\n`limit` carries no `ge`/`le`: `normalise_limit` refuses an out-of-range value with a 400\nthat says what the bounds are, and duplicating the bounds here would let FastAPI answer 422\nfirst — a different status for the same mistake, decided by which validator ran.\n\nThe two filter parameters are declared for every queue and **allowlisted per queue**. A\nqueue whose spec does not hold `task_type` refuses it rather than ignoring it, which is\n`read_queue_page`'s job.",

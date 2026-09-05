@@ -382,6 +382,9 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         "listOrdersReadyForDispatchQueue",
         "listBlockedDispatchesQueue",
         "listReceiptConfirmationWorkQueue",
+        # M11 slice 5. One of §19.2's five technical queues; the other four have no session
+        # permission or no table, and are recorded in the registry's `BLOCKED`.
+        "listQuarantinedFilesExportsQueue",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas
