@@ -8,7 +8,17 @@ interim rule is that unknown or skipped scans fail closed.
 Read literally and applied everywhere, that would mean no file can ever become
 `available`, and the milestone would deliver an upload path producing nothing usable. The
 resolution turns on what the safe default actually denies: **production use**, not
-development use. So there are exactly two adapters and no third.
+development use.
+
+**M4 wrote "so there are exactly two adapters and no third", and M11 added a third.** That
+sentence was right about M4's situation and wrong as a rule, and the correction is worth stating
+rather than quietly deleting: it assumed the only reasons to skip scanning were "we are not in
+production" and "we have not decided". The owner's decision of 2026-09-05 is a third — *we are in
+production, we have decided, and we accept the risk for the pilot period.*
+
+The safe default still holds for anyone who has not decided, because `none` is still the default
+and still fails closed. What changed is that an accepted risk now has a name to be accepted under,
+instead of being expressed by running the development adapter somewhere it says it must not run.
 
 `NoScannerConfigured` is the production default. It returns `pending` for every file, and
 that is not a stub — it is the honest answer to "has this been scanned" when nothing
@@ -46,7 +56,11 @@ from app.files.states import (
 # What configuration selects. `none` is the default everywhere, including production.
 POLICY_NONE: Final = "none"
 POLICY_DEVELOPMENT_BYPASS: Final = "development_bypass"
-POLICY_NAMES: Final = (POLICY_NONE, POLICY_DEVELOPMENT_BYPASS)
+# The owner's decision of 2026-09-05: run the pilot without a scanner and add one after two or
+# three months. See `AcceptedRiskNoScanner` for why that needed a third name rather than lifting
+# the second one's production refusal.
+POLICY_ACCEPTED_RISK: Final = "accepted_risk_no_scanner"
+POLICY_NAMES: Final = (POLICY_NONE, POLICY_DEVELOPMENT_BYPASS, POLICY_ACCEPTED_RISK)
 
 
 @dataclass(frozen=True)
@@ -105,6 +119,50 @@ class DevelopmentScanBypass:
         return ScanResult(SCAN_CLEAN)
 
 
+class AcceptedRiskNoScanner:
+    """Every file is treated as clean, in production, **because the owner accepted that risk**.
+
+    M11, on the owner's decision of 2026-09-05: no scanner during the pilot, ClamAV after two or
+    three months.
+
+    **Why this is a third adapter and not a lifted refusal.** `DevelopmentScanBypass` already
+    reports every file clean, and the shortest route to the owner's decision was to delete its
+    production check. That would have been wrong in a specific way rather than a general one: the
+    class is named for development, so a deployment running it in production would read — to
+    anybody opening the file six months from now — as a mistake nobody caught, not as a decision
+    somebody made. The name is the documentation that survives.
+
+    So the risk is accepted under a name that says so, and the acceptance is **announced rather
+    than assumed**:
+
+    - `readiness_note` is surfaced in the readiness payload, so an operator checking whether the
+      system is healthy is told, every time, that nothing is scanning uploads.
+    - `is_accepted_risk` lets the startup path log a warning without matching on the policy name,
+      which is how a fourth adapter would quietly stop warning.
+    - `tests/backend/test_reserved_scan_status.py`'s sibling gate fails when a real scanner is
+      added and this adapter is still selectable, so switching it off is something the test
+      reminds somebody to do rather than something they have to remember.
+
+    **What is actually accepted.** A trader uploads a receipt; nothing inspects it; a member of
+    staff opens it. The compensating controls are the ones already built and not new: uploads are
+    limited by declared type and size, files are served through the application rather than from a
+    public path, and every download is attributed to a session in the audit trail. None of those
+    stops a malicious file — they narrow who can deliver one and record who opened it.
+    """
+
+    name = POLICY_ACCEPTED_RISK
+    is_accepted_risk = True
+    readiness_note = (
+        "No malware scanner is configured. Every uploaded file is recorded as clean without "
+        "being inspected, on the owner's accepted-risk decision of 2026-09-05. Configure "
+        "FILE_SCAN_POLICY=none to fail closed instead."
+    )
+
+    def scan(self, *, storage_key: str) -> ScanResult:
+        del storage_key
+        return ScanResult(SCAN_CLEAN)
+
+
 def build_scan_policy(*, policy_name: str, app_env: str) -> ScanPolicy:
     """Select the adapter, refusing anything not named.
 
@@ -117,6 +175,11 @@ def build_scan_policy(*, policy_name: str, app_env: str) -> ScanPolicy:
         return NoScannerConfigured()
     if policy_name == POLICY_DEVELOPMENT_BYPASS:
         return DevelopmentScanBypass(app_env=app_env)
+    if policy_name == POLICY_ACCEPTED_RISK:
+        # No `app_env` guard, and that is the whole difference between this and the adapter
+        # above: the owner accepted this risk *for* production, so refusing it there would make
+        # the name a lie.
+        return AcceptedRiskNoScanner()
     raise ValueError(
         f"unknown scan policy {policy_name!r}; the approved names are "
         f"{', '.join(POLICY_NAMES)}"

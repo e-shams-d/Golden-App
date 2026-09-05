@@ -473,7 +473,7 @@ export interface components {
     "CropAccepted": { processing_job_id: string; processing_job_status: string; segment: components["schemas"]["SegmentDetail"] };
     "DeactivateBeneficiaryRequest": { reason?: string | null };
     "DecisionRecorded": { approval: components["schemas"]["PriorDecision"]; batch: components["schemas"]["BatchSummary"]; replayed?: boolean; version: components["schemas"]["VersionSummary"] };
-    "DependenciesResponse": { dependencies: { [key: string]: components["schemas"]["DependencyStatus"] }; scan_policy: string; status: "ok" | "degraded" };
+    "DependenciesResponse": { dependencies: { [key: string]: components["schemas"]["DependencyStatus"] }; scan_policy: string; scan_policy_note?: string | null; status: "ok" | "degraded" };
     "DependencyStatus": { error_code?: string | null; last_success_at?: string | null; latency_ms: number; required: boolean; status: "ok" | "unavailable" };
     "DispatchRequest": { dispatch_type: string; dispatched_at?: string | null; evidence_file_id?: string | null; gold_purity?: string | null; gold_weight?: number | string | null; guard_override_reason?: string | null; recipient_name?: string | null; tracking_or_delivery_note?: string | null; weight_unit?: string | null };
     "DispatchResponse": { confirmed_total_irr: number; created_at: string; dispatch_type: string; dispatched_at: string | null; expected_amount_irr: number | null; gold_sale_order_id: string; gold_weight: string | null; guard_override_at: string | null; guard_override_reason: string | null; id: string; order_status: string; record_version: number; status: string; weight_unit: string | null };

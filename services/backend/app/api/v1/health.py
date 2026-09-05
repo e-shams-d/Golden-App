@@ -82,6 +82,10 @@ async def dependencies(
             for name, result in results.items()
         },
         scan_policy=runtime.scan_policy.name,
+        # Read off the adapter rather than matched on its name: a fourth adapter that is also an
+        # accepted risk then gets announced without anyone editing this line, which is exactly the
+        # failure a name comparison would have.
+        scan_policy_note=getattr(runtime.scan_policy, "readiness_note", None),
     )
 
 

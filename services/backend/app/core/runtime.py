@@ -61,6 +61,21 @@ class RuntimeServices:
         scan_policy = build_scan_policy(
             policy_name=settings.file_scan_policy, app_env=settings.app_env
         )
+        # M11. An accepted risk announces itself at every start, not only in a readiness payload
+        # somebody has to ask for. `getattr` rather than a name comparison for the same reason the
+        # readiness route uses one: the adapter decides whether it is a control or a risk, and a
+        # fourth one inherits the warning without an edit here.
+        if getattr(scan_policy, "is_accepted_risk", False):
+            log_event(
+                get_logger(__name__),
+                logging.WARNING,
+                "file_scan_policy.accepted_risk",
+                policy=scan_policy.name,
+                detail=(
+                    "uploaded files are recorded clean without being scanned; this is the "
+                    "accepted-risk configuration, not a control"
+                ),
+            )
         celery = create_celery_app(settings)
         probes = {
             "database": database_probe(
