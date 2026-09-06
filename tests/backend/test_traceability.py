@@ -888,23 +888,31 @@ PENDING: dict[str, str] = {
         "the limit, and idempotence by running the pass twice against the same state and "
         "checking the table is unchanged.\n"
         "\n"
-        "It stays pending because the obligation is about **each** job, and four are unscheduled: "
-        "storage reconciliation's set-comparison detectors, pending upload cleanup, notification "
-        "retry, and the retention dry run. Slice 6B takes them.\n"
+        "Slice 6B scheduled the second: the retention dry run, in `app/retention/dry_run.py`, "
+        "proved by `tests/integration/test_retention_dry_run.py`.\n"
         "\n"
-        "The split is by blocker rather than by size, which is this project's rule for splitting "
-        "a slice. Checksum verification is a *bounded read* over rows that already exist. The "
-        "other four are not the same shape: two of them would **remove** rows, which ADR-005 "
-        "blocks, and `test_no_deletion_machinery.py` refuses on purpose; storage reconciliation's "
-        "remaining detectors compare a storage listing against the table, and bounding a set "
-        "comparison produces false 'missing' findings rather than a partial answer. Discharging "
-        "on one of five would be the over-claim slice 3 made and slice 3B had to correct."
+        "**It stays pending, and the survey changed the reason from 'not yet' to 'three of these "
+        "must not be built'.**\n"
+        "\n"
+        "- Notification retry is **already implemented**: the projection is an outbox consumer, "
+        "and `app/workers/dispatcher.py` retries with backoff and dead-letters after eight "
+        "attempts. A second retrier over one queue would be worse than none.\n"
+        "- Pending upload cleanup **removes rows**, which ADR-005 blocks, the owner declined on "
+        "2026-09-05, and `test_no_deletion_machinery.py` refuses on purpose.\n"
+        "- Storage reconciliation's set-comparison detectors **cannot be bounded without "
+        "inventing findings**: bounding either side of a comparison between a storage listing and "
+        "the table makes rows appear missing from the other, which is a wrong answer rather than "
+        "a partial one. They stay in the operator-run CLI.\n"
+        "\n"
+        "So more slices will not discharge this. The obligation's wording needs revisiting against "
+        "what §19.5 can mean here, which is an M0 question rather than an implementation one. The "
+        "survey is in `docs/handoff/M11_IMPLEMENTATION_PLAN.md`'s corrected slice 6 section, so "
+        "the next reader finds it before re-deriving it."
     ),
-    "TRACE-M11-001": (
-        "M11 slice 7 - reports and the Definition of Done. Stated by "
-        "`docs/handoff/M11_IMPLEMENTATION_PLAN.md` and not yet built; the slice's own pull "
-        "request discharges it and removes this entry in the same commit."
-    ),
+    # M11 slice 7 discharged `TRACE-M11-001` in `tests/integration/test_m11_definition_of_done.py`,
+    # as this block promised it would: an accountant finds work through the report, locates it in
+    # the queue, acts on it through the command that owns the transition, and the queue lets it go.
+    # The fourth step is the one a checklist could not make.
     # Slice 8 shipped, and with it the last two obligations M10 owed. Both are discharged by
     # citation in `tests/integration/test_gold_sale_closure.py`.
     #

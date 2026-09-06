@@ -30,6 +30,11 @@ STALE_LEASE_SWEEP_INTERVAL = timedelta(minutes=5)
 # six days before anything noticed.
 CHECKSUM_VERIFY_INTERVAL = timedelta(days=1)
 
+# M11 slice 6B. Daily, and it costs two counting queries per activated policy — of which
+# there are currently none. The interval is about the day the first policy is activated: an
+# impact report a day old is fine, and one nobody has seen since last month is not.
+RETENTION_DRY_RUN_INTERVAL = timedelta(days=1)
+
 BEAT_SCHEDULE: dict[str, dict[str, object]] = {
     "outbox-dispatch": {
         "task": "app.workers.tasks.maintenance.poll_outbox_task",
@@ -49,6 +54,14 @@ BEAT_SCHEDULE: dict[str, dict[str, object]] = {
     # `app.workers.tasks.*` would not match this module's prefix rule on its own — the routes map
     # below has no entry for `checksums`, so without this option the task would land on the
     # default queue and nobody would notice until it was starved behind something else.
+    # M11 slice 6B. Reports what retention would remove. There is deliberately no companion
+    # entry that removes it: ADR-005 is open and the owner decided against automatic
+    # deletion, and `test_no_deletion_machinery.py` refuses one on purpose.
+    "retention-dry-run": {
+        "task": "app.workers.tasks.retention.retention_dry_run_task",
+        "schedule": RETENTION_DRY_RUN_INTERVAL,
+        "options": {"queue": "maintenance"},
+    },
     "checksum-verification": {
         "task": "app.workers.tasks.checksums.verify_checksums_task",
         "schedule": CHECKSUM_VERIFY_INTERVAL,
@@ -70,6 +83,7 @@ def create_celery_app(settings: Settings) -> Celery:
         # hand — an operator running a verification pass now — must land on the same queue the
         # schedule uses, and `options` only covers the scheduled call.
         "app.workers.tasks.checksums.*": {"queue": "maintenance"},
+        "app.workers.tasks.retention.*": {"queue": "maintenance"},
         "app.workers.tasks.ai.*": {"queue": "ai"},
     }
     app.conf.update(

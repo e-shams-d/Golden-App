@@ -421,6 +421,10 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # carries `financial_content_access_is_not_implied` — the grant itself says what §19 `:1298`'s
     # last rule says. No trader audience, so `PERMISSION` rather than `DUAL`.
     ("GET", "/api/v1/queues/quarantined-files-exports"): PERMISSION,
+    # M11 slice 7. `report.read`, which four internal roles hold and no trader does. The route
+    # consults a *second* permission per queue when building the summary, but the class here is
+    # about what guards the route, and that is one grant.
+    ("GET", "/api/v1/reports/queue-summary"): PERMISSION,
     ("GET", "/api/v1/notifications"): OWNERSHIP,
     ("POST", "/api/v1/notifications/{notification_id}/mark-read"): OWNERSHIP,
     ("POST", "/api/v1/notifications/mark-all-read"): OWNERSHIP,
@@ -1037,6 +1041,14 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
             "quarantined-files-exports",
         )
     },
+    # M11 slice 7. Its own test rather than the queue sweep: the refusal that matters here is a
+    # role holding queue grants but *not* `report.read` — a different chain from a trader being
+    # refused an internal queue.
+    (
+        "GET",
+        "/api/v1/reports/queue-summary",
+        "permission",
+    ): "test_a_role_without_the_report_grant_cannot_ask",
     # M11 slice 1. Three separate tests rather than one shared name, because the three routes fail
     # in three different ways. A leaky list returns rows; a leaky mark-read edits one row that is
     # not the caller's; a leaky mark-all-read edits *every* row in the table and returns a count

@@ -5872,6 +5872,25 @@
         "title": "PublishRequest",
         "type": "object"
       },
+      "QueueCountResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "queue": {
+            "title": "Queue",
+            "type": "string"
+          },
+          "waiting": {
+            "title": "Waiting",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "queue",
+          "waiting"
+        ],
+        "title": "QueueCountResponse",
+        "type": "object"
+      },
       "QueuePageResponse": {
         "additionalProperties": false,
         "description": "The envelope every queue returns.\n\n`total` is §19 `:1298`'s \"permission-aware count\": how much work is waiting behind the cursor,\ncomputed from the same statement the rows came from.",
@@ -5955,6 +5974,29 @@
           "trader_id"
         ],
         "title": "QueueRowResponse",
+        "type": "object"
+      },
+      "QueueSummaryResponse": {
+        "additionalProperties": false,
+        "description": "What is waiting for the caller, per queue and in total.\n\n**A queue the caller may not read is absent rather than zero.** A zero would say \"this queue\nexists and is empty\", which is information about a part of the business that is not theirs.",
+        "properties": {
+          "counts": {
+            "items": {
+              "$ref": "#/components/schemas/QueueCountResponse"
+            },
+            "title": "Counts",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "counts",
+          "total"
+        ],
+        "title": "QueueSummaryResponse",
         "type": "object"
       },
       "ReadinessResponse": {
@@ -23024,6 +23066,58 @@
         "summary": "Suggest that this segment is evidence for a payment attempt.",
         "tags": [
           "matching-candidates"
+        ]
+      }
+    },
+    "/api/v1/reports/queue-summary": {
+      "get": {
+        "description": "`GET /api/v1/reports/queue-summary`.\n\n**Two permissions are consulted, and that is the design rather than an oversight.**\n`report.read` decides whether a person may ask this question at all; each queue's own grant\ndecides whether they may be told about that queue. Someone holding `report.read` and nothing\nelse receives an empty summary and a total of zero — which is true, and is the correct answer\nfor a person with no queues.",
+        "operationId": "getQueueSummaryReport",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The session does not hold `report.read`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "How much work is waiting in each queue the caller may read.",
+        "tags": [
+          "reports"
         ]
       }
     },

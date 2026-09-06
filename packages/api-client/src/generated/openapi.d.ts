@@ -381,6 +381,9 @@ export interface paths {
     get: operations["listMatchingCandidates"];
     post: operations["proposeMatchingCandidate"];
   };
+  "/api/v1/reports/queue-summary": {
+    get: operations["getQueueSummaryReport"];
+  };
   "/api/v1/roles": {
     get: operations["listRoles"];
   };
@@ -529,8 +532,10 @@ export interface components {
     "PublicationPreviewResponse": { content_hash: string; next_publication_version: number; payment_request_id: string; request_status: string; summary_payload: { [key: string]: unknown } };
     "PublicationResponse": { content_hash: string; id: string; payment_request_id: string; primary_evidence_link_id: string | null; publication_version: number; published_at: string; request_status: string; share_file_id: string | null; status: string; summary_payload: { [key: string]: unknown } };
     "PublishRequest": { message_to_trader?: string | null; primary_evidence_link_id?: string | null };
+    "QueueCountResponse": { queue: string; waiting: number };
     "QueuePageResponse": { items: Array<components["schemas"]["QueueRowResponse"]>; next_cursor: string | null; queue: string; total: number };
     "QueueRowResponse": { created_at: string; id: string; reference: string; status: string; trader_id: string | null };
+    "QueueSummaryResponse": { counts: Array<components["schemas"]["QueueCountResponse"]>; total: number };
     "ReadinessResponse": { checks: { [key: string]: "ok" | "unavailable" }; status: "ready" | "not_ready" };
     "ReauthenticateRequest": { password: string; purpose: string; resource_id: string; resource_type: string };
     "ReauthenticateResponse": { authentication_level: string; expires_at: string; recent_auth_reference: string };
@@ -653,6 +658,7 @@ export interface operations {
   "getPaymentBatch": { parameters: { path: { batch_id: string } }; responses: { "200": { content: { "application/json": components["schemas"]["BatchDetail"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "409": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getPaymentBatchApprovalView": { parameters: { path: { batch_id: string; version_id: string } }; responses: { "200": { content: { "application/json": components["schemas"]["ApprovalView"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "409": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getPaymentRequest": { parameters: { path: { payment_request_id: string } }; responses: { "200": { content: { "application/json": components["schemas"]["PaymentRequestDetail"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
+  "getQueueSummaryReport": { responses: { "200": { content: { "application/json": components["schemas"]["QueueSummaryResponse"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getReceiptSegment": { parameters: { path: { segment_id: string } }; responses: { "200": { content: { "application/json": components["schemas"]["SegmentDetail"] } }; "400": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "409": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getReleaseEvidence": { security: Array<{ OperationsToken: Array<never> }>; responses: { "200": { content: { "application/json": components["schemas"]["ReleaseEvidenceResponse"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getReleaseMetadata": { responses: { "200": { content: { "application/json": components["schemas"]["ReleaseResponse"] } } } };
