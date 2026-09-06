@@ -110,110 +110,179 @@ The backend surfaces these screens consume:
   point of putting slice 0 first.
 - **Not §24.2's list** (`:2273`): no OCR, no automatic segmentation, no AI overlays, no bank API.
 
+### 4.1 A note on the identifiers above
+
+The first draft of this plan named its obligations `SCREENS-*`. **`tests/backend/test_traceability.py`
+recognises no such prefix**, so every one of them would have been refused by the gate that exists
+to catch exactly that — and until they were registered, nothing would have refused them either,
+because an unregistered obligation is invisible rather than wrong.
+
+They are `UI-*` now, which is what M7's screens plan used and what the gate knows. `TRACE-SCREENS-002`
+keeps its shape because `TRACE-SCREENS-001` already has it.
+
+The lesson is the one this project keeps relearning in a new place: **a plan is not checked until
+something checks it.** These nine are registered in `PENDING` by slice 0, before any of them is
+built, for the reason M11's plan gives — an obligation nothing tracks is one a milestone can finish
+without meeting.
+
 ---
 
 ## 4. Slices
 
 ### Slice 0 — the reads these screens need, which may not exist
 
-**Goal.** Walk every screen §16, §17 and §22 specify, field by field, against what the API returns
+### Goal
+
+Walk every screen §16, §17 and §22 specify, field by field, against what the API returns
 today. Produce a list of missing fields *before* anything is built on top of them.
 
-**Why first.** M7's screens plan found two whole slices' worth of missing reads by discovering
+### Why first
+
+M7's screens plan found two whole slices' worth of missing reads by discovering
 them mid-build. The cost of finding them early is one pass over a document; the cost of finding
 them late is a slice that stops halfway.
 
-**What proves it.** `SCREENS-READ-001` — for each specified screen, a test that names the fields
+### What proves it
+
+- `UI-READ-001` — for each specified screen, a test that names the fields
 the specification requires and asserts the operation returns them. A field the API does not return
 is a recorded finding with the slice that will add it, not a silent omission.
 
 ### Slice 1 — notifications, both applications
 
-**Goal.** §22 (`:2196`). M11 slice 1 built `GET /api/v1/notifications`, mark-read and
+### Goal
+
+§22 (`:2196`). M11 slice 1 built `GET /api/v1/notifications`, mark-read and
 mark-all-read; nothing renders them.
 
-**What it changes.** A bell in both shells with an unread count, a list, mark-read, and
+### What it changes
+
+A bell in both shells with an unread count, a list, mark-read, and
 mark-all-read. The count comes from the `unread_count` the API already returns.
 
-**What proves it.** `SCREENS-NOTIFY-001` — the indicator reflects the server's count and never a
+### What proves it
+
+- `UI-NOTIFY-001` — the indicator reflects the server's count and never a
 locally-derived one, and marking read updates it without a page reload. §2.3 (`:205`): server
 truth over visual state.
 
 ### Slice 2 — the work queue surface
 
-**Goal.** §10.3 (`:1348`), against the sixteen queues M11 slices 2–5 built.
+### Goal
 
-**What it changes.** One queue shell driven by the queue registry, a per-role landing page, and
+§10.3 (`:1348`), against the sixteen queues M11 slices 2–5 built.
+
+### What it changes
+
+One queue shell driven by the queue registry, a per-role landing page, and
 the filter/sort/cursor controls §19.3 (`15_Agent_Implementation_Plan.md:1298`) requires. Every
 queue returns the same five-field row, so **one table component serves all sixteen** — which is
 the payoff of that decision.
 
-**What proves it.** `SCREENS-QUEUE-001` — a role sees exactly the queues its grants allow, and the
+### What proves it
+
+- `UI-QUEUE-001` — a role sees exactly the queues its grants allow, and the
 paging control walks a cursor rather than an offset. §20.1 (`:2114`): frontend visibility is not
 authorization, so the test asserts the *server* refuses, not that the link is hidden.
 
 ### Slice 3 — the trader's payment result
 
-**Goal.** §9.9 (`:1256`), §9.10 (`:1273`), §9.11 (`:1277`). M9 published results and built the
+### Goal
+
+§9.9 (`:1256`), §9.10 (`:1273`), §9.11 (`:1277`). M9 published results and built the
 share file; no trader can see any of it.
 
-**What it changes.** The publication screen, its version history, acknowledge, and dispute.
+### What it changes
 
-**What proves it.** `SCREENS-PUB-001` — a second trader receives 404 rather than 403 on somebody
+The publication screen, its version history, acknowledge, and dispute.
+
+### What proves it
+
+- `UI-PUB-001` — a second trader receives 404 rather than 403 on somebody
 else's publication, and the acknowledge and dispute buttons are absent rather than disabled when
 the publication is superseded.
 
 ### Slice 4 — the centre's result confirmation and publication
 
-**Goal.** §16.4 (`:1859`), §16.5 (`:1870`), §16.6 (`:1880`), §16.7 (`:1894`), §16.8 (`:1900`),
+### Goal
+
+§16.4 (`:1859`), §16.5 (`:1870`), §16.6 (`:1880`), §16.7 (`:1894`), §16.8 (`:1900`),
 §16.9 (`:1911`).
 
-**What it changes.** Confirm paid, confirm failed, create a retry, preview a publication, publish
+### What it changes
+
+Confirm paid, confirm failed, create a retry, preview a publication, publish
 it, and the correction flow.
 
-**What proves it.** `SCREENS-RESULT-001` — the correction screen cannot be reached by a role that
+### What proves it
+
+- `UI-RESULT-001` — the correction screen cannot be reached by a role that
 holds only the preparer half of the split, and the publish button requires the recent-auth dialog
 §8.11 (`:887`) specifies.
 
 ### Slice 5 — gold orders, trader and centre
 
-**Goal.** §9.12 (`:1287`), §17.1 (`:1931`), §17.2 (`:1944`). M10 slices 1–2.
+### Goal
 
-**What it changes.** The trader creates and submits an order; the centre reviews and prices it.
+§9.12 (`:1287`), §17.1 (`:1931`), §17.2 (`:1944`). M10 slices 1–2.
 
-**What proves it.** `SCREENS-GOLD-001` — the pricing workspace refuses to submit against a stale
+### What it changes
+
+The trader creates and submits an order; the centre reviews and prices it.
+
+### What proves it
+
+- `UI-GOLD-001` — the pricing workspace refuses to submit against a stale
 pricing version, using the `If-Match` the API already requires.
 
 ### Slice 6 — incoming payment, claim to confirmation
 
-**Goal.** §17.3 (`:1958`), §17.4 (`:1969`), §17.5 (`:1982`). M10 slices 3–6.
+### Goal
 
-**What it changes.** The trader's receipt upload; the accountant's statement import, duplicate
+§17.3 (`:1958`), §17.4 (`:1969`), §17.5 (`:1982`). M10 slices 3–6.
+
+### What it changes
+
+The trader's receipt upload; the accountant's statement import, duplicate
 review, match proposal and confirmation.
 
-**What proves it.** `SCREENS-INCOMING-001` — an overpayment shows the reconciliation block §24.1
+### What proves it
+
+- `UI-INCOMING-001` — an overpayment shows the reconciliation block §24.1
 (`:2244`) requires rather than a generic error, because that path opens a task rather than
 refusing.
 
 ### Slice 7 — dispatch and closure
 
-**Goal.** §17.6 (`:1986`), §17.7 (`:2000`). M10 slices 7–8.
+### Goal
 
-**What it changes.** The warehouse's dispatch guard panel and registration; the trader's
+§17.6 (`:1986`), §17.7 (`:2000`). M10 slices 7–8.
+
+### What it changes
+
+The warehouse's dispatch guard panel and registration; the trader's
 acknowledgement; the centre's closure.
 
-**What proves it.** `SCREENS-DISPATCH-001` — the guard panel shows *why* a dispatch is blocked and
+### What proves it
+
+- `UI-DISPATCH-001` — the guard panel shows *why* a dispatch is blocked and
 offers the override only to the role that holds it, with the override reason mandatory.
 
 ### Slice 8 — Definition of Done
 
-**Goal.** A gate that fails when an operation ships without a screen or a recorded reason.
+### Goal
 
-**What it changes.** A test that walks the published OpenAPI operations and the route tables of
+A gate that fails when an operation ships without a screen or a recorded reason.
+
+### What it changes
+
+A test that walks the published OpenAPI operations and the route tables of
 both applications, and asserts every operation is either reachable from a screen or listed with
 the reason it is not — the same shape as the queue registry's `BLOCKED`.
 
-**What proves it.** `TRACE-SCREENS-002` — the gate is written against *the operations that exist*
+### What proves it
+
+- `TRACE-SCREENS-002` — the gate is written against *the operations that exist*
 rather than the screens this plan adds, which is the only reason M7's equivalent caught `/login`
 being unswept by the accessibility suite since M3.
 

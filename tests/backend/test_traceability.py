@@ -852,6 +852,53 @@ PENDING: dict[str, str] = {
     # `tests/integration/test_queue_contract.py`, as this block promised it would. The accountant's
     # eleven-queue obligation stays below and is slice 3's: slice 2 asserts the
     # state/adjacent-state rule for one queue, which is not the same claim.
+    # --- M11 Screens, recorded before the first slice -------------------------------------
+    #
+    # `docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md`'s eight remaining obligations, registered
+    # here at plan time for the reason M11's own plan gives: an obligation nothing tracks is one a
+    # phase can finish without meeting.
+    #
+    # `UI-READ-001` is deliberately absent — slice 0 discharges it in
+    # `tests/backend/test_screen_reads.py`, and listing it here while that file cites it would fail
+    # the pending-yet-cited gate.
+    #
+    # The prefix is `UI`, not `SCREENS`. The plan's first draft used the latter, which
+    # `PREFIXES` above does not contain, so every one of these would have been refused by the
+    # invented-prefix gate — the third time that gate has caught a whole category.
+    "UI-NOTIFY-001": (
+        "M11 Screens slice 1 - the notification indicator in both shells. Stated by "
+        "`docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet built."
+    ),
+    "UI-QUEUE-001": (
+        "M11 Screens slice 2 - the work queue surface over the sixteen queues M11 built. Stated "
+        "by `docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet built."
+    ),
+    "UI-PUB-001": (
+        "M11 Screens slice 3 - the trader's payment result, acknowledge and dispute. Stated by "
+        "`docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet built. Slice 0's survey "
+        "confirms the reads it needs already exist."
+    ),
+    "UI-RESULT-001": (
+        "M11 Screens slice 4 - the centre's result confirmation and publication. Stated by "
+        "`docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet built."
+    ),
+    "UI-GOLD-001": (
+        "M11 Screens slice 5 - gold orders, trader and centre. Stated by "
+        "`docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet built."
+    ),
+    "UI-INCOMING-001": (
+        "M11 Screens slice 6 - incoming payment, claim to confirmation. Stated by "
+        "`docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet built."
+    ),
+    "UI-DISPATCH-001": (
+        "M11 Screens slice 7 - the dispatch guard panel and closure. Stated by "
+        "`docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet built."
+    ),
+    "TRACE-SCREENS-002": (
+        "M11 Screens slice 8 - the gate that fails when an operation ships with no screen and no "
+        "recorded reason. Stated by `docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet "
+        "built."
+    ),
     "SVC-QUEUE-002": (
         "M11 slice 4 built four of the seven and proved this obligation for them: the manager's "
         "`batch-versions-awaiting-approval` and the warehouse's three, including the derived "
