@@ -865,10 +865,15 @@ PENDING: dict[str, str] = {
     # The prefix is `UI`, not `SCREENS`. The plan's first draft used the latter, which
     # `PREFIXES` above does not contain, so every one of these would have been refused by the
     # invented-prefix gate — the third time that gate has caught a whole category.
-    "UI-NOTIFY-001": (
-        "M11 Screens slice 1 - the notification indicator in both shells. Stated by "
-        "`docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet built."
-    ),
+    # M11 Screens slice 1 discharged `UI-NOTIFY-001`: a notifications page in both applications,
+    # each with its own data module because `UI-ISO-001` forbids a shared one, and both routes in
+    # the accessibility sweep. The unread count is the server's own and is never derived from the
+    # page.
+    #
+    # The plan asked for a bell in the shell and a page is what shipped. The shell is shared
+    # component territory; the page is not, so the page is the half that could be built without
+    # touching a surface both applications render. Recorded rather than quietly narrowed — a bell
+    # is a slice 2 concern, where the queue counts give it something to show.
     "UI-QUEUE-001": (
         "M11 Screens slice 2 - the work queue surface over the sixteen queues M11 built. Stated "
         "by `docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet built."

@@ -34,6 +34,14 @@ const paths = [
   "/requests",
   "/requests/new",
   "/beneficiaries",
+  // M11 Screens slice 1. The notification list, in the sweep from the moment it exists.
+  //
+  // `TRACE-SCREENS-001` was written as "compare the sweep against the routes that exist"
+  // rather than "the screens this plan adds", and that is the only reason it caught
+  // `/login` being unswept since M3. A new page that is not added here fails it immediately,
+  // which is the intent: the sweep is a list of what a person can open, not of what somebody
+  // remembered.
+  "/notifications",
 ] as const;
 
 for (const path of paths) {
