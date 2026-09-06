@@ -883,9 +883,22 @@ PENDING: dict[str, str] = {
     # instance is discharged even when there is one instance — which is a different claim from
     # slice 3's, and the distinction is why that one stayed pending and this one does not.
     "OPS-JOB-001": (
-        "M11 slice 6 - the six maintenance jobs nothing schedules. Stated by "
-        "`docs/handoff/M11_IMPLEMENTATION_PLAN.md` and not yet built; the slice's own pull "
-        "request discharges it and removes this entry in the same commit."
+        "M11 slice 6A scheduled the **first** of the five and proved both properties for it: "
+        "`tests/integration/test_checksum_verification.py` asserts the bound with more rows than "
+        "the limit, and idempotence by running the pass twice against the same state and "
+        "checking the table is unchanged.\n"
+        "\n"
+        "It stays pending because the obligation is about **each** job, and four are unscheduled: "
+        "storage reconciliation's set-comparison detectors, pending upload cleanup, notification "
+        "retry, and the retention dry run. Slice 6B takes them.\n"
+        "\n"
+        "The split is by blocker rather than by size, which is this project's rule for splitting "
+        "a slice. Checksum verification is a *bounded read* over rows that already exist. The "
+        "other four are not the same shape: two of them would **remove** rows, which ADR-005 "
+        "blocks, and `test_no_deletion_machinery.py` refuses on purpose; storage reconciliation's "
+        "remaining detectors compare a storage listing against the table, and bounding a set "
+        "comparison produces false 'missing' findings rather than a partial answer. Discharging "
+        "on one of five would be the over-claim slice 3 made and slice 3B had to correct."
     ),
     "TRACE-M11-001": (
         "M11 slice 7 - reports and the Definition of Done. Stated by "

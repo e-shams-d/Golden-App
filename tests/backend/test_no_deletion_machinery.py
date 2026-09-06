@@ -209,17 +209,30 @@ def test_no_sql_string_deletes_rows_or_installs_a_trigger() -> None:
     assert offenders == [], "SQL that removes rows or installs a trigger:\n" + "\n".join(offenders)
 
 
-def test_the_scheduled_tasks_are_exactly_the_two_recovery_sweeps() -> None:
+def test_every_scheduled_task_is_one_that_removes_nothing() -> None:
     """Pinned, so a retention or expiry job cannot arrive as an extra dict entry.
 
-    Both entries here recover from a process death: one re-dispatches an outbox
-    row whose after-commit hook was lost, the other reports leases whose holder
-    disappeared. Neither removes anything. `idempotency_records.expires_at` has an
-    index and nothing that acts on it, and sweeping it would destroy exactly the
-    rows that prove no duplicate financial command was accepted.
+    The first two recover from a process death: one re-dispatches an outbox row whose
+    after-commit hook was lost, the other reports leases whose holder disappeared.
+    `idempotency_records.expires_at` has an index and nothing that acts on it, and sweeping it
+    would destroy exactly the rows that prove no duplicate financial command was accepted.
+
+    **M11 slice 6A added the third, and this gate caught it — which is what it is for.** The
+    assertion was an equality over two names and failed the moment `checksum-verification`
+    appeared, so a scheduled job could not arrive quietly. Widened rather than loosened, and it
+    stays an equality: a fourth fails the same way.
+
+    The property that matters is unchanged, and is now in the test's own name: **none of these
+    removes anything.** Checksum verification reads objects and reports disagreements; it does not
+    quarantine a file, rewrite a digest, or delete a row. It cannot know whether the bytes or the
+    record is wrong, and acting on that guess would destroy the evidence of the disagreement.
     """
 
-    assert set(BEAT_SCHEDULE) == {"outbox-dispatch", "stale-lease-sweep"}
+    assert set(BEAT_SCHEDULE) == {
+        "outbox-dispatch",
+        "stale-lease-sweep",
+        "checksum-verification",
+    }
 
 
 def test_no_route_exposes_a_deletion_or_a_retention_action(app_factory) -> None:
