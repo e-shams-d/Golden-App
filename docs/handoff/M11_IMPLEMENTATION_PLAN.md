@@ -248,6 +248,44 @@ Report generation is slice 7's.
 an unbounded set stops finishing as the database grows, and a maintenance job nobody can finish is
 worse than none.
 
+### Corrected after the survey — this slice is two jobs, not five
+
+**The paragraph above was written before the code was read, and four of the five turned out not to
+be what it says.** Slice 6A scheduled the one that was — bounded checksum verification, in
+`app/storage/verification.py`. What the survey behind it found is recorded here rather than left
+for whoever picks up 6B.
+
+**Notification retry is already implemented, and building it again would be harmful.** The
+notification projection is an outbox consumer, and `app/workers/dispatcher.py` already retries a
+failed delivery with backoff and dead-letters it after eight attempts — which is §19.4's "is
+retried" and "is observable". `tests/integration/test_notification_projection.py` proves a
+malformed payload is recorded as a *retryable* failure rather than dropped. A second retry
+mechanism over the same queue would put two components in charge of when one row is re-delivered,
+which is worse than having none.
+
+**Pending upload cleanup cannot be built here, and the reason is a decision rather than a
+difficulty.** §19.5 names it "through governed rules"; the governing rule is ADR-005, which is
+open, and the owner's decision of 2026-09-05 is **no automatic deletion**.
+`tests/backend/test_no_deletion_machinery.py` refuses a scheduled task that removes rows, on
+purpose. Building this would mean defeating a gate this project put there deliberately.
+
+**Storage reconciliation's remaining detectors cannot be bounded the way slice 6A's was.**
+`checksum_mismatches` is a per-row check, so reading the newest N is a partial answer. The
+set-comparison detectors — `storage_objects_without_a_record` and
+`records_without_a_storage_object` — compare a storage listing against the table, and bounding
+either side makes rows *appear* missing from the other. That is not a partial answer, it is a
+**wrong** one, and a maintenance job that invents findings is worse than one that does not run.
+They stay in the operator-run CLI, where an exhaustive pass is what the operator wants.
+
+**The retention dry run is the real work left, and it is safe.** A dry run deletes nothing, so
+neither ADR-005 nor the owner's decision blocks it. Two things make it worth doing before either
+is settled: `retention_policies` is a full proposal → approval → activation lifecycle with **no
+application caller at all** — another mechanism nobody built a reader for — and "what would
+happen" should exist and be trusted before "do it" is ever written. With no active policy it
+reports nothing, which is the correct answer rather than an empty one.
+
+So **6B is the retention dry run**, and the other three are recorded above rather than built.
+
 ### What proves it
 
 - `OPS-JOB-001` — each job is idempotent under redelivery and bounded by an explicit limit,
