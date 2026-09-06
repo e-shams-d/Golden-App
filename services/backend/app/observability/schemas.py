@@ -45,6 +45,13 @@ class DependenciesResponse(BaseModel):
     # infer it from environment variables. This endpoint is behind the operations token,
     # so it discloses nothing to anyone else.
     scan_policy: str
+    # M11. Present only when the live adapter is an accepted risk rather than a control.
+    #
+    # A name alone was not enough. `accepted_risk_no_scanner` means something precise to whoever
+    # chose it and nothing at all to an operator reading a health check at two in the morning — so
+    # the adapter carries a sentence and it is surfaced here, rather than left in a docstring
+    # nobody opens while diagnosing. `None` for every adapter that is a real control.
+    scan_policy_note: str | None = None
 
 
 class WorkerStatus(BaseModel):

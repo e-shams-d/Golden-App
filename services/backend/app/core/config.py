@@ -116,9 +116,16 @@ class Settings(BaseSettings):
 
     # ADR-008 is open, so the default is the adapter that reports every file as unscanned
     # and lets the database's one-value whitelist refuse it. `development_bypass` reports
-    # every file clean and refuses to construct in production; see `app/files/scanning.py`
-    # for why those are the only two.
-    file_scan_policy: Literal["none", "development_bypass"] = Field(
+    # every file clean and refuses to construct in production.
+    #
+    # M11 adds `accepted_risk_no_scanner`, which also reports every file clean but **does** run in
+    # production — on the owner's decision of 2026-09-05 to pilot without a scanner. A third name
+    # rather than a lifted refusal, because the development adapter's name is what tells a later
+    # reader whether a production deployment running it was a decision or a mistake. It announces
+    # itself in the readiness payload and in a startup warning; see `app/files/scanning.py`.
+    #
+    # The default stays `none`, so anyone who has not decided still fails closed.
+    file_scan_policy: Literal["none", "development_bypass", "accepted_risk_no_scanner"] = Field(
         default="none", validation_alias="FILE_SCAN_POLICY"
     )
 

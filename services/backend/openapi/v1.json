@@ -2787,6 +2787,17 @@
             "title": "Scan Policy",
             "type": "string"
           },
+          "scan_policy_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scan Policy Note"
+          },
           "status": {
             "enum": [
               "ok",

@@ -1,4 +1,4 @@
-"""The scan policy: two adapters, and no third.
+"""The scan policy: three adapters, and no fourth.
 
 Covers: FILE-SCAN-002, FILE-SCAN-004, FILE-LIFE-002.
 
@@ -19,9 +19,11 @@ from pathlib import Path
 
 import pytest
 from app.files.scanning import (
+    POLICY_ACCEPTED_RISK,
     POLICY_DEVELOPMENT_BYPASS,
     POLICY_NAMES,
     POLICY_NONE,
+    AcceptedRiskNoScanner,
     DevelopmentScanBypass,
     NoScannerConfigured,
     build_scan_policy,
@@ -75,11 +77,16 @@ def test_an_unknown_policy_name_is_refused_rather_than_defaulted() -> None:
             build_scan_policy(policy_name=unknown, app_env="test")
 
 
-def test_the_only_two_policies_are_the_two_that_are_named() -> None:
-    """FILE-LIFE-002's neighbour: the set is closed, and closing it is what makes the
-    absence of a third adapter a decision rather than an omission."""
+def test_the_only_policies_are_the_ones_that_are_named() -> None:
+    """FILE-LIFE-002's neighbour: the set is closed, so a new adapter is a decision.
 
-    assert POLICY_NAMES == (POLICY_NONE, POLICY_DEVELOPMENT_BYPASS)
+    **This gate caught M11's third adapter, which is exactly what it is for.** It asserted
+    `POLICY_NAMES == (POLICY_NONE, POLICY_DEVELOPMENT_BYPASS)` and failed the moment
+    `accepted_risk_no_scanner` appeared, so adding one could not be done quietly. Widened here
+    rather than deleted, and it stays an **equality**: a fourth adapter fails it the same way.
+    """
+
+    assert POLICY_NAMES == (POLICY_NONE, POLICY_DEVELOPMENT_BYPASS, POLICY_ACCEPTED_RISK)
     assert isinstance(
         build_scan_policy(policy_name=POLICY_NONE, app_env="test"), NoScannerConfigured
     )
@@ -87,6 +94,47 @@ def test_the_only_two_policies_are_the_two_that_are_named() -> None:
         build_scan_policy(policy_name=POLICY_DEVELOPMENT_BYPASS, app_env="test"),
         DevelopmentScanBypass,
     )
+    assert isinstance(
+        build_scan_policy(policy_name=POLICY_ACCEPTED_RISK, app_env="production"),
+        AcceptedRiskNoScanner,
+    )
+
+
+def test_the_accepted_risk_runs_in_production_and_the_development_bypass_does_not() -> None:
+    """The whole difference between the two clean-reporting adapters, in one test.
+
+    Both report every file clean. Only one may run where real money moves, and the reason is not
+    technical — the owner accepted this risk for production and did not accept the other. If this
+    ever passes for `development_bypass`, that name has stopped meaning anything.
+    """
+
+    live = build_scan_policy(policy_name=POLICY_ACCEPTED_RISK, app_env="production")
+    assert live.scan(storage_key="k").permits_availability
+
+    with pytest.raises(ValueError, match="cannot be used in production"):
+        build_scan_policy(policy_name=POLICY_DEVELOPMENT_BYPASS, app_env="production")
+
+
+def test_an_accepted_risk_announces_itself_and_a_control_does_not() -> None:
+    """A risk nobody is told about is a risk nobody accepted.
+
+    Two surfaces carry it: `is_accepted_risk` drives the startup warning, `readiness_note` is
+    returned by the dependencies endpoint. Both are read with `getattr` at their call sites, so
+    this asserts the attributes exist rather than that some caller matched on a name.
+
+    The real controls must carry **neither** — otherwise the warning becomes noise, and noise is
+    how a warning stops being read.
+    """
+
+    risky = build_scan_policy(policy_name=POLICY_ACCEPTED_RISK, app_env="production")
+    assert getattr(risky, "is_accepted_risk", False) is True
+    note = getattr(risky, "readiness_note", None)
+    assert note is not None and "without being inspected" in note
+
+    for name in (POLICY_NONE, POLICY_DEVELOPMENT_BYPASS):
+        policy = build_scan_policy(policy_name=name, app_env="test")
+        assert getattr(policy, "is_accepted_risk", False) is False
+        assert getattr(policy, "readiness_note", None) is None
 
 
 def test_no_adapter_can_report_availability_without_a_clean_scan() -> None:
