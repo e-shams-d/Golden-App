@@ -909,11 +909,10 @@ PENDING: dict[str, str] = {
         "survey is in `docs/handoff/M11_IMPLEMENTATION_PLAN.md`'s corrected slice 6 section, so "
         "the next reader finds it before re-deriving it."
     ),
-    "TRACE-M11-001": (
-        "M11 slice 7 - reports and the Definition of Done. Stated by "
-        "`docs/handoff/M11_IMPLEMENTATION_PLAN.md` and not yet built; the slice's own pull "
-        "request discharges it and removes this entry in the same commit."
-    ),
+    # M11 slice 7 discharged `TRACE-M11-001` in `tests/integration/test_m11_definition_of_done.py`,
+    # as this block promised it would: an accountant finds work through the report, locates it in
+    # the queue, acts on it through the command that owns the transition, and the queue lets it go.
+    # The fourth step is the one a checklist could not make.
     # Slice 8 shipped, and with it the last two obligations M10 owed. Both are discharged by
     # citation in `tests/integration/test_gold_sale_closure.py`.
     #

@@ -29,6 +29,7 @@ from app.api.v1.payment_publications import router as payment_publications_route
 from app.api.v1.payment_requests import router as payment_requests_router
 from app.api.v1.queues import router as queues_router
 from app.api.v1.receipt_segments import router as receipt_segments_router
+from app.api.v1.reports import router as reports_router
 from app.api.v1.roles import router as roles_router
 from app.api.v1.trader_publications import router as trader_publications_router
 from app.api.v1.trader_self_service import router as trader_self_service_router
@@ -108,3 +109,7 @@ api_v1_router.include_router(notifications_router)
 # read `processing_jobs`. Nesting each under its table would scatter one contract across seven
 # routers and make "which queues exist" unanswerable from the route table.
 api_v1_router.include_router(queues_router)
+# M11 slice 7. One report, over the queues above. Its own prefix because a report is not a
+# view of one aggregate and never has been - section 19 lists reports beside queues, not
+# inside them.
+api_v1_router.include_router(reports_router)
