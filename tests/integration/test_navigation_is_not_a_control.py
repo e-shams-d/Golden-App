@@ -58,11 +58,33 @@ GATED_ROUTES: list[tuple[str, str, str, str]] = [
 _ITEM = re.compile(r'href:\s*"([^"]+)"[^}]*?permission:\s*"([^"]+)"', re.S)
 _HREF = re.compile(r'href:\s*"([^"]+)"')
 
-# The one item that carries no permission, because it is what an authenticated person lands
-# on. Named rather than counted: the floor below asks that *only* this is ungated, which is
-# a rule, where "at least N items are gated" was a number that went stale the moment the
-# navigation legitimately shrank.
-UNGATED = frozenset({"/"})
+# The items that carry no permission. Named rather than counted: the floor below asks that
+# *only* these are ungated, which is a rule, where "at least N items are gated" was a number
+# that went stale the moment the navigation legitimately shrank.
+#
+# `/` is the dashboard — what an authenticated person lands on.
+#
+# `/notifications` arrived with M11 Screens slice 1, and widening a floor that has just fired
+# is the repair this file's own docstring calls the wrong one. It is defensible here for a
+# reason that does not apply to a screen somebody forgot to gate: **there is no notification
+# permission to name.** Access is decided by `notifications.recipient_actor_id`, which the
+# server reads from the session, so gating the item would mean inventing a permission — and
+# gating it on a neighbouring grant would hide a person's own messages behind an authority
+# unrelated to them.
+#
+# That reason is asserted rather than left as prose, immediately below, so the exemption
+# expires by itself the day a notification permission exists. What makes the item safe as
+# opposed to merely ungateable is in `test_notification_reading.py`: the three routes answer
+# 401 without a session, and every read is scoped to its own recipient.
+UNGATED = frozenset({"/", "/notifications"})
+
+CATALOGUE = REPOSITORY_ROOT / "docs" / "governance" / "permission_catalog.yaml"
+
+# What a notification permission's code would begin with. The exemption above rests on there
+# being none; this is how that stops being taken on trust.
+NOTIFICATION_PREFIX = "notification"
+
+_PERMISSION_CODE = re.compile(r"^ {6}([a-z_]+\.[a-z_]+):", re.M)
 
 
 def gated_navigation() -> dict[str, str]:
@@ -182,9 +204,49 @@ def test_the_navigation_module_still_gates_items_on_permissions() -> None:
 
     ungated = set(hrefs) - set(gated)
     assert ungated == UNGATED, (
-        f"these navigation items carry no permission: {sorted(ungated)}. Only the dashboard "
-        "may be ungated; anything else is a screen shown to everybody, and an item the "
-        "permission pattern failed to parse looks exactly the same from here."
+        f"these navigation items carry no permission: {sorted(ungated)}, and only "
+        f"{sorted(UNGATED)} may be. Anything else is a screen shown to everybody, and an "
+        "item the permission pattern failed to parse looks exactly the same from here. "
+        "Adding an entry to UNGATED is how this check stops meaning anything — read the "
+        "note above it before doing so."
+    )
+
+
+def test_nothing_in_the_catalogue_could_have_gated_the_notifications_item() -> None:
+    """The exemption `/notifications` was granted on, asserted so it can expire on its own.
+
+    Widening a floor because it fired is the move this file's docstring names as the wrong
+    repair, and slice 1 made that move. What separates it from the failure mode described
+    there is that the reason is checkable: the item is ungated because **the approved
+    catalogue defines no permission it could be gated on**, not because gating it was
+    inconvenient.
+
+    Left as a comment, that reason survives exactly as long as nobody adds one. Asserted, the
+    day `notification.read` is approved this fails, and whoever added it has to decide
+    deliberately whether the navigation item should now name it — which is the decision the
+    exemption is quietly making today.
+
+    Deliberately a prefix and not an exact code: `notification.read`, `notification.manage`
+    and `notifications.read` should all trip it, because any of them would mean the answer to
+    "what would you gate it on?" has changed.
+    """
+
+    codes = _PERMISSION_CODE.findall(CATALOGUE.read_text(encoding="utf-8"))
+
+    # Guard the guard, in the same shape as the navigation floor above: a pattern that
+    # stopped matching would find no notification permission for the wrong reason and this
+    # test would go quiet.
+    assert len(codes) > 100, (
+        f"only {len(codes)} permission codes were parsed out of {CATALOGUE.name}; the "
+        "pattern no longer matches the catalogue's layout, and the check below is about "
+        "nothing"
+    )
+
+    named = [code for code in codes if code.startswith(NOTIFICATION_PREFIX)]
+    assert named == [], (
+        f"the catalogue now defines {named}, so `/notifications` is no longer ungated for "
+        "lack of anything to gate it on. Decide whether the navigation item should name one "
+        "— and if it should not, say why here rather than deleting this test."
     )
 
 

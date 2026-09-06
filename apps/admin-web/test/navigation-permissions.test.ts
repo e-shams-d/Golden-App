@@ -213,6 +213,12 @@ describe("the gating permissions themselves", () => {
     // authority unrelated to them.
     //
     // Still an equality rather than an allowlist: a third ungated item fails this the same way.
+    //
+    // **The same equality is written a second time**, in
+    // `tests/integration/test_navigation_is_not_a_control.py`, which parses this navigation module
+    // rather than importing it. Slice 1 updated this copy and not that one, and CI was the first
+    // thing to notice — the integration suite skips without `INTEGRATION_ADMIN_DATABASE_URL`, so
+    // on a developer machine the second copy is silent rather than red. Change one, change both.
     const ungated = items.filter((item) => item.permission === undefined);
 
     expect(ungated.map((item) => item.href)).toEqual(["/", "/notifications"]);
