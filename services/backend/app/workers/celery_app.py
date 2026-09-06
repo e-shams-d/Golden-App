@@ -22,6 +22,14 @@ from app.core.config import Settings
 OUTBOX_POLL_INTERVAL = timedelta(seconds=30)
 STALE_LEASE_SWEEP_INTERVAL = timedelta(minutes=5)
 
+# M11 slice 6A. Daily, and the interval is part of the design rather than a default.
+#
+# Every pass reads objects out of storage, so the cost is I/O per row rather than a query. Hourly
+# would multiply that by twenty-four to catch a corruption a day sooner, which is not a trade worth
+# making for bytes that do not change on their own. Weekly would let a broken write path run for
+# six days before anything noticed.
+CHECKSUM_VERIFY_INTERVAL = timedelta(days=1)
+
 BEAT_SCHEDULE: dict[str, dict[str, object]] = {
     "outbox-dispatch": {
         "task": "app.workers.tasks.maintenance.poll_outbox_task",
@@ -36,6 +44,16 @@ BEAT_SCHEDULE: dict[str, dict[str, object]] = {
         "schedule": STALE_LEASE_SWEEP_INTERVAL,
         "options": {"queue": "maintenance"},
     },
+    # M11 slice 6A. The third of §19.5's eight, and the first that reads storage rather than the
+    # database. Routed to `maintenance` explicitly like the other two, even though
+    # `app.workers.tasks.*` would not match this module's prefix rule on its own — the routes map
+    # below has no entry for `checksums`, so without this option the task would land on the
+    # default queue and nobody would notice until it was starved behind something else.
+    "checksum-verification": {
+        "task": "app.workers.tasks.checksums.verify_checksums_task",
+        "schedule": CHECKSUM_VERIFY_INTERVAL,
+        "options": {"queue": "maintenance"},
+    },
 }
 
 
@@ -48,6 +66,10 @@ def create_celery_app(settings: Settings) -> Celery:
         "app.workers.tasks.notifications.*": {"queue": "notifications"},
         "app.workers.tasks.reports.*": {"queue": "reports"},
         "app.workers.tasks.maintenance.*": {"queue": "maintenance"},
+        # M11 slice 6A. Its own entry rather than relying on the beat option above: a task sent by
+        # hand — an operator running a verification pass now — must land on the same queue the
+        # schedule uses, and `options` only covers the scheduled call.
+        "app.workers.tasks.checksums.*": {"queue": "maintenance"},
         "app.workers.tasks.ai.*": {"queue": "ai"},
     }
     app.conf.update(
