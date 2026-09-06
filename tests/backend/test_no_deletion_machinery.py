@@ -232,6 +232,13 @@ def test_every_scheduled_task_is_one_that_removes_nothing() -> None:
         "outbox-dispatch",
         "stale-lease-sweep",
         "checksum-verification",
+        # M11 slice 6B, and the entry that tests this gate's name hardest: a **retention** job on
+        # the schedule is the thing this file exists to refuse. It is admitted because it is a dry
+        # run — it counts what an activated policy would remove and removes nothing. The half that
+        # would delete is blocked by ADR-005 and by the owner's decision of 2026-09-05, and no
+        # module implements it. `test_no_deletion_verbs_*` below is what keeps that true; this list
+        # only records which tasks are scheduled.
+        "retention-dry-run",
     }
 
 
