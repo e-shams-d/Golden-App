@@ -42,6 +42,27 @@ const paths = [
   // which is the intent: the sweep is a list of what a person can open, not of what somebody
   // remembered.
   "/notifications",
+  // M11 Screens slice 3. The published payment result.
+  //
+  // A concrete path rather than relying on the `/requests` prefix: this is a separate page
+  // with its own headings and controls, and a prefix match is the compromise that lets one
+  // entry stand for a family of dynamic routes — not evidence that each was opened.
+  //
+  // The id is obviously fake, so the page renders the state a person reaches by following a
+  // stale link. `apps/trader-pwa/test/screens-are-swept.test.ts` is what now compares this
+  // list against the routes that exist; until slice 3 only `admin-web` had that gate.
+  "/requests/00000000-0000-4000-8000-000000000001/result",
+  // M11 Screens slice 3 found these three unswept, by porting `TRACE-SCREENS-001`'s
+  // sweep-versus-routes comparison to this application — until then it existed only for
+  // `admin-web`, which is why the obligation's own history records it catching *that* app's
+  // `/login` and never this one.
+  //
+  // `/login` is the screen every trader must use before any other. `/evidence` is reached
+  // from a request. `/offline` is what a PWA shows when the network is gone, which is a
+  // state this audience hits on a phone rather than an edge case.
+  "/login",
+  "/evidence",
+  "/offline",
 ] as const;
 
 for (const path of paths) {

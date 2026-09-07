@@ -2,6 +2,7 @@
 
 import { normalizeDigits, paymentRequestStatusLabel, t, toPersianDigits } from "@gold/localization";
 import { StateView } from "@gold/ui";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
@@ -50,6 +51,10 @@ type Phase =
 
 const CREATE_REVISION = "payment_request.create_revision";
 const SUBMIT = "payment_request.submit";
+// M11 Screens slice 3. Reported by `allowed_actions` from `result_published` onwards, and until
+// that slice the projection did not carry them at all.
+const ACKNOWLEDGE_RESULT = "payment_publication.acknowledge_own";
+const DISPUTE_RESULT = "payment_publication.dispute_own";
 
 export default function TraderRequestPage() {
   const parameters = useParams<{ requestId: string }>();
@@ -194,6 +199,24 @@ export default function TraderRequestPage() {
           <span className="text-[var(--ink-600)]">{t("trader.request.status")}: </span>
           <span className="font-bold">{paymentRequestStatusLabel(request.status)}</span>
         </p>
+
+        {/*
+          M11 Screens slice 3. The way to the published result.
+
+          Offered from `allowed_actions` like every other control on this page, rather than from a
+          status string — the two response commands are what the server reports when a result is
+          published and unanswered, which is exactly when that screen has something to do.
+        */}
+        {allowed.includes(ACKNOWLEDGE_RESULT) || allowed.includes(DISPUTE_RESULT) ? (
+          <p className="mt-4">
+            <Link
+              className="rounded-lg border border-[var(--gold-500)] bg-[var(--gold-50)] px-4 py-2 font-bold"
+              href={`/requests/${requestId}/result`}
+            >
+              {t("result.viewResult")}
+            </Link>
+          </p>
+        ) : null}
 
         {notice_from_centre ? (
           <section className="mt-5 rounded-2xl border border-[var(--gold-500)] bg-[var(--gold-50)] p-5">
