@@ -173,12 +173,18 @@ export interface paths {
   "/api/v1/health/workers": {
     get: operations["getHealthWorkers"];
   };
+  "/api/v1/incoming-payment-receipts/{receipt_id}": {
+    get: operations["getIncomingPaymentReceipt"];
+  };
   "/api/v1/incoming-payment-receipts/{receipt_id}/confirm": {
     post: operations["confirmIncomingPayment"];
   };
   "/api/v1/incoming-payment-receipts/{receipt_id}/matches": {
     get: operations["listIncomingPaymentMatches"];
     post: operations["proposeIncomingPaymentMatch"];
+  };
+  "/api/v1/incoming-payment-receipts/{receipt_id}/matches/{match_id}": {
+    get: operations["getIncomingPaymentMatch"];
   };
   "/api/v1/incoming-payment-receipts/{receipt_id}/matches/{match_id}/reject": {
     post: operations["rejectIncomingPaymentMatch"];
@@ -547,6 +553,7 @@ export interface components {
     "ReadinessResponse": { checks: { [key: string]: "ok" | "unavailable" }; status: "ready" | "not_ready" };
     "ReauthenticateRequest": { password: string; purpose: string; resource_id: string; resource_type: string };
     "ReauthenticateResponse": { authentication_level: string; expires_at: string; recent_auth_reference: string };
+    "ReceiptDetail": { amount_irr: number; confirmed_amount_irr: number | null; created_at: string; evidence_file_id: string | null; gold_sale_order_id: string; id: string; order_status: string; record_version: number; status: string; tracking_number: string | null };
     "RecoverPasswordRequest": { current_password: string; new_password: string; username: string };
     "RecoverPasswordResponse": { recovered: boolean };
     "RegisterTraderRequest": { contact_full_name: string; display_name: string; legal_name?: string | null; password: string; primary_phone: string };
@@ -660,6 +667,8 @@ export interface operations {
   "getHealthLiveness": { responses: { "200": { content: { "application/json": components["schemas"]["LivenessResponse"] } } } };
   "getHealthReadiness": { responses: { "200": { content: { "application/json": components["schemas"]["ReadinessResponse"] } }; "503": { content: { "application/json": components["schemas"]["ReadinessResponse"] } } } };
   "getHealthWorkers": { security: Array<{ OperationsToken: Array<never> }>; responses: { "200": { content: { "application/json": components["schemas"]["WorkersResponse"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "503": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
+  "getIncomingPaymentMatch": { parameters: { path: { match_id: string; receipt_id: string } }; responses: { "200": { content: { "application/json": components["schemas"]["MatchResponse"] } }; "400": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "409": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "428": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
+  "getIncomingPaymentReceipt": { parameters: { path: { receipt_id: string } }; responses: { "200": { content: { "application/json": components["schemas"]["ReceiptDetail"] } }; "400": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "409": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "428": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getManualReviewTask": { parameters: { path: { task_id: string } }; responses: { "200": { content: { "application/json": components["schemas"]["TaskDetail"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "409": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "428": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getOwnPaymentResultPublication": { parameters: { path: { request_id: string } }; responses: { "200": { content: { "application/json": components["schemas"]["TraderPublicationResponse"] } }; "400": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "403": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "412": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "428": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };
   "getOwnTraderProfile": { responses: { "200": { content: { "application/json": components["schemas"]["TraderProfileResponse"] } }; "401": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "404": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } }; "422": { content: { "application/json": components["schemas"]["ErrorEnvelope"] } } } };

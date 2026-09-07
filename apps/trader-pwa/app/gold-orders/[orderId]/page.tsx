@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { TraderShell } from "../../../components/trader-shell";
 import { readOrder, submitOrder, type GoldOrder } from "../../../src/gold-orders";
+import { submitReceipt } from "../../../src/incoming-receipts";
 
 /**
  * One gold order as its owner sees it, and the one command they may issue.
@@ -44,6 +45,12 @@ export default function TraderGoldOrderPage() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
+  // M11 Screens slice 6. The payment claim.
+  const [claimAmount, setClaimAmount] = useState("");
+  const [tracking, setTracking] = useState("");
+  const [sourceBank, setSourceBank] = useState("");
+  const [claimNotice, setClaimNotice] = useState<string | null>(null);
+
   const load = useCallback(
     async (signal?: AbortSignal): Promise<Phase> => {
       const { order, ifMatch } = await readOrder(orderId, signal);
@@ -78,6 +85,35 @@ export default function TraderGoldOrderPage() {
       } catch {
         setPhase({ kind: "failed" });
       }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * File the payment claim.
+   *
+   * The order is re-read afterwards rather than the claim being shown from the response: a claim
+   * moves the order's status, and the version this page holds is the one the submit button needs.
+   */
+  const claim = async () => {
+    setBusy(true);
+    setClaimNotice(null);
+    try {
+      await submitReceipt(orderId, {
+        // Rials have no minor unit, so a number loses nothing here — the opposite of the weight
+        // above, and the difference is real rather than an inconsistency.
+        amountIrr: Number(claimAmount),
+        trackingNumber: tracking.trim() || null,
+        sourceBankName: sourceBank.trim() || null,
+      });
+      setClaimAmount("");
+      setTracking("");
+      setSourceBank("");
+      setClaimNotice(t("receipt.submitted"));
+      setPhase(await load());
+    } catch {
+      setClaimNotice(t("receipt.failed"));
     } finally {
       setBusy(false);
     }
@@ -188,6 +224,84 @@ export default function TraderGoldOrderPage() {
                   {t("gold.submit")}
                 </button>
               </div>
+            ) : null}
+
+            {/*
+              M11 Screens slice 6. Telling the centre you have paid.
+
+              **Offered once the order has been priced**, because until then there is no amount to
+              have paid: `expected_amount_irr` is `null` while the centre has not quoted one, and a
+              claim against a price nobody has set is a number the accountant cannot match against
+              anything.
+
+              This is a *claim*, not a fact — the centre finds the bank row that proves it. The
+              form says so before the fields rather than after the button.
+            */}
+            {phase.order.expected_amount_irr !== null ? (
+              <form
+                aria-labelledby="claim-heading"
+                className="space-y-3 rounded border p-4"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void claim();
+                }}
+              >
+                <h2 className="font-semibold" id="claim-heading">
+                  {t("receipt.claimTitle")}
+                </h2>
+                <p className="text-sm">{t("receipt.claimExplains")}</p>
+
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="font-medium">{t("receipt.amount")}</span>
+                  <input
+                    className="rounded border px-2 py-1"
+                    disabled={busy}
+                    inputMode="numeric"
+                    onChange={(event) => setClaimAmount(event.target.value)}
+                    required
+                    value={claimAmount}
+                  />
+                </label>
+
+                {/* Everything below is optional, and the hint says so: a person who has just
+                    transferred money should not be blocked from telling the centre because they
+                    cannot find the tracking number on their bank's receipt. */}
+                <p className="text-xs opacity-80" id="claim-optional-hint">
+                  {t("receipt.optionalHelps")}
+                </p>
+
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="font-medium">{t("receipt.tracking")}</span>
+                  <input
+                    aria-describedby="claim-optional-hint"
+                    className="rounded border px-2 py-1"
+                    disabled={busy}
+                    onChange={(event) => setTracking(event.target.value)}
+                    value={tracking}
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="font-medium">{t("receipt.sourceBank")}</span>
+                  <input
+                    aria-describedby="claim-optional-hint"
+                    className="rounded border px-2 py-1"
+                    disabled={busy}
+                    onChange={(event) => setSourceBank(event.target.value)}
+                    value={sourceBank}
+                  />
+                </label>
+
+                {claimNotice !== null ? (
+                  <p aria-live="polite" className="rounded border p-3 text-sm">
+                    {claimNotice}
+                  </p>
+                ) : null}
+
+                <button className="rounded border px-3 py-1 font-bold" disabled={busy} type="submit">
+                  {t("receipt.submit")}
+                </button>
+              </form>
             ) : null}
           </>
         ) : null}

@@ -753,6 +753,13 @@ def test_no_trader_can_reach_the_matching_surface(world: dict[str, Any]) -> None
     client = world["client"]
     attempts = (
         client.get(f"/api/v1/incoming-payment-receipts/{receipt_id}/matches"),
+        # M11 Screens slice 6 added the two reads the confirm and reject commands presupposed, and
+        # they belong in this sweep rather than in a test of their own: the claim is the same one —
+        # a trader holds `incoming_receipt.read` no more than `incoming_payment.match` — and the
+        # docstring above says why a surface is checked whole. A read left out of this tuple is
+        # exactly the list endpoint that becomes the leak.
+        client.get(f"/api/v1/incoming-payment-receipts/{receipt_id}"),
+        client.get(f"/api/v1/incoming-payment-receipts/{receipt_id}/matches/{match_id}"),
         client.post(
             f"/api/v1/incoming-payment-receipts/{receipt_id}/matches",
             json={"bank_statement_row_id": row_id},

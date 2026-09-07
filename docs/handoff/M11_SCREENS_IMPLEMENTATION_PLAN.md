@@ -277,8 +277,31 @@ pricing version, using the `If-Match` the API already requires.
 
 ### What it changes
 
-The trader's receipt upload; the accountant's statement import, duplicate
-review, match proposal and confirmation.
+The trader's payment claim on their own order; the accountant's review screen —
+the claim, its candidates, proposing one, rejecting one, and confirming what arrived.
+
+**The statement import screen is not built.** The owner has confirmed the bank returns no Excel,
+so M10's statement parser has no input in practice and a screen for it would be a surface for a
+flow that cannot start. The routes exist and are tested; nothing reaches them from a browser.
+Unblocked by the bank question already recorded — whether an account statement can be exported in
+any importable format.
+
+**Duplicate review is not a separate screen either.** M10 builds duplicate detection into the
+import run, and with no import there is nothing to review; the accountant's judgement about which
+row proves a claim is the match surface, which *is* built.
+
+### What slice 6 corrected in slice 5's record
+
+Slice 5's precondition gate recorded both incoming-payment commands as needing the **receipt's**
+version. Confirming does; **rejecting a match does not** — that route passes
+`incoming_payment_match_id` and edits the match row. Reading the routes to build the screen is what
+found it.
+
+The distinction matters more than it looks: one read would have closed the recorded gap and left
+the reject screen with nothing to echo, **and the gate would have gone green** — a recorded gap
+that names the wrong aggregate is closed by a read that does not satisfy it. So slice 6 added two
+reads, `GET /incoming-payment-receipts/{receipt_id}` and `GET .../matches/{match_id}`, and the
+pairing is asserted rather than assumed.
 
 ### What proves it
 

@@ -103,16 +103,16 @@ EXEMPT: dict[tuple[str, str], tuple[str, str]] = {
 # is a deletion from this dict rather than an edit to it — which is how a recorded gap differs
 # from a floor somebody keeps adjusting.
 RECORDED_GAPS: dict[tuple[str, str], str] = {
-    ("POST", "/api/v1/incoming-payment-receipts/{receipt_id}/confirm"): (
-        "there is no `GET /incoming-payment-receipts/{receipt_id}`. M10 built the receipt as "
-        "something the trader submits and the accountant confirms from a queue row, and a queue "
-        "row carries five fields by a disclosure decision — no version among them. **M11 Screens "
-        "slice 6 builds the incoming-payment screens and needs this read**, so it closes the gap."
-    ),
-    ("POST", "/api/v1/incoming-payment-receipts/{receipt_id}/matches/{match_id}/reject"): (
-        "same missing read as `confirm` above: the precondition is the receipt's and the receipt "
-        "has no GET. Closed by M11 Screens slice 6."
-    ),
+    # M11 Screens slice 6 closed both incoming-payment entries by building the two reads —
+    # `GET /incoming-payment-receipts/{receipt_id}` and `GET .../matches/{match_id}` — which is
+    # what a closed gap looks like here: a deletion rather than an edit.
+    #
+    # **Slice 5 got one of them wrong, and reading the route while building the screen is what
+    # found it.** The reject entry said "the precondition is the receipt's". It is the *match's*:
+    # the route passes `incoming_payment_match_id` and edits the match row. So the gap needed a
+    # second read rather than the same one, and a recorded gap stating the wrong aggregate would
+    # have been closed by a read that did not satisfy it — the check would have gone green while
+    # the screen still had nothing to echo.
     ("POST", "/api/v1/center-profile/rename"): (
         "there is no `GET /center-profile`, and this route is guarded by an **operations token** "
         "rather than a session — `test_m3_definition_of_done.py` classifies it `OPERATIONS`. No "

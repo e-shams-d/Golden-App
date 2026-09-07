@@ -231,16 +231,25 @@ def test_the_queue_rows_link_where_the_server_says_and_nowhere_else() -> None:
         "where a row opens"
     )
 
-    linked = {name for name, queue in BUILT.items() if queue.detail_path is not None}
-    assert linked == {"sent-attempts-awaiting-result", "failed-partial-retry-payments"}, (
-        f"these queues declare a destination: {sorted(linked)}. Slice 4 built the attempt result "
-        "screen and gave a destination to exactly the two attempt queues; a third means a later "
-        "slice added one and this expectation should move with it."
+    # Each queue with a destination, and where it goes. An equality rather than a floor: a queue
+    # pointed at the wrong screen is the failure `detail_path` exists to prevent, and only naming
+    # the pairs catches it. Slices add rows here as they build screens.
+    expected = {
+        # M11 Screens slice 4. The attempt result screen.
+        "sent-attempts-awaiting-result": "/payment-attempts",
+        "failed-partial-retry-payments": "/payment-attempts",
+        # M11 Screens slice 6. The incoming payment review screen. **`receipt-confirmation-work` is
+        # deliberately absent**: that queue is the warehouse's, over gold *orders* under
+        # `gold_sale.dispatch`, and pointing it here would be the wrong screen for the right row.
+        "incoming-receipts-requiring-review": "/incoming-payments",
+    }
+    linked = {name: queue.detail_path for name, queue in BUILT.items() if queue.detail_path}
+
+    assert linked == expected, (
+        f"the queues declaring a destination are {linked}, expected {expected}. A new entry means "
+        "a later slice built a screen; a changed one means a queue now points somewhere else, "
+        "which is the wrong-screen-for-the-right-row failure this field exists to prevent."
     )
-    for name in linked:
-        assert BUILT[name].detail_path == "/payment-attempts", (
-            f"{name} points somewhere other than the attempt screen"
-        )
 
 
 def test_both_screens_are_in_the_accessibility_sweep() -> None:

@@ -84,6 +84,10 @@ const paths = [
   // page was rendered.
   "/gold-orders",
   "/gold-orders/00000000-0000-4000-8000-000000000006",
+  // M11 Screens slice 6. The incoming payment review screen. A concrete id, because a
+  // prefix match is a compromise for a family of dynamic routes rather than evidence that
+  // any one of them rendered.
+  "/incoming-payments/00000000-0000-4000-8000-000000000007",
 ] as const;
 
 for (const path of paths) {

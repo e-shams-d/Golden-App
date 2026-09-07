@@ -936,10 +936,25 @@ PENDING: dict[str, str] = {
     # three preconditions that are genuinely about a different aggregate (exempt, each with the
     # read that issues it), and three with no source at all (recorded, each naming the slice that
     # closes it). Slice 6 closes two of the three.
-    "UI-INCOMING-001": (
-        "M11 Screens slice 6 - incoming payment, claim to confirmation. Stated by "
-        "`docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet built."
-    ),
+    # M11 Screens slice 6 discharged `UI-INCOMING-001`, in
+    # `tests/backend/test_incoming_screens_exist.py` against M10's behavioural halves.
+    #
+    # **It closed slice 5's two recorded precondition gaps, and corrected one of them.** That gate
+    # had listed both incoming-payment commands as needing the *receipt's* version. Confirming
+    # does; rejecting a match does not — that route edits the match row. One read would have closed
+    # the recorded gap and left the reject screen with nothing to echo, with the gate green. So
+    # slice 6 built two reads, and the pairing is asserted rather than assumed.
+    #
+    # **Two gates fired on the new screen and both were right.** `screens-are-reachable` found a
+    # page nothing links to — true, because slice 4 moved queue destinations to the server on
+    # purpose, so a screen reached only from a queue row appears in no frontend file. It now counts
+    # a published `detail_path` as a link and reads the registry as text; the same pairing is
+    # asserted from the Python side, so neither half is trusted alone. The other was slice 4's own
+    # equality over which queues declare a destination, which is what an equality is for.
+    #
+    # The statement-import screen is **not built**: the owner has confirmed the bank returns no
+    # Excel, so M10's parser has no input and a screen for it would be a surface for a flow that
+    # cannot start. Recorded in the plan.
     "UI-DISPATCH-001": (
         "M11 Screens slice 7 - the dispatch guard panel and closure. Stated by "
         "`docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet built."
