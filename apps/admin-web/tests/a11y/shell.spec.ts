@@ -73,6 +73,12 @@ const paths = [
   // name covers the screen. `new-requests` deliberately: it is the queue carrying the
   // compatibility response model, so a break there is visible here as well.
   "/queues/new-requests",
+  // M11 Screens slice 4. The centre's result surface: one attempt's bank result, and the
+  // publication screen for one request. Concrete ids because the sweep drives a browser —
+  // with no such rows both pages render their failure state, which is what somebody
+  // following a stale link sees and the state most likely to ship without a heading.
+  "/payment-attempts/00000000-0000-4000-8000-000000000004",
+  "/requests/00000000-0000-4000-8000-000000000005/publication",
 ] as const;
 
 for (const path of paths) {

@@ -211,14 +211,48 @@ the publication is superseded.
 
 ### What it changes
 
-Confirm paid, confirm failed, create a retry, preview a publication, publish
-it, and the correction flow.
+Confirm paid, confirm failed, mark a retry required, create a retry, preview a
+publication and publish it. **The correction flow is not built**, and that is a correction to this
+plan rather than a reduction of it — see below.
 
 ### What proves it
 
-- `UI-RESULT-001` — the correction screen cannot be reached by a role that
-holds only the preparer half of the split, and the publish button requires the recent-auth dialog
-§8.11 (`:887`) specifies.
+- `UI-RESULT-001` — every command this screen offers comes from the server's
+`allowed_actions`, each carries the `If-Match` its read returned, and the publish control is absent
+rather than disabled for a role holding `payment_publication.preview` without `.publish`. The
+correction flow is recorded as blocked with the grant that blocks it, in the same shape the queue
+registry's `BLOCKED` uses.
+
+### Two things this slice found before writing any code
+
+**This obligation named the wrong command for the step-up.** Its first wording said "the publish
+button requires the recent-auth dialog §8.11 (`:887`) specifies". §8.11 describes the dialog
+*component* — that reauthentication is a separate step and must not auto-submit the financial
+command — and says nothing about which commands need one. `command_catalog.yaml` is the authority
+and it is explicit: `payment_publication.publish` carries **no** `recent_auth` field, while
+`payment_publication.correct_paid_result` carries `recent_auth:
+"required_for_approving_second_human"` alongside `separation_of_duties:
+"accountant_prepares_second_authorized_human_approves"`.
+
+So the step-up belongs to the **correction**, not to the publish. A test written against the
+original wording would have demanded a header the backend does not require, and passing it would
+have meant adding a control nothing asked for.
+
+**The correction flow cannot be built as specified.** `permission_catalog.yaml` gives
+`payment_publication.correct` `default_roles: []` — no role holds it, by design: POL-002 requires
+the preparer and approver permissions to be split and defers the split to **ADR-SEC-009**, which is
+unresolved. `command_catalog.yaml` marks the command
+`status: "blocked_by_business_policy_and_api_persistence_contract"` with `method: TBD, path: TBD`.
+
+Building the screen anyway would produce a surface nobody can open — the `bank_profile.activate_
+version` shape this project already carries once, and the "complete machinery nothing calls" defect
+M3 hit five times. The original obligation's other clause is affected too: "cannot be reached by a
+role that holds only the preparer half" is *trivially* true today, because it cannot be reached by
+anybody. An assertion that passes for the wrong reason is worse than none.
+
+Unblocked by ADR-SEC-009. Until then the backend route exists — M9 slice 7 built it and
+`test_publication_correction.py` proves `_refuse_a_single_human` refuses even when one person holds
+both grants — and no screen reaches it.
 
 ### Slice 5 — gold orders, trader and centre
 

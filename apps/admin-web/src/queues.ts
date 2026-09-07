@@ -37,6 +37,17 @@ export type QueueListing = Readonly<{
   sorts: readonly string[];
   /** What the route orders by when the request names no sort. Always one of `sorts`. */
   default_sort: string;
+  /**
+   * Where a row of this queue is opened — a path prefix the row's `id` is appended to — or `null`
+   * when no screen exists for it yet.
+   *
+   * **The server's answer, for the same reason the filter allowlist is.** Sixteen queue names
+   * mapped to sixteen destinations in this app would be a copy of the backend registry, and its
+   * failure mode is a link to the *wrong screen for the right row*: an accountant opening somebody
+   * else's work believing it was theirs. `null` renders no link, which is the honest rendering of
+   * "this queue's rows have nowhere to go yet".
+   */
+  detail_path: string | null;
 }>;
 
 export type QueueIndex = Readonly<{

@@ -396,6 +396,11 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # `warehouse_operator` and `technical_admin`, who hold four of the sixteen queues and
         # neither of whom holds it.
         "listQueues",
+        # M11 Screens slice 4. The read the four attempt commands always presupposed: each takes
+        # `If-Match` on the attempt and no operation in this contract returned an attempt's
+        # `record_version`, so a screen could only guess a precondition. `AttemptResult` was
+        # already the shape — it was just only ever a *response* to a confirmation.
+        "getPaymentAttempt",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

@@ -5922,6 +5922,17 @@
             "title": "Default Sort",
             "type": "string"
           },
+          "detail_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail Path"
+          },
           "filters": {
             "items": {
               "type": "string"
@@ -16629,6 +16640,80 @@
         "summary": "Release identity, applied schema revision and flag snapshot",
         "tags": [
           "operations"
+        ]
+      }
+    },
+    "/api/v1/payment-attempts/{attempt_id}": {
+      "get": {
+        "description": "`GET /api/v1/payment-attempts/{attempt_id}`.\n\nM11 Screens slice 4, and it exists because **the four commands below required a precondition\nnothing supplied.** All of them take `If-Match` on the attempt — `command_catalog.yaml`'s\n`if_match_attempt_and_lock_request_aggregate` — and until this route no read anywhere in the\ncontract returned an attempt's `record_version`:\n\n- `PaymentRequestDetail` has three fields, and its own docstring says why: \"`attempts` arrive\n  with M6\". They did not.\n- `GET /queues/sent-attempts-awaiting-result` returns `QueueRow`, five fields by a deliberate\n  disclosure decision, and a version is not one of them.\n- `AttemptResult` carries `record_version` but was only ever a *response* to a confirmation, so\n  the version arrived after acting and never before it.\n\nA screen could therefore only guess an `If-Match`, and a guessed precondition is worse than\nnone: present, well-formed and meaningless. It is the mirror of the defect this project has hit\nfive times — machinery with no caller — arriving as a caller with no way to satisfy the guard.\n\n**`payment_attempt.read`, which already existed.** `20260801_0008:313` gives it to `manager`\nand grants that role neither confirmation permission, which is the split the four routes below\nrely on for their negative tests: reading an attempt is not permission to confirm one.\n\n**The `ETag` is the purpose of the route**, not a convenience on it. It is what a screen echoes\nas `If-Match`, and `admin_users.py` states the rule — a client computing `rv-${record_version}`\nitself would be inventing a precondition.\n\nNothing is recomputed: `request_status` is reported as it stands, the same way the two retry\nroutes report it, because a second copy of `_recalculate`'s rule in a route is how two answers\nto one question begin.",
+        "operationId": "getPaymentAttempt",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "attempt_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Attempt Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttemptResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks `payment_attempt.read`."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such attempt."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Read one payment attempt and the precondition its commands require.",
+        "tags": [
+          "payment-attempts"
         ]
       }
     },

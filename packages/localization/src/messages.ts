@@ -247,6 +247,61 @@ export const faMessages = {
   "result.stale":
     "نتیجه این پرداخت در همین فاصله اصلاح شد، پس پاسخ شما ثبت نشد. نسخه تازه در بالا نمایش داده شده است؛ اگر با آن موافقید دوباره تأیید کنید.",
   "result.viewResult": "دیدن نتیجه پرداخت",
+  // M11 Screens slice 4. The centre's side: what the bank did with one attempt, and what the
+  // centre publishes about it.
+  "attempt.title": "نتیجه بانکی این تلاش",
+  "attempt.number": "شماره تلاش",
+  "attempt.status": "وضعیت تلاش",
+  "attempt.amount": "مبلغ تلاش (ریال)",
+  "attempt.requestStatus": "وضعیت درخواست",
+  "attempt.tracking": "شماره پیگیری بانک",
+  "attempt.resultAt": "زمان نتیجه بانک",
+  "attempt.failureCode": "کد ناموفقی",
+  "attempt.failureReason": "شرح ناموفقی",
+  "attempt.evidenceUnavailable": "دلیل نبودن مستند",
+  "attempt.reason": "دلیل",
+  "attempt.revisionId": "شناسه نسخه درخواست",
+  "attempt.retryAmount": "مبلغ تلاش تازه (ریال)",
+  "attempt.confirmPaid": "ثبت پرداخت موفق",
+  "attempt.confirmFailed": "ثبت پرداخت ناموفق",
+  "attempt.markRetryRequired": "نیازمند تلاش دوباره",
+  "attempt.createRetry": "ساخت تلاش تازه",
+  "attempt.submit": "ثبت",
+  "attempt.paidNeedsBankFacts":
+    "شماره پیگیری و زمان نتیجه، سند خودِ بانک است. ثبت پرداخت موفق بدون آن‌ها ادعایی بدون منبع است.",
+  "attempt.retryRequiredCreatesNothing":
+    "این کار تلاش تازه‌ای نمی‌سازد؛ فقط ثبت می‌کند که یکی لازم است. ساخت تلاش، تصمیم جداگانه‌ای است.",
+  "attempt.retryAmountIsADecision":
+    "مبلغ تلاش تازه یک تصمیم است — باقیمانده حل‌نشده — نه تکرار آنچه بانک از قبل دارد.",
+  "attempt.failedTitle": "دریافت تلاش انجام نشد",
+  "attempt.failed": "اطلاعات این تلاش دریافت نشد. لطفاً دوباره تلاش کنید.",
+  "attempt.refused": "این ثبت پذیرفته نشد. اطلاعات به‌روز شد؛ وضعیت تازه را ببینید.",
+  // 412 on this screen means one specific thing, and it is worth its own sentence.
+  "attempt.stale":
+    "همکار دیگری در همین فاصله نتیجه این تلاش را ثبت کرد، پس ثبت شما اعمال نشد. وضعیت تازه در بالا نمایش داده شده است.",
+  // The publication side.
+  "publication.title": "انتشار نتیجه برای طلافروش",
+  "publication.previewFirst": "ابتدا پیش‌نمایش بگیرید تا ببینید طلافروش چه چیزی خواهد دید.",
+  "publication.preview": "پیش‌نمایش",
+  "publication.publish": "انتشار برای طلافروش",
+  "publication.nextVersion": "نسخه‌ای که ساخته می‌شود",
+  "publication.contentHash": "اثر انگشت محتوا",
+  "publication.messageToTrader": "پیام به طلافروش (اختیاری)",
+  "publication.historyTitle": "نسخه‌های منتشرشده",
+  "publication.historyEmpty": "هنوز چیزی برای این درخواست منتشر نشده است.",
+  "publication.version": "نسخه",
+  "publication.status": "وضعیت",
+  "publication.publishedAt": "زمان انتشار",
+  "publication.failedTitle": "دریافت اطلاعات انتشار انجام نشد",
+  "publication.failed": "اطلاعات انتشار دریافت نشد. لطفاً دوباره تلاش کنید.",
+  "publication.refused": "این کار پذیرفته نشد. اطلاعات به‌روز شد.",
+  "publication.stale":
+    "درخواست در همین فاصله تغییر کرد، پس انتشار انجام نشد. اطلاعات تازه را ببینید و در صورت تأیید دوباره منتشر کنید.",
+  // The correction flow, and why there is no button for it.
+  "publication.correctionBlockedTitle": "اصلاح نتیجه منتشرشده در این نسخه فعال نیست",
+  "publication.correctionBlocked":
+    "اصلاح یک نتیجه منتشرشده به دو نفر نیاز دارد: یکی آماده می‌کند و دیگری تأیید. این تفکیک هنوز در سطح دسترسی‌ها تصویب نشده و مجوز آن به هیچ نقشی داده نشده است، پس صفحه‌ای هم برای آن ساخته نشده. مسیر بک‌اند آماده است و به محض تصویب، فعال می‌شود.",
+  "publication.viewPublication": "انتشار نتیجه",
   "queue.new-requests": "درخواست‌های جدید",
   "queue.correction-responses": "پاسخ‌های اصلاح",
   "queue.eligible-for-batching": "آماده دسته‌بندی",
