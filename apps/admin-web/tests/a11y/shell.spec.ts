@@ -69,6 +69,10 @@ const paths = [
   // which is the intent: the sweep is a list of what a person can open, not of what somebody
   // remembered.
   "/notifications",
+  // M11 Screens slice 2. One dynamic route serves all sixteen queues, so one concrete queue
+  // name covers the screen. `new-requests` deliberately: it is the queue carrying the
+  // compatibility response model, so a break there is visible here as well.
+  "/queues/new-requests",
 ] as const;
 
 for (const path of paths) {

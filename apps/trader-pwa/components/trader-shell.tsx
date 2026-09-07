@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { traderNavigation } from "../src/navigation";
 import { loadTraderSession, type TraderSession } from "../src/session";
+import { NotificationBell } from "./notification-bell";
 import { SignOutButton } from "./sign-out-button";
 
 /**
@@ -37,8 +38,16 @@ export function TraderShell({ children }: Readonly<{ children: ReactNode }>) {
     <ApplicationShell
       appName={t("trader.appName")}
       // Only when there is a session to end. An anonymous visitor offered "sign out" would
-      // press a button that either does nothing or logs a 401.
-      headerContext={session.kind === "signed-in" ? <SignOutButton /> : null}
+      // press a button that either does nothing or logs a 401 — and the bell is gated on the
+      // same condition for the same reason: its count request would answer 401 too.
+      headerContext={
+        session.kind === "signed-in" ? (
+          <div className="flex items-center gap-3">
+            <NotificationBell />
+            <SignOutButton />
+          </div>
+        ) : null
+      }
       navigation={traderNavigation}
       navigationLabel="ناوبری اصلی طلافروش"
       skipToContentLabel={t("common.skipToContent")}

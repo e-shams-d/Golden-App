@@ -425,6 +425,17 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # consults a *second* permission per queue when building the summary, but the class here is
     # about what guards the route, and that is one grant.
     ("GET", "/api/v1/reports/queue-summary"): PERMISSION,
+    # M11 Screens slice 2, the queue index. `PERMISSION` although the route declares none, and
+    # the classification is the point rather than a formality: what a caller receives is decided
+    # entirely by which queue grants they hold, so the class that describes it is the one that
+    # owes a permission negative.
+    #
+    # **`SESSION` would have been the label-shaped answer** — it is the one class carrying no
+    # obligation, and this project has already discharged the DoD's first clause by choosing it
+    # three times (see `/auth/sessions` and `/auth/change-password` above). A session is what the
+    # index requires to *answer*; grants are what decide *what it says*. The second is the claim
+    # worth a test.
+    ("GET", "/api/v1/queues"): PERMISSION,
     ("GET", "/api/v1/notifications"): OWNERSHIP,
     ("POST", "/api/v1/notifications/{notification_id}/mark-read"): OWNERSHIP,
     ("POST", "/api/v1/notifications/mark-all-read"): OWNERSHIP,
@@ -1049,6 +1060,12 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
         "/api/v1/reports/queue-summary",
         "permission",
     ): "test_a_role_without_the_report_grant_cannot_ask",
+    # M11 Screens slice 2. The index refuses nobody, so its negative is not a status code — it is
+    # that a queue whose grant the caller lacks is **absent from the response**, and that the
+    # absence is not the whole list going missing. The named test holds both halves.
+    ("GET", "/api/v1/queues", "permission"): (
+        "test_the_index_omits_a_queue_whose_grant_the_caller_lacks"
+    ),
     # M11 slice 1. Three separate tests rather than one shared name, because the three routes fail
     # in three different ways. A leaky list returns rows; a leaky mark-read edits one row that is
     # not the caller's; a leaky mark-all-read edits *every* row in the table and returns a count

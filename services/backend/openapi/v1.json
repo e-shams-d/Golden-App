@@ -5891,6 +5891,70 @@
         "title": "QueueCountResponse",
         "type": "object"
       },
+      "QueueIndexResponse": {
+        "additionalProperties": false,
+        "description": "Every queue the caller may open, and the sum of what waits in them.\n\n**A queue the caller may not read is absent rather than zero**, the same rule\n`GET /reports/queue-summary` follows and for the same reason: a zero says \"this queue exists\nand is empty\", which is information about a part of the business that is not theirs.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/QueueListingResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "QueueIndexResponse",
+        "type": "object"
+      },
+      "QueueListingResponse": {
+        "additionalProperties": false,
+        "description": "One queue the caller may open. See `app/queues/index.py` for why this is not the report.",
+        "properties": {
+          "default_sort": {
+            "title": "Default Sort",
+            "type": "string"
+          },
+          "filters": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Filters",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sorts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sorts",
+            "type": "array"
+          },
+          "waiting": {
+            "title": "Waiting",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "waiting",
+          "filters",
+          "sorts",
+          "default_sort"
+        ],
+        "title": "QueueListingResponse",
+        "type": "object"
+      },
       "QueuePageResponse": {
         "additionalProperties": false,
         "description": "The envelope every queue returns.\n\n`total` is §19 `:1298`'s \"permission-aware count\": how much work is waiting behind the cursor,\ncomputed from the same statement the rows came from.",
@@ -20436,6 +20500,48 @@
         "summary": "Show the exact trader-safe snapshot this request would publish.",
         "tags": [
           "payment-publications"
+        ]
+      }
+    },
+    "/api/v1/queues": {
+      "get": {
+        "description": "`GET /api/v1/queues`.\n\n**No `requires(...)`, and 403 is deliberately not in the responses.** There is no grant for\n\"may ask which queues are mine\"; the answer is filtered per entry by each queue's own\npermission, so a caller holding none receives `items: []` rather than a refusal. Inventing a\ngrant here would be an authority the catalogue does not define, and guarding it with a\nneighbouring one — `report.read` was the obvious candidate — would deny the warehouse operator\nand the technical admin, who between them hold four of the sixteen queues and neither of whom\nholds it.\n\nThe empty path rather than `/`: with the router's `/queues` prefix this answers\n`GET /api/v1/queues`, which cannot collide with the generated `/queues/{name}` routes because\nevery queue name is a non-empty literal segment.",
+        "operationId": "listQueues",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueIndexResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "The queues the caller's grants allow, each with how much is waiting.",
+        "tags": [
+          "queues"
         ]
       }
     },
