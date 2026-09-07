@@ -95,4 +95,17 @@ export const adminNavigation = [
     permission: "bank_result_bundle.read",
     icon: "requests",
   },
+  // M11 Screens slice 1. **The only item besides the dashboard with no permission**, and for a
+  // related reason: an item everybody reaches needs no gate.
+  //
+  // `permission_catalog.yaml` has no notification permission at all — access is decided by
+  // `notifications.recipient_actor_id`, taken from the session — so there is nothing to name.
+  // Gating on a neighbouring grant would hide a person's own messages behind an authority that
+  // has nothing to do with them, which is the opposite of what the rule at the top of this file
+  // is for.
+  {
+    href: "/notifications",
+    label: t("notifications.nav"),
+    icon: "notifications",
+  },
 ] as const satisfies readonly NavigationItem[];

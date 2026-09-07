@@ -36,7 +36,8 @@ export type IconName =
   | "logout"
   | "upload"
   | "requests"
-  | "beneficiaries";
+  | "beneficiaries"
+  | "notifications";
 
 /** The runtime list, so a test can iterate what exists rather than restate it. */
 export const ICON_NAMES = [
@@ -57,6 +58,7 @@ export const ICON_NAMES = [
   "upload",
   "requests",
   "beneficiaries",
+  "notifications",
 ] as const satisfies readonly IconName[];
 
 // Stroked rather than filled, at a uniform 1.75 width: a mixed set reads as icons borrowed
@@ -86,6 +88,12 @@ const PATHS: Readonly<Record<IconName, string>> = {
   // A person beside a bank column: the destination of a payment is somebody with an account,
   // and `account` already means "your own profile" in this set.
   beneficiaries: "M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3.5 20a5.5 5.5 0 0 1 11 0M16 20V9.5M20 20V9.5M15 9.5h6L18 7l-3 2.5Z",
+  // M11 Screens slice 1. A bell, stroked at the same 1.75 as the rest — a borrowed filled
+  // glyph is how a set starts looking assembled rather than made, which the note at the top
+  // of this map is about. Deliberately not reusing `refresh` or `requests`: an icon that
+  // means two things means neither.
+  notifications:
+    "M12 3.5a5.5 5.5 0 0 0-5.5 5.5v3.2L5 15.5h14l-1.5-3.3V9A5.5 5.5 0 0 0 12 3.5ZM10 18.5a2 2 0 0 0 4 0",
 };
 
 export type IconProps = Omit<SVGProps<SVGSVGElement>, "children"> &

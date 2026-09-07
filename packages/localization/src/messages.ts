@@ -53,6 +53,25 @@ export const faMessages = {
   "trader.nav.notifications": "اعلان‌ها",
   "trader.nav.account": "حساب",
   "trader.nav.evidence": "رسیدها",
+  // M11 Screens slice 1. One set of strings for both applications, and that is not a breach of
+  // `UI-ISO-001`: the rule is about neither bundle naming the other's *endpoints*, and a shared
+  // word is not an endpoint — the same reasoning `paymentRequestStatusLabel` records below. The
+  // screens are separate files; only the Persian is shared, because "خوانده شد" means one thing
+  // on both sides.
+  //
+  // `trader.nav.notifications` above predates this slice and had no page behind it. It is left
+  // alone rather than reused: the navigation label and the page heading are different strings
+  // that happen to match today, and collapsing them would make renaming one rename both.
+  "notifications.title": "اعلان‌ها",
+  "notifications.nav": "اعلان‌ها",
+  "notifications.unreadCount": "خوانده‌نشده",
+  "notifications.markRead": "خوانده شد",
+  "notifications.markAllRead": "همه را خوانده‌شده کن",
+  // Its own empty state rather than `state.empty.*`, which says "record the first one and this
+  // section will fill" — advice a person cannot act on here. Nobody creates a notification; the
+  // system does. An empty list means nothing has happened, and saying so is the honest text.
+  "notifications.emptyTitle": "پیامی ندارید",
+  "notifications.emptyDescription": "هر زمان سامانه خبری برای شما داشته باشد، اینجا نمایش داده می‌شود.",
   "admin.appName": "سامانه طلا ـ عملیات داخلی",
   "admin.shellTitle": "صف‌های عملیاتی و کنترل نسخه",
   "admin.shellDescription": "این پوسته هیچ اختیار مالی را در مرورگر ایجاد نمی‌کند.",

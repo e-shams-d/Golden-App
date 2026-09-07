@@ -29,4 +29,10 @@ export const traderNavigation = [
   { href: "/beneficiaries", label: t("trader.nav.beneficiaries"), icon: "beneficiaries" },
   { href: "/evidence", label: t("trader.nav.evidence"), icon: "upload" },
   { href: "/profile", label: t("trader.nav.account"), icon: "account" },
+  // M11 Screens slice 1. **Carries no permission, and that is not an omission.**
+  // `permission_catalog.yaml` has no notification permission at all: access is decided by
+  // `notifications.recipient_actor_id`, which the server takes from the session. Naming one here
+  // would mean inventing it, and gating on a neighbouring grant would hide a person's own
+  // messages behind an authority that has nothing to do with them.
+  { href: "/notifications", label: t("notifications.nav"), icon: "notifications" },
 ] as const satisfies readonly NavigationItem[];

@@ -136,7 +136,13 @@ describe("the navigation a role sees", () => {
   it("shows an anonymous visitor only the items that carry no permission", () => {
     const anonymous = visibleNavigation(adminNavigation, []);
 
-    expect(anonymous.map((item) => item.href)).toEqual(["/"]);
+    // M11 Screens slice 1 added `/notifications`, which carries no permission because the
+    // catalogue has none — see "gates every item except the two that cannot be gated" below.
+    //
+    // **An anonymous visitor seeing it is correct and costs nothing.** Frontend visibility is not
+    // authorization (§20.1): clicking it reaches a route that answers 401, which is what happens
+    // to the dashboard too. Hiding it would be a control the server does not have.
+    expect(anonymous.map((item) => item.href)).toEqual(["/", "/notifications"]);
     // Not empty, deliberately: an empty sidebar is indistinguishable from a failed load,
     // and the dashboard is what an authenticated person lands on anyway.
     expect(anonymous.length).toBeGreaterThan(0);
@@ -195,12 +201,27 @@ describe("the gating permissions themselves", () => {
     }
   });
 
-  it("gates every item except the dashboard", () => {
-    // The dashboard is the landing surface and carries none by design. Anything else
-    // ungated would be a screen shown to everybody, which is the state this slice replaced.
+  it("gates every item except the two that cannot be gated", () => {
+    // The dashboard is the landing surface and carries none by design. Anything else ungated
+    // would be a screen shown to everybody, which is the state slice 10D replaced.
+    //
+    // **M11 Screens slice 1 added the second, and this assertion caught it** — which is what an
+    // equality is for. `/notifications` carries no permission because `permission_catalog.yaml`
+    // has none for notifications at all: the backend scopes by
+    // `notifications.recipient_actor_id`, taken from the session. Naming one would mean inventing
+    // it, and gating on a neighbouring grant would hide a person's own messages behind an
+    // authority unrelated to them.
+    //
+    // Still an equality rather than an allowlist: a third ungated item fails this the same way.
+    //
+    // **The same equality is written a second time**, in
+    // `tests/integration/test_navigation_is_not_a_control.py`, which parses this navigation module
+    // rather than importing it. Slice 1 updated this copy and not that one, and CI was the first
+    // thing to notice — the integration suite skips without `INTEGRATION_ADMIN_DATABASE_URL`, so
+    // on a developer machine the second copy is silent rather than red. Change one, change both.
     const ungated = items.filter((item) => item.permission === undefined);
 
-    expect(ungated.map((item) => item.href)).toEqual(["/"]);
+    expect(ungated.map((item) => item.href)).toEqual(["/", "/notifications"]);
   });
 
   it("gates on a permission at least one seeded role does not hold", () => {
