@@ -23,7 +23,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
@@ -390,6 +390,7 @@ def list_gold_sale_orders(
 )
 def get_gold_sale_order(
     order_id: uuid.UUID,
+    response: Response,
     actor: Annotated[ActorContext, Depends(authenticated_actor)],
     runtime: Annotated[RuntimeServices, Depends(get_runtime)],
 ) -> OrderResponse:
@@ -397,6 +398,17 @@ def get_gold_sale_order(
 
     A second trader gets 404 rather than 403: an authorisation error over a guessable identifier
     tells them the order exists, which `app/security/ownership.py` refuses to do.
+
+    **The `ETag` was added by M11 Screens slice 5, and its absence was the same defect slice 4
+    found one milestone earlier.** Four commands on this aggregate — `submit`, `pricing-versions`,
+    `dispatches` and `close` — require `If-Match` against the order, and this read returned
+    `record_version` in the body with no precondition header. A screen could only build
+    `"rv-${record_version}"` itself, and `apps/admin-web/test/preconditions-come-from-the-server.
+    test.ts` exists because a computed precondition is present, well-formed and meaningless.
+
+    Twice is a pattern rather than an oversight, so
+    `tests/backend/test_preconditions_have_a_source.py` now asks the question across the whole
+    contract instead of one route at a time.
     """
 
     with runtime.uow_factory() as uow:
@@ -407,10 +419,11 @@ def get_gold_sale_order(
             uow.rollback()
             raise NotFoundError()
         assert order is not None
-        response = _rendered(order)
+        rendered = _rendered(order)
         uow.rollback()
 
-    return response
+    response.headers["ETag"] = f'"rv-{rendered.record_version}"'
+    return rendered
 
 
 @router.post(

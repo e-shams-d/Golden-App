@@ -11534,6 +11534,7 @@
     },
     "/api/v1/beneficiaries/{beneficiary_id}": {
       "get": {
+        "description": "One beneficiary, and the precondition its two commands require.\n\n**The `ETag` was added by M11 Screens slice 5**, which found the same absence on three reads in\nthree unrelated routers. `PATCH /beneficiaries/{id}` and `POST /beneficiaries/{id}/deactivate`\nboth demand `If-Match` and both *issue* an ETag on their own responses; the read a screen\nstarts from issued none, so the only way to reach the first command was to compute the\nprecondition — and a computed precondition is present, well-formed and meaningless.\n\n`tests/backend/test_preconditions_have_a_source.py` now asks this of every command in the\ncontract.",
         "operationId": "getBeneficiary",
         "parameters": [
           {
@@ -12901,7 +12902,7 @@
     },
     "/api/v1/gold-sale-orders/{order_id}": {
       "get": {
-        "description": "`GET /api/v1/gold-sale-orders/{id}`, per `:1952`.\n\nA second trader gets 404 rather than 403: an authorisation error over a guessable identifier\ntells them the order exists, which `app/security/ownership.py` refuses to do.",
+        "description": "`GET /api/v1/gold-sale-orders/{id}`, per `:1952`.\n\nA second trader gets 404 rather than 403: an authorisation error over a guessable identifier\ntells them the order exists, which `app/security/ownership.py` refuses to do.\n\n**The `ETag` was added by M11 Screens slice 5, and its absence was the same defect slice 4\nfound one milestone earlier.** Four commands on this aggregate — `submit`, `pricing-versions`,\n`dispatches` and `close` — require `If-Match` against the order, and this read returned\n`record_version` in the body with no precondition header. A screen could only build\n`\"rv-${record_version}\"` itself, and `apps/admin-web/test/preconditions-come-from-the-server.\ntest.ts` exists because a computed precondition is present, well-formed and meaningless.\n\nTwice is a pattern rather than an oversight, so\n`tests/backend/test_preconditions_have_a_source.py` now asks the question across the whole\ncontract instead of one route at a time.",
         "operationId": "getGoldSaleOrder",
         "parameters": [
           {
@@ -14725,7 +14726,7 @@
     },
     "/api/v1/manual-review-tasks/{task_id}": {
       "get": {
-        "description": "`GET /api/v1/manual-review-tasks/{task_id}`.",
+        "description": "`GET /api/v1/manual-review-tasks/{task_id}`.\n\n**The `ETag` was added by M11 Screens slice 5.** All four commands on this aggregate — assign,\nstart, resolve and cancel — demand `If-Match`, and this read issued none, so the reconciliation\nqueue's detail screen would have had to compute the precondition. A computed precondition is\npresent, well-formed and meaningless: it passes the parser, satisfies any check that the header\nexists, and compares a state nobody observed.\n\nThree unrelated routers had the same absence, which is why\n`tests/backend/test_preconditions_have_a_source.py` now asks it of the whole contract.",
         "operationId": "getManualReviewTask",
         "parameters": [
           {
@@ -15947,6 +15948,7 @@
     },
     "/api/v1/me/trader/profile": {
       "get": {
+        "description": "The caller's own business, and the precondition `PATCH /profile` requires.\n\n**The `ETag` was added by M11 Screens slice 5.** The patch below demands `If-Match` and issues\nan ETag on its own response; this read issued none, so a trader's first edit had no\nserver-given precondition to echo — only a computed one, which is present, well-formed and\nmeaningless.\n\nThree unrelated routers had the same absence, which is why\n`tests/backend/test_preconditions_have_a_source.py` now asks it of the whole contract.",
         "operationId": "getOwnTraderProfile",
         "responses": {
           "200": {

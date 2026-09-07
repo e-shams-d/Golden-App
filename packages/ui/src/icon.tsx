@@ -37,7 +37,10 @@ export type IconName =
   | "upload"
   | "requests"
   | "beneficiaries"
-  | "notifications";
+  | "notifications"
+  // M11 Screens slice 5. Gold orders — a new glyph rather than a borrowed one, for the
+  // reason the note under PATHS gives.
+  | "gold";
 
 /** The runtime list, so a test can iterate what exists rather than restate it. */
 export const ICON_NAMES = [
@@ -59,11 +62,13 @@ export const ICON_NAMES = [
   "requests",
   "beneficiaries",
   "notifications",
+  "gold",
 ] as const satisfies readonly IconName[];
 
 // Stroked rather than filled, at a uniform 1.75 width: a mixed set reads as icons borrowed
 // from three places, which is how an interface starts looking assembled rather than made.
 const PATHS: Readonly<Record<IconName, string>> = {
+  gold: "M4 16.5 7 9h10l3 7.5H4Zm3.6-4.5h8.8M9.5 9V6.5h5V9",
   home: "M3 10.5 12 3l9 7.5M5.5 9.5V20h13V9.5M9.5 20v-6h5v6",
   account: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20a7.5 7.5 0 0 1 15 0",
   traders: "M3 21h18M5 21V8l7-4 7 4v13M9.5 21v-5h5v5M9 11.5h.01M15 11.5h.01",

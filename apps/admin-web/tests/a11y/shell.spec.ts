@@ -79,6 +79,11 @@ const paths = [
   // following a stale link sees and the state most likely to ship without a heading.
   "/payment-attempts/00000000-0000-4000-8000-000000000004",
   "/requests/00000000-0000-4000-8000-000000000005/publication",
+  // M11 Screens slice 5. The centre's order list and the pricing workspace. A concrete
+  // id because the sweep drives a browser and a prefix match is not evidence that a
+  // page was rendered.
+  "/gold-orders",
+  "/gold-orders/00000000-0000-4000-8000-000000000006",
 ] as const;
 
 for (const path of paths) {

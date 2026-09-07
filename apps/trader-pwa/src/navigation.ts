@@ -34,5 +34,8 @@ export const traderNavigation = [
   // `notifications.recipient_actor_id`, which the server takes from the session. Naming one here
   // would mean inventing it, and gating on a neighbouring grant would hide a person's own
   // messages behind an authority that has nothing to do with them.
+  // M11 Screens slice 5. Buying gold from the centre. No permission, like every item here:
+  // a trader session resolves no grants at all, and the route is guarded by ownership.
+  { href: "/gold-orders", label: t("gold.nav"), icon: "gold" },
   { href: "/notifications", label: t("notifications.nav"), icon: "notifications" },
 ] as const satisfies readonly NavigationItem[];

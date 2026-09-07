@@ -63,6 +63,11 @@ const paths = [
   "/login",
   "/evidence",
   "/offline",
+  // M11 Screens slice 5. The trader's gold orders: the list with its inline new-order
+  // form, and one order by a fake id, which renders the failure state somebody reaches
+  // by following a stale link.
+  "/gold-orders",
+  "/gold-orders/00000000-0000-4000-8000-000000000006",
 ] as const;
 
 for (const path of paths) {

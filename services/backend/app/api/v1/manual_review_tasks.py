@@ -23,7 +23,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, Header, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
@@ -233,17 +233,31 @@ def list_manual_review_tasks(
 )
 def get_manual_review_task(
     task_id: uuid.UUID,
+    response: Response,
     actor: Annotated[ActorContext, Depends(authenticated_actor)],
     runtime: Annotated[RuntimeServices, Depends(get_runtime)],
 ) -> TaskDetail:
-    """`GET /api/v1/manual-review-tasks/{task_id}`."""
+    """`GET /api/v1/manual-review-tasks/{task_id}`.
+
+    **The `ETag` was added by M11 Screens slice 5.** All four commands on this aggregate — assign,
+    start, resolve and cancel — demand `If-Match`, and this read issued none, so the reconciliation
+    queue's detail screen would have had to compute the precondition. A computed precondition is
+    present, well-formed and meaningless: it passes the parser, satisfies any check that the header
+    exists, and compares a state nobody observed.
+
+    Three unrelated routers had the same absence, which is why
+    `tests/backend/test_preconditions_have_a_source.py` now asks it of the whole contract.
+    """
 
     del actor
     with runtime.uow_factory() as uow:
         task = uow.session.get(ManualReviewTask, task_id)
         if task is None:
             raise NotFoundError()
-        return _detail(uow.session, task)
+        detail = _detail(uow.session, task)
+
+    response.headers["ETag"] = f'"rv-{detail.record_version}"'
+    return detail
 
 
 @router.post(
