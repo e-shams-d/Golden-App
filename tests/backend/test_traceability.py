@@ -972,11 +972,27 @@ PENDING: dict[str, str] = {
     #
     # All three warehouse queues now open the order page: one page per order, because three roles
     # reach that row and each may do a different thing with it.
-    "TRACE-SCREENS-002": (
-        "M11 Screens slice 8 - the gate that fails when an operation ships with no screen and no "
-        "recorded reason. Stated by `docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet "
-        "built."
-    ),
+    # M11 Screens slice 8 discharged `TRACE-SCREENS-002`, in
+    # `tests/backend/test_every_operation_has_a_screen.py`. **The screens plan now carries no
+    # pending obligation.**
+    #
+    # The gate reads the published contract and both applications' sources, and sorts every
+    # operation into three: reached literally, reached *dynamically* through a mechanism it names
+    # and checks, or listed with what a screen would need. The sixteen queues are the reason the
+    # middle category exists — slice 2 removed the queue names from the frontend on purpose, so
+    # demanding a literal path would push the registry copy back in.
+    #
+    # **What the list turned out to say is the milestone's real answer.** Roughly a third of the
+    # published surface has no screen, and the entries divide cleanly: operations-token
+    # infrastructure that should never have one, four flows nobody has owned a slice for, and
+    # three that are *blocked* — `bank_profile.activate_version` is granted to no role, the
+    # statement import has no input while the bank returns no Excel, and the queue-summary report
+    # was superseded by `GET /queues` because `report.read` excludes two of the roles that hold
+    # queues.
+    #
+    # A ceiling keeps the list from becoming where unreachable surfaces go to be forgotten: it
+    # must stay under half the contract, and the honest response to crossing that is to build
+    # screens rather than to raise the number.
     "SVC-QUEUE-002": (
         "M11 slice 4 built four of the seven and proved this obligation for them: the manager's "
         "`batch-versions-awaiting-approval` and the warehouse's three, including the derived "
