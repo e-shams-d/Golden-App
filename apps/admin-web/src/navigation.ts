@@ -103,6 +103,18 @@ export const adminNavigation = [
   // Gating on a neighbouring grant would hide a person's own messages behind an authority that
   // has nothing to do with them, which is the opposite of what the rule at the top of this file
   // is for.
+  // M11 Screens slice 5. The centre's way into pricing an order.
+  //
+  // **Gated on `gold_sale.read`, which is a read permission** — and that is the exception
+  // this file's own rule allows rather than a breach of it. The acting grant is
+  // `gold_sale.price`, held by nobody who cannot also read; gating on it would hide the
+  // list from a manager who may legitimately look at orders without setting a price.
+  {
+    href: "/gold-orders",
+    label: t("gold.nav"),
+    permission: "gold_sale.read",
+    icon: "gold",
+  },
   {
     href: "/notifications",
     label: t("notifications.nav"),

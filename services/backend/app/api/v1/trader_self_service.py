@@ -139,18 +139,31 @@ class TraderProfilePatch(BaseModel):
     responses=OWNED_RESPONSES,
 )
 def own_profile(
+    response: Response,
     actor: Annotated[ActorContext, Depends(authenticated_actor)],
     runtime: Annotated[RuntimeServices, Depends(get_runtime)],
 ) -> TraderProfileResponse:
+    """The caller's own business, and the precondition `PATCH /profile` requires.
+
+    **The `ETag` was added by M11 Screens slice 5.** The patch below demands `If-Match` and issues
+    an ETag on its own response; this read issued none, so a trader's first edit had no
+    server-given precondition to echo — only a computed one, which is present, well-formed and
+    meaningless.
+
+    Three unrelated routers had the same absence, which is why
+    `tests/backend/test_preconditions_have_a_source.py` now asks it of the whole contract.
+    """
+
     with runtime.uow_factory() as uow:
         session = uow.session
         trader = session.get(Trader, actor.trader_id) if actor.is_trader else None
         if trader is None:
             uow.rollback()
             raise NotFoundError()
-        response = _render(trader)
+        rendered = _render(trader)
         uow.rollback()
-    return response
+    response.headers["ETag"] = f'"rv-{rendered.record_version}"'
+    return rendered
 
 
 @router.patch(

@@ -922,10 +922,20 @@ PENDING: dict[str, str] = {
     #
     # The correction screen is **not built** and the reason is asserted, so the deferral expires
     # the day a role holds the grant.
-    "UI-GOLD-001": (
-        "M11 Screens slice 5 - gold orders, trader and centre. Stated by "
-        "`docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet built."
-    ),
+    # M11 Screens slice 5 discharged `UI-GOLD-001`, in `tests/backend/test_gold_screens_exist.py`
+    # against `tests/integration/test_gold_sale_orders.py`'s behavioural half.
+    #
+    # **Its second clause — "using the `If-Match` the API already requires" — was false when the
+    # slice started**, for the third time in a row: the API required it and
+    # `GET /gold-sale-orders/{order_id}` issued no ETag. Slice 4 had found the same of payment
+    # attempts one milestone earlier, so slice 5 stopped fixing routes one at a time and asked the
+    # question of the whole contract in `tests/backend/test_preconditions_have_a_source.py`.
+    #
+    # That gate found **eleven more commands** and sorted them into three kinds: three reads that
+    # existed and issued nothing (beneficiary, trader profile, manual review task — all fixed),
+    # three preconditions that are genuinely about a different aggregate (exempt, each with the
+    # read that issues it), and three with no source at all (recorded, each naming the slice that
+    # closes it). Slice 6 closes two of the three.
     "UI-INCOMING-001": (
         "M11 Screens slice 6 - incoming payment, claim to confirmation. Stated by "
         "`docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet built."

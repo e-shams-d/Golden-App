@@ -305,15 +305,29 @@ def create_beneficiary(
 )
 def get_beneficiary(
     beneficiary_id: uuid.UUID,
+    response: Response,
     actor: Annotated[ActorContext, Depends(authenticated_actor)],
     runtime: Annotated[RuntimeServices, Depends(get_runtime)],
     scope: Annotated[uuid.UUID | None, owned_or_permitted("beneficiary.read")],
 ) -> BeneficiaryResponse:
+    """One beneficiary, and the precondition its two commands require.
+
+    **The `ETag` was added by M11 Screens slice 5**, which found the same absence on three reads in
+    three unrelated routers. `PATCH /beneficiaries/{id}` and `POST /beneficiaries/{id}/deactivate`
+    both demand `If-Match` and both *issue* an ETag on their own responses; the read a screen
+    starts from issued none, so the only way to reach the first command was to compute the
+    precondition — and a computed precondition is present, well-formed and meaningless.
+
+    `tests/backend/test_preconditions_have_a_source.py` now asks this of every command in the
+    contract.
+    """
+
     with runtime.uow_factory() as uow:
         record = _reachable(uow.session, beneficiary_id, scope, actor)
-        response = _render(record)
+        rendered = _render(record)
         uow.rollback()
-    return response
+    response.headers["ETag"] = f'"rv-{rendered.record_version}"'
+    return rendered
 
 
 @router.patch(
