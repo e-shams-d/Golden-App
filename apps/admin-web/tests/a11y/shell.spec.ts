@@ -88,6 +88,8 @@ const paths = [
   // prefix match is a compromise for a family of dynamic routes rather than evidence that
   // any one of them rendered.
   "/incoming-payments/00000000-0000-4000-8000-000000000007",
+  // M11 Screens slice 9. The review task screen, which the reconciliation queue now opens.
+  "/review-tasks/00000000-0000-4000-8000-000000000008",
 ] as const;
 
 for (const path of paths) {

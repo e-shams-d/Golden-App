@@ -250,6 +250,10 @@ def test_the_queue_rows_link_where_the_server_says_and_nowhere_else() -> None:
         "orders-ready-for-dispatch": "/gold-orders",
         "blocked-dispatches": "/gold-orders",
         "receipt-confirmation-work": "/gold-orders",
+        # M11 Screens slice 9. The review task screen, closing the gap slice 8's own gate made
+        # visible: this queue had been on the dashboard since slice 2 with `detail_path` `None`,
+        # so an accountant could see work waiting and could not open it.
+        "reconciliation-tasks": "/review-tasks",
     }
     linked = {name: queue.detail_path for name, queue in BUILT.items() if queue.detail_path}
 
