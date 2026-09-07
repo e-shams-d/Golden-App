@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { AdminShell } from "../../../components/admin-shell";
+import { closeOrder, recordDispatch } from "../../../src/dispatch";
 import {
   createPricingVersion,
   readOrder,
@@ -58,6 +59,13 @@ export default function AdminGoldOrderPage() {
   const [unitPrice, setUnitPrice] = useState("");
   const [note, setNote] = useState("");
 
+  // M11 Screens slice 7. Dispatch and closure.
+  const [dispatchType, setDispatchType] = useState("");
+  const [dispatchWeight, setDispatchWeight] = useState("");
+  const [recipient, setRecipient] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
+  const [closureNote, setClosureNote] = useState("");
+
   const load = useCallback(
     async (signal?: AbortSignal): Promise<Phase> => {
       const { order, ifMatch } = await readOrder(orderId, signal);
@@ -79,6 +87,35 @@ export default function AdminGoldOrderPage() {
       });
     return () => controller.abort();
   }, [load]);
+
+  /**
+   * Run one command and re-read, reporting a refusal as a refusal of *this attempt*.
+   *
+   * M11 Screens slice 7. The pricing handler below predates it and keeps its own body because it
+   * also has to hold the created version for the panel; dispatch and closure have no such state,
+   * so they share this.
+   *
+   * **412 is named separately** — on this screen it means a colleague moved the order while this
+   * person was reading, which is the event the precondition exists for.
+   */
+  const act = async (run: () => Promise<unknown>) => {
+    setBusy(true);
+    setNotice(null);
+    try {
+      await run();
+      setPhase(await load());
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      setNotice(status === 412 ? t("pricing.stale") : t("dispatch.refused"));
+      try {
+        setPhase(await load());
+      } catch {
+        setPhase({ kind: "failed" });
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const price = async (ifMatch: string) => {
     setBusy(true);
@@ -270,6 +307,164 @@ export default function AdminGoldOrderPage() {
                 {t("pricing.submit")}
               </button>
             </form>
+
+            {/*
+              M11 Screens slice 7. Dispatch and closure, on the order's own page.
+
+              **Three roles reach this screen and each may do a different thing here**: the
+              accountant prices and closes, the warehouse dispatches, the manager and auditor read.
+              `permission_catalog.yaml` gives `gold_sale.read` to all of them, so one page per
+              order is the honest shape — a separate warehouse screen would be a second page about
+              the same row, and the queues would have to choose between them.
+
+              Every control is offered and the server refuses; §20.1. What the screen must not do
+              is *pretend* to know which of them will be refused, because that would be a second
+              copy of the catalogue.
+            */}
+            <section aria-labelledby="dispatch-heading" className="space-y-3 rounded border p-4">
+              <h2 className="font-semibold" id="dispatch-heading">
+                {t("dispatch.title")}
+              </h2>
+
+              {/*
+                The pair the guard is about, shown together and before the form.
+
+                Dispatching gold for an order that is not fully paid is what the override
+                overrides, so the two numbers are the decision — and a screen showing the weight
+                without them would ask somebody to authorise something they cannot see.
+              */}
+              <dl className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <dt className="text-sm font-medium">{t("dispatch.confirmedTotal")}</dt>
+                  <dd>
+                    <BidiText>{phase.order.final_amount_irr ?? 0}</BidiText>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium">{t("dispatch.expectedAmount")}</dt>
+                  <dd>
+                    {phase.order.expected_amount_irr === null ? (
+                      <span>{t("gold.notPricedYet")}</span>
+                    ) : (
+                      <BidiText>{phase.order.expected_amount_irr}</BidiText>
+                    )}
+                  </dd>
+                </div>
+              </dl>
+
+              <form
+                className="space-y-3"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void act(async () => {
+                    await recordDispatch(orderId, phase.ifMatch, {
+                      dispatchType: dispatchType,
+                      goldWeight: dispatchWeight.trim() || null,
+                      weightUnit: phase.order.weight_unit,
+                      recipientName: recipient.trim() || null,
+                      // Absent means "do not override". An empty string would be a reason
+                      // nobody wrote, recorded as though somebody had.
+                      guardOverrideReason: overrideReason.trim() || null,
+                    });
+                    setDispatchWeight("");
+                    setRecipient("");
+                    setOverrideReason("");
+                  });
+                }}
+              >
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="font-medium">{t("dispatch.type")}</span>
+                  <input
+                    className="rounded border px-2 py-1"
+                    disabled={busy}
+                    onChange={(event) => setDispatchType(event.target.value)}
+                    required
+                    value={dispatchType}
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="font-medium">{t("dispatch.weight")}</span>
+                  <input
+                    className="rounded border px-2 py-1"
+                    disabled={busy}
+                    inputMode="decimal"
+                    onChange={(event) => setDispatchWeight(event.target.value)}
+                    value={dispatchWeight}
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="font-medium">{t("dispatch.recipient")}</span>
+                  <input
+                    className="rounded border px-2 py-1"
+                    disabled={busy}
+                    onChange={(event) => setRecipient(event.target.value)}
+                    value={recipient}
+                  />
+                </label>
+
+                {/*
+                  The override, and it is the last field rather than one among many.
+
+                  Filling it changes what the system allows: the server refuses a dispatch against
+                  an unpaid order without it, and records `guard_override_at` with the reason when
+                  it is present. So the explanation sits above the field rather than below the
+                  button — somebody should read what they are authorising before they write it.
+                */}
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="font-medium">{t("dispatch.override")}</span>
+                  <span className="text-xs opacity-80" id="override-hint">
+                    {t("dispatch.overrideExplains")}
+                  </span>
+                  <textarea
+                    aria-describedby="override-hint"
+                    className="rounded border px-2 py-1"
+                    disabled={busy}
+                    onChange={(event) => setOverrideReason(event.target.value)}
+                    rows={2}
+                    value={overrideReason}
+                  />
+                </label>
+
+                <button className="rounded border px-3 py-1 font-bold" disabled={busy} type="submit">
+                  {t("dispatch.record")}
+                </button>
+              </form>
+            </section>
+
+            <section aria-labelledby="close-heading" className="space-y-3 rounded border p-4">
+              <h2 className="font-semibold" id="close-heading">
+                {t("dispatch.closeTitle")}
+              </h2>
+              {/* A different grant from dispatching — `gold_sale.review` rather than
+                  `gold_sale.dispatch` — so the person who handed the gold over is not necessarily
+                  the person who declares the business finished. */}
+              <p className="text-sm">{t("dispatch.closeExplains")}</p>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium">{t("dispatch.closureNote")}</span>
+                <textarea
+                  className="rounded border px-2 py-1"
+                  disabled={busy}
+                  onChange={(event) => setClosureNote(event.target.value)}
+                  rows={2}
+                  value={closureNote}
+                />
+              </label>
+              <button
+                className="rounded border px-3 py-1"
+                disabled={busy}
+                onClick={() =>
+                  act(async () => {
+                    await closeOrder(orderId, phase.ifMatch, closureNote.trim() || null);
+                    setClosureNote("");
+                  })
+                }
+                type="button"
+              >
+                {t("dispatch.close")}
+              </button>
+            </section>
           </>
         ) : null}
       </section>

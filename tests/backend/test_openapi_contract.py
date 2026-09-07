@@ -406,6 +406,10 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # as the receipt's, so one read would not have been enough.
         "getIncomingPaymentReceipt",
         "getIncomingPaymentMatch",
+        # M11 Screens slice 7, and the gap it closes is a different kind from slice 5's:
+        # a **path parameter** with nowhere to come from. The acknowledge route names a
+        # dispatch id and nothing returned one to a trader.
+        "listGoldDispatches",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

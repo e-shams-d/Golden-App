@@ -47,6 +47,7 @@ from app.core.errors import (
 from app.core.request_context import get_request_id
 from app.core.runtime import RuntimeServices
 from app.core.time import utc_now
+from app.db.models.gold_dispatch import GoldDispatch
 from app.db.models.gold_sale import (
     WEIGHT_UNITS,
     GoldSaleOrder,
@@ -686,6 +687,82 @@ class CloseOrderRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     closure_note: str | None = Field(default=None, max_length=2000)
+
+
+@router.get(
+    "/{order_id}/dispatches",
+    response_model=list[DispatchResponse],
+    operation_id="listGoldDispatches",
+    summary="Every dispatch recorded against this order.",
+    responses=RESPONSES,
+    dependencies=[owned_or_permitted("gold_sale.read", "gold_sale.read")],
+)
+def list_gold_dispatches(
+    order_id: uuid.UUID,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+) -> list[DispatchResponse]:
+    """`GET /api/v1/gold-sale-orders/{order_id}/dispatches`.
+
+    **M11 Screens slice 7, and the gap it closes is a different kind from slice 5's.** That slice
+    built a gate asking where an `If-Match` comes from. This is the other missing source: a **path
+    parameter** with nowhere to come from. `POST .../dispatches/{dispatch_id}/acknowledge` is the
+    trader's own route and nothing returned a dispatch id to a trader, so the screen could not name
+    the row it was acknowledging.
+
+    **A list rather than a `current_dispatch_id` on the order.** `gold_dispatches` carries
+    `superseded` and `cancelled` among its six statuses and has no unique constraint per order, so
+    "the current one" is a concept this system does not define — and inventing it in a response
+    would promote a screen's guess to a contract. The trader acknowledges the dispatch that is
+    `dispatched`; a superseded one stays visible, which is the same reason
+    `GET /{receipt_id}/matches` keeps rejected candidates.
+
+    Ownership-scoped like the order read beside it: a second trader gets 404 rather than 403,
+    because an authorisation error over a guessable identifier tells them the order exists.
+
+    Oldest first, so the sequence of movements reads forwards.
+    """
+
+    with runtime.uow_factory() as uow:
+        order = uow.session.get(GoldSaleOrder, order_id)
+        if actor.is_trader:
+            require_owned(order, order.trader_id if order else None, actor)
+        elif order is None:
+            uow.rollback()
+            raise NotFoundError()
+        assert order is not None
+        rows = list(
+            uow.session.scalars(
+                select(GoldDispatch)
+                .where(GoldDispatch.gold_sale_order_id == order_id)
+                .order_by(GoldDispatch.created_at.asc())
+            )
+        )
+        response = [
+            DispatchResponse(
+                id=row.id,
+                gold_sale_order_id=row.gold_sale_order_id,
+                dispatch_type=row.dispatch_type,
+                status=row.status,
+                gold_weight=row.weight,
+                weight_unit=row.weight_unit,
+                dispatched_at=row.dispatched_at,
+                guard_override_at=row.guard_override_at,
+                guard_override_reason=row.guard_override_reason,
+                order_status=order.status,
+                # Reported from the order rather than recomputed, the same way the retry routes
+                # report a request status: a second copy of the aggregation rule in a route is how
+                # two answers to one question begin.
+                confirmed_total_irr=order.final_amount_irr or 0,
+                expected_amount_irr=order.expected_amount_irr,
+                record_version=row.record_version,
+                created_at=row.created_at,
+            )
+            for row in rows
+        ]
+        uow.rollback()
+
+    return response
 
 
 @router.post(

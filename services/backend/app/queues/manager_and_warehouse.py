@@ -171,6 +171,11 @@ ORDERS_READY_FOR_DISPATCH: QueueDefinition[GoldSaleOrder] = QueueDefinition(
     filter_columns={"trader_id": GoldSaleOrder.trader_id},
     entity=GoldSaleOrder,
     render=_render_order,
+    # M11 Screens slice 7. The order page, where the dispatch controls live. All three
+    # warehouse queues carry order ids, so all three point at the same screen — which is
+    # also why a separate warehouse page was not built: it would be a second page about the
+    # same row, and the queues would have to choose between them.
+    detail_path="/gold-orders",
 )
 
 BLOCKED_DISPATCHES: QueueDefinition[GoldSaleOrder] = QueueDefinition(
@@ -182,6 +187,11 @@ BLOCKED_DISPATCHES: QueueDefinition[GoldSaleOrder] = QueueDefinition(
     filter_columns={"trader_id": GoldSaleOrder.trader_id},
     entity=GoldSaleOrder,
     render=_render_order,
+    # M11 Screens slice 7. The order page, where the dispatch controls live. All three
+    # warehouse queues carry order ids, so all three point at the same screen — which is
+    # also why a separate warehouse page was not built: it would be a second page about the
+    # same row, and the queues would have to choose between them.
+    detail_path="/gold-orders",
 )
 
 
@@ -226,4 +236,9 @@ RECEIPT_CONFIRMATION_WORK: QueueDefinition[GoldDispatch] = QueueDefinition(
     source="15_Agent_Implementation_Plan.md:1286",
     entity=GoldDispatch,
     render=_render_dispatch,
+    # M11 Screens slice 7. The order page, where the dispatch controls live. All three
+    # warehouse queues carry order ids, so all three point at the same screen — which is
+    # also why a separate warehouse page was not built: it would be a second page about the
+    # same row, and the queues would have to choose between them.
+    detail_path="/gold-orders",
 )

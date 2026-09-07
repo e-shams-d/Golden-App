@@ -239,9 +239,17 @@ def test_the_queue_rows_link_where_the_server_says_and_nowhere_else() -> None:
         "sent-attempts-awaiting-result": "/payment-attempts",
         "failed-partial-retry-payments": "/payment-attempts",
         # M11 Screens slice 6. The incoming payment review screen. **`receipt-confirmation-work` is
-        # deliberately absent**: that queue is the warehouse's, over gold *orders* under
-        # `gold_sale.dispatch`, and pointing it here would be the wrong screen for the right row.
+        # deliberately absent from *this* destination**: that queue is the warehouse's, over gold
+        # *orders* under `gold_sale.dispatch`, and pointing it here would be the wrong screen for
+        # the right row.
         "incoming-receipts-requiring-review": "/incoming-payments",
+        # M11 Screens slice 7. All three warehouse queues carry order ids, so all three open the
+        # order page — which is where the dispatch controls went, and the reason a separate
+        # warehouse screen was not built: it would be a second page about the same row and these
+        # queues would have to choose between them.
+        "orders-ready-for-dispatch": "/gold-orders",
+        "blocked-dispatches": "/gold-orders",
+        "receipt-confirmation-work": "/gold-orders",
     }
     linked = {name: queue.detail_path for name, queue in BUILT.items() if queue.detail_path}
 

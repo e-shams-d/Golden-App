@@ -355,6 +355,30 @@ export const faMessages = {
   "pricing.note": "یادداشت (اختیاری)",
   "pricing.submit": "ثبت قیمت‌گذاری",
   "pricing.refused": "قیمت‌گذاری پذیرفته نشد. اطلاعات به‌روز شد.",
+  // M11 Screens slice 7. Handing the gold over, and closing the order.
+  "dispatch.title": "تحویل طلا",
+  "dispatch.type": "نوع تحویل",
+  "dispatch.weight": "وزن تحویل‌شده (اختیاری)",
+  "dispatch.recipient": "تحویل‌گیرنده (اختیاری)",
+  "dispatch.record": "ثبت تحویل",
+  "dispatch.confirmedTotal": "مبلغ نهایی سفارش (ریال)",
+  "dispatch.expectedAmount": "مبلغ برآوردی سفارش (ریال)",
+  // Said above the field, not below the button: filling it changes what the system allows.
+  "dispatch.override": "دلیل نادیده‌گرفتن شرط پرداخت (فقط در صورت لزوم)",
+  "dispatch.overrideExplains":
+    "اگر مبلغ سفارش کامل پرداخت نشده باشد، تحویل پذیرفته نمی‌شود. با نوشتن دلیل، تحویل انجام می‌شود و همین دلیل به‌همراه زمان آن ثبت می‌ماند تا بعداً قابل بازبینی باشد. اگر لازم نیست، خالی بگذارید.",
+  "dispatch.closeTitle": "بستن سفارش",
+  "dispatch.closeExplains":
+    "بستن سفارش کار دیگری است و دسترسی دیگری می‌خواهد؛ لزوماً همان کسی که طلا را تحویل داده آن را نمی‌بندد.",
+  "dispatch.closureNote": "یادداشت بستن (اختیاری)",
+  "dispatch.close": "بستن سفارش",
+  // The trader's side.
+  "dispatch.acknowledgeTitle": "تأیید دریافت طلا",
+  "dispatch.acknowledgeExplains":
+    "با تأیید، اعلام می‌کنید طلا به دست شما رسیده است. اگر چیزی درست نیست، پیش از تأیید با مرکز تماس بگیرید.",
+  "dispatch.acknowledge": "دریافت کردم",
+  "dispatch.acknowledged": "دریافت طلا تأیید شد.",
+  "dispatch.refused": "این کار پذیرفته نشد. اطلاعات به‌روز شد؛ وضعیت تازه را ببینید.",
   // M11 Screens slice 6. The trader claims a payment; the centre matches and confirms it.
   "receipt.claimTitle": "اعلام پرداخت",
   "receipt.claimExplains":
