@@ -364,6 +364,10 @@ INCOMING_RECEIPTS_REQUIRING_REVIEW: QueueDefinition[IncomingPaymentReceipt] = Qu
     filter_columns={"trader_id": IncomingPaymentReceipt.trader_id},
     entity=IncomingPaymentReceipt,
     render=_render_receipt,
+    # M11 Screens slice 6. The review screen. This queue's rows *are* receipts, so the row
+    # id is what the screen takes — which is the condition `detail_path` exists to make
+    # explicit rather than assumed.
+    detail_path="/incoming-payments",
 )
 
 

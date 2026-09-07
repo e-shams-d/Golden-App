@@ -22,7 +22,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
@@ -42,6 +42,7 @@ from app.core.errors import (
 from app.core.request_context import get_request_id
 from app.core.runtime import RuntimeServices
 from app.core.time import utc_now
+from app.db.models.gold_sale import GoldSaleOrder
 from app.db.models.incoming_match import IncomingPaymentMatch
 from app.db.models.incoming_payment import IncomingPaymentReceipt
 from app.security.actor import ActorContext
@@ -441,3 +442,131 @@ def list_incoming_matches(
         uow.rollback()
 
     return response
+
+
+class ReceiptDetail(BaseModel):
+    """One claim, as the accountant reviewing it sees it.
+
+    The same fields `IncomingReceiptResponse` carries — this is a read of the row those commands
+    return, not a wider view. §21.5 gives the accountant the claim and its candidates; the
+    trader's evidence is reached through `evidence_file_id` and its own guarded download.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    gold_sale_order_id: uuid.UUID
+    status: str
+    amount_irr: int
+    confirmed_amount_irr: int | None
+    tracking_number: str | None
+    evidence_file_id: uuid.UUID | None
+    order_status: str
+    record_version: int
+    created_at: datetime
+
+
+@router.get(
+    "/{receipt_id}",
+    response_model=ReceiptDetail,
+    operation_id="getIncomingPaymentReceipt",
+    summary="One incoming payment claim, and the precondition confirming it requires.",
+    responses=RESPONSES,
+    dependencies=[requires(declare("incoming_receipt.read"))],
+)
+def get_incoming_receipt(
+    receipt_id: uuid.UUID,
+    response: Response,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+) -> ReceiptDetail:
+    """`GET /api/v1/incoming-payment-receipts/{receipt_id}`.
+
+    **M11 Screens slice 6, closing a gap slice 5 recorded.** `confirm` demands `If-Match` against
+    the receipt and nothing returned the receipt's `record_version` as an `ETag`: the claim was
+    submitted by a trader, reached through a queue row of five fields, and read nowhere. So the
+    accountant's screen could only compute the precondition, which compares a state nobody
+    observed.
+
+    `incoming_receipt.read` rather than `incoming_payment.confirm`, matching the matches list
+    beside it: reading a claim is a manager's and an auditor's question as much as an
+    accountant's, and confirming it is a different authority the catalogue separates.
+
+    **Internal only, and deliberately.** The trader submits the claim through their order and sees
+    its status there; this read is the review surface. A trader reaching it would be reading the
+    centre's view of their own claim, which is a disclosure decision nobody has made.
+    """
+
+    del actor
+    with runtime.uow_factory() as uow:
+        receipt = uow.session.get(IncomingPaymentReceipt, receipt_id)
+        if receipt is None:
+            uow.rollback()
+            raise NotFoundError()
+        order = uow.session.get(GoldSaleOrder, receipt.gold_sale_order_id)
+        detail = ReceiptDetail(
+            id=receipt.id,
+            gold_sale_order_id=receipt.gold_sale_order_id,
+            status=receipt.status,
+            amount_irr=receipt.amount_irr,
+            confirmed_amount_irr=receipt.confirmed_amount_irr,
+            tracking_number=receipt.tracking_number,
+            evidence_file_id=receipt.evidence_file_id,
+            order_status=order.status if order is not None else "",
+            record_version=receipt.record_version,
+            created_at=receipt.created_at,
+        )
+        uow.rollback()
+
+    response.headers["ETag"] = f'"rv-{detail.record_version}"'
+    return detail
+
+
+@router.get(
+    "/{receipt_id}/matches/{match_id}",
+    response_model=MatchResponse,
+    operation_id="getIncomingPaymentMatch",
+    summary="One proposed match, and the precondition rejecting it requires.",
+    responses=RESPONSES,
+    dependencies=[requires(declare("incoming_receipt.read"))],
+)
+def get_incoming_match(
+    receipt_id: uuid.UUID,
+    match_id: uuid.UUID,
+    response: Response,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+) -> MatchResponse:
+    """`GET /api/v1/incoming-payment-receipts/{receipt_id}/matches/{match_id}`.
+
+    **The second read slice 5's gate asked for, and the reason it is a second one.** That slice
+    recorded both incoming-payment gaps as needing the *receipt's* version. Reading the routes
+    while building this screen showed that was wrong for `reject`: it passes
+    `incoming_payment_match_id` and edits the match row, so the precondition is the **match's**.
+    The recorded note has been corrected rather than the route bent to fit it.
+
+    A list cannot answer this. `GET /{receipt_id}/matches` returns every candidate and one `ETag`
+    cannot describe many rows, so a screen rejecting from the list would build
+    `rv-${row.record_version}` from a page that is already one request old — which is precisely
+    what `apps/admin-web/test/preconditions-come-from-the-server.test.ts` records as the defect.
+
+    A match id belonging to another receipt is 404 rather than 400, the same rule the reject route
+    states: the path asserts a relationship, and answering "wrong receipt" would confirm the match
+    exists.
+    """
+
+    del actor
+    with runtime.uow_factory() as uow:
+        stored = uow.session.get(IncomingPaymentMatch, match_id)
+        if stored is None or stored.incoming_payment_receipt_id != receipt_id:
+            uow.rollback()
+            raise NotFoundError()
+        receipt = uow.session.get(IncomingPaymentReceipt, receipt_id)
+        if receipt is None:  # pragma: no cover - the foreign key guarantees it
+            uow.rollback()
+            raise NotFoundError()
+        rendered = _rendered(stored, receipt.status)
+        uow.rollback()
+
+    response.headers["ETag"] = f'"rv-{rendered.record_version}"'
+    return rendered

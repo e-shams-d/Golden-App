@@ -357,6 +357,13 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # they paid — slice 2 — and holds neither `incoming_payment.match` nor `incoming_receipt.read`.
     ("POST", "/api/v1/incoming-payment-receipts/{receipt_id}/matches"): PERMISSION,
     ("GET", "/api/v1/incoming-payment-receipts/{receipt_id}/matches"): PERMISSION,
+    # M11 Screens slice 6. The two reads the confirm and reject commands always presupposed, both
+    # on `incoming_receipt.read` — the same grant the matches list beside them uses, and a
+    # different authority from `incoming_payment.confirm`. `PERMISSION` rather than `DUAL`: a
+    # trader may claim they paid and may not read the centre's review of that claim, so there is
+    # no ownership scope here to filter and no ownership negative to owe.
+    ("GET", "/api/v1/incoming-payment-receipts/{receipt_id}"): PERMISSION,
+    ("GET", "/api/v1/incoming-payment-receipts/{receipt_id}/matches/{match_id}"): PERMISSION,
     (
         "POST",
         "/api/v1/incoming-payment-receipts/{receipt_id}/matches/{match_id}/reject",
@@ -991,6 +998,18 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     (
         "POST",
         "/api/v1/incoming-payment-receipts/{receipt_id}/matches/{match_id}/reject",
+        "permission",
+    ): "test_no_trader_can_reach_the_matching_surface",
+    # M11 Screens slice 6's two reads, on the same test and for the reason it gives: the surface is
+    # checked whole, because one read left out of the sweep is the list endpoint that leaks.
+    (
+        "GET",
+        "/api/v1/incoming-payment-receipts/{receipt_id}",
+        "permission",
+    ): "test_no_trader_can_reach_the_matching_surface",
+    (
+        "GET",
+        "/api/v1/incoming-payment-receipts/{receipt_id}/matches/{match_id}",
         "permission",
     ): "test_no_trader_can_reach_the_matching_surface",
     # M10 slice 6, and its own test rather than the matching one: the permission is different

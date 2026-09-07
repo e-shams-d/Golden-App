@@ -48,6 +48,25 @@ function routes(): readonly string[] {
   });
 }
 
+/**
+ * The queue registry, which is where a queue row's destination lives.
+ *
+ * Reaching across into the backend from a frontend test is unusual and is the honest consequence
+ * of slice 4's decision: which screen opens a queue row is the server's answer, so the frontend
+ * genuinely does not know it. The alternative — a map of sixteen names here — is the drift that
+ * decision removed.
+ */
+const QUEUE_REGISTRY = join(
+  APP_ROOT,
+  "..",
+  "..",
+  "services",
+  "backend",
+  "app",
+  "queues",
+  "money_movement.py",
+);
+
 function routeSource(): string {
   return files(join(APP_ROOT, "app"), /\.tsx?$/)
     .concat(files(join(APP_ROOT, "components"), /\.tsx?$/))
@@ -79,14 +98,31 @@ describe("every screen is reachable (UI-REQ-004)", () => {
 
   it("leaves no page unreachable", () => {
     const navigable = new Set<string>(items.map(({ href }) => href));
-    const source = routeSource();
+    // **A destination the server publishes counts as a link, and M11 Screens slice 6 is why.**
+    //
+    // Slice 4 moved queue row destinations onto the queue registry — `QueueDefinition.detail_path`
+    // — precisely so this application would *not* hold a map of sixteen queue names to sixteen
+    // screens. The queue table renders `listing.detail_path` and nothing else, so a screen reached
+    // only from a queue row appears in no frontend file at all.
+    //
+    // This gate was right to fire on that, and the fix is not to weaken it: reachability is still
+    // asserted, from the one other place a route can legitimately come from. Read as text because
+    // the registry is Python, and `tests/backend/test_incoming_screens_exist.py` holds the same
+    // pairing from the side that can import it — so neither half is trusted alone.
+    const source = routeSource() + readFileSync(QUEUE_REGISTRY, "utf8");
 
     const unreachable = routes().filter((route) => {
       if (navigable.has(route) || route === "/") return false;
       if (route.includes("[")) {
         // Reached from whatever lists its instances, by a template or by a literal for a
         // known value. Both contain the static prefix.
-        return !source.includes(route.slice(0, route.indexOf("[")));
+        //
+        // **Without its trailing slash too**, because a server-published `detail_path` is a
+        // prefix the row id is appended to — `"/incoming-payments"` and not
+        // `"/incoming-payments/"`. Matching only the slashed form asked whether the frontend
+        // writes the link, which is the thing slice 4 deliberately stopped it doing.
+        const prefix = route.slice(0, route.indexOf("["));
+        return !source.includes(prefix) && !source.includes(prefix.replace(/\/$/u, ""));
       }
       return !linksTo(source, route);
     });
