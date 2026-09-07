@@ -334,6 +334,10 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     ("POST", "/api/v1/gold-sale-orders"): DUAL,
     ("GET", "/api/v1/gold-sale-orders"): DUAL,
     ("GET", "/api/v1/gold-sale-orders/{order_id}"): DUAL,
+    # M11 Screens slice 7. Ownership-scoped by the same `require_owned` on the same row as
+    # the read above, and guarded by the same grant — so `DUAL` for the same reason, and its
+    # negatives are the same two tests rather than a second pair about one guard.
+    ("GET", "/api/v1/gold-sale-orders/{order_id}/dispatches"): DUAL,
     ("POST", "/api/v1/gold-sale-orders/{order_id}/submit"): DUAL,
     # Pricing is internal only: `20260801_0008:228` gives `gold_sale.price` to the accountant
     # alone, and a trader pricing their own order is what the separation exists to prevent.
@@ -946,6 +950,12 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
         "test_another_trader_cannot_see_or_submit_the_order"
     ),
     ("GET", "/api/v1/gold-sale-orders/{order_id}", "permission"): (
+        "test_an_accountant_sees_every_order"
+    ),
+    ("GET", "/api/v1/gold-sale-orders/{order_id}/dispatches", "ownership"): (
+        "test_another_trader_cannot_see_or_submit_the_order"
+    ),
+    ("GET", "/api/v1/gold-sale-orders/{order_id}/dispatches", "permission"): (
         "test_an_accountant_sees_every_order"
     ),
     ("POST", "/api/v1/gold-sale-orders/{order_id}/submit", "ownership"): (

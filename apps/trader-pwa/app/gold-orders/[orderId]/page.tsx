@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { TraderShell } from "../../../components/trader-shell";
 import { readOrder, submitOrder, type GoldOrder } from "../../../src/gold-orders";
+import { acknowledgeDispatch, listDispatches, type Dispatch } from "../../../src/dispatch";
 import { submitReceipt } from "../../../src/incoming-receipts";
 
 /**
@@ -31,7 +32,12 @@ import { submitReceipt } from "../../../src/incoming-receipts";
 
 type Phase =
   | { readonly kind: "loading" }
-  | { readonly kind: "ready"; readonly order: GoldOrder; readonly ifMatch: string }
+  | {
+      readonly kind: "ready";
+      readonly order: GoldOrder;
+      readonly ifMatch: string;
+      readonly dispatches: readonly Dispatch[];
+    }
   | { readonly kind: "failed" };
 
 /** The one status from which a trader may hand the order over. `06_Workflows` §8.1. */
@@ -51,10 +57,16 @@ export default function TraderGoldOrderPage() {
   const [sourceBank, setSourceBank] = useState("");
   const [claimNotice, setClaimNotice] = useState<string | null>(null);
 
+  // M11 Screens slice 7. Confirming the gold arrived.
+  const [acknowledgeNotice, setAcknowledgeNotice] = useState<string | null>(null);
+
   const load = useCallback(
     async (signal?: AbortSignal): Promise<Phase> => {
       const { order, ifMatch } = await readOrder(orderId, signal);
-      return { kind: "ready", order, ifMatch };
+      // The dispatch list rather than a field on the order: there is no `current` dispatch
+      // in this system, and the acknowledge route needs a specific id.
+      const dispatches = await listDispatches(orderId, signal);
+      return { kind: "ready", order, ifMatch, dispatches };
     },
     [orderId],
   );
@@ -114,6 +126,37 @@ export default function TraderGoldOrderPage() {
       setPhase(await load());
     } catch {
       setClaimNotice(t("receipt.failed"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Say the gold arrived.
+   *
+   * **The order's `ETag`, echoed** — not the dispatch's. §8.2 moves both rows and the order is the
+   * aggregate, which the route's own note states; `readOrder` is what issues it, so this screen
+   * needed no read of its own. The precondition gate slice 5 built confirmed that before the
+   * screen was written, which is the first time it has paid rather than caught.
+   */
+  const acknowledge = async (ifMatch: string) => {
+    if (phase.kind !== "ready") return;
+    const pending = phase.dispatches.find((row) => row.status === "dispatched");
+    if (pending === undefined) return;
+    setBusy(true);
+    setAcknowledgeNotice(null);
+    try {
+      await acknowledgeDispatch(orderId, pending.id, ifMatch);
+      setAcknowledgeNotice(t("dispatch.acknowledged"));
+      setPhase(await load());
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      setAcknowledgeNotice(status === 412 ? t("gold.stale") : t("dispatch.refused"));
+      try {
+        setPhase(await load());
+      } catch {
+        setPhase({ kind: "failed" });
+      }
     } finally {
       setBusy(false);
     }
@@ -224,6 +267,41 @@ export default function TraderGoldOrderPage() {
                   {t("gold.submit")}
                 </button>
               </div>
+            ) : null}
+
+            {/*
+              M11 Screens slice 7. Confirming the gold arrived.
+
+              **Offered on the order's status**, because there is no `allowed_actions` for gold and
+              a projection built for one screen would be the second list beside the command's guard
+              that slice 3 refused to write. §8.2 draws `dispatched --> received_by_trader`, so
+              `dispatched` is the one state from which this is a real act.
+
+              The dispatch id is the order's current one; a trader with no dispatch has nothing to
+              acknowledge, and the section is absent rather than disabled.
+            */}
+            {phase.dispatches.some((row) => row.status === "dispatched") ? (
+              <section aria-labelledby="acknowledge-heading" className="space-y-2 rounded border p-4">
+                <h2 className="font-semibold" id="acknowledge-heading">
+                  {t("dispatch.acknowledgeTitle")}
+                </h2>
+                {/* Before the button. Once acknowledged the order moves on, and a person should
+                    know that raising a problem happens *before* they press it. */}
+                <p className="text-sm">{t("dispatch.acknowledgeExplains")}</p>
+                {acknowledgeNotice !== null ? (
+                  <p aria-live="polite" className="rounded border p-3 text-sm">
+                    {acknowledgeNotice}
+                  </p>
+                ) : null}
+                <button
+                  className="rounded border px-3 py-1 font-bold"
+                  disabled={busy}
+                  onClick={() => acknowledge(phase.ifMatch)}
+                  type="button"
+                >
+                  {t("dispatch.acknowledge")}
+                </button>
+              </section>
             ) : null}
 
             {/*

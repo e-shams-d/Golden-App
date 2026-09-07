@@ -955,10 +955,23 @@ PENDING: dict[str, str] = {
     # The statement-import screen is **not built**: the owner has confirmed the bank returns no
     # Excel, so M10's parser has no input and a screen for it would be a surface for a flow that
     # cannot start. Recorded in the plan.
-    "UI-DISPATCH-001": (
-        "M11 Screens slice 7 - the dispatch guard panel and closure. Stated by "
-        "`docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet built."
-    ),
+    # M11 Screens slice 7 discharged `UI-DISPATCH-001`, in
+    # `tests/backend/test_dispatch_screens_exist.py` against M10's behavioural halves.
+    #
+    # **The precondition gate slice 5 built paid rather than caught, for the first time.** All
+    # three commands here take `If-Match` against the order, and `getGoldSaleOrder` has issued that
+    # `ETag` since slice 5 — so the slice began by being told its preconditions already had a
+    # source, instead of discovering halfway through that they did not.
+    #
+    # **It could not have found the other missing source, and slice 7 did.** The acknowledge route
+    # names a `{dispatch_id}` and nothing returned a dispatch id to a trader: a **path parameter**
+    # with nowhere to come from, which is the same defect one level over from the one that gate
+    # asks about. `GET /gold-sale-orders/{order_id}/dispatches` closes it — a list rather than a
+    # `current_dispatch_id`, because six statuses including `superseded` and no unique constraint
+    # per order mean "the current one" is a concept this system does not define.
+    #
+    # All three warehouse queues now open the order page: one page per order, because three roles
+    # reach that row and each may do a different thing with it.
     "TRACE-SCREENS-002": (
         "M11 Screens slice 8 - the gate that fails when an operation ships with no screen and no "
         "recorded reason. Stated by `docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet "
