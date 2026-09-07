@@ -203,6 +203,50 @@ export const faMessages = {
   // spells it. A queue in the registry with no label here fails
   // `tests/backend/test_queue_screens_exist.py` — the drift guard, because the list of queues
   // lives in the backend and only the words live here.
+  // M11 Screens slice 3. The trader's published payment result — the first time M9's publication
+  // reaches the person it is about.
+  "result.title": "نتیجه پرداخت",
+  "result.backToRequest": "بازگشت به درخواست",
+  "result.publishedAt": "زمان انتشار",
+  "result.version": "نسخه نتیجه",
+  "result.requestStatus": "وضعیت درخواست",
+  "result.contentHash": "اثر انگشت محتوا",
+  "result.downloadCard": "دریافت کارت نتیجه",
+  "result.corrected":
+    "این نتیجه اصلاح شده است. نسخه‌ای که می‌بینید آخرین نسخه است و نسخه‌های پیشین جایگزین شده‌اند.",
+  "result.acknowledgedAlready": "شما این نتیجه را تأیید کرده‌اید در",
+  "result.disputedAlready": "شما به این نتیجه اعتراض کرده‌اید در",
+  "result.acknowledge": "تأیید می‌کنم",
+  "result.dispute": "اعتراض دارم",
+  // Said before the fields, not after the button: doc 05 — "a dispute creates a visible manual
+  // review task and does not automatically reverse bank facts".
+  "result.disputeReversesNothing":
+    "اعتراض شما هیچ تراکنشی را برنمی‌گرداند. یک کار بررسی برای مرکز ساخته می‌شود و نتیجه پس از بررسی به شما اعلام خواهد شد.",
+  "result.disputeReason": "دلیل اعتراض",
+  "result.disputeDescription": "توضیح شما",
+  "result.submitDispute": "ثبت اعتراض",
+  "result.cancelDispute": "انصراف",
+  // Two options only. The backend deliberately left `reason_code` un-enumerated so a customer
+  // whose complaint fits no preset is not turned away, and a dropdown of guessed categories is
+  // precisely how that happens. The general one is first and is the default; the specific one is
+  // the single value document 05 documents. The complaint itself goes in the description.
+  "result.reason.other": "موضوع دیگری است — در توضیح می‌نویسم",
+  "result.reason.notReceived": "پول به حساب ذی‌نفع نرسیده است",
+  "result.disputeDescriptionHint":
+    "به زبان خودتان بنویسید چه چیزی درست نیست. هیچ فهرست از پیش تعیین‌شده‌ای شما را محدود نمی‌کند.",
+  "result.absentTitle": "نتیجه‌ای برای این درخواست منتشر نشده است",
+  "result.absentDescription":
+    "تا زمانی که مرکز نتیجه پرداخت را منتشر نکند چیزی برای نمایش نیست. اگر پرداخت ناموفق بوده باشد، از طریق اعلان‌ها به شما خبر داده می‌شود.",
+  "result.failedTitle": "دریافت نتیجه انجام نشد",
+  "result.failed": "نتیجه این درخواست دریافت نشد. لطفاً دوباره تلاش کنید.",
+  "result.refused":
+    "این درخواست پذیرفته نشد. ممکن است وضعیت درخواست از زمانی که صفحه را باز کرده‌اید تغییر کرده باشد؛ اطلاعات به‌روز شد.",
+  // 412 on this screen means one specific thing: the centre corrected the result while this
+  // person was reading it. That is the event the request's version exists to catch, so it is
+  // worth its own sentence rather than a generic refusal.
+  "result.stale":
+    "نتیجه این پرداخت در همین فاصله اصلاح شد، پس پاسخ شما ثبت نشد. نسخه تازه در بالا نمایش داده شده است؛ اگر با آن موافقید دوباره تأیید کنید.",
+  "result.viewResult": "دیدن نتیجه پرداخت",
   "queue.new-requests": "درخواست‌های جدید",
   "queue.correction-responses": "پاسخ‌های اصلاح",
   "queue.eligible-for-batching": "آماده دسته‌بندی",

@@ -41,6 +41,12 @@ from app.commands.payment_request import (
     UNDER_REVIEW,
     allowed_actions,
 )
+from app.commands.trader_result import (
+    ACKNOWLEDGE_OPERATION as ACKNOWLEDGE_OWN,
+)
+from app.commands.trader_result import (
+    DISPUTE_OPERATION as DISPUTE_OWN,
+)
 from app.db.models.payment_request import M5_REACHABLE_STATUSES
 
 WORKFLOWS = (
@@ -244,3 +250,145 @@ def test_the_cancellation_actor_and_reason_rules_match_the_document() -> None:
             f"§29.1 {'requires' if reason_required else 'does not require'} a reason "
             f"for {state}"
         )
+
+
+def documented_trader_responses() -> set[str]:
+    """§13.2's arrows out of `result_published` whose label names the trader.
+
+    The document draws three:
+
+        result_published --> trader_acknowledged: trader acknowledges
+        result_published --> trader_disputed: trader disputes
+        result_published --> closed: administrative close under policy
+
+    The third is the centre's, and the label is the only thing that distinguishes it — which is
+    why the filter is on the label rather than on the destination name. A destination-name filter
+    would have worked here by luck (`trader_*` twice) and would break the moment a status is named
+    for something other than its audience.
+    """
+
+    responses: set[str] = set()
+    for line in _section("## 13.2 Request state machine", "## 13.3 Revision lifecycle"):
+        match = ARROW.match(line)
+        if match is None:
+            continue
+        source, destination, label = match.groups()
+        if source == "result_published" and "trader" in label:
+            responses.add(destination)
+    return responses
+
+
+def documented_statuses() -> set[str]:
+    """Every status §13.2 draws, on either end of an arrow.
+
+    **`M5_REACHABLE_STATUSES` is the wrong set for anything past M5**, and the sabotage run is how
+    that was found. It holds six statuses — draft, submitted, under review, needs correction,
+    eligible, cancelled — and `result_published` is not one of them, so two tests written to sweep
+    "every status" never visited the only status they were about. Both passed clean and both passed
+    against a projection that offered a trader's response to the centre.
+
+    Derived from the document for the same reason the rest of this file is: a hand-written set
+    would be a third list to keep in step, and its failure mode is exactly the one above — silent,
+    and shaped like thoroughness.
+    """
+
+    statuses: set[str] = set()
+    for line in _section("## 13.2 Request state machine", "## 13.3 Revision lifecycle"):
+        match = ARROW.match(line)
+        if match is None:
+            continue
+        source, destination, _label = match.groups()
+        statuses.update({source, destination})
+    return statuses
+
+
+def test_the_document_draws_exactly_two_trader_responses() -> None:
+    """Guard the guard, before anything is compared against it.
+
+    A parse that found none would make every assertion below vacuous, and a parse that found the
+    administrative arrow too would make them wrong in the other direction.
+    """
+
+    assert documented_trader_responses() == {"trader_acknowledged", "trader_disputed"}
+
+
+def test_the_status_sweep_reaches_the_status_it_is_about() -> None:
+    """The floor the sabotage run added, and the one that would have caught it immediately.
+
+    A sweep over statuses that excludes `result_published` cannot say anything about a projection
+    keyed on `result_published`. Asserted before the sweeps below rather than trusted, because the
+    failure is invisible: every assertion passes, and passes about nothing.
+    """
+
+    statuses = documented_statuses()
+    assert "result_published" in statuses, (
+        "the parsed statuses do not include result_published, so the sweeps below are vacuous"
+    )
+    assert {"trader_acknowledged", "trader_disputed"} <= statuses
+    assert len(statuses) > len(M5_REACHABLE_STATUSES), (
+        "the document draws no more statuses than M5 reaches, which is what made the first "
+        "version of these sweeps silent"
+    )
+
+
+def test_allowed_actions_offers_a_trader_both_documented_responses() -> None:
+    """M11 Screens slice 3, and the reason it is here at all.
+
+    `allowed_actions` did not project acknowledge or dispute, so the publication screen would have
+    had to decide for itself from `status`, `trader_acknowledged_at` and `trader_disputed_at` —
+    the second list beside the commands' guards this projection exists to prevent.
+
+    Compared against the *document* rather than against `trader_result.RESPONDABLE_FROM`, which is
+    what the projection reads: checking a projection against its own input proves only that Python
+    works.
+    """
+
+    offered = set(allowed_actions("result_published", by_trader=True))
+
+    assert ACKNOWLEDGE_OWN in offered, (
+        "a trader looking at a published result is not offered acknowledge, so the screen has "
+        "nothing to render a button from and would have to guess"
+    )
+    assert DISPUTE_OWN in offered
+    assert len(documented_trader_responses()) == 2, "the document changed; revisit this pairing"
+
+
+def test_no_other_status_offers_a_trader_response() -> None:
+    """`result_published` and nothing else, across every status the **document** draws.
+
+    The failure this prevents is a button offered before there is a result to answer — a customer
+    invited to dispute a payment the centre has not reported on yet — and the one *after* it has
+    been answered, which is the case a sabotage run produced.
+
+    Swept over `documented_statuses()` and not `M5_REACHABLE_STATUSES`: the latter excludes
+    `result_published`, so the first version of this test compared nothing against nothing.
+    """
+
+    for status in documented_statuses():
+        offered = set(allowed_actions(status, by_trader=True))
+        expected = status == "result_published"
+        assert (ACKNOWLEDGE_OWN in offered) is expected, f"{status} offers acknowledge"
+        assert (DISPUTE_OWN in offered) is expected, f"{status} offers dispute"
+
+
+def test_the_centre_is_never_offered_a_traders_response() -> None:
+    """Both routes are `trader_only(...)`, and the projection must not contradict them.
+
+    Reporting these to an accountant would be an offer the 403 then withdraws, and on an internal
+    screen it would read as a permission problem rather than as a category error. Acknowledging a
+    result on a customer's behalf is not something the centre may do.
+
+    **This test was written, ran green, and did not catch the sabotage that removes the audience
+    condition** — because it swept `M5_REACHABLE_STATUSES`, which stops before publication. The
+    status it needed to visit was the only one missing from it.
+    """
+
+    statuses = documented_statuses()
+    for status in statuses:
+        offered = set(allowed_actions(status, by_trader=False))
+        assert ACKNOWLEDGE_OWN not in offered, f"{status} offers the centre a trader's acknowledge"
+        assert DISPUTE_OWN not in offered, f"{status} offers the centre a trader's dispute"
+
+    # Not vacuous: staff are offered something somewhere, so the absences above are about these
+    # two commands rather than about an empty projection.
+    assert any(allowed_actions(status, by_trader=False) for status in statuses)

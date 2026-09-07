@@ -887,11 +887,22 @@ PENDING: dict[str, str] = {
     # arrives and already the one navigation item carrying no permission; a second landing surface
     # would be two pages competing to be where work is found. It replaced four invented queue
     # names and an em dash that had stood there since M1.
-    "UI-PUB-001": (
-        "M11 Screens slice 3 - the trader's payment result, acknowledge and dispute. Stated by "
-        "`docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet built. Slice 0's survey "
-        "confirms the reads it needs already exist."
-    ),
+    # M11 Screens slice 3 discharged `UI-PUB-001`, in
+    # `tests/backend/test_publication_screen_exists.py` and the four tests appended to
+    # `tests/integration/test_trader_publications.py`. The 404-not-403 half was already M9's and
+    # is cited there rather than re-proved.
+    #
+    # **Slice 3 found two things missing rather than wrong.** `allowed_actions` did not project
+    # acknowledge or dispute, so the screen would have had to derive its buttons from three
+    # columns — the second list beside the commands' guards that projection exists to prevent; the
+    # projection was extended instead. And `TRACE-SCREENS-001`'s sweep-versus-routes comparison
+    # existed for `admin-web` only, so trader screens could ship unswept: porting it found
+    # `/login`, `/evidence` and `/offline` never opened by the accessibility sweep.
+    #
+    # The slice's deviation: **no version history.** The plan asked for one and §20.3 gives a
+    # trader their active publication only, with no history route to fetch. `publication_version`
+    # above 1 is said in words instead, and the screen is asserted *not* to reach for the centre's
+    # history path.
     "UI-RESULT-001": (
         "M11 Screens slice 4 - the centre's result confirmation and publication. Stated by "
         "`docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet built."

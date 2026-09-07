@@ -739,3 +739,119 @@ def publications_disputed(world: dict[str, Any], request_id: uuid.UUID) -> Any:
     return rows(
         world, "SELECT trader_disputed_at FROM payment_requests WHERE id = %s", request_id
     )[0][0]
+
+
+# ---------------------------------------------------------------------------------------------
+# M11 Screens slice 3. What the publication screen is allowed to offer.
+#
+# `allowed_actions` exists so a screen shows what the server said rather than deciding for itself
+# which commands are legal — `app/commands/payment_request.py` states it in those words. **It did
+# not project acknowledge or dispute**, so the publication screen would have had to derive its two
+# buttons from `status`, `trader_acknowledged_at` and `trader_disputed_at`: a second list beside
+# the commands' guards, which is what that projection exists to prevent.
+#
+# Slice 3 added the projection. These tests are about the property that makes it worth having —
+# **the field and the command agree** — because a projection that disagreed would be worse than
+# none: it would put a button in front of a customer that the server then refuses.
+
+OFFERED_ACKNOWLEDGE = "payment_publication.acknowledge_own"
+OFFERED_DISPUTE = "payment_publication.dispute_own"
+
+
+def trader_actions(world: dict[str, Any], request_id: uuid.UUID) -> set[str]:
+    """What the server tells this trader they may do with this request."""
+
+    response = world["client"].get(f"/api/v1/payment-requests/{request_id}")
+    assert response.status_code == 200, response.text
+    return set(response.json()["allowed_actions"])
+
+
+def test_a_published_result_offers_both_responses(world: dict[str, Any]) -> None:
+    """The positive half, and it is not optional.
+
+    Without it, "neither action is offered after acknowledging" below would pass against a
+    projection that never offered them at all — which is the state this slice found.
+    """
+
+    case = a_published_request(world)
+    sign_in_trader(world, OWNER_PHONE)
+
+    actions = trader_actions(world, case["request_id"])
+    assert OFFERED_ACKNOWLEDGE in actions
+    assert OFFERED_DISPUTE in actions
+
+
+def test_answering_withdraws_both_offers_and_the_commands_agree(world: dict[str, Any]) -> None:
+    """**The property worth testing: the field and the command say the same thing.**
+
+    `UI-PUB-001` asks that the buttons be *absent* rather than disabled once a result has been
+    answered. A screen can only honour that if the server stops offering them — and a server that
+    stopped offering while still accepting, or kept offering while refusing, would make the screen
+    wrong in one direction or the other.
+
+    So both are asserted together: after acknowledging, neither action is offered **and** a fresh
+    attempt is refused. The refusal is a 400 rather than a 403, which
+    `test_acknowledging_twice_is_refused_but_a_replay_is_not` already establishes is deliberate.
+    """
+
+    case = a_published_request(world)
+    sign_in_trader(world, OWNER_PHONE)
+
+    assert acknowledge(world, case["request_id"]).status_code == 200
+
+    actions = trader_actions(world, case["request_id"])
+    assert OFFERED_ACKNOWLEDGE not in actions, (
+        "the server still offers acknowledge on an answered result, so a screen following "
+        "`allowed_actions` shows a button the command refuses"
+    )
+    assert OFFERED_DISPUTE not in actions
+
+    # The other half. A withdrawn offer that the command still honoured would be a screen hiding
+    # something a person may legitimately do.
+    assert acknowledge(world, case["request_id"]).status_code == 400
+    assert dispute(world, case["request_id"]).status_code == 400
+
+
+def test_disputing_withdraws_both_offers_too(world: dict[str, Any]) -> None:
+    """The same claim through the other command, because the two states are different rows.
+
+    `trader_acknowledged` and `trader_disputed` are separate statuses, and a projection keyed on
+    only one of them would leave the buttons standing after a dispute — the case where a customer
+    who has already complained is invited to complain again.
+    """
+
+    case = a_published_request(world)
+    sign_in_trader(world, OWNER_PHONE)
+
+    assert dispute(world, case["request_id"]).status_code == 200
+
+    actions = trader_actions(world, case["request_id"])
+    assert OFFERED_ACKNOWLEDGE not in actions
+    assert OFFERED_DISPUTE not in actions
+
+
+def test_an_unpublished_result_offers_neither(world: dict[str, Any]) -> None:
+    """Before publication there is nothing to agree with, and the projection says so.
+
+    The mirror of `test_a_trader_cannot_respond_before_a_result_is_published`: that one proves the
+    command refuses, this one proves the screen is never invited to try.
+    """
+
+    case = a_published_request(world)
+    with psycopg.connect(_psycopg(world["owner_url"])) as connection:
+        connection.execute(
+            "UPDATE payment_requests SET status = 'paid' WHERE id = %s", (case["request_id"],)
+        )
+        connection.commit()
+
+    sign_in_trader(world, OWNER_PHONE)
+    actions = trader_actions(world, case["request_id"])
+    assert OFFERED_ACKNOWLEDGE not in actions
+    assert OFFERED_DISPUTE not in actions
+
+
+# The staff half of the projection — that an accountant is never offered a trader's response — is
+# in `tests/backend/test_review_transitions.py`, next to the rest of `allowed_actions` and checked
+# against `06_Workflows_and_State_Machines.md` itself. It needs no database and no session: the
+# projection is a pure function of a status and an audience, and this file has no admin sign-in
+# machinery because M9 seeded publications through SQL rather than through a session.

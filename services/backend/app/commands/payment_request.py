@@ -49,6 +49,7 @@ from app.audit.registry import (
     CommandNames,
 )
 from app.audit.writer import AuditActor, AuditContext, AuditEntry, AuditWriter
+from app.commands import trader_result
 from app.core.errors import BusinessRuleViolationError, NotFoundError
 from app.core.hashing import unversioned_digest
 from app.core.money import Money
@@ -585,6 +586,25 @@ def allowed_actions(status: str, *, by_trader: bool) -> tuple[str, ...]:
     rule = CANCELLABLE.get(status)
     if rule is not None and (not by_trader or rule.trader_may):
         actions.append(CANCEL_OPERATION)
+
+    # M11 Screens slice 3. The two commands a trader may issue against a *published result*, and
+    # they were missing from this projection until a screen needed them.
+    #
+    # **That absence was the finding.** The docstring above promises a screen can show "what the
+    # server said rather than guessing", and for acknowledge and dispute there was nothing to
+    # show — so the publication screen would have had to derive the buttons from `status`,
+    # `trader_acknowledged_at` and `trader_disputed_at`. That is the second list beside the
+    # commands' own guards that this function exists to prevent, and it would have been wrong in
+    # the one direction that matters: offering a button the server refuses.
+    #
+    # Projected from `trader_result.RESPONDABLE_FROM`, which is the tuple
+    # `_refuse_unless_published` actually checks, so the two cannot disagree. Staff are excluded
+    # because both routes are `trader_only(...)`: acknowledging on a trader's behalf is not a
+    # thing the centre may do, and reporting it as available to an accountant would be a lie the
+    # 403 then contradicts.
+    if by_trader and status in trader_result.RESPONDABLE_FROM:
+        actions.append(trader_result.ACKNOWLEDGE_OPERATION)
+        actions.append(trader_result.DISPUTE_OPERATION)
 
     return tuple(sorted(actions))
 
