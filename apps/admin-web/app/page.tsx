@@ -2,14 +2,8 @@ import { t } from "@gold/localization";
 import Link from "next/link";
 
 import { AdminShell } from "../components/admin-shell";
+import { QueueIndexPanel } from "../components/queue-index";
 import { SessionPanel } from "../components/session-panel";
-
-const queueCards = [
-  t("admin.queue.traderApproval"),
-  t("admin.queue.requestReview"),
-  t("admin.queue.managerApproval"),
-  t("admin.queue.bankResult"),
-] as const;
 
 export default function AdminHomePage() {
   return (
@@ -47,20 +41,18 @@ export default function AdminHomePage() {
             {t("foundation.openStates")}
           </Link>
         </div>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {queueCards.map((title) => (
-            <article
-              className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5"
-              key={title}
-            >
-              <h3 className="font-black">{title}</h3>
-              <p className="mt-4 text-3xl font-black">
-                <span aria-hidden="true">—</span>
-                <span className="sr-only">تعداد هنوز دریافت نشده است</span>
-              </p>
-            </article>
-          ))}
-        </div>
+        {/*
+          M11 Screens slice 2. Four invented queue names and an em dash stood here for eleven
+          milestones, with a screen-reader note saying the count had not been received. That was
+          honest then and false now: sixteen queues have routes, the counts are the server's, and
+          none of the four names was one §19.2 gives.
+
+          **This is the dashboard and the queue landing page both**, rather than a new `/queues`
+          index screen. The dashboard is already where an authenticated person arrives and is
+          already the one navigation item that carries no permission, so a second landing surface
+          would be two pages competing to be the place work is found.
+        */}
+        <QueueIndexPanel />
       </section>
     </AdminShell>
   );

@@ -389,6 +389,13 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # no export operation beside it: `report.export` is granted to no role, and a route behind
         # it would refuse everybody.
         "getQueueSummaryReport",
+        # M11 Screens slice 2. The only operation in this contract with **no permission
+        # dependency**, and the one place that is right: there is no grant for "which queues are
+        # mine", and every entry it returns is filtered by that queue's own grant. Guarding it by
+        # `report.read` — the obvious candidate, since the numbers are the report's — would refuse
+        # `warehouse_operator` and `technical_admin`, who hold four of the sixteen queues and
+        # neither of whom holds it.
+        "listQueues",
     }
     assert "ErrorEnvelope" in schemas
     assert "HTTPValidationError" not in schemas

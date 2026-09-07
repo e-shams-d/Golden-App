@@ -17,6 +17,10 @@ not in `BUILT`.
 **Each queue declares its own permission and the loop reads it from the definition**, so a queue
 cannot be added without one. `declare()` refuses a name `permission_catalog.yaml` does not hold, so
 a queue guarded by an invented permission fails at import rather than at the first request.
+
+M11 Screens slice 2 adds the index — `GET /api/v1/queues` — because a screen cannot show a person
+their queues without asking which are theirs, and the alternative was a copy of the registry in
+TypeScript. `app/queues/index.py` records why it is not the existing report.
 """
 
 from __future__ import annotations
@@ -36,6 +40,7 @@ from app.api.v1.auth import authenticated_actor, requires
 from app.core.errors import ErrorEnvelope
 from app.core.runtime import RuntimeServices
 from app.queues.contract import QueueDefinition, read_queue_page
+from app.queues.index import visible_queues
 from app.queues.registry import BUILT
 from app.security.actor import ActorContext
 
@@ -130,6 +135,81 @@ class RequestQueuePageResponse(BaseModel):
     items: list[RequestQueueRowResponse]
     next_cursor: str | None
     total: int
+
+
+class QueueListingResponse(BaseModel):
+    """One queue the caller may open. See `app/queues/index.py` for why this is not the report."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    waiting: int
+    filters: list[str]
+    sorts: list[str]
+    default_sort: str
+
+
+class QueueIndexResponse(BaseModel):
+    """Every queue the caller may open, and the sum of what waits in them.
+
+    **A queue the caller may not read is absent rather than zero**, the same rule
+    `GET /reports/queue-summary` follows and for the same reason: a zero says "this queue exists
+    and is empty", which is information about a part of the business that is not theirs.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[QueueListingResponse]
+    total: int
+
+
+@router.get(
+    "",
+    response_model=QueueIndexResponse,
+    operation_id="listQueues",
+    summary="The queues the caller's grants allow, each with how much is waiting.",
+    responses={
+        401: {"model": ErrorEnvelope, "description": "No valid session."},
+        **VALIDATION_ERROR_RESPONSE,
+    },
+)
+def queue_index(
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+) -> QueueIndexResponse:
+    """`GET /api/v1/queues`.
+
+    **No `requires(...)`, and 403 is deliberately not in the responses.** There is no grant for
+    "may ask which queues are mine"; the answer is filtered per entry by each queue's own
+    permission, so a caller holding none receives `items: []` rather than a refusal. Inventing a
+    grant here would be an authority the catalogue does not define, and guarding it with a
+    neighbouring one — `report.read` was the obvious candidate — would deny the warehouse operator
+    and the technical admin, who between them hold four of the sixteen queues and neither of whom
+    holds it.
+
+    The empty path rather than `/`: with the router's `/queues` prefix this answers
+    `GET /api/v1/queues`, which cannot collide with the generated `/queues/{name}` routes because
+    every queue name is a non-empty literal segment.
+    """
+
+    with runtime.uow_factory() as uow:
+        listings = visible_queues(uow.session, actor=actor)
+        response = QueueIndexResponse(
+            items=[
+                QueueListingResponse(
+                    name=listing.name,
+                    waiting=listing.waiting,
+                    filters=list(listing.filters),
+                    sorts=list(listing.sorts),
+                    default_sort=listing.default_sort,
+                )
+                for listing in listings
+            ],
+            total=sum(listing.waiting for listing in listings),
+        )
+        uow.rollback()
+
+    return response
 
 
 # The one queue whose response shape was published before the shape was unified.

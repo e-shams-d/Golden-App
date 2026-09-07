@@ -96,6 +96,23 @@ UNGUARDED_ROUTES: dict[tuple[str, str], str] = {
     ("POST", "/api/v1/notifications/mark-all-read"): (
         "the recipient predicate is in the UPDATE itself, so there is no id to authorise against"
     ),
+    # M11 Screens slice 2. The queue index, and a different kind of unguarded from the ones above:
+    # this one has grants to check and checks them **per entry** rather than at the door.
+    #
+    # A queue appears in the response only if the caller holds that queue's own permission, which
+    # `summarise_queues` has applied since slice 7. So the door does not need a grant, and there is
+    # no grant it could correctly ask for: a caller holding nothing receives `items: []`, which is
+    # the true answer rather than a refusal.
+    #
+    # `report.read` was the candidate and is the wrong one. `permission_catalog.yaml` gives it to
+    # accountant, manager, business_admin and read_only_auditor — **not** to `warehouse_operator`
+    # (three queues, `gold_sale.dispatch`) or `technical_admin` (one, `file.quarantine_review`).
+    # Guarding the index by it would refuse the two roles whose entire working day is a queue.
+    ("GET", "/api/v1/queues"): (
+        "no grant decides whether a person may ask which queues are theirs; each entry is "
+        "filtered by that queue's own permission, so a caller holding none receives an empty list "
+        "rather than a 403"
+    ),
     ("GET", "/api/v1/me/trader/profile"): "ownership-scoped to the caller's own trader",
     ("PATCH", "/api/v1/me/trader/profile"): "ownership-scoped; allowlist excludes identity",
     # Public by design (`05_API_Specification.md:890`): there is no actor yet, and

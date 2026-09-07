@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { adminNavigation } from "../src/navigation";
 import { loadAdminSession, type AdminSession } from "../src/session";
+import { NotificationBell } from "./notification-bell";
 import { SignOutButton } from "./sign-out-button";
 
 /**
@@ -56,7 +57,19 @@ export function AdminShell({ children }: Readonly<{ children: ReactNode }>) {
           {/* Only when there is a session to end. Offering sign-out to an anonymous visitor
               would be a button that either does nothing or logs a 401 — and on this shell
               the header is the only place a person looks for it. */}
-          {session.kind === "signed-in" ? <SignOutButton /> : null}
+          {session.kind === "signed-in" ? (
+            <>
+              {/* M11 Screens slice 2, the bell slice 1 recorded as owed — and it needed no change
+                  to `ApplicationShell` after all: `headerContext` was already the slot for it.
+                  Gated on the session for the same reason sign-out is: an anonymous visitor's
+                  count request answers 401, so the bell would be an ornament that can only fail.
+                  The `/notifications` navigation item stays visible to everybody, which is
+                  §20.1's point — visibility is not authorization — but a *count* implies there is
+                  something to count. */}
+              <NotificationBell />
+              <SignOutButton />
+            </>
+          ) : null}
         </div>
       }
       navigation={visibleNavigation(adminNavigation, permissions)}

@@ -874,10 +874,19 @@ PENDING: dict[str, str] = {
     # component territory; the page is not, so the page is the half that could be built without
     # touching a surface both applications render. Recorded rather than quietly narrowed — a bell
     # is a slice 2 concern, where the queue counts give it something to show.
-    "UI-QUEUE-001": (
-        "M11 Screens slice 2 - the work queue surface over the sixteen queues M11 built. Stated "
-        "by `docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet built."
-    ),
+    #
+    # M11 Screens slice 2 discharged `UI-QUEUE-001`, in
+    # `tests/integration/test_queue_index.py` and `tests/backend/test_queue_screens_exist.py`.
+    # It also settled the bell, and the slice 1 note above was wrong about why it was deferred:
+    # `ApplicationShell` already exposes `headerContext`, so the bell was app-side all along and
+    # needed no shared-component change. Left standing rather than corrected in place, because a
+    # deferral recorded with a bad reason is worth being able to find.
+    #
+    # The slice's own deviation: **the dashboard is the queue landing page**, rather than a
+    # separate `/queues` index screen. The dashboard is already where an authenticated person
+    # arrives and already the one navigation item carrying no permission; a second landing surface
+    # would be two pages competing to be where work is found. It replaced four invented queue
+    # names and an em dash that had stood there since M1.
     "UI-PUB-001": (
         "M11 Screens slice 3 - the trader's payment result, acknowledge and dispute. Stated by "
         "`docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet built. Slice 0's survey "

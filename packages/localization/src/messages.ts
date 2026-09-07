@@ -161,11 +161,64 @@ export const faMessages = {
   "roles.failedTitle": "دریافت نقش‌ها انجام نشد",
   "roles.failed": "فهرست نقش‌ها دریافت نشد. لطفاً دوباره تلاش کنید.",
   "admin.queueTitle": "صف‌های عملیاتی",
-  "admin.queueDescription": "محتوای صف‌ها پس از اتصال قراردادهای API و مجوزهای سمت سرور نمایش داده می‌شود.",
-  "admin.queue.traderApproval": "تأیید طلافروشان",
-  "admin.queue.requestReview": "بررسی درخواست‌های پرداخت",
-  "admin.queue.managerApproval": "تأیید نسخه توسط مدیر",
-  "admin.queue.bankResult": "نتایج بانک و شواهد",
+  // M11 Screens slice 2. Was "محتوای صف‌ها پس از اتصال قراردادهای API … نمایش داده می‌شود" — an
+  // honest placeholder for eleven milestones, and now false: the contracts are connected and the
+  // counts are the server's.
+  "admin.queueDescription":
+    "هر صف، کاری است که منتظر شماست. تعدادها از سرور می‌آید و تنها صف‌هایی را می‌بینید که دسترسی آن را دارید.",
+  "admin.queueEmptyTitle": "صفی برای شما نیست",
+  "admin.queueEmptyDescription":
+    "هیچ‌یک از صف‌های عملیاتی به نقش شما سپرده نشده است. این یعنی کاری در انتظار شما نیست، نه اینکه دسترسی‌تان خطا دارد.",
+  "admin.queueFailedTitle": "دریافت صف‌ها انجام نشد",
+  "admin.queueFailed": "فهرست صف‌ها دریافت نشد. لطفاً دوباره تلاش کنید.",
+  "admin.queueWaiting": "{count} مورد در انتظار",
+  "admin.queueOpen": "باز کردن صف",
+  // The queue screen itself.
+  "queues.rowsTitle": "ردیف‌های صف",
+  "queues.reference": "شناسه",
+  "queues.status": "وضعیت",
+  "queues.createdAt": "زمان ثبت",
+  "queues.trader": "طلافروش",
+  "queues.noTrader": "—",
+  "queues.total": "مجموع در انتظار: {count}",
+  "queues.showing": "نمایش {count} ردیف از این صف",
+  "queues.emptyTitle": "این صف خالی است",
+  "queues.emptyDescription": "در این لحظه کاری در این صف در انتظار نیست.",
+  "queues.failedTitle": "دریافت ردیف‌ها انجام نشد",
+  "queues.failed": "ردیف‌های این صف دریافت نشد. لطفاً دوباره تلاش کنید.",
+  "queues.unknownTitle": "این صف شناخته نشد",
+  "queues.unknownDescription":
+    "چنین صفی برای نقش شما وجود ندارد. به فهرست صف‌ها بازگردید و یکی را انتخاب کنید.",
+  "queues.backToIndex": "بازگشت به فهرست صف‌ها",
+  "queues.sortLabel": "ترتیب",
+  "queues.filterTrader": "شناسه طلافروش",
+  "queues.filterTaskType": "نوع کار",
+  "queues.applyFilters": "اعمال",
+  "queues.clearFilters": "پاک کردن",
+  "queues.nextPage": "صفحه بعد",
+  "queues.previousPage": "از ابتدا",
+  "queues.sort.created_at": "زمان ثبت",
+  "queues.sort.id": "شناسه داخلی",
+  // §19.2's sixteen, each named the way an operations person says it rather than the way the URL
+  // spells it. A queue in the registry with no label here fails
+  // `tests/backend/test_queue_screens_exist.py` — the drift guard, because the list of queues
+  // lives in the backend and only the words live here.
+  "queue.new-requests": "درخواست‌های جدید",
+  "queue.correction-responses": "پاسخ‌های اصلاح",
+  "queue.eligible-for-batching": "آماده دسته‌بندی",
+  "queue.draft-invalid-batch-versions": "نسخه‌های پیش‌نویس یا نامعتبر",
+  "queue.approved-exports-awaiting-send": "فایل‌های تأییدشده در انتظار ارسال به بانک",
+  "queue.sent-attempts-awaiting-result": "ارسال‌شده‌ها در انتظار نتیجه",
+  "queue.unresolved-bundles-segments": "بسته‌های نتیجه حل‌نشده",
+  "queue.failed-partial-retry-payments": "پرداخت‌های ناموفق و نیازمند تلاش دوباره",
+  "queue.incoming-receipts-requiring-review": "رسیدهای ورودی نیازمند بررسی",
+  "queue.trader-disputes": "اعتراض‌های طلافروشان",
+  "queue.reconciliation-tasks": "کارهای مغایرت‌گیری",
+  "queue.batch-versions-awaiting-approval": "نسخه‌های دسته در انتظار تأیید",
+  "queue.orders-ready-for-dispatch": "سفارش‌های آماده تحویل",
+  "queue.blocked-dispatches": "تحویل‌های متوقف‌شده",
+  "queue.receipt-confirmation-work": "تأیید رسید تحویل",
+  "queue.quarantined-files-exports": "فایل‌های قرنطینه‌شده",
   "pwa.updateAvailable": "نسخه جدید سامانه آماده است. پس از رسیدن به نقطه امن آن را اعمال کنید.",
   "pwa.applyUpdate": "اعمال نسخه جدید",
   "offline.title": "اتصال شبکه در دسترس نیست",
@@ -666,4 +719,38 @@ export function t(key: MessageKey): string {
 export function paymentRequestStatusLabel(status: string): string {
   const key = `requestStatus.${status}`;
   return key in faMessages ? faMessages[key as MessageKey] : status;
+}
+
+/**
+ * A queue's name as an operations person says it, or the URL segment if there is no label.
+ *
+ * M11 Screens slice 2. The **set** of queues is the backend's — `GET /api/v1/queues` returns the
+ * ones a session may open — and only the words are here. That split is deliberate: a screen holding
+ * its own list of sixteen queues would drift from the registry, and a registry holding Persian
+ * strings would put translation in a module about permissions.
+ *
+ * Runtime lookup rather than `t()` for the same reason `paymentRequestStatusLabel` is: the key is
+ * a value from the server, so it cannot be checked against `MessageKey` at compile time. What
+ * checks it is `tests/backend/test_queue_screens_exist.py`, which reads `BUILT` and fails on a
+ * queue with no label — so the fallback is a safety net rather than the plan.
+ *
+ * The fallback is the raw segment on purpose. `blocked-dispatches` is worse to read than
+ * «تحویل‌های متوقف‌شده» and far better than a translation invented for a queue whose meaning
+ * nobody here has checked.
+ */
+export function queueLabel(queue: string): string {
+  const key = `queue.${queue}`;
+  return key in faMessages ? faMessages[key as MessageKey] : queue;
+}
+
+/**
+ * A sortable field as a person reads it, or the field name.
+ *
+ * The sort allowlist comes from the server too — each queue publishes its own — so the same
+ * runtime-lookup shape applies. There are two names across all sixteen queues today; a third
+ * arrives as a field, not as a screen change.
+ */
+export function queueSortLabel(field: string): string {
+  const key = `queues.sort.${field}`;
+  return key in faMessages ? faMessages[key as MessageKey] : field;
 }
