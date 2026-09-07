@@ -2,6 +2,7 @@
 
 import { paymentRequestStatusLabel, t, toPersianDigits } from "@gold/localization";
 import { StateView } from "@gold/ui";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
@@ -203,6 +204,27 @@ export default function AdminRequestPage() {
         <p className="mt-3">
           <span className="text-[var(--ink-600)]">{t("trader.request.status")}: </span>
           <span className="font-bold">{paymentRequestStatusLabel(request.status)}</span>
+        </p>
+
+        {/*
+          M11 Screens slice 4. The way to the publication screen.
+
+          **Not gated on a status, and deliberately.** That screen shows the publication *history*
+          as well as the preview and publish controls, so it has something to say from the moment a
+          result exists — and its own emptiness is honest ("nothing has been published yet") where
+          a hidden link would leave an accountant with no way to look. The controls inside it are
+          the ones the server refuses; §20.1, the frontend is not the control.
+
+          There is no `allowed_actions` entry to gate on either: that projection covers the
+          request's own commands, and publishing is a command about the *result*.
+        */}
+        <p className="mt-4">
+          <Link
+            className="rounded-lg border border-[var(--gold-500)] bg-[var(--gold-50)] px-4 py-2 font-bold"
+            href={`/requests/${requestId}/publication`}
+          >
+            {t("publication.viewPublication")}
+          </Link>
         </p>
 
         {request.review_note ? (

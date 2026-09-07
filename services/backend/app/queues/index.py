@@ -62,6 +62,11 @@ class QueueListing:
     filters: tuple[str, ...]
     sorts: tuple[str, ...]
     default_sort: str
+    # M11 Screens slice 4. Where a row of this queue is opened, or `None` when no screen exists
+    # for it yet. Published for the same reason `filters` and `sorts` are: the alternative is
+    # sixteen queue names mapped to sixteen destinations in the frontend, which is a copy of the
+    # registry whose failure mode is a link to the wrong screen for the right row.
+    detail_path: str | None
 
 
 def visible_queues(session: Session, *, actor: ActorContext) -> tuple[QueueListing, ...]:
@@ -87,6 +92,7 @@ def visible_queues(session: Session, *, actor: ActorContext) -> tuple[QueueListi
                 # sorting the names would move it into the middle.
                 sorts=tuple(sort.name for sort in definition.spec.sorts),
                 default_sort=definition.spec.default_sort,
+                detail_path=definition.detail_path,
             )
         )
     return tuple(listings)

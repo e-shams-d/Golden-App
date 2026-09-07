@@ -15,6 +15,10 @@ headers at `:1566` and `:1596`. The lock half happens inside the command; the he
 **`manager` is the negative actor**, and a sharp one: `20260801_0008:313` gives it
 `payment_attempt.read` and neither confirmation grant, so the refusals prove the routes want
 *these* permissions rather than merely some attempt permission.
+
+M11 Screens slice 4 adds the **read**, and the reason is in `get_attempt`'s own docstring: every
+command here requires `If-Match` on the attempt and nothing in the contract returned an attempt's
+version, so a screen could only guess one.
 """
 
 from __future__ import annotations
@@ -23,7 +27,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.contract import VALIDATION_ERROR_RESPONSE
@@ -215,6 +219,68 @@ def _require_key(idempotency_key: str | None) -> str:
     if idempotency_key is None:
         raise PreconditionRequiredError("Idempotency-Key")
     return idempotency_key
+
+
+@router.get(
+    "/{attempt_id}",
+    response_model=AttemptResult,
+    operation_id="getPaymentAttempt",
+    summary="Read one payment attempt and the precondition its commands require.",
+    responses={
+        401: {"model": ErrorEnvelope, "description": "No valid session."},
+        403: {"model": ErrorEnvelope, "description": "The caller lacks `payment_attempt.read`."},
+        404: {"model": ErrorEnvelope, "description": "No such attempt."},
+        **VALIDATION_ERROR_RESPONSE,
+    },
+    dependencies=[requires(declare("payment_attempt.read"))],
+)
+def get_attempt(
+    attempt_id: uuid.UUID,
+    response: Response,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+) -> AttemptResult:
+    """`GET /api/v1/payment-attempts/{attempt_id}`.
+
+    M11 Screens slice 4, and it exists because **the four commands below required a precondition
+    nothing supplied.** All of them take `If-Match` on the attempt — `command_catalog.yaml`'s
+    `if_match_attempt_and_lock_request_aggregate` — and until this route no read anywhere in the
+    contract returned an attempt's `record_version`:
+
+    - `PaymentRequestDetail` has three fields, and its own docstring says why: "`attempts` arrive
+      with M6". They did not.
+    - `GET /queues/sent-attempts-awaiting-result` returns `QueueRow`, five fields by a deliberate
+      disclosure decision, and a version is not one of them.
+    - `AttemptResult` carries `record_version` but was only ever a *response* to a confirmation, so
+      the version arrived after acting and never before it.
+
+    A screen could therefore only guess an `If-Match`, and a guessed precondition is worse than
+    none: present, well-formed and meaningless. It is the mirror of the defect this project has hit
+    five times — machinery with no caller — arriving as a caller with no way to satisfy the guard.
+
+    **`payment_attempt.read`, which already existed.** `20260801_0008:313` gives it to `manager`
+    and grants that role neither confirmation permission, which is the split the four routes below
+    rely on for their negative tests: reading an attempt is not permission to confirm one.
+
+    **The `ETag` is the purpose of the route**, not a convenience on it. It is what a screen echoes
+    as `If-Match`, and `admin_users.py` states the rule — a client computing `rv-${record_version}`
+    itself would be inventing a precondition.
+
+    Nothing is recomputed: `request_status` is reported as it stands, the same way the two retry
+    routes report it, because a second copy of `_recalculate`'s rule in a route is how two answers
+    to one question begin.
+    """
+
+    del actor
+    with runtime.uow_factory() as uow:
+        attempt = uow.session.get(PaymentAttempt, attempt_id)
+        if attempt is None:
+            raise NotFoundError()
+        rendered = _rendered(attempt, _request_status(uow.session, attempt.payment_request_id))
+        uow.rollback()
+
+    response.headers["ETag"] = f'"rv-{rendered.record_version}"'
+    return rendered
 
 
 @router.post(

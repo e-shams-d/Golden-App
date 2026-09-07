@@ -2,6 +2,7 @@
 
 import { queueSortLabel, t } from "@gold/localization";
 import { BidiText, StateView } from "@gold/ui";
+import Link from "next/link";
 
 import type { QueueListing, QueueRow } from "../src/queues";
 
@@ -157,7 +158,23 @@ export function QueueTable({
                 // only as a colour is a state some people cannot read.
                 <tr data-status={row.status} key={row.id}>
                   <td>
-                    <BidiText>{row.reference}</BidiText>
+                    {/*
+                      A link only when the server named a destination. M11 Screens slice 4 added
+                      `detail_path` to the queue definition, so which screen opens a row is the
+                      backend's answer rather than a mapping here — a table of sixteen queue names
+                      to sixteen destinations would drift, and its failure mode is the wrong screen
+                      for the right row.
+
+                      `null` renders plain text, which is the honest rendering of a queue whose
+                      rows have nowhere to go yet. Slices 5 to 7 fill the field in.
+                    */}
+                    {listing.detail_path === null ? (
+                      <BidiText>{row.reference}</BidiText>
+                    ) : (
+                      <Link href={`${listing.detail_path}/${row.id}`}>
+                        <BidiText>{row.reference}</BidiText>
+                      </Link>
+                    )}
                   </td>
                   {/*
                     The raw status code, and this is a deliberate deferral rather than an

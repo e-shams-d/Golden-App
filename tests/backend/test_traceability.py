@@ -903,10 +903,25 @@ PENDING: dict[str, str] = {
     # trader their active publication only, with no history route to fetch. `publication_version`
     # above 1 is said in words instead, and the screen is asserted *not* to reach for the centre's
     # history path.
-    "UI-RESULT-001": (
-        "M11 Screens slice 4 - the centre's result confirmation and publication. Stated by "
-        "`docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet built."
-    ),
+    # M11 Screens slice 4 discharged `UI-RESULT-001`, in
+    # `tests/backend/test_result_screens_exist.py` and the six tests appended to
+    # `tests/integration/test_payment_results.py`.
+    #
+    # **The obligation's own wording was wrong twice, and both corrections are in the plan.** It
+    # asked for the recent-auth dialog on the publish button; §8.11 describes the dialog component
+    # and `command_catalog.yaml` puts `recent_auth` on the *correction* and none on the publish. It
+    # also asked that the correction screen refuse a role holding only the preparer half — which is
+    # trivially true, because `payment_publication.correct` is granted to no role at all pending
+    # ADR-SEC-009. An assertion that passes for the wrong reason is worse than none.
+    #
+    # **Slice 4's finding: four commands required a precondition nothing supplied.** All four
+    # attempt commands take `If-Match` on the attempt and no route returned an attempt's
+    # `record_version` — `PaymentRequestDetail` says "`attempts` arrive with M6" and they did not.
+    # `GET /payment-attempts/{id}` is the read they always presupposed; without it a screen could
+    # only guess a precondition, which is present, well-formed and meaningless.
+    #
+    # The correction screen is **not built** and the reason is asserted, so the deferral expires
+    # the day a role holds the grant.
     "UI-GOLD-001": (
         "M11 Screens slice 5 - gold orders, trader and centre. Stated by "
         "`docs/handoff/M11_SCREENS_IMPLEMENTATION_PLAN.md` and not yet built."
@@ -1178,7 +1193,19 @@ def test_the_recorded_gap_matches_what_the_evidence_emitter_reports() -> None:
 def test_every_cited_id_uses_a_catalogue_prefix() -> None:
     """The extraction only matches catalogue prefixes, so this checks the inverse:
     that nothing shaped like an id is sitting in the suite under an invented
-    category, which would look like traceability and provide none."""
+    category, which would look like traceability and provide none.
+
+    **`ADR` is exempt and the exemption is checked**, which M11 Screens slice 4 added. A decision
+    record is not an obligation: `ADR-SEC-009` is a citation of governance — the unresolved
+    separation-of-duties decision that blocks the publication correction — and reading it as a
+    claim of test coverage is the gate asking the wrong question. Two-segment references like
+    `ADR-005` never matched this pattern at all, so the inconsistency was only ever about which
+    ADRs happen to carry a category in their name.
+
+    `DOC` was already exempt on the same grounds and without a check. **This one is checked**:
+    `test_every_cited_adr_exists` below reads `docs/adr/ADR_INDEX.md`, so an invented ADR is still
+    caught — the exemption is about the *category*, not a licence to cite anything.
+    """
 
     invented = re.compile(r"\b([A-Z]{2,6})-[A-Z0-9]+-\d+\b")
     offenders: dict[str, set[str]] = {}
@@ -1186,10 +1213,45 @@ def test_every_cited_id_uses_a_catalogue_prefix() -> None:
         if "__pycache__" in path.parts:
             continue
         for prefix in invented.findall(path.read_text(encoding="utf-8")):
-            if prefix not in PREFIXES and prefix != "DOC":
+            if prefix not in PREFIXES and prefix not in {"DOC", "ADR"}:
                 offenders.setdefault(prefix, set()).add(str(path.relative_to(REPOSITORY_ROOT)))
 
     assert offenders == {}, f"ids using a prefix outside the catalogue: {offenders}"
+
+
+def test_every_cited_adr_exists() -> None:
+    """What makes the `ADR` exemption above a rule rather than a hole.
+
+    An ADR reference in a test is a claim that a decision is recorded and unresolved. If the id is
+    invented, the test's reasoning rests on a document nobody wrote — which is precisely the shape
+    the invented-prefix gate exists to catch, arriving through the exemption.
+
+    Read from `ADR_INDEX.md` rather than from the filenames in `docs/adr/`: only one ADR has been
+    written as a file so far, and the index is where the numbers are reserved.
+    """
+
+    index = (REPOSITORY_ROOT / "docs" / "adr" / "ADR_INDEX.md").read_text(encoding="utf-8")
+    reference = re.compile(r"\bADR-[A-Z0-9]+(?:-\d+)?\b")
+
+    cited: dict[str, set[str]] = {}
+    for path in sorted(TESTS.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        for identifier in reference.findall(path.read_text(encoding="utf-8")):
+            cited.setdefault(identifier, set()).add(str(path.relative_to(REPOSITORY_ROOT)))
+
+    # Guard the guard: an index that stopped being readable would exempt everything.
+    assert reference.search(index), "no ADR ids were found in ADR_INDEX.md; the parse is broken"
+
+    missing = {
+        identifier: sorted(files)
+        for identifier, files in cited.items()
+        if identifier not in index
+    }
+    assert missing == {}, (
+        f"these ADR ids are cited in the suite and are not in ADR_INDEX.md: {missing}. A test "
+        "whose reasoning rests on an unresolved decision needs that decision to exist."
+    )
 
 
 CRITICAL_OBLIGATIONS = ("SVC-ATOMIC-001", "CON-IDEM-001", "AUD-ROLLBACK-001", "DB-MIG-001")

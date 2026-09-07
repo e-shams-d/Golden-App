@@ -138,6 +138,10 @@ def world(migrated: RuntimeIdentities, tmp_path_factory: Any) -> Iterator[dict[s
             # grant, which is what makes the permission negatives sharp: this actor gets past any
             # guard asking for merely some attempt permission.
             ("result_manager", "manager"),
+            # M11 Screens slice 4. Holds **no** attempt permission at all, which the read's
+            # negative needs: the manager is the wrong actor for it, because the manager is the
+            # one role that *may* read an attempt without being allowed to confirm one.
+            ("result_warehouse", "warehouse_operator"),
         ):
             connection.execute(
                 "INSERT INTO admin_users (username, full_name, password_hash, status) "
@@ -744,3 +748,179 @@ def test_confirming_failed_needs_the_confirm_failed_permission(world: dict[str, 
 
     sign_in_admin(world["client"], "result_accountant")
     assert confirm_failed(world, attempts[0]).status_code == 200
+
+
+# ---------------------------------------------------------------------------------------------
+# M11 Screens slice 4. Reading an attempt.
+#
+# The four commands above have required `If-Match` on the attempt since M9, and **nothing returned
+# an attempt's version**: `PaymentRequestDetail` has three fields and says "`attempts` arrive with
+# M6", the queue row is five fields by a disclosure decision, and `AttemptResult` was only ever a
+# response to a confirmation. A screen could only guess a precondition, and a guessed precondition
+# is present, well-formed and meaningless.
+
+
+def read_attempt(world: dict[str, Any], attempt_id: uuid.UUID) -> Any:
+    return world["client"].get(f"/api/v1/payment-attempts/{attempt_id}")
+
+
+def test_the_read_returns_the_etag_the_commands_require(world: dict[str, Any]) -> None:
+    """**The purpose of the route**, and the assertion is on the header rather than the body.
+
+    `record_version` in the payload is not enough: a screen that had to build `"rv-${n}"` from it
+    would be inventing the precondition, which `admin_users.py` and
+    `apps/admin-web/test/preconditions-come-from-the-server.test.ts` both refuse. The header is
+    what gets echoed.
+    """
+
+    _, attempts = a_request_with_attempts(world, requested=900_000_000, splits=(900_000_000,))
+    sign_in_admin(world["client"], "result_accountant")
+
+    response = read_attempt(world, attempts[0])
+    assert response.status_code == 200, response.text
+
+    body = response.json()
+    assert response.headers["ETag"] == f'"rv-{body["record_version"]}"', (
+        "the ETag does not match the version in the body, so echoing one and reading the other "
+        "would send a precondition for a different state"
+    )
+
+
+def test_the_etag_the_read_returns_is_accepted_as_a_precondition(world: dict[str, Any]) -> None:
+    """The loop closed: read, echo, and the command accepts it.
+
+    This is the property the slice exists for. Asserting the header's *shape* would pass against a
+    route that returned a well-formed version of the wrong row — the failure mode that made the
+    guess dangerous in the first place.
+    """
+
+    _, attempts = a_request_with_attempts(world, requested=900_000_000, splits=(900_000_000,))
+    sign_in_admin(world["client"], "result_accountant")
+
+    etag = read_attempt(world, attempts[0]).headers["ETag"]
+    confirmed = world["client"].post(
+        f"/api/v1/payment-attempts/{attempts[0]}/confirm-paid",
+        json={
+            "bank_tracking_number": "ETAGCHECK1",
+            "bank_result_at": "2026-09-01T09:00:00Z",
+            "evidence_unavailable_reason": "portal",
+        },
+        headers={
+            **csrf(world["client"]),
+            "If-Match": etag,
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
+    )
+    assert confirmed.status_code == 200, confirmed.text
+
+
+def test_a_version_the_read_did_not_return_is_refused(world: dict[str, Any]) -> None:
+    """The other half of the loop: the header is **compared**, not merely required.
+
+    A read whose value was always accepted would be worse than no read at all — the precondition
+    would be a formality and two accountants could confirm the same attempt from two stale views.
+
+    **This first tried a real transition and asked the wrong question.** The original version
+    captured the ETag, confirmed the attempt paid, then sent the captured value to
+    `mark-retry-required` expecting 412. It got 400: a paid attempt cannot be marked as needing a
+    retry at all, and that **state** rule is evaluated before the version. Which is correct —
+    re-reading would not help, because a paid attempt will never be retry-required, so the
+    business rule is the more accurate answer. The version's own refusal has to be provoked
+    without also breaking a state rule.
+
+    So the state stays valid and only the version is wrong. `test_confirming_paid_needs_...` and
+    M9's own concurrency tests cover the commands; what is asserted here is that the value this
+    *read* produces is the one being compared against.
+    """
+
+    _, attempts = a_request_with_attempts(world, requested=900_000_000, splits=(900_000_000,))
+    sign_in_admin(world["client"], "result_accountant")
+
+    current = read_attempt(world, attempts[0]).headers["ETag"]
+    assert current == '"rv-1"', f"a fresh attempt read as {current}; the arithmetic below assumes 1"
+
+    refused = world["client"].post(
+        f"/api/v1/payment-attempts/{attempts[0]}/confirm-paid",
+        json={
+            "bank_tracking_number": "STALECHECK1",
+            "bank_result_at": "2026-09-01T09:00:00Z",
+            "evidence_unavailable_reason": "portal",
+        },
+        headers={
+            **csrf(world["client"]),
+            # A version this attempt has never been at. The state guard is satisfied — the attempt
+            # is sent and unconfirmed — so the only thing left to refuse is the precondition.
+            "If-Match": '"rv-7"',
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
+    )
+    assert refused.status_code == 412, refused.text
+
+    # And the attempt did not move, so the refusal was a refusal rather than a slow success.
+    assert read_attempt(world, attempts[0]).headers["ETag"] == current
+
+
+def test_reading_an_attempt_needs_its_own_grant_and_is_not_permission_to_confirm(
+    world: dict[str, Any],
+) -> None:
+    """The negative `test_m3_definition_of_done.py` classified this route as owing, both ways.
+
+    **`warehouse_operator` is the negative and `manager` is the positive**, and the pairing is the
+    point. A test that only refused somebody would also pass against a route nobody can reach; a
+    test that only admitted the accountant would not show that reading and confirming are separate
+    authorities.
+
+    `manager` is the actor that proves they are: `20260801_0008:313` gives it
+    `payment_attempt.read` and neither confirmation grant, so it reads the attempt here and is
+    refused by `confirm-paid` in `test_confirming_paid_needs_the_confirm_paid_permission`.
+    """
+
+    _, attempts = a_request_with_attempts(world, requested=900_000_000, splits=(900_000_000,))
+
+    sign_in_admin(world["client"], "result_warehouse")
+    refused = read_attempt(world, attempts[0])
+    assert refused.status_code == 403, (
+        f"a role with no attempt permission read an attempt and got {refused.status_code}"
+    )
+
+    sign_in_admin(world["client"], "result_manager")
+    allowed = read_attempt(world, attempts[0])
+    assert allowed.status_code == 200, (
+        "the manager holds `payment_attempt.read` and was refused, so the 403 above may be about "
+        "the route rather than about the grant"
+    )
+    # And the read did not become permission to act.
+    assert confirm_paid(world, attempts[0], evidence_unavailable_reason="x").status_code == 403
+
+
+def test_an_attempt_that_does_not_exist_is_404_not_403(world: dict[str, Any]) -> None:
+    """The order of the guards, asserted from the outside.
+
+    A permission check that needed the row first would answer 404 to a caller without the grant and
+    403 with it — telling the second caller the attempt exists. Here the grant is checked first, so
+    a holder of the grant learns only that this id is not one.
+    """
+
+    sign_in_admin(world["client"], "result_accountant")
+    assert read_attempt(world, uuid.uuid4()).status_code == 404
+
+    sign_in_admin(world["client"], "result_warehouse")
+    assert read_attempt(world, uuid.uuid4()).status_code == 403
+
+
+def test_the_read_reports_the_request_status_rather_than_recomputing_it(
+    world: dict[str, Any],
+) -> None:
+    """`request_status` is read as it stands, the way the two retry routes report it.
+
+    A second copy of `_recalculate`'s rule in a route is how two answers to one question begin, so
+    the value is compared against the row rather than against an expectation written here.
+    """
+
+    request_id, attempts = a_request_with_attempts(
+        world, requested=900_000_000, splits=(900_000_000,)
+    )
+    sign_in_admin(world["client"], "result_accountant")
+
+    stored = rows(world, "SELECT status FROM payment_requests WHERE id = %s", request_id)[0][0]
+    assert read_attempt(world, attempts[0]).json()["request_status"] == stored

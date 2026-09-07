@@ -147,6 +147,10 @@ class QueueListingResponse(BaseModel):
     filters: list[str]
     sorts: list[str]
     default_sort: str
+    # M11 Screens slice 4. `None` when no screen opens this queue's rows yet, and the table then
+    # renders no link — a queue whose rows have nowhere to go says so, rather than the frontend
+    # guessing a URL that answers 404.
+    detail_path: str | None = None
 
 
 class QueueIndexResponse(BaseModel):
@@ -202,6 +206,7 @@ def queue_index(
                     filters=list(listing.filters),
                     sorts=list(listing.sorts),
                     default_sort=listing.default_sort,
+                    detail_path=listing.detail_path,
                 )
                 for listing in listings
             ],

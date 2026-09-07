@@ -424,6 +424,12 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # M11 slice 7. `report.read`, which four internal roles hold and no trader does. The route
     # consults a *second* permission per queue when building the summary, but the class here is
     # about what guards the route, and that is one grant.
+    # M11 Screens slice 4. `payment_attempt.read`, and the classification is the interesting part:
+    # `20260801_0008:313` gives that grant to `manager` and gives it neither confirmation
+    # permission, so reading an attempt and confirming one are genuinely separate authorities —
+    # which is what the four POST routes' own negatives already rely on. `PERMISSION`, and it owes
+    # a negative naming a caller who holds nothing.
+    ("GET", "/api/v1/payment-attempts/{attempt_id}"): PERMISSION,
     ("GET", "/api/v1/reports/queue-summary"): PERMISSION,
     # M11 Screens slice 2, the queue index. `PERMISSION` although the route declares none, and
     # the classification is the point rather than a formality: what a caller receives is decided
@@ -1065,6 +1071,13 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     # absence is not the whole list going missing. The named test holds both halves.
     ("GET", "/api/v1/queues", "permission"): (
         "test_the_index_omits_a_queue_whose_grant_the_caller_lacks"
+    ),
+    # M11 Screens slice 4. The read that supplies the four commands' precondition. Its negative
+    # names a caller holding no attempt grant at all — and the paired positive is `manager`, who
+    # holds the read and neither confirmation, because "the read is refused" is also satisfied by
+    # a route nobody can reach.
+    ("GET", "/api/v1/payment-attempts/{attempt_id}", "permission"): (
+        "test_reading_an_attempt_needs_its_own_grant_and_is_not_permission_to_confirm"
     ),
     # M11 slice 1. Three separate tests rather than one shared name, because the three routes fail
     # in three different ways. A leaky list returns rows; a leaky mark-read edits one row that is

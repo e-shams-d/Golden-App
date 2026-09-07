@@ -108,6 +108,19 @@ class QueueDefinition[RowT]:
     # resolving filters through the sort list would have quietly required every filter to also be
     # an ordering key.
     filter_columns: dict[str, InstrumentedAttribute[Any]] = field(default_factory=dict)
+    # M11 Screens slice 4. Where a row of this queue is opened, as a path prefix the row's `id` is
+    # appended to — `"/payment-attempts"` becomes `/payment-attempts/<id>`.
+    #
+    # **Here rather than in the frontend**, and the reason is the one slice 2 settled: which
+    # queues exist and what they hold is the backend's knowledge, and a table of sixteen queue
+    # names mapped to sixteen destinations is a copy of this registry that nobody keeps in step.
+    # Its failure mode is a link to the wrong screen for the right row, which is worse than no
+    # link — an accountant would open somebody else's work believing it was theirs.
+    #
+    # **`None` means the screen does not exist yet**, and the queue then renders no link. That is
+    # enforcement by absence: a queue whose rows have nowhere to go says so, rather than the
+    # frontend guessing a URL that answers 404. Slices 5 to 7 fill these in one field at a time.
+    detail_path: str | None = None
 
     def __post_init__(self) -> None:
         """An allowlisted filter with no column is refused at construction, not at request time.

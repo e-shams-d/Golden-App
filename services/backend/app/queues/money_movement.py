@@ -247,6 +247,8 @@ SENT_ATTEMPTS_AWAITING_RESULT: QueueDefinition[PaymentAttempt] = QueueDefinition
     source="15_Agent_Implementation_Plan.md:1267",
     entity=PaymentAttempt,
     render=_render_attempt,
+    # M11 Screens slice 4. The attempt result screen, which is where these rows are worked.
+    detail_path="/payment-attempts",
 )
 
 FAILED_PARTIAL_RETRY_PAYMENTS: QueueDefinition[PaymentAttempt] = QueueDefinition(
@@ -257,6 +259,8 @@ FAILED_PARTIAL_RETRY_PAYMENTS: QueueDefinition[PaymentAttempt] = QueueDefinition
     source="15_Agent_Implementation_Plan.md:1269",
     entity=PaymentAttempt,
     render=_render_attempt,
+    # M11 Screens slice 4. The attempt result screen, which is where these rows are worked.
+    detail_path="/payment-attempts",
 )
 
 

@@ -1,103 +1,100 @@
 #!/usr/bin/env bash
-# Negative controls for screens slice 4 — download, mark sent, and §14.6's sentence.
+# Negative controls for M11 Screens slice 4 — the centre's result surface.
 #
-# The three the plan names, plus four the obligations suggested.
+# The slice makes five claims, and the ones worth controls are the two corrections it made to its
+# own obligation plus the read it had to add:
 #
-# `git rev-parse` for the root, not `dirname $0` — this is run from a copy under /tmp, and
-# resolving to `/` makes every control report a clean NOT CAUGHT while doing nothing at all.
+#   1. the attempt read returns the ETag the four commands compare against;
+#   2. no screen sends a step-up the server does not require;
+#   3. the correction screen stays absent while its grant is unassigned;
+#   4. queue rows link where the *server* says, not where the frontend guesses;
+#   5. no confirmation body carries an amount.
+#
+# Control 3 is the one to watch: it is an *absence*, and an absence is the hardest thing to keep.
+#
+# Control 0 runs the suite CLEAN FIRST. A test that fails against everything catches everything.
+#
+# Every touched file is copied and restored from the copy. Never `git checkout --`.
 
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
-PAGE="apps/admin-web/app/bank-exports/[exportId]/page.tsx"
-DIALOG="apps/admin-web/components/mark-sent-dialog.tsx"
-SRC="apps/admin-web/src/bank-exports.ts"
-SWEEP="apps/admin-web/tests/a11y/shell.spec.ts"
-BACKUP="$(mktemp -d)"
+export INTEGRATION_ADMIN_DATABASE_URL="${INTEGRATION_ADMIN_DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:55500/postgres}"
 
-cp "$PAGE" "$BACKUP/page.tsx"
-cp "$DIALOG" "$BACKUP/dialog.tsx"
-cp "$SRC" "$BACKUP/src.ts"
-cp "$SWEEP" "$BACKUP/sweep.ts"
+ROUTER=services/backend/app/api/v1/payment_attempts.py
+MODULE=apps/admin-web/src/payment-results.ts
+PUBLICATION_PAGE="apps/admin-web/app/requests/[requestId]/publication/page.tsx"
+TABLE=apps/admin-web/components/queue-table.tsx
+CATALOGUE=docs/governance/permission_catalog.yaml
+
+BACKUP=$(mktemp -d)
+cp "$ROUTER" "$BACKUP/router.py"
+cp "$MODULE" "$BACKUP/module.ts"
+cp "$PUBLICATION_PAGE" "$BACKUP/publication.tsx"
+cp "$TABLE" "$BACKUP/table.tsx"
+cp "$CATALOGUE" "$BACKUP/catalogue.yaml"
 
 restore() {
-  cp "$BACKUP/page.tsx" "$PAGE"
-  cp "$BACKUP/dialog.tsx" "$DIALOG"
-  cp "$BACKUP/src.ts" "$SRC"
-  cp "$BACKUP/sweep.ts" "$SWEEP"
+    cp "$BACKUP/router.py" "$ROUTER"
+    cp "$BACKUP/module.ts" "$MODULE"
+    cp "$BACKUP/publication.tsx" "$PUBLICATION_PAGE"
+    cp "$BACKUP/table.tsx" "$TABLE"
+    cp "$BACKUP/catalogue.yaml" "$CATALOGUE"
 }
-trap 'restore; rm -rf "$BACKUP"' EXIT
+trap restore EXIT
 
-# Colour off, and output to a file. Slice 3 taught both: escape sequences between "Tests" and the
-# count defeated the guard, and a four-thousand-line failure diff piped through a shell variable
-# lost the summary line entirely — reporting two correctly-failing controls as INVALID RUN.
-export NO_COLOR=1
-export FORCE_COLOR=0
-OUT="$BACKUP/out.txt"
-
-run() {
-  local label="$1" expect="$2"
-  (cd apps/admin-web && npx vitest run test/download-and-sent.test.ts) > "$OUT" 2>&1
-
-  if ! grep -qE '^ *Tests +[0-9]+' "$OUT"; then
-    printf '  INVALID RUN  %s\n' "$label"
-    tail -4 "$OUT"
-    restore
-    return
-  fi
-
-  if grep -qE '^ *Tests +.*[0-9]+ failed' "$OUT"; then
-    printf '  CAUGHT   %-46s' "$label"
-    if grep -q "$expect" "$OUT"; then
-      echo "(on: $expect)"
-    else
-      echo "*** WRONG ASSERTION *** expected: $expect"
-      grep -E '^ *(×|✗)' "$OUT" | head -6
-    fi
-  else
-    printf '  NOT CAUGHT  %s\n' "$label"
-  fi
-  restore
+python_gates() {
+    uv run --project services/backend --frozen \
+        pytest -c services/backend/pyproject.toml \
+        tests/integration/test_payment_results.py \
+        tests/backend/test_result_screens_exist.py \
+        -q 2>&1 | tail -5
 }
 
-echo "== screens slice 4 negative controls =="
+echo "=================== CONTROL 0 — clean, must be GREEN ==================="
+python_gates
 
-# 1. UI-DOWNLOAD-001, the plan's first named control. Paraphrase the sentence — and do it the way
-#    somebody actually would, by tightening the wording. It still says the right thing and is no
-#    longer the words §14.6 gives.
-perl -0pi -e 's/^export const DOWNLOAD_IS_NOT_SENDING =\n  ".*";$/export const DOWNLOAD_IS_NOT_SENDING = "Downloading does not mean the file was sent to the bank.";/m' "$SRC"
-run "the sentence is tightened" "matches the specification character"
+echo
+echo "=================== CONTROL 1 — the read stops returning an ETag ==================="
+echo "The commands then have no source for their precondition and a screen is back to guessing."
+echo "Nothing fails on the server: the read still answers 200 with the version in the body."
+python3 scripts/control-attempt-read-drops-etag.py || { echo "EDIT DID NOT APPLY"; exit 1; }
+python_gates
+restore
 
-# 2. UI-SENT-002, the plan's second. Derive the reminder from the timestamps. This is the change a
-#    reviewer waves through — it looks like the same condition, and it silently omits `export_type`,
-#    so a downloaded preview grows a reminder to confirm sending a file nobody may send.
-perl -0pi -e 's/  return view\.awaiting_send_confirmation;/  return view.downloaded_at !== null \&\& view.sent_to_bank_marked_at === null;/' "$SRC"
-run "the reminder is inferred client-side" "ignores the timestamps entirely"
+echo
+echo "=================== CONTROL 2 — the publish screen asks for a step-up ==================="
+echo "A control the backend does not have, and the harm is a habit: somebody taught to"
+echo "reauthenticate whenever a screen asks will do it for a screen that should not have asked."
+python3 scripts/control-publish-adds-step-up.py || { echo "EDIT DID NOT APPLY"; exit 1; }
+python_gates
+restore
 
-# 3. UI-SENT-003, the plan's third. Let the command take a batch as well, which is all it takes for
-#    a later edit to send the wrong one.
-perl -0pi -e 's/export async function markSentToBank\(input: \{\n  exportId: string;/export async function markSentToBank(input: {\n  exportId: string;\n  batchId: string;/' "$SRC"
-run "the command accepts a batch id" "the command.s signature offers no other"
+echo
+echo "=================== CONTROL 3 — the correction grant is assigned ==================="
+echo "The deferral must expire by itself. If ADR-SEC-009 is settled and nothing notices, the"
+echo "screen stays missing for a capability the centre now has."
+python3 scripts/control-assign-correction-grant.py || { echo "EDIT DID NOT APPLY"; exit 1; }
+python_gates
+restore
 
-# 4. UI-DOWNLOAD-001's placement. Move the sentence after the control: still verbatim, still on the
-#    page, and read only by somebody who already has the file.
-perl -0pi -e 's/(      <p\n        className="font-black"\n        data-testid="download-is-not-sending"\n        dir="ltr"\n        lang="en"\n      >\n        \{DOWNLOAD_IS_NOT_SENDING\}\n      <\/p>\n)//' "$PAGE"
-perl -0pi -e 's/(      \{open \? \()/      <p data-testid="download-is-not-sending" dir="ltr" lang="en">{DOWNLOAD_IS_NOT_SENDING}<\/p>\n$1/' "$PAGE"
-run "the sentence moves below the control" "beside the download control"
+echo
+echo "=================== CONTROL 4 — the table guesses its own destinations ==================="
+echo "The wrong screen for the right row: an accountant opening somebody else's work believing"
+echo "it was theirs. Worse than no link."
+python3 scripts/control-queue-table-hardcodes-destination.py || { echo "EDIT DID NOT APPLY"; exit 1; }
+python_gates
+restore
 
-# 5. UI-SENT-001. Drop one of §14.7's ten from the summary — the checksum, which is the field that
-#    identifies *which file* and the one a tidier dialog would lose first.
-perl -0pi -e 's/t\("admin\.export\.checksumAndIntegrity"\)/t("admin.export.reference")/' "$DIALOG"
-run "a §14.7 field leaves the summary" "shows checksum/integrity state"
+echo
+echo "=================== CONTROL 5 — a confirmation sends an amount ==================="
+echo "§17's \"amount is exact\" is honoured by the field's absence. A client figure could"
+echo "disagree with the attempt, and the server would have two answers to one question."
+python3 scripts/control-confirm-sends-an-amount.py || { echo "EDIT DID NOT APPLY"; exit 1; }
+python_gates
+restore
 
-# 6. UI-SENT-001's ordering. Show the summary after the submit button, which is a confirmation that
-#    confirms nothing.
-perl -0pi -e 's/data-testid="mark-sent-summary"/data-testid="summary-moved"/' "$DIALOG"
-run "the summary is no longer identifiable" "shows them before the command"
-
-# 7. TRACE-SCREENS-001. Remove a screen from the sweep. This is the control that matters most,
-#    because the obligation exists to catch exactly this and it already caught two real omissions.
-perl -0pi -e 's/^  "\/bank-exports\/00000000-0000-4000-8000-000000000002",$//m' "$SWEEP"
-run "a screen leaves the a11y sweep" "covers every route"
-
-echo "== done =="
+echo
+echo "=================== restored ==================="
+git status --porcelain -- "$ROUTER" "$MODULE" "$PUBLICATION_PAGE" "$TABLE" "$CATALOGUE"
+echo "(empty above means every file is back)"
