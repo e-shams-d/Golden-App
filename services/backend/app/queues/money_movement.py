@@ -417,4 +417,8 @@ RECONCILIATION_TASKS: QueueDefinition[ManualReviewTask] = QueueDefinition(
     filter_columns={"task_type": ManualReviewTask.task_type},
     entity=ManualReviewTask,
     render=_render_task,
+    # M11 Screens slice 9. The review task screen. This queue's rows *are* review tasks, so
+    # the row id is what the screen takes — and until slice 9 it opened nothing, which slice
+    # 8's own gate is what made visible.
+    detail_path="/review-tasks",
 )

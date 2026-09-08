@@ -176,33 +176,10 @@ NO_SCREEN: dict[tuple[str, str], str] = {
         "POST",
         "/api/v1/evidence-links/{link_id}/void",
     ): "part of the same unbuilt surface as the operation above it",
-    # --- the review queue -------------------------------------------------------------------------
-    ("GET", "/api/v1/manual-review-tasks"): (
-        "the reconciliation queue shows these rows — `reconciliation-tasks` is built and "
-        "permission-aware — but its rows open nothing: `detail_path` is `None` for it, which is "
-        "the honest rendering of a screen that does not exist. The four transitions below are "
-        "what that screen would drive."
-    ),
-    (
-        "GET",
-        "/api/v1/manual-review-tasks/{task_id}",
-    ): "part of the same unbuilt surface as the operation above it",
-    (
-        "POST",
-        "/api/v1/manual-review-tasks/{task_id}/assign",
-    ): "part of the same unbuilt surface as the operation above it",
-    (
-        "POST",
-        "/api/v1/manual-review-tasks/{task_id}/start",
-    ): "part of the same unbuilt surface as the operation above it",
-    (
-        "POST",
-        "/api/v1/manual-review-tasks/{task_id}/resolve",
-    ): "part of the same unbuilt surface as the operation above it",
-    (
-        "POST",
-        "/api/v1/manual-review-tasks/{task_id}/cancel",
-    ): "part of the same unbuilt surface as the operation above it",
+    # M11 Screens slice 9 built the review task screen, so the six manual-review operations
+    # left this list — which is what a closed entry looks like here: a deletion rather than an
+    # edit. `test_no_recorded_operation_has_quietly_gained_a_screen` is what would have caught
+    # them being left behind.
     # --- the report ----------------------------------------------------------------------------
     ("GET", "/api/v1/reports/queue-summary"): (
         "**superseded by a better surface rather than unbuilt.** The dashboard shows the same "
