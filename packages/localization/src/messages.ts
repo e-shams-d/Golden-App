@@ -355,6 +355,24 @@ export const faMessages = {
   "pricing.note": "یادداشت (اختیاری)",
   "pricing.submit": "ثبت قیمت‌گذاری",
   "pricing.refused": "قیمت‌گذاری پذیرفته نشد. اطلاعات به‌روز شد.",
+  // M11 Screens slice 10. Changing your own password — the surface slice 8's gate recorded as
+  // missing. Somebody signing in for the first time had no way to replace the password they were
+  // given.
+  "password.nav": "گذرواژه",
+  "password.title": "تغییر گذرواژه",
+  "password.explains":
+    "برای تغییر گذرواژه، ابتدا گذرواژه فعلی خود را وارد کنید. این کار فقط روی حساب خودتان اثر دارد.",
+  "password.current": "گذرواژه فعلی",
+  "password.next": "گذرواژه تازه",
+  "password.again": "تکرار گذرواژه تازه",
+  "password.submit": "تغییر گذرواژه",
+  "password.mismatch": "دو گذرواژه تازه یکسان نیستند. لطفاً دوباره وارد کنید.",
+  // Named separately, because telling somebody their *new* password was rejected when what failed
+  // was the old one is the kind of message that costs a support call.
+  "password.wrongCurrent": "گذرواژه فعلی درست نیست. گذرواژه تازه شما مشکلی ندارد.",
+  "password.failed": "تغییر گذرواژه انجام نشد. لطفاً دوباره تلاش کنید.",
+  "password.doneTitle": "گذرواژه تغییر کرد",
+  "password.doneDescription": "از این پس با گذرواژه تازه وارد شوید.",
   // M11 Screens slice 9. The review queue item, and the four decisions about it.
   "task.title": "کار بررسی",
   "task.status": "وضعیت",

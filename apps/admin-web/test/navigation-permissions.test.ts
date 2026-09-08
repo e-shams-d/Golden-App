@@ -142,7 +142,7 @@ describe("the navigation a role sees", () => {
     // **An anonymous visitor seeing it is correct and costs nothing.** Frontend visibility is not
     // authorization (§20.1): clicking it reaches a route that answers 401, which is what happens
     // to the dashboard too. Hiding it would be a control the server does not have.
-    expect(anonymous.map((item) => item.href)).toEqual(["/", "/notifications"]);
+    expect(anonymous.map((item) => item.href)).toEqual(["/", "/password", "/notifications"]);
     // Not empty, deliberately: an empty sidebar is indistinguishable from a failed load,
     // and the dashboard is what an authenticated person lands on anyway.
     expect(anonymous.length).toBeGreaterThan(0);
@@ -201,7 +201,7 @@ describe("the gating permissions themselves", () => {
     }
   });
 
-  it("gates every item except the two that cannot be gated", () => {
+  it("gates every item except the three that cannot be gated", () => {
     // The dashboard is the landing surface and carries none by design. Anything else ungated
     // would be a screen shown to everybody, which is the state slice 10D replaced.
     //
@@ -212,7 +212,13 @@ describe("the gating permissions themselves", () => {
     // it, and gating on a neighbouring grant would hide a person's own messages behind an
     // authority unrelated to them.
     //
-    // Still an equality rather than an allowlist: a third ungated item fails this the same way.
+    // **M11 Screens slice 10 added the third, and this assertion caught it again** — twice now,
+    // which is what an equality is for. `/password` carries no permission for a *different* reason
+    // from `/notifications`: there the catalogue holds none, here the caller **is** the subject.
+    // The session names whose credential it is, so a grant would be an authority over somebody's
+    // own password, and the route is guarded by the current password instead.
+    //
+    // Still an equality rather than an allowlist: a fourth ungated item fails this the same way.
     //
     // **The same equality is written a second time**, in
     // `tests/integration/test_navigation_is_not_a_control.py`, which parses this navigation module
@@ -221,7 +227,7 @@ describe("the gating permissions themselves", () => {
     // on a developer machine the second copy is silent rather than red. Change one, change both.
     const ungated = items.filter((item) => item.permission === undefined);
 
-    expect(ungated.map((item) => item.href)).toEqual(["/", "/notifications"]);
+    expect(ungated.map((item) => item.href)).toEqual(["/", "/password", "/notifications"]);
   });
 
   it("gates on a permission at least one seeded role does not hold", () => {

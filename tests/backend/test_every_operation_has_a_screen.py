@@ -95,10 +95,8 @@ NO_SCREEN: dict[tuple[str, str], str] = {
         "to the operator, and building one without deciding how a person receives that token "
         "would be a form with nothing to type into it."
     ),
-    ("POST", "/api/v1/auth/change-password"): (
-        "no screen changes a password yet. The route is complete and guarded by the current "
-        "password; what is missing is a settings surface, which no slice has owned."
-    ),
+    # M11 Screens slice 10 built the settings surface this entry said was missing, so it left
+    # the list — a deletion rather than an edit, which is what a closed entry looks like here.
     # --- bank configuration ----------------------------------------------------------------------
     ("GET", "/api/v1/bank-profiles"): "bank configuration has no screen; see the POST below",
     ("POST", "/api/v1/bank-profiles"): (
