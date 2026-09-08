@@ -76,7 +76,20 @@ _HREF = re.compile(r'href:\s*"([^"]+)"')
 # expires by itself the day a notification permission exists. What makes the item safe as
 # opposed to merely ungateable is in `test_notification_reading.py`: the three routes answer
 # 401 without a session, and every read is scoped to its own recipient.
-UNGATED = frozenset({"/", "/notifications"})
+#
+# `/password` arrived with M11 Screens slice 10, and its reason is **different from the other
+# two**. Notifications have no permission because the catalogue holds none; a password change has
+# none because the caller *is* the subject. The session names whose credential it is, so a grant
+# here would be an authority over somebody else's own password — and the route is guarded by the
+# **current password** instead, which is the stronger check: it proves the person at the keyboard
+# is the one whose credential this is. `test_permission_guards.py`'s `UNGUARDED_ROUTES` records
+# the same reasoning against the route itself.
+#
+# **This equality fired for the second time and I widened the wrong copy first — again.** The
+# note at `apps/admin-web/test/navigation-permissions.test.ts` exists precisely to prevent that
+# and did not, because a pointer is documentation rather than a gate. What caught it is running
+# `tests/integration` with the database variable set, which is the only thing that ever does.
+UNGATED = frozenset({"/", "/password", "/notifications"})
 
 CATALOGUE = REPOSITORY_ROOT / "docs" / "governance" / "permission_catalog.yaml"
 

@@ -90,6 +90,8 @@ const paths = [
   "/incoming-payments/00000000-0000-4000-8000-000000000007",
   // M11 Screens slice 9. The review task screen, which the reconciliation queue now opens.
   "/review-tasks/00000000-0000-4000-8000-000000000008",
+  // M11 Screens slice 10. Changing your own password.
+  "/password",
 ] as const;
 
 for (const path of paths) {

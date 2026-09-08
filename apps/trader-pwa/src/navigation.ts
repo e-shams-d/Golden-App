@@ -37,5 +37,7 @@ export const traderNavigation = [
   // M11 Screens slice 5. Buying gold from the centre. No permission, like every item here:
   // a trader session resolves no grants at all, and the route is guarded by ownership.
   { href: "/gold-orders", label: t("gold.nav"), icon: "gold" },
+  // M11 Screens slice 10. Changing your own password. No permission, like every item here.
+  { href: "/password", label: t("password.nav"), icon: "key" },
   { href: "/notifications", label: t("notifications.nav"), icon: "notifications" },
 ] as const satisfies readonly NavigationItem[];

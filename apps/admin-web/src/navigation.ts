@@ -115,6 +115,13 @@ export const adminNavigation = [
     permission: "gold_sale.read",
     icon: "gold",
   },
+  // M11 Screens slice 10. **The third ungated item, and deliberately so.**
+  //
+  // There is no permission for changing your own password and there should not be: the
+  // caller comes from the session rather than from a body, so a grant would be an authority
+  // over somebody's own credential. The equality in `navigation-permissions.test.ts` moves
+  // from two to three for the same reason it moved from one to two in slice 1.
+  { href: "/password", label: t("password.nav"), icon: "key" },
   {
     href: "/notifications",
     label: t("notifications.nav"),

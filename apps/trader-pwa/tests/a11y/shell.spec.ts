@@ -68,6 +68,8 @@ const paths = [
   // by following a stale link.
   "/gold-orders",
   "/gold-orders/00000000-0000-4000-8000-000000000006",
+  // M11 Screens slice 10. Changing your own password.
+  "/password",
 ] as const;
 
 for (const path of paths) {
