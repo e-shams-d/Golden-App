@@ -245,20 +245,37 @@ def test_activation_is_denied_to_every_role(world: dict[str, Any]) -> None:
     Every seeded internal role, not one: the claim is that the permission is granted to
     nobody, and trying a single account would prove only that one account lacks it.
 
-    **This test must be rewritten rather than deleted when the owner approves the grant.**
-    Deleting it would remove the only statement of what the interim rule was.
+    **The owner approved the grant on 2026-09-08 and this test was rewritten rather than
+    deleted**, as the sentence that stood here required. The interim rule was that the permission
+    existed and authorised nobody; the rule now is that it authorises `business_admin` **alone**,
+    and the reason is the one `20260828_0027` gave for cancelling an approved batch read from the
+    configuration side: a profile version carries the transfer limits, the cutoff time and the file
+    rules, so it changes how *every* payment is built. The person who creates payments must not be
+    the one who changes the rules they are built under.
+
+    Still every seeded role rather than one, and still an equality of sorts: three refusals and one
+    acceptance. Checking only that the accountant is refused would pass against a permission
+    granted to everybody.
     """
 
     client, url = world["client"], world["url"]
     _profile_id, version_id = make_profile(client, sign_in(client))
 
-    for username, _role in ALL_ROLES:
+    for username, role in ALL_ROLES:
         token = sign_in(client, username)
         response = client.post(
             f"/api/v1/bank-profile-versions/{version_id}/activate",
             headers={CSRF_HEADER: token},
         )
-        assert response.status_code == 403, f"{username}: {response.text}"
+        if role == "business_admin":
+            # Anything but 403. The command may still refuse on state — what matters here is that
+            # the refusal is not about authority.
+            assert response.status_code != 403, (
+                f"{username} holds bank_profile.activate_version and was refused for authority: "
+                f"{response.text}"
+            )
+        else:
+            assert response.status_code == 403, f"{username}: {response.text}"
 
     # And the version is still a draft, so the denial was not merely a slow success.
     with psycopg.connect(_psycopg(url)) as connection:
@@ -268,7 +285,7 @@ def test_activation_is_denied_to_every_role(world: dict[str, Any]) -> None:
     assert row and row[0] == "draft"
 
 
-def test_the_permission_exists_and_is_granted_to_nobody(world: dict[str, Any]) -> None:
+def test_each_permission_exists_and_carries_exactly_the_grants_decided(world: dict[str, Any]) -> None:
     """Guard the guard for BANK-VER-003.
 
     The denial above would also pass if the permission did not exist at all — a typo in
@@ -284,11 +301,20 @@ def test_the_permission_exists_and_is_granted_to_nobody(world: dict[str, Any]) -
             ).fetchone()
             assert permission, f"{code} is not seeded"
 
+            # M0 owner decision 2026-09-08: `bank_profile.activate_version` now has exactly
+            # one grant and `bank_mapping.activate` still has none — the owner decided the first
+            # and not the second, and conflating them would let the undecided one drift.
             grants = connection.execute(
                 "SELECT count(*) FROM role_permissions WHERE permission_id = %s",
                 (permission[0],),
             ).fetchone()
-            assert grants and grants[0] == 0, f"{code} is granted to {grants[0]} role(s)"
+            expected = 1 if code == "bank_profile.activate_version" else 0
+            assert grants and grants[0] == expected, (
+                f"{code} is granted to {grants[0]} role(s), expected {expected}. The owner "
+                "decided the activation grant on 2026-09-08 and did not decide "
+                "`bank_mapping.activate`; a single shared expectation would be false for one of "
+                "them and, once loosened to 'any', would stop guarding the other."
+            )
 
 
 def test_a_used_version_cannot_be_edited(world: dict[str, Any]) -> None:

@@ -418,18 +418,34 @@ def test_a_named_approver_must_hold_the_grant(world: dict[str, Any]) -> None:
     assert len(publications_of(world, case["request_id"])) == 1
 
 
-def test_nobody_holds_the_correction_permission_by_default(world: dict[str, Any]) -> None:
-    """POL-002 keeps `default_roles: []`, so the accountant who can publish cannot correct.
+def test_the_preparer_alone_still_cannot_correct(world: dict[str, Any]) -> None:
+    """The split, after the owner made it real on 2026-09-08.
 
-    The sharp negative: `correction_publisher` holds `payment_publication.publish` and every other
-    accountant grant, and is refused here by the route guard rather than by the command.
+    **This test used to say "nobody holds the correction permission by default"** — true while
+    POL-002 kept both halves at `default_roles: []`, and a claim that stopped saying anything the
+    moment somebody held one. The owner has now assigned both: the accountant prepares
+    (`payment_attempt.correct_result`), the manager approves (`payment_publication.correct`).
+
+    So `correction_publisher` — an accountant holding every accountant grant including
+    `payment_publication.publish` — now reaches further into the command than it used to, and is
+    still refused. **That refusal is the control**, and it is a stronger statement than the one it
+    replaces: the accountant who published the result cannot also be the second signature on its
+    correction, which is the one thing a dual-control command cannot survive.
+
+    The status is not asserted as a specific code, because the refusal may come from the route
+    guard or from `_refuse_a_single_human` depending on which half the route checks first. What
+    matters is that it is refused and that no second publication exists — a correction that was
+    accepted and then rolled back would leave the same count and a very different audit trail, so
+    the publication count is asserted too.
     """
 
     case = a_published_request(world)
     sign_in_admin(world, "correction_publisher")
 
     response = correct(world, case)
-    assert response.status_code == 403, response.text
+    assert response.status_code in {400, 403}, (
+        f"an accountant alone completed a correction: {response.status_code} {response.text}"
+    )
     assert len(publications_of(world, case["request_id"])) == 1
 
 

@@ -126,39 +126,56 @@ def test_the_catalogue_still_puts_the_step_up_where_this_slice_says_it_is() -> N
     )
 
 
-def test_the_correction_screen_is_absent_and_its_grant_is_still_unassigned() -> None:
-    """The second correction, and it expires by itself the day the grant is assigned.
+def test_the_correction_screen_is_absent_and_the_step_up_is_still_unimplemented() -> None:
+    """The deferral, with the reason that is now true — and the old one expired on schedule.
 
-    `payment_publication.correct` has `default_roles: []` because POL-002 defers the preparer and
-    approver split to ADR-SEC-009. A screen behind it would answer 403 to everybody — the
-    `bank_profile.activate_version` shape this project already carries once.
+    **Slice 4 wrote this to fail the day a role held `payment_publication.correct`.** The owner
+    assigned it on 2026-09-08 (the accountant prepares, the manager approves) and it fired. That is
+    the design working: a deferral recorded as an assertion rather than a comment cannot be
+    forgotten.
 
-    **Asserted rather than left as a comment**, in the same shape as the notifications exemption
-    in `test_navigation_is_not_a_control.py`: the day a role holds the grant, this fails and
-    whoever assigned it has to decide whether the screen should now exist.
+    Building the screen then found a **second blocker**, and it is a discrepancy rather than
+    missing work. `command_catalog.yaml` gives this command
+    `recent_auth: "required_for_approving_second_human"`. The implemented route declares **no
+    `X-Recent-Auth` header at all** — it names the second human through `approved_by_admin_user_id`
+    in the body.
+
+    A screen built against that gap would either send a header the server ignores, which teaches
+    people to type their password whenever a dialog asks, or omit the step-up the catalogue
+    requires. Neither is a screen; both are a decision about which document is authoritative, and
+    that is not an implementer's to make.
+
+    **This expires the same way the last reason did:** the day the route declares the header, this
+    fails and asks somebody to build the dialog.
     """
 
-    catalogue = CATALOGUE.read_text(encoding="utf-8")
-    entry = re.search(
-        r"^ {6}payment_publication\.correct:\n((?:[ ]{8}.*\n)*)", catalogue, re.M
-    )
-    assert entry is not None, "payment_publication.correct is no longer in the catalogue"
-
-    roles = re.search(r"default_roles: \[([^\]]*)\]", entry.group(1))
-    assert roles is not None, "the correction permission no longer declares default_roles"
-    assert roles.group(1).strip() == "", (
-        f"payment_publication.correct is now granted to [{roles.group(1)}]. The correction screen "
-        "was not built because nobody could open it; that has changed, and slice 4's deferral "
-        "should be revisited rather than this assertion relaxed."
+    catalogue = json.loads(COMMANDS.read_text(encoding="utf-8"))
+    commands = {command["id"]: command for command in catalogue["commands"]}
+    correction = commands.get("payment_publication.correct_paid_result")
+    assert correction is not None, "the correction command is no longer in the catalogue"
+    assert correction.get("recent_auth") == "required_for_approving_second_human", (
+        "the catalogue no longer requires a step-up for the correction; the reason this screen is "
+        "deferred has changed and the deferral should be revisited rather than this line relaxed"
     )
 
-    # And no screen reaches for the route in the meantime.
+    contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+    route = contract["paths"]["/api/v1/payment-requests/{request_id}/publications/corrections"]
+    headers = {
+        parameter["name"].lower()
+        for parameter in route["post"].get("parameters", [])
+        if parameter.get("in") == "header"
+    }
+    assert "x-recent-auth" not in headers, (
+        "the correction route now declares a step-up header, so the discrepancy this deferral "
+        "rests on is closed. Build the screen with the dialog §8.11 specifies, and replace this "
+        "test with one asserting it exists."
+    )
+
+    # And no screen reaches the route in the meantime.
     for path in SCREENS:
-        source = path.read_text(encoding="utf-8")
-        assert "/corrections" not in source, (
-            f"{path.name} reaches the correction route, which no role is permitted to call"
+        assert "/corrections" not in code(path), (
+            f"{path.name} reaches the correction route while its step-up is unimplemented"
         )
-
 
 def test_the_publication_screen_explains_the_missing_control() -> None:
     """A blank space would read as software that cannot fix a wrong result. It can.

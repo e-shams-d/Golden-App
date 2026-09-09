@@ -613,8 +613,11 @@ permission_groups:
         default_roles: [accountant]
         constraints: [authenticated_active, payment_result_confirmation, state_guarded_command]
       payment_attempt.correct_result:
-        default_roles: []
-        assignment: correction_preparer_and_approver_permissions_must_be_split_after_ADR_SEC_009
+        # The preparer half of the same owner decision. The accountant restates the corrected
+        # financial result; the manager's `payment_publication.correct` is what lets it reach the
+        # trader.
+        default_roles: [accountant]
+        assignment: preparer_half_of_the_split_owner_decided_2026_09_08
         constraints: [authenticated_active, published_paid_correction, state_guarded_command]
       payment_publication.preview:
         default_roles: [accountant]
@@ -623,8 +626,13 @@ permission_groups:
         default_roles: [accountant]
         constraints: [authenticated_active, publication_control, state_guarded_command]
       payment_publication.correct:
-        default_roles: []
-        assignment: correction_preparer_and_approver_permissions_must_be_split_after_ADR_SEC_009
+        # Owner decision, 2026-09-08, resolving the split POL-002 deferred: the accountant
+        # prepares a correction and the manager approves it. The accountant published the result
+        # and notices the error; the manager carries responsibility for changing what a trader has
+        # already been told. `_refuse_a_single_human` compares the two actor ids, so one person
+        # holding both still cannot do it alone.
+        default_roles: [manager]
+        assignment: approver_half_of_the_split_owner_decided_2026_09_08
         constraints: [authenticated_active, published_paid_correction, state_guarded_command]
       payment_publication.read_own:
         default_roles: [trader_owner]
@@ -754,9 +762,12 @@ permission_groups:
       # The proposal is [manager, business_admin], and explicitly not technical_admin,
       # whose conditional role on both create permissions is technical_validation_only.
       bank_profile.activate_version:
-        status: proposed_pending_owner_decision
-        proposed_roles: [manager, business_admin]
-        default_roles: []
+        # Owner decision, 2026-09-08. `business_admin` and deliberately not the accountant: a bank
+        # profile version carries the transfer limits, the cutoff time and the file rules, so it
+        # changes how *every* payment is built. The person who creates payments should not be the
+        # one who changes the rules they are built under.
+        status: owner_decided_2026_09_08
+        default_roles: [business_admin]
         constraints: [authenticated_active, bank_configuration_change, state_guarded_command]
       bank_mapping.activate:
         status: proposed_pending_owner_decision

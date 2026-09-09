@@ -44,6 +44,14 @@ DISPATCH_OVERRIDE_MIGRATION = (
     BACKEND_ROOT / "alembic" / "versions" / "20260911_0042_gold_dispatches.py"
 )
 
+# The owner's 2026-09-08 decision resolving the split POL-002 deferred to ADR-SEC-009: the
+# accountant prepares a publication correction and the manager approves it. It carries the bank
+# version activation grant too — `business_admin`, decided the same day — because both were
+# permissions that existed and authorised nobody, which is the shape this gate exists to notice.
+CORRECTION_SPLIT_MIGRATION = (
+    BACKEND_ROOT / "alembic" / "versions" / "20260914_0045_correction_split_grants.py"
+)
+
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
@@ -80,6 +88,12 @@ def load_dispatch_override_seed() -> object:
     """The fourth seeding revision. See `DISPATCH_OVERRIDE_MIGRATION`."""
 
     return _load(DISPATCH_OVERRIDE_MIGRATION, "seed_dispatch_override_permission")
+
+
+def load_correction_split_seed() -> object:
+    """The fifth seeding revision. See `CORRECTION_SPLIT_MIGRATION`."""
+
+    return _load(CORRECTION_SPLIT_MIGRATION, "seed_correction_split_grants")
 
 
 def _load(path: Path, name: str) -> object:
@@ -127,6 +141,8 @@ class TestSeedMatchesCatalogue:
         activation = load_activation_seed()
         cancellation = load_cancellation_seed()
         dispatch_override = load_dispatch_override_seed()
+        # No loader here: this test compares permission *codes*, and 20260914_0045 seeds
+        # grants only — every code it grants already exists from _0008 and _0014.
         catalogue_codes = {permission.code for permission in permissions()}
         seeded_codes = {code for code, _domain in seed.PERMISSIONS}  # type: ignore[attr-defined]
         seeded_codes |= {
@@ -155,6 +171,7 @@ class TestSeedMatchesCatalogue:
 
         cancellation = load_cancellation_seed()
         dispatch_override = load_dispatch_override_seed()
+        correction_split = load_correction_split_seed()
         expected = {
             (role_code, permission.code)
             for permission in permissions()
@@ -166,6 +183,10 @@ class TestSeedMatchesCatalogue:
         # `manager` on the owner's 2026-09-03 decision, for the reason the cancellation did: a
         # permission that authorises nobody is a rule nobody can follow.
         seeded |= set(dispatch_override.OVERRIDE_GRANTS)  # type: ignore[attr-defined]
+        # M0 owner decision 2026-09-08, the third revision to seed a grant. Two of its three
+        # rows are the halves of one control: `_refuse_a_single_human` still refuses a person
+        # holding both, so these grants make the correction *reachable* rather than safe.
+        seeded |= set(correction_split.CORRECTION_GRANTS)  # type: ignore[attr-defined]
 
         assert seeded == expected
 
