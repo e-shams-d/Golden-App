@@ -462,3 +462,55 @@ def test_the_catalogue_approval_claim_names_each_catalogue(
         )
         assert actual == expected, f"{name}.yaml carries status {actual!r}, expected {expected!r}"
         assert f"`{name}.yaml`" in text, f"the README does not name {name}.yaml in its status list"
+
+
+def test_every_governed_document_matches_its_recorded_digest() -> None:
+    """The manifest's actual job, checked somewhere a person can run.
+
+    **Found by a negative control that came back NOT CAUGHT.** M0 slice A's eighth control edits
+    `permission_catalog.yaml` without regenerating the manifest — a change that alters no
+    behaviour, which is exactly why the governance documents are gated by a digest instead of by
+    tests. Nothing failed. Tracing why produced the finding: `infra/scripts/m0_manifest.py` is
+    invoked from **one** place in the repository, `.github/workflows/m1-verify.yml:112`. Neither
+    `verify-native.sh` nor `verify-docker.sh` runs it, so the only checker of the checksum chain
+    was a hosted runner — and while Actions billing is unavailable, that is no checker at all.
+
+    Four lines above, `test_the_catalogue_approval_claim_names_each_catalogue` declines to
+    reformat a governance file on the grounds that "the manifest hashes them". It did not, in any
+    run this repository could perform. This is the assertion that makes that sentence true.
+
+    **The script is imported rather than reimplemented.** A second copy of the digest convention
+    would be a second thing to keep in step with `--write`, and the first time they disagreed the
+    test would be wrong in the direction that passes. `assert_round_trip` is included for the same
+    reason it gates `--write`: a manifest this script cannot reproduce byte for byte is one whose
+    regeneration would rewrite unrelated lines, and drift hidden inside a reformat is drift.
+
+    Covers: CI-MANIFEST-001, which this module's docstring has claimed since M0.
+    """
+
+    import importlib.util
+
+    root = GOVERNANCE.parents[1]
+    location = root / "infra" / "scripts" / "m0_manifest.py"
+    specification = importlib.util.spec_from_file_location("m0_manifest", location)
+    assert specification and specification.loader, f"{location} is not importable"
+    manifest_script = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(manifest_script)
+
+    manifest, original = manifest_script.load()
+
+    formatting = manifest_script.assert_round_trip(manifest, original)
+    assert formatting == [], "\n".join(formatting)
+
+    problems, count = manifest_script.check(manifest)
+    assert count > 0, (
+        "the manifest records no files, so the check below asserts nothing. Every enumeration in "
+        "this module has a floor for this reason."
+    )
+    assert problems == [], (
+        f"{len(problems)} of {count} governed documents no longer match the manifest:\n"
+        + "\n".join(f"  {problem}" for problem in problems)
+        + "\n\nRegenerate with: python infra/scripts/m0_manifest.py --write\n"
+        "A governance document must never change without its manifest entry — every M0 citation "
+        "pointing at it loses its provenance the moment it does."
+    )

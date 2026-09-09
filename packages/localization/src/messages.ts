@@ -297,10 +297,14 @@ export const faMessages = {
   "publication.refused": "این کار پذیرفته نشد. اطلاعات به‌روز شد.",
   "publication.stale":
     "درخواست در همین فاصله تغییر کرد، پس انتشار انجام نشد. اطلاعات تازه را ببینید و در صورت تأیید دوباره منتشر کنید.",
-  // The correction flow, and why there is no button for it.
+  // The correction flow, and why there is no button for it. **The reason changed on 2026-09-08**
+  // and this text changed with it: it used to say the permission had been granted to no role,
+  // which stopped being true the day the owner granted both halves. A panel explaining an absence
+  // with a reason that has expired is worse than no panel — it tells somebody to wait for a
+  // decision that has already been made.
   "publication.correctionBlockedTitle": "اصلاح نتیجه منتشرشده در این نسخه فعال نیست",
   "publication.correctionBlocked":
-    "اصلاح یک نتیجه منتشرشده به دو نفر نیاز دارد: یکی آماده می‌کند و دیگری تأیید. این تفکیک هنوز در سطح دسترسی‌ها تصویب نشده و مجوز آن به هیچ نقشی داده نشده است، پس صفحه‌ای هم برای آن ساخته نشده. مسیر بک‌اند آماده است و به محض تصویب، فعال می‌شود.",
+    "اصلاح یک نتیجه منتشرشده به دو نفر نیاز دارد: حسابدار آماده می‌کند و مدیر تأیید. این تفکیک تصویب شده، مجوز هر دو نقش داده شده و مسیر بک‌اند آماده و آزموده است. آنچه هنوز تعیین نشده این است که حضور نفر دوم پای همین دستگاه چگونه اثبات شود؛ تا آن تعیین نشود، فرمی که این پرسش را نادیده بگیرد ساخته نمی‌شود.",
   "publication.viewPublication": "انتشار نتیجه",
   // M11 Screens slice 5. Gold orders — the trader files one, the centre prices it.
   "gold.nav": "سفارش‌های طلا",

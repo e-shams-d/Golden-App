@@ -128,11 +128,18 @@ def world(migrated: RuntimeIdentities, tmp_path_factory: Any) -> Iterator[dict[s
             "'derived', '{}')",
             (ids["file"], f"corrections/{ids['file']}", "b" * 64),
         )
-        # **Both correction permissions have `default_roles: []`, so an administrator creates the
-        # roles.** That is POL-002's design rather than a gap: "preparer and approver split".
-        # Modelled here the way a deployment would do it — two roles, one permission each —
-        # because granting through an existing role would give it to every accountant and the
-        # split would be gone before the first test ran.
+        # **Two bespoke roles, one permission each, and they survive the owner's decision of
+        # 2026-09-08 deliberately.** They were written when both correction permissions carried
+        # `default_roles: []` and an administrator had to create the roles. The owner has since
+        # granted the preparer's half to `accountant` and the approver's half to `manager`, so a
+        # deployment no longer needs them — but POL-002's headline claim is that the control
+        # survives *any* grant configuration, and a soloist assembled out of seeded roles alone
+        # could not be built without also asserting what those roles happen to hold today. These
+        # two keep each half isolated from that question.
+        #
+        # The seeded roles are exercised on their own by
+        # `test_the_accountant_prepares_and_the_manager_approves`, which is where the owner's
+        # decision is proved rather than assumed.
         for code, permission in (
             ("test_correction_preparer", "payment_attempt.correct_result"),
             ("test_correction_approver", "payment_publication.correct"),
@@ -160,9 +167,20 @@ def world(migrated: RuntimeIdentities, tmp_path_factory: Any) -> Iterator[dict[s
                 "correction_soloist",
                 ("accountant", "test_correction_preparer", "test_correction_approver"),
             ),
-            # An ordinary accountant: holds `payment_publication.publish` and neither correction
-            # grant. The default state, and the sharp negative for the route guard.
+            # An ordinary accountant, holding nothing but the seeded `accountant` role. Until
+            # 2026-09-08 that meant "holds `payment_publication.publish` and neither correction
+            # grant", and it was the route guard's sharp negative. The owner's grant of
+            # `payment_attempt.correct_result` to `accountant` changed what this account *is*: it
+            # is now the preparer a real deployment has, and it is the one that proves the
+            # decision landed.
             ("correction_publisher", ("accountant",)),
+            # An ordinary manager, holding nothing but the seeded `manager` role — which now
+            # carries `payment_publication.correct` and does not carry
+            # `payment_attempt.correct_result`. Two jobs, and they are the same fact read from
+            # both sides: it is the second human in the positive case, and it is the route
+            # guard's new sharp negative, because a caller holding the *approver's* grant and
+            # not the preparer's must still be refused at the door.
+            ("correction_manager", ("manager",)),
         ):
             connection.execute(
                 "INSERT INTO admin_users (username, full_name, password_hash, status) "
@@ -418,33 +436,80 @@ def test_a_named_approver_must_hold_the_grant(world: dict[str, Any]) -> None:
     assert len(publications_of(world, case["request_id"])) == 1
 
 
-def test_the_preparer_alone_still_cannot_correct(world: dict[str, Any]) -> None:
-    """The split, after the owner made it real on 2026-09-08.
+def test_the_accountant_prepares_and_the_manager_approves(world: dict[str, Any]) -> None:
+    """The owner's decision of 2026-09-08, proved through the seeded roles and nothing else.
 
-    **This test used to say "nobody holds the correction permission by default"** — true while
-    POL-002 kept both halves at `default_roles: []`, and a claim that stopped saying anything the
-    moment somebody held one. The owner has now assigned both: the accountant prepares
-    (`payment_attempt.correct_result`), the manager approves (`payment_publication.correct`).
+    **This is the test that used to say "nobody holds the correction permission by default".**
+    That sentence was true while POL-002 kept both halves at `default_roles: []`, and it stopped
+    saying anything the moment somebody held one. `20260914_0045` is that moment: the accountant
+    prepares (`payment_attempt.correct_result`), the manager approves
+    (`payment_publication.correct`).
 
-    So `correction_publisher` — an accountant holding every accountant grant including
-    `payment_publication.publish` — now reaches further into the command than it used to, and is
-    still refused. **That refusal is the control**, and it is a stronger statement than the one it
-    replaces: the accountant who published the result cannot also be the second signature on its
-    correction, which is the one thing a dual-control command cannot survive.
+    So the assertion inverts, and inverting it is the point rather than a concession. Every other
+    test in this file reaches the command through `test_correction_preparer` and
+    `test_correction_approver` — two roles this fixture invents — which proves the *command* is
+    correct and proves nothing about whether a real deployment can run it. Here nobody holds a
+    bespoke role: `correction_publisher` is an ordinary accountant and `correction_manager` is an
+    ordinary manager, exactly as `20260801_0008` and `20260914_0045` leave them. If a later
+    migration moves either grant, this is what says so.
 
-    The status is not asserted as a specific code, because the refusal may come from the route
-    guard or from `_refuse_a_single_human` depending on which half the route checks first. What
-    matters is that it is refused and that no second publication exists — a correction that was
-    accepted and then rolled back would leave the same count and a very different audit trail, so
-    the publication count is asserted too.
+    **The single-human refusal has not moved.** It lives in
+    `test_one_person_holding_both_permissions_is_still_refused`, which is where POL-002's "cannot
+    be configured off" belongs, and in `test_a_named_approver_must_hold_the_grant`. The route's
+    permission negative is `test_the_approver_alone_cannot_prepare_a_correction`, below. This
+    test's job is the positive half, and until today the positive half had never been reached by
+    anybody a deployment actually has.
+
+    The audit row is read back because "two humans completed this" is the claim, and a 201 alone
+    would be equally consistent with the command having recorded one of them twice.
     """
 
     case = a_published_request(world)
     sign_in_admin(world, "correction_publisher")
+    approver = admin_id(world, "correction_manager")
+
+    response = correct(world, case, approved_by_admin_user_id=str(approver))
+    assert response.status_code == 201, (
+        "an accountant and a manager could not complete a correction between them. The owner "
+        f"granted both halves on 2026-09-08: {response.status_code} {response.text}"
+    )
+    assert response.json()["publication_version"] == 2
+
+    versions = publications_of(world, case["request_id"])
+    assert [row[:2] for row in versions] == [(1, "superseded"), (2, "active")], versions
+
+    audit = rows(
+        world,
+        "SELECT new_values FROM audit_logs WHERE entity_id = %s AND action = %s",
+        response.json()["id"],
+        SUPERSEDED_ACTION,
+    )
+    assert len(audit) == 1, audit
+    assert audit[0][0]["prepared_by_admin_user_id"] == str(admin_id(world, "correction_publisher"))
+    assert audit[0][0]["approved_by_admin_user_id"] == str(approver)
+
+
+def test_the_approver_alone_cannot_prepare_a_correction(world: dict[str, Any]) -> None:
+    """The route guard's negative, and it is sharper than the one it replaces.
+
+    `correction_manager` holds `payment_publication.correct` — the *approver's* grant, the more
+    senior of the two — and does not hold `payment_attempt.correct_result`. The route asks for the
+    preparer's, because the caller is the preparer; a guard that asked for "either correction
+    grant", or for the approver's, would let this through and would have inverted the split
+    without changing a single behavioural assertion elsewhere in this file.
+
+    A `403` specifically, and from the door: this is refused before the body is read, so it holds
+    whatever the body names. The old negative here signed in as an ordinary accountant, which the
+    owner's grant has turned into the positive case above.
+    """
+
+    case = a_published_request(world)
+    sign_in_admin(world, "correction_manager")
 
     response = correct(world, case)
-    assert response.status_code in {400, 403}, (
-        f"an accountant alone completed a correction: {response.status_code} {response.text}"
+    assert response.status_code == 403, (
+        "a manager prepared a correction. The route is guarded by "
+        f"`payment_attempt.correct_result`, which `manager` does not hold: {response.text}"
     )
     assert len(publications_of(world, case["request_id"])) == 1
 

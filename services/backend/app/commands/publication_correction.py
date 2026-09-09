@@ -7,10 +7,12 @@ comes from).
 
 **POL-002 is approved and it decides the control.** ADR_INDEX: "manager authority or dual control
 is required; the accountant-only default is rejected... `payment_publication.correct` keeps
-`default_roles: []` with preparer and approver split." So the empty default roles are a deployment
-decision — an administrator assigns them — and not a reason to leave the command unbuilt. POL-002
-also sets this slice's headline obligation in its own words: **"M9 correction and UAT must prove
-the control cannot be configured off."**
+`default_roles: []` with preparer and approver split." The empty default roles were a deployment
+decision left open, and not a reason to leave the command unbuilt — **`20260914_0045` is the owner
+making it, on 2026-09-08: the accountant prepares, the manager approves.** POL-002's split survives
+that grant intact, because it was never a claim about which roles hold what. POL-002 also sets this
+slice's headline obligation in its own words: **"M9 correction and UAT must prove the control
+cannot be configured off."**
 
 That sentence is why the separation is enforced *here* rather than by which permissions a role
 happens to hold. Grant one person both permissions — which an administrator can do, deliberately or
@@ -26,13 +28,20 @@ notification are required." Slice 2 built the first half before publications exi
 
 `command_catalog.yaml`'s `payment_publication.correct_paid_result` row carries `method: TBD, path:
 TBD`, and this command declines to invent one: it is reached at the address document 05 already
-gives the replacement, with the second human's headers alongside.
+gives the replacement.
+
+**The same catalogue row asks for `recent_auth: "required_for_approving_second_human"`, and that
+is not implemented.** The second human is named in the body and verified against their own grants;
+nothing proves they were at the keyboard. It is recorded here rather than fixed because
+`app/security/step_up.py` binds a context to the *calling* actor and session, so it can prove the
+preparer was present and structurally cannot prove the approver was — see the note on
+`CorrectionRequest` in `app/api/v1/payment_publications.py`.
 
 **The eight steps of §17.7, and where each lives:**
 
     create a sensitive review task          _open_a_correction_task
     preserve old result and evidence        the grant: only `status` is writable on publication N
-    require dual-control decision           _refuse_a_single_human + the step-up context
+    require dual-control decision           _refuse_a_single_human, and the approver's own grant
     recalculate aggregates                  no paid sum changes; the request status is re-derived
     create publication N+1                  _publish_the_correction
     supersede N                             the same function, one transaction
@@ -329,9 +338,9 @@ def _refuse_an_approver_without_the_grant(
     if held is None:
         raise BusinessRuleViolationError(
             f"the named approver does not hold {CORRECT_OPERATION}. "
-            "ADR_INDEX's POL-002 splits preparer from approver and keeps this permission at "
-            "`default_roles: []` so that an administrator assigns it deliberately — naming "
-            "somebody who does not have it is not a second authorisation."
+            "ADR_INDEX's POL-002 splits preparer from approver, and the owner assigned the two "
+            "halves to different roles on 2026-09-08 — the accountant prepares, the manager "
+            "approves. Naming somebody outside the approving role is not a second authorisation."
         )
 
 

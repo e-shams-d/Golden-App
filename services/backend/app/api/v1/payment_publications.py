@@ -390,9 +390,19 @@ class CorrectionRequest(BaseModel):
     **`approved_by_admin_user_id` is a field and that is deliberate.** Everywhere else in this
     project an actor comes from the session and never from the body — `_publishing_admin` says so
     two functions up. A dual-control decision is the exception the rule was written around: the
-    approver is by definition *not* the caller, so there is no session to take them from. The
-    second human's `X-Recent-Auth` reference is what proves they were present; this field is who
-    the reference must belong to, and `_refuse_a_single_human` refuses when it is the caller.
+    approver is by definition *not* the caller, so there is no session to take them from.
+
+    **What this field is not, today, is proof that the approver was present.** It is a name the
+    preparer types, checked against the approver's own grants and against the caller's id — so it
+    proves the named person *may* approve and *is not* the person asking. `command_catalog.yaml`
+    asks for more: `recent_auth: "required_for_approving_second_human"`. That is unimplemented and
+    the gap is recorded rather than papered over, because closing it is not a matter of adding a
+    header. `app/security/step_up.py`'s `rejection_for` binds a context to the *calling* actor and
+    the *calling* session, so a reference the approver obtained would be refused as `WRONG_ACTOR`
+    the moment the preparer presented it. Proving the second human was present needs a step-up
+    that authenticates somebody other than the session holder, which is a mechanism this codebase
+    does not have and an owner's decision it has not been given. Tracked in
+    `test_result_screens_exist.py`, which is where the screen that would depend on it is deferred.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -436,10 +446,18 @@ def correct_payment_result_publication(
     publication, superseded predecessor, trader notified" for another is a route whose guard
     depends on data. Recorded in the M9 plan as a path M0 owes.
 
-    **`payment_publication.correct` has no default role, and that is not a bug.** POL-002 keeps
-    `default_roles: []` with preparer and approver split, so an administrator assigns it. What the
-    empty default cannot do is switch the control off: `_refuse_a_single_human` compares the two
-    ids, so granting one person both permissions still refuses.
+    **Both halves are now assigned, and the control does not depend on that.** Until 2026-09-08
+    `payment_publication.correct` and `payment_attempt.correct_result` both carried
+    `default_roles: []` and this docstring said so: nobody held either, and POL-002's split was
+    enforced by nobody being able to correct anything. `20260914_0045` gave the preparer's half to
+    `accountant` and the approver's half to `manager`, on the owner's decision — so a wrong
+    published result became correctable for the first time.
+
+    What the grants cannot do is switch the control off. `_refuse_a_single_human` compares the two
+    ids, so one person holding both permissions is still refused; the approver's grant is read
+    from the approver's own roles, so naming a colleague who does not hold it is not a second
+    authorisation. That was true when the defaults were empty and it is true now, which is the
+    property POL-002 actually asked for.
     """
 
     expected = _parse_record_version(if_match)

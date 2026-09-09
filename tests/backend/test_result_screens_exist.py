@@ -177,6 +177,7 @@ def test_the_correction_screen_is_absent_and_the_step_up_is_still_unimplemented(
             f"{path.name} reaches the correction route while its step-up is unimplemented"
         )
 
+
 def test_the_publication_screen_explains_the_missing_control() -> None:
     """A blank space would read as software that cannot fix a wrong result. It can.
 

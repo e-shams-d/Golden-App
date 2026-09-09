@@ -138,10 +138,20 @@ def make_profile(client: Any, token: str, code: str = "synthetic_bank_a") -> tup
     return response.json()["profile_id"], response.json()["version_id"]
 
 
+def _version_status(url: str, version_id: str) -> str:
+    with psycopg.connect(_psycopg(url)) as connection:
+        row = connection.execute(
+            "SELECT status FROM bank_profile_versions WHERE id = %s", (version_id,)
+        ).fetchone()
+    assert row, f"version {version_id} is gone"
+    return str(row[0])
+
+
 def _activate(url: str, version_id: str, *, frm: datetime | None, to: datetime | None) -> None:
-    """Activate directly, with a window. The route denies everyone by design, so the
-    command is exercised through the runtime in the tests that are about resolution
-    rather than about the guard."""
+    """Activate directly, with a window. The route is reachable by `business_admin` alone,
+    so the command is exercised through the runtime in the tests that are about resolution
+    rather than about the guard — and those tests then say nothing about who may call it,
+    which is the separation `test_only_the_business_admin_may_activate_a_version` relies on."""
 
     with psycopg.connect(_psycopg(url)) as connection:
         connection.execute(
@@ -239,11 +249,12 @@ def test_two_overlapping_active_versions_cannot_be_created(world: dict[str, Any]
         uow.commit()
 
 
-def test_activation_is_denied_to_every_role(world: dict[str, Any]) -> None:
+def test_only_the_business_admin_may_activate_a_version(world: dict[str, Any]) -> None:
     """BANK-VER-003, DOC-CONFLICT-045.
 
-    Every seeded internal role, not one: the claim is that the permission is granted to
-    nobody, and trying a single account would prove only that one account lacks it.
+    Every seeded internal role, not one: a test that tried a single account would prove only that
+    one account lacks the grant, and would pass unchanged against a permission granted to
+    everybody.
 
     **The owner approved the grant on 2026-09-08 and this test was rewritten rather than
     deleted**, as the sentence that stood here required. The interim rule was that the permission
@@ -253,39 +264,57 @@ def test_activation_is_denied_to_every_role(world: dict[str, Any]) -> None:
     rules, so it changes how *every* payment is built. The person who creates payments must not be
     the one who changes the rules they are built under.
 
-    Still every seeded role rather than one, and still an equality of sorts: three refusals and one
-    acceptance. Checking only that the accountant is refused would pass against a permission
-    granted to everybody.
+    **A profile of its own per role, and that is the whole repair.** The previous shape made one
+    version and walked four accounts across it, then asserted at the end that the version was still
+    `draft`. That was sound while the grant authorised nobody and became self-contradicting the
+    moment it authorised somebody: the `business_admin` iteration activated the version, and the
+    closing assertion — written to prove the refusals were refusals and not slow successes — read
+    the state its own loop had moved. The fix is not to drop that assertion. It is to give each
+    iteration a version nothing else touches, which lets the check move *inside* the loop and get
+    stronger: every refusal is now shown to have left its own version at `draft`, rather than three
+    refusals sharing one closing observation.
+
+    **`business_admin` must reach `active`, not merely avoid a 403.** The looser claim would pass
+    against a route that took the grant seriously and then failed on state, which is a working
+    permission on a command nobody can run. If slice B gives this route an `If-Match` — and
+    `test_preconditions_have_a_source.py` is where that question lives — this fails, and it should:
+    a precondition the caller must now satisfy is a change to what "may activate" means.
     """
 
     client, url = world["client"], world["url"]
-    _profile_id, version_id = make_profile(client, sign_in(client))
 
     for username, role in ALL_ROLES:
+        _profile_id, version_id = make_profile(
+            client, sign_in(client), code=f"synthetic_bank_{role}"
+        )
         token = sign_in(client, username)
         response = client.post(
             f"/api/v1/bank-profile-versions/{version_id}/activate",
             headers={CSRF_HEADER: token},
         )
+        status = _version_status(url, version_id)
+
         if role == "business_admin":
-            # Anything but 403. The command may still refuse on state — what matters here is that
-            # the refusal is not about authority.
             assert response.status_code != 403, (
                 f"{username} holds bank_profile.activate_version and was refused for authority: "
                 f"{response.text}"
             )
+            assert status == "active", (
+                f"{username} was not refused for authority and the version is {status!r}. The "
+                "grant authorises a command that does not complete, which is indistinguishable "
+                "from no grant at all for anybody trying to change a bank's rules."
+            )
         else:
             assert response.status_code == 403, f"{username}: {response.text}"
-
-    # And the version is still a draft, so the denial was not merely a slow success.
-    with psycopg.connect(_psycopg(url)) as connection:
-        row = connection.execute(
-            "SELECT status FROM bank_profile_versions WHERE id = %s", (version_id,)
-        ).fetchone()
-    assert row and row[0] == "draft"
+            assert status == "draft", (
+                f"{username} was told 403 and the version is {status!r} — the denial was a slow "
+                "success"
+            )
 
 
-def test_each_permission_exists_and_carries_exactly_the_grants_decided(world: dict[str, Any]) -> None:
+def test_each_permission_exists_and_carries_exactly_the_grants_decided(
+    world: dict[str, Any],
+) -> None:
     """Guard the guard for BANK-VER-003.
 
     The denial above would also pass if the permission did not exist at all — a typo in
