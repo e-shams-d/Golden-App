@@ -58,7 +58,21 @@ from app.security.rate_limit import AuthenticationRateLimiter
 _DUMMY_HASH: str | None = None
 
 
-def _dummy_hash(parameters: Argon2Parameters, max_length: int) -> str:
+def absent_user_hash(parameters: Argon2Parameters, max_length: int = 1024) -> str:
+    """The hash a miss is verified against, shared by every route that can miss.
+
+    **Public since M0 slice A2**, which added `POST /auth/admin/approver-reauthenticate` — a second
+    place where a username may name nobody, and therefore a second place that must spend the same
+    time on a miss as on a wrong password. A private copy there would have been a second dummy hash
+    with its own parameters, and the two would have diverged the first time either was tuned; the
+    enumeration oracle this defends against is a *difference* in cost, so two implementations of
+    "the same cost" is precisely the wrong shape.
+
+    `max_length` defaults because the value never protects anything — it is truncation-irrelevant
+    input to a hash whose only job is to consume comparable time — and a caller that had to supply
+    it would be asked to reason about a number that cannot matter.
+    """
+
     global _DUMMY_HASH
     if _DUMMY_HASH is None:
         _DUMMY_HASH = passwords.hash_password(
@@ -161,7 +175,7 @@ def authenticate(
         # identifier returns measurably faster and the identical response body
         # stops mattering.
         passwords.verify_password(
-            _dummy_hash(policy.argon2, policy.password_max_length),
+            absent_user_hash(policy.argon2, policy.password_max_length),
             attempt.password,
             policy.argon2,
             max_length=policy.password_max_length,

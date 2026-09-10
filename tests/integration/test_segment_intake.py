@@ -38,8 +38,10 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import uuid
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import psycopg
@@ -48,6 +50,8 @@ from alembic_runner import run_alembic
 from bootstrap_replay import RuntimeIdentities
 
 pytestmark = pytest.mark.integration
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 PASSWORD = "correct-horse-battery-staple"
 TRADER_PHONE = "+989120000822"
@@ -546,6 +550,13 @@ def test_no_segment_route_answers_a_caller_without_the_permission(
     One test over the surface rather than one per route, for slice 1's reason: the requirement is a
     claim about the surface, and near-copies differing only in a path let a later route arrive
     untested while the file still looks thorough.
+
+    **That sentence described this test's own defect until M0 slice A2.** "The surface" was two
+    paths written out by hand, so `listBundleReceiptSegments` — a third route behind the same
+    guard — would have arrived untested with this file still reading as thorough, which is exactly
+    the failure the paragraph above warns about, happening to the paragraph above. The reads are a
+    list now, and the first assertion is that the list holds *every* segment read the contract
+    publishes: a fourth route added without a line here fails rather than being silently exempt.
     """
 
     client = world["client"]
@@ -554,11 +565,31 @@ def test_no_segment_route_answers_a_caller_without_the_permission(
     segment_id = attach(world, bundle).json()["id"]
 
     write_path = f"/api/v1/bank-result-bundles/{bundle['id']}/receipt-segments/external"
-    read_path = f"/api/v1/receipt-segments/{segment_id}"
+    read_paths = (
+        f"/api/v1/receipt-segments/{segment_id}",
+        f"/api/v1/bank-result-bundles/{bundle['id']}/receipt-segments",
+    )
+
+    contract = json.loads(
+        (REPOSITORY_ROOT / "services" / "backend" / "openapi" / "v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    published = sorted(
+        path
+        for path, operations in contract["paths"].items()
+        if "get" in operations and path.rstrip("/").endswith(("receipt-segments", "{segment_id}"))
+    )
+    assert len(published) == len(read_paths), (
+        f"the contract publishes {len(published)} segment reads and this test exercises "
+        f"{len(read_paths)}. A read that no negative test reaches is one whose guard nobody "
+        f"checks: {published}"
+    )
 
     # A manager may read evidence and may not create it.
     sign_in_admin(client, "segment_manager")
-    assert client.get(read_path).status_code == 200
+    for path in read_paths:
+        assert client.get(path).status_code == 200, path
     assert client.post(
         write_path,
         json={"source_file_id": bundle["file_id"]},
@@ -567,7 +598,8 @@ def test_no_segment_route_answers_a_caller_without_the_permission(
 
     # A trader reaches neither.
     sign_in_trader(client)
-    assert client.get(read_path).status_code == 403
+    for path in read_paths:
+        assert client.get(path).status_code == 403, path
     assert client.post(
         write_path,
         json={"source_file_id": bundle["file_id"]},
@@ -1836,12 +1868,24 @@ def test_a_segment_changed_after_its_check_is_unverified_again(world: dict[str, 
     segment_id = request_a_crop(world, bundle).json()["segment"]["id"]
 
     assert resolve_privacy_task(world, segment_id).status_code == 200
-    assert client.get(f"/api/v1/receipt-segments/{segment_id}").json()["privacy_verified"] is True
+    checked = client.get(f"/api/v1/receipt-segments/{segment_id}").json()
+    assert checked["privacy_verified"] is True
 
     # The worker renders, `record_version` moves, and the check no longer describes this segment.
     drain(world)
 
     after = client.get(f"/api/v1/receipt-segments/{segment_id}").json()
+
+    # **This test's premise, asserted before the thing it is about.** `drain` insists the worker
+    # rendered *something*; it does not ask which segment, so a job left pending by an earlier
+    # test satisfies its count while this segment stays at the version it was checked at. That
+    # produced one failure reading "a segment still claims to be verified" — which is the opposite
+    # of what had happened, and cost a control cycle to tell apart from a real defect.
+    assert after["record_version"] > checked["record_version"], (
+        f"this segment was not re-rendered: it is still at version {after['record_version']}. "
+        "The worker rendered something, so `drain` was satisfied — but the assertion below is "
+        "about a *changed* segment and there is nothing here to have changed it."
+    )
     assert after["privacy_verified"] is False, (
         "a segment re-rendered after its privacy check still claims to be verified"
     )

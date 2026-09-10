@@ -144,3 +144,57 @@ export const adminAuthAdapter: AuthAdapter = {
     };
   },
 };
+
+/**
+ * A **second** human proves they are here, for a command the caller cannot authorise alone.
+ *
+ * Deliberately not a method on `adminAuthAdapter`. That adapter's contract is "the signed-in
+ * person"; every method on it acts on the session holder, and hanging this beside `reauthenticate`
+ * would put two functions with near-identical signatures next to each other where one checks your
+ * password and the other checks somebody else's. The difference is the entire security property.
+ *
+ * **The owner's decision, 2026-09-09.** `command_catalog.yaml` has asked the publication
+ * correction for `recent_auth: "required_for_approving_second_human"` since M0 and nothing could
+ * supply it: `POST /auth/reauthenticate` issues a context bound to the caller, and
+ * `step_up.rejection_for` compares it against the caller, so it can only ever prove the preparer
+ * was present — the wrong person in a dual-control command.
+ *
+ * The context this returns is bound to the **approver's** identity and the **caller's** session,
+ * so it is spendable only at this machine and only during this sitting. That is what makes it a
+ * manager walking over rather than a manager sending a token by message.
+ *
+ * The returned id is what the command must name. Resolving the username a second time to fill
+ * `approved_by_admin_user_id` is how the two values come to disagree, and the server compares
+ * them.
+ */
+export async function approverReauthenticate(input: {
+  readonly username: string;
+  readonly password: string;
+  readonly actionClass: string;
+  readonly resourceType: string;
+  readonly resourceId: string;
+  readonly signal?: AbortSignal;
+}): Promise<{ readonly reference: string; readonly approverId: string; readonly expiresAt: string }> {
+  const response = await transport.request<{
+    recent_auth_reference: string;
+    approver_admin_user_id: string;
+    expires_at: string;
+  }>({
+    method: "POST",
+    path: "/auth/admin/approver-reauthenticate",
+    body: {
+      username: input.username,
+      password: input.password,
+      purpose: input.actionClass,
+      resource_type: input.resourceType,
+      resource_id: input.resourceId,
+    },
+    ...(input.signal ? { signal: input.signal } : {}),
+  });
+
+  return {
+    reference: response.data.recent_auth_reference,
+    approverId: response.data.approver_admin_user_id,
+    expiresAt: response.data.expires_at,
+  };
+}

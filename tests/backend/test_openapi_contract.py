@@ -70,6 +70,13 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # M3 slice 7. Raises assurance for one exact action; it approves
         # nothing (doc 12:550).
         "reauthenticate",
+        # M0 slice A2. The same idea for a *second* human: the approver types their own password
+        # at the preparer's machine, and the context is bound to the approver's identity and the
+        # preparer's session. `command_catalog.yaml` has asked the correction for
+        # `recent_auth: "required_for_approving_second_human"` since M0, and until this operation
+        # existed nothing could supply it — `reauthenticate` above can only ever prove the caller
+        # was present, which in a dual-control command is the wrong person.
+        "approverReauthenticate",
         "getOwnTraderProfile",
         "updateOwnTraderProfile",
         # M3 slice 8. `registerTrader` is the only unauthenticated write
@@ -237,6 +244,11 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # job" and the image does not exist when the response is written.
         "createReceiptCrop",
         "getReceiptSegment",
+        # M0 slice A2. The list M8 owed and did not publish: `getReceiptSegment` reads one segment
+        # by an id, `getBankResultBundle` returns three *counts* of segments, and nothing returned
+        # the rows — so a person could be told a bundle held four crops and reach none of them.
+        # The correction screen is what made it concrete, and the gap is older than that screen.
+        "listBundleReceiptSegments",
         # M8 slice 3. `05_API_Specification.md:2058`'s six, all of them — the first M8 surface where
         # the document's route list and the contract agree exactly: for once no permission is
         # missing and no approved rule forbids one of them.
@@ -257,6 +269,9 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # M9 slice 2. Document 05's three at `:1824`, `:1844` and `:1860`. The last keeps its
         # `/void` path while storing the canonical `revoked` — renaming a path is a breaking
         # change the oasdiff gate refuses, and the conflict is recorded in `20260830_0029`.
+        # M0 slice A2 adds the read. A publication carries `primary_evidence_link_id` and this
+        # surface was three POSTs, so the id a trader's result is proved by resolved to nothing.
+        "getEvidenceLink",
         "confirmEvidenceLink",
         "replaceEvidenceLink",
         "voidEvidenceLink",

@@ -32,7 +32,7 @@ from sqlalchemy import select
 
 from app.api.contract import VALIDATION_ERROR_RESPONSE
 from app.api.dependencies import get_runtime
-from app.api.v1.auth import authenticated_actor, requires
+from app.api.v1.auth import RecentAuthRequiredError, authenticated_actor, requires
 from app.audit.redaction import RedactionPolicy
 from app.audit.writer import AuditActor, AuditContext
 from app.commands import payment_publication as publication_commands
@@ -55,6 +55,7 @@ from app.db.models.payment_result_publication import (
 )
 from app.security.actor import ActorContext
 from app.security.permissions import declare
+from app.security.step_up import StepUpRefused
 
 router = APIRouter(prefix="/payment-requests", tags=["payment-publications"])
 
@@ -419,7 +420,22 @@ class CorrectionRequest(BaseModel):
     status_code=201,
     operation_id="correctPaymentResultPublication",
     summary="Correct a published result: publication N+1, N superseded, trader notified.",
-    responses=RESPONSES,
+    # The shared `RESPONSES`, with the two this route alone can answer. Declared rather than
+    # inherited because the generated TypeScript client is built from this document, and an
+    # undeclared status has no branch in the dialog that has to render it.
+    responses={
+        **RESPONSES,
+        401: {
+            "model": ErrorEnvelope,
+            "description": (
+                "No valid session, or X-Recent-Auth did not prove the named approver was present."
+            ),
+        },
+        428: {
+            "model": ErrorEnvelope,
+            "description": "If-Match, Idempotency-Key or X-Recent-Auth is missing.",
+        },
+    },
     # **The preparer's permission, not the approver's.** POL-002 keeps
     # `correction_preparer_and_approver_permissions_must_be_split`, and the caller is the preparer:
     # guarding on `payment_publication.correct` here would mean the person pressing the button
@@ -434,6 +450,7 @@ def correct_payment_result_publication(
     runtime: Annotated[RuntimeServices, Depends(get_runtime)],
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    recent_auth: Annotated[str | None, Header(alias="X-Recent-Auth")] = None,
 ) -> PublicationResponse:
     """`POST /api/v1/payment-requests/{request_id}/publications/corrections`.
 
@@ -458,30 +475,61 @@ def correct_payment_result_publication(
     from the approver's own roles, so naming a colleague who does not hold it is not a second
     authorisation. That was true when the defaults were empty and it is true now, which is the
     property POL-002 actually asked for.
+
+    **`X-Recent-Auth` carries the approver's step-up, and it closes the last of the three.** The
+    two checks above prove the second human is a different person who may approve; neither proves
+    they were *there*. `command_catalog.yaml` has asked for
+    `recent_auth: "required_for_approving_second_human"` since M0 and nothing supplied it, so
+    until now an accountant who knew a manager's user id could complete a correction alone.
+
+    The reference comes from `POST /auth/admin/approver-reauthenticate`, which the owner's
+    decision of 2026-09-09 defines: the manager types their own password at the preparer's
+    machine. The context it issues is bound to the manager's identity and the preparer's session,
+    and `_consume_the_approvers_presence` spends it inside this transaction.
+
+    **428 when the header is absent, 401 when it does not authorise** — the same two answers the
+    batch decision routes give, and for the same reason: a missing precondition is a client that
+    can retry correctly, and a refused one is told nothing about *why* it was refused.
     """
 
     expected = _parse_record_version(if_match)
     key = _require_key(idempotency_key)
+    if recent_auth is None:
+        raise PreconditionRequiredError("X-Recent-Auth")
     now = utc_now()
 
     with runtime.uow_factory() as uow:
-        result = correction_commands.correct_published_result(
-            correction_commands.CorrectPublishedResult(
-                payment_request_id=request_id,
-                expected_record_version=expected,
-                replaces_evidence_link_id=payload.replaces_evidence_link_id,
-                new_receipt_segment_id=payload.new_receipt_segment_id,
-                correction_reason=payload.correction_reason,
-                prepared_by_admin_user_id=_publishing_admin(actor),
-                approved_by_admin_user_id=payload.approved_by_admin_user_id,
-            ),
-            uow=uow,
-            policy=PUBLICATION_REDACTION,
-            actor=_audit_actor(actor),
-            context=AuditContext(request_id=get_request_id()),
-            idempotency_key=key,
-            now=now,
-        )
+        try:
+            result = correction_commands.correct_published_result(
+                correction_commands.CorrectPublishedResult(
+                    payment_request_id=request_id,
+                    expected_record_version=expected,
+                    replaces_evidence_link_id=payload.replaces_evidence_link_id,
+                    new_receipt_segment_id=payload.new_receipt_segment_id,
+                    correction_reason=payload.correction_reason,
+                    prepared_by_admin_user_id=_publishing_admin(actor),
+                    approved_by_admin_user_id=payload.approved_by_admin_user_id,
+                    recent_auth_reference=recent_auth,
+                    caller=actor,
+                ),
+                uow=uow,
+                policy=PUBLICATION_REDACTION,
+                actor=_audit_actor(actor),
+                context=AuditContext(request_id=get_request_id()),
+                idempotency_key=key,
+                now=now,
+            )
+        except StepUpRefused:
+            # **The rollback is deliberate, and it is the opposite of what the batch decision
+            # routes do.** There, the command has already written a `step_up.rejected` security
+            # event before raising, so committing preserves the record of the refusal. Here the
+            # refusal happens *after* the idempotency claim and the row lock and before anything
+            # worth keeping is written — committing would persist a claim for a correction that
+            # never happened, and the caller's retry with a valid step-up would be answered as a
+            # replay of nothing. The `auth_events` trail for this approver lives on the
+            # reauthenticate route, which is where the password was actually presented.
+            uow.rollback()
+            raise RecentAuthRequiredError() from None
         response = _rendered(result.publication, REQUEST_RESULT_PUBLISHED)
         uow.commit()
 

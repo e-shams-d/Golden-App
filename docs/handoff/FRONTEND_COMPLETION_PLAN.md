@@ -55,6 +55,39 @@ Unblocked by the owner's decision of 2026-09-08: **the accountant prepares, the 
 ids — so a person holding both grants is still refused. `tests/integration/test_publication_
 correction.py` has asserted that since M9; the screen must not reimplement it.
 
+### What slice A actually cost, recorded 2026-09-10
+
+Two commits, because building it found two blockers behind the one this plan knew about. They are
+written here rather than only in the commits, because the plan's ordering argument assumed slice A
+was self-contained and it was not.
+
+**The step-up could not prove the right person.** `command_catalog.yaml` asks this command for
+`recent_auth: "required_for_approving_second_human"`, and `app/security/step_up.py` binds a context
+to the **calling** actor and session — so the mechanism that existed could only ever prove the
+*preparer* was present, which in a dual-control command is the wrong human. This plan read the
+requirement as "add the dialog §8.11 specifies"; it was "build a step-up that authenticates
+somebody other than the session holder". The owner decided the shape on 2026-09-09: the manager
+types their own username and password at the preparer's machine. `POST
+/auth/admin/approver-reauthenticate` issues a context bound to the approver's identity and the
+caller's session, and `rejection_for` grew one parameter — `on_behalf_of` — whose only caller is
+the correction command.
+
+**The screen had nothing to show.** A publication carries `primary_evidence_link_id` and nothing
+could resolve it: the evidence surface was three POSTs, `GET /bank-result-bundles/{id}` returns
+three segment *counts*, and `GET /queues/unresolved-bundles-segments` returns bundles despite its
+name. So `GET /evidence-links/{link_id}` and `GET
+/bank-result-bundles/{bundle_id}/receipt-segments` were built here. **By the tables below they
+belong to slices C and E** — which would have put slice A's completion after slice E and
+contradicted the reason given for putting it first. They are built once, in A, and C and E are
+shorter for it.
+
+**A gate was found wrong on the way.** `test_every_operation_has_a_screen.py` matched reachability
+on path segments and ignored the HTTP method, so adding a `GET` on `/evidence-links/{id}` made
+three unbuilt `POST`s look reached. Making it method-aware surfaced five operations it had been
+excusing — three `PATCH` edit routes, `GET /meta/release`, and `PUT /roles/{id}/permissions`, which
+the roles screen's own docstring says it deliberately does not call. All five are now recorded with
+their reasons. None is urgent; all are honest gaps this plan did not know it had.
+
 ---
 
 ## Slice B — bank configuration

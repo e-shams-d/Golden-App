@@ -90,6 +90,13 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     ("GET", "/api/v1/auth/me"): SESSION,
     ("POST", "/api/v1/auth/logout"): SESSION,
     ("POST", "/api/v1/auth/reauthenticate"): SESSION,
+    # M0 slice A2, and `SESSION` for a sharper reason than its neighbour above. This route checks a
+    # password belonging to somebody other than the caller, so there is no ownership to scope by
+    # and no permission the *caller* could hold that would be the right question — a preparer is
+    # by definition not entitled to approve. What it requires is a session, so that the context it
+    # issues can be bound to one; everything that decides whether the correction may proceed is
+    # read from the approver's own roles inside the command.
+    ("POST", "/api/v1/auth/admin/approver-reauthenticate"): SESSION,
     # Ownership-scoped, not session-only. Slice 10 classified both `SESSION`, which is
     # the one class carrying no obligation, so the DoD's first clause was discharged
     # for them by a label. Both filter on the caller: `listOwnSessions` selects
@@ -261,6 +268,14 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
         "/api/v1/bank-result-bundles/{bundle_id}/receipt-segments/crop",
     ): PERMISSION,
     ("GET", "/api/v1/receipt-segments/{segment_id}"): PERMISSION,
+    # M0 slice A2. The list M8 never published — `getReceiptSegment` could read one segment by an
+    # id that no read returned, and the bundle detail gave three counts of rows nobody could then
+    # reach. `PERMISSION` like every other segment route: evidence is internal work with no owning
+    # trader to scope by, and `receipt_segment.read` is the grant that decides it.
+    (
+        "GET",
+        "/api/v1/bank-result-bundles/{bundle_id}/receipt-segments",
+    ): PERMISSION,
     # M8 slice 3. Six routes, three permissions: the catalogue has no `.start` and no `.cancel`, so
     # `start` takes `manual_review.assign` and `cancel` takes `.resolve`. `PERMISSION` throughout —
     # a queue item is internal work and has no owning trader to scope by.
@@ -291,6 +306,9 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # `.revoke`, all seeded to `accountant` alone. `PERMISSION` for the same reason as the
     # candidate and segment families: evidence about the centre's own payments has no owning
     # trader to scope by.
+    # M0 slice A2. The read that made a publication's `primary_evidence_link_id` resolvable; this
+    # surface was three POSTs, so a screen holding that id could turn it into nothing.
+    ("GET", "/api/v1/evidence-links/{link_id}"): PERMISSION,
     ("POST", "/api/v1/evidence-links"): PERMISSION,
     ("POST", "/api/v1/evidence-links/{link_id}/replace"): PERMISSION,
     ("POST", "/api/v1/evidence-links/{link_id}/void"): PERMISSION,
@@ -816,6 +834,15 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     ("GET", "/api/v1/receipt-segments/{segment_id}", "permission"): (
         "test_no_segment_route_answers_a_caller_without_the_permission"
     ),
+    # M0 slice A2. The same test, and it now sweeps rather than naming two paths by hand — it
+    # asserts that the reads it exercises are every segment read the contract publishes, so this
+    # citation covers a route the old shape would have left untested while still reading as
+    # thorough.
+    (
+        "GET",
+        "/api/v1/bank-result-bundles/{bundle_id}/receipt-segments",
+        "permission",
+    ): "test_no_segment_route_answers_a_caller_without_the_permission",
     # M8 slice 3. One test over the surface, for the reason the two families above give.
     ("GET", "/api/v1/manual-review-tasks", "permission"): (
         "test_no_review_route_answers_a_caller_without_the_permission"
@@ -863,6 +890,13 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     # difference is not laziness: `20260801_0008:218-220` seeds all three evidence permissions to
     # `accountant` and to nobody else, so no role holds a proper subset and a sharper negative
     # does not exist. The test asserts that fact rather than implying a sharpness it cannot have.
+    # M0 slice A2's read, and the same test — which that slice made sharper rather than longer.
+    # The read takes `receipt_segment.read` while the three writes take evidence permissions, so
+    # `manager` appears there twice: refused on every write and **permitted** on the read. The
+    # negative for the read itself is `business_admin`, which holds no segment grant at all.
+    ("GET", "/api/v1/evidence-links/{link_id}", "permission"): (
+        "test_no_evidence_route_answers_a_caller_without_the_permission"
+    ),
     ("POST", "/api/v1/evidence-links", "permission"): (
         "test_no_evidence_route_answers_a_caller_without_the_permission"
     ),

@@ -19,6 +19,7 @@ Covers: SVC-CORRECTION-001, SVC-CORRECTION-002, SEC-CORRECTION-001, TRACE-M9-001
 
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from collections.abc import Iterator
@@ -41,6 +42,20 @@ AMOUNT = 400_000_000
 
 SUPERSEDED_ACTION = "payment_publication.superseded"
 CORRECTED_EVENT = "TraderResultCorrected"
+
+# `app/commands/publication_correction.py`'s two constants, restated here rather than imported:
+# a test that imported them would pass if both moved together, and the binding is a *contract*
+# between the step-up route and the command that a screen has to satisfy from outside.
+STEP_UP_PURPOSE = "payment_publication.correct"
+STEP_UP_RESOURCE_TYPE = "payment_result_publication"
+# What `consumed_by_command` must say. The same string as the purpose, and separately named
+# because the two are different facts that happen to agree: one is what a step-up was *for*, the
+# other is what actually spent it.
+CORRECT_OPERATION = "payment_publication.correct"
+
+# Sentinel for "send no `X-Recent-Auth` at all", which is a different case from sending a bad one:
+# the first is a 428 a client can fix, the second is a 401 that tells it nothing.
+OMIT_HEADER = object()
 
 
 @pytest.fixture(scope="module")
@@ -353,24 +368,100 @@ def request_version(world: dict[str, Any], request_id: uuid.UUID) -> int:
     )
 
 
+def active_publication_id(world: dict[str, Any], request_id: uuid.UUID) -> uuid.UUID:
+    """The publication a correction would supersede, which is what its step-up is bound to.
+
+    Resolved rather than taken from the fixture, because the second correction in a test
+    supersedes the *first correction's* publication and a step-up bound to the original would be
+    `WRONG_RESOURCE` — which is the binding working, and would read as an unrelated failure.
+    """
+
+    found = rows(
+        world,
+        "SELECT id FROM payment_result_publications WHERE payment_request_id = %s "
+        "AND status = 'active'",
+        request_id,
+    )
+    assert found, f"request {request_id} has no active publication"
+    return uuid.UUID(str(found[0][0]))
+
+
+def approver_step_up(
+    world: dict[str, Any],
+    publication_id: uuid.UUID,
+    *,
+    username: str = "correction_approver",
+    password: str = PASSWORD,
+) -> Any:
+    """The second human's password, at the caller's machine. `POST /auth/admin/approver-...`.
+
+    Called with whoever is currently signed in, because the context is bound to *their* session as
+    well as to the approver's identity — which is the property that makes a reference untransferable
+    between machines.
+    """
+
+    return world["client"].post(
+        "/api/v1/auth/admin/approver-reauthenticate",
+        json={
+            "username": username,
+            "password": password,
+            "purpose": STEP_UP_PURPOSE,
+            "resource_type": STEP_UP_RESOURCE_TYPE,
+            "resource_id": str(publication_id),
+        },
+        headers=csrf(world),
+    )
+
+
 def correct(world: dict[str, Any], case: dict[str, Any], **overrides: Any) -> Any:
+    """Prepare a correction the way the screen does: step-up first, then the command.
+
+    **`approved_by_admin_user_id` comes from the step-up response**, not from a second lookup of
+    the username. That is what the screen does and what the server compares, and deriving it twice
+    is how the two come to disagree — so the helper cannot accidentally test a shape no client
+    uses. An explicit override still wins, because several tests below are *about* the two
+    disagreeing.
+    """
+
     client = world["client"]
+    publication_id = overrides.pop("publication_id", None) or active_publication_id(
+        world, case["request_id"]
+    )
+
+    reference = overrides.pop("recent_auth", None)
+    approver_id: str | None = None
+    if reference is None:
+        issued = approver_step_up(
+            world,
+            publication_id,
+            username=overrides.pop("approver_username", "correction_approver"),
+        )
+        assert issued.status_code == 200, issued.text
+        reference = issued.json()["recent_auth_reference"]
+        approver_id = issued.json()["approver_admin_user_id"]
+
     body: dict[str, Any] = {
         "replaces_evidence_link_id": str(case["link_id"]),
         "new_receipt_segment_id": str(case["second_segment"]),
         "correction_reason": "The first crop showed the wrong transaction.",
-        "approved_by_admin_user_id": str(admin_id(world, "correction_approver")),
+        "approved_by_admin_user_id": approver_id
+        or str(admin_id(world, "correction_approver")),
     }
     body.update({k: v for k, v in overrides.items() if k != "version"})
     version = overrides.get("version") or request_version(world, case["request_id"])
+
+    headers = {
+        **csrf(world),
+        "If-Match": f'"rv-{version}"',
+        "Idempotency-Key": str(uuid.uuid4()),
+    }
+    if reference is not OMIT_HEADER:
+        headers["X-Recent-Auth"] = reference
+
     return client.post(
         f"/api/v1/payment-requests/{case['request_id']}/publications/corrections",
         json=body,
-        headers={
-            **csrf(world),
-            "If-Match": f'"rv-{version}"',
-            "Idempotency-Key": str(uuid.uuid4()),
-        },
+        headers=headers,
     )
 
 
@@ -468,7 +559,12 @@ def test_the_accountant_prepares_and_the_manager_approves(world: dict[str, Any])
     sign_in_admin(world, "correction_publisher")
     approver = admin_id(world, "correction_manager")
 
-    response = correct(world, case, approved_by_admin_user_id=str(approver))
+    # `approver_username` rather than `approved_by_admin_user_id`: the step-up and the command must
+    # name the same person, and the helper takes the id from the step-up response exactly as the
+    # screen does. Overriding only the body id would bind the context to one manager and name
+    # another — which the server refuses, correctly, and which is asserted on purpose by
+    # `test_the_named_approver_must_be_the_one_who_proved_they_were_here` below.
+    response = correct(world, case, approver_username="correction_manager")
     assert response.status_code == 201, (
         "an accountant and a manager could not complete a correction between them. The owner "
         f"granted both halves on 2026-09-08: {response.status_code} {response.text}"
@@ -512,6 +608,225 @@ def test_the_approver_alone_cannot_prepare_a_correction(world: dict[str, Any]) -
         f"`payment_attempt.correct_result`, which `manager` does not hold: {response.text}"
     )
     assert len(publications_of(world, case["request_id"])) == 1
+
+
+def test_a_correction_with_no_step_up_is_refused_before_anything_happens(
+    world: dict[str, Any],
+) -> None:
+    """The precondition, and it answers 428 rather than 401.
+
+    A client that simply did not know about the header can read 428 and fix it; 401 would send it
+    to the login screen for a session that is perfectly valid. The two batch decision routes make
+    the same distinction and `api_error_catalog.yaml` gives 428 that meaning.
+
+    **This is the assertion that would have failed for two milestones.** `command_catalog.yaml`
+    has required a step-up for this command since M0 and the route declared no header at all, so
+    the correction was reachable by a preparer who knew a manager's user id.
+    """
+
+    case = a_published_request(world)
+    sign_in_admin(world, "correction_preparer")
+
+    response = correct(world, case, recent_auth=OMIT_HEADER)
+    assert response.status_code == 428, response.text
+    assert len(publications_of(world, case["request_id"])) == 1
+
+
+def test_the_preparers_own_step_up_does_not_authorise_the_correction(
+    world: dict[str, Any],
+) -> None:
+    """**The reason this needed a new mechanism rather than a new header.**
+
+    `POST /auth/reauthenticate` issues a context bound to the caller. Presenting one here is a
+    preparer proving *the preparer* was present — which was never in doubt, since they are holding
+    the session — and calling that a dual-control step-up would be the control in name only.
+
+    `rejection_for` compares the stored actor against `on_behalf_of`, so this is `WRONG_ACTOR`, and
+    the client is told the same single thing every other refusal says.
+    """
+
+    case = a_published_request(world)
+    sign_in_admin(world, "correction_preparer")
+
+    mine = world["client"].post(
+        "/api/v1/auth/reauthenticate",
+        json={
+            "password": PASSWORD,
+            "purpose": STEP_UP_PURPOSE,
+            "resource_type": STEP_UP_RESOURCE_TYPE,
+            "resource_id": str(case["publication_id"]),
+        },
+        headers=csrf(world),
+    )
+    assert mine.status_code == 200, mine.text
+
+    response = correct(world, case, recent_auth=mine.json()["recent_auth_reference"])
+    assert response.status_code == 401, (
+        "a preparer completed a correction with a step-up bound to themselves: "
+        f"{response.status_code} {response.text}"
+    )
+    assert len(publications_of(world, case["request_id"])) == 1
+
+
+def test_the_named_approver_must_be_the_one_who_proved_they_were_here(
+    world: dict[str, Any],
+) -> None:
+    """Two managers, and the body may not name the one who stayed at their desk.
+
+    **Found by accident, which is why it is written down.** The positive test first overrode
+    `approved_by_admin_user_id` while the helper obtained the step-up for a different manager, and
+    the server refused it — the context said one person had been present and the audit row would
+    have said another. Both hold `payment_publication.correct`, so `_refuse_an_approver_without_
+    the_grant` is satisfied and the two ids differ, so `_refuse_a_single_human` is too: this is
+    refused by the step-up binding alone.
+
+    It matters because the audit row names the approver from the *body*. Without this, a preparer
+    could obtain a real step-up from a manager standing beside them and record the correction
+    against a colleague who was not in the room.
+    """
+
+    case = a_published_request(world)
+    sign_in_admin(world, "correction_preparer")
+
+    response = correct(
+        world,
+        case,
+        approver_username="correction_manager",
+        approved_by_admin_user_id=str(admin_id(world, "correction_approver")),
+    )
+    assert response.status_code == 401, (
+        "the correction was recorded against an approver other than the one whose password was "
+        f"presented: {response.status_code} {response.text}"
+    )
+    assert len(publications_of(world, case["request_id"])) == 1
+
+
+def test_a_step_up_for_one_publication_does_not_correct_another(
+    world: dict[str, Any],
+) -> None:
+    """The resource binding, which `STEP_UP_RESOURCE_TYPE` declared in M9 and nothing read.
+
+    The batch approval's version 7 cannot approve version 8; this is the same rule one aggregate
+    along. Without it a manager who stood at a desk once would have authorised every correction
+    that desk made afterwards, which is a standing approval rather than a presence check.
+    """
+
+    case = a_published_request(world)
+    other = a_published_request(world)
+    sign_in_admin(world, "correction_preparer")
+
+    issued = approver_step_up(world, active_publication_id(world, other["request_id"]))
+    assert issued.status_code == 200, issued.text
+
+    response = correct(world, case, recent_auth=issued.json()["recent_auth_reference"])
+    assert response.status_code == 401, response.text
+    assert len(publications_of(world, case["request_id"])) == 1
+
+
+def test_a_reference_is_spent_by_the_correction_that_uses_it(world: dict[str, Any]) -> None:
+    """`consumed_at`, written inside the caller's transaction — asserted on the row.
+
+    **This test used to present the reference a second time and expect a refusal, and control 5 of
+    `scripts/sabotage-m0-slice-a2.sh` proved that assertion was empty.** Deleting
+    `stored.consumed_at = now` from the command changed nothing the old shape could observe: the
+    first correction supersedes the publication the context was bound to, so the second attempt is
+    answered `WRONG_RESOURCE` by the resource binding long before consumption is considered. The
+    test was green and the property it named was switched off.
+
+    No second command shares this purpose *and* this resource, so no sequence of requests can
+    isolate consumption from the other three bindings. The row is the mechanism, so the row is what
+    is read.
+
+    **The digest is recomputed here rather than imported.** `12_Security_RBAC_Audit.md:536` requires
+    the context to be audit-linked without the secret being stored, and finding the row by SHA-256
+    of the value the client received proves exactly that, end to end — while the last assertion
+    proves the reference itself is nowhere in the table.
+    """
+
+    case = a_published_request(world)
+    sign_in_admin(world, "correction_preparer")
+
+    issued = approver_step_up(world, active_publication_id(world, case["request_id"]))
+    assert issued.status_code == 200, issued.text
+    reference = issued.json()["recent_auth_reference"]
+    digest = hashlib.sha256(reference.encode("ascii")).hexdigest()
+
+    def context() -> tuple[Any, ...]:
+        found = rows(
+            world,
+            "SELECT consumed_at, consumed_by_command FROM recent_auth_contexts "
+            "WHERE challenge_hash = %s",
+            digest,
+        )
+        assert len(found) == 1, (
+            "the issued context is not stored under the SHA-256 of the reference the client was "
+            "given, so the audit link the step-up depends on does not hold"
+        )
+        return found[0]
+
+    assert context()[0] is None, "a context is marked consumed before anything has used it"
+
+    assert correct(world, case, recent_auth=reference).status_code == 201
+
+    consumed_at, by_command = context()
+    assert consumed_at is not None, (
+        "the correction succeeded and the approver's step-up was never marked spent. One "
+        "manager's password would then authorise every correction that followed it, and a "
+        "timeout-and-retry would correct twice on one approval."
+    )
+    assert by_command == CORRECT_OPERATION, (
+        f"the context records being spent by {by_command!r}; an investigator asking which command "
+        "consumed an approval would be told the wrong one"
+    )
+
+    # And the reference itself is nowhere in the table, which is what makes a dump of it useless
+    # to whoever is holding the dump.
+    plaintext = rows(
+        world,
+        "SELECT count(*) FROM recent_auth_contexts WHERE challenge_hash = %s",
+        reference,
+    )
+    assert plaintext[0][0] == 0, "the reference is stored in plaintext beside its digest"
+
+
+def test_the_step_up_route_answers_a_wrong_password_and_an_unknown_name_alike(
+    world: dict[str, Any],
+) -> None:
+    """`SEC-ENUM-001`'s reasoning, applied to the one route that names somebody else.
+
+    A preparer typing manager names into this form must not be able to learn which ones exist. So
+    an unknown username and a real approver's wrong password answer identically, and both are
+    distinguished only in `auth_events`.
+
+    The stored rows are read back, because two identical 401s prove the client cannot tell them
+    apart and prove nothing about whether an investigator can.
+    """
+
+    case = a_published_request(world)
+    sign_in_admin(world, "correction_preparer")
+    publication_id = active_publication_id(world, case["request_id"])
+
+    unknown = approver_step_up(world, publication_id, username="nobody_by_that_name")
+    wrong = approver_step_up(world, publication_id, password="not-the-managers-password")
+
+    assert unknown.status_code == wrong.status_code == 401
+    # Everything but `request_id`, which is per-request by design and carries nothing about the
+    # account. Comparing whole bodies would fail on the correlation id and prove nothing.
+    def told(response: Any) -> tuple[str, str, list[Any]]:
+        error = response.json()["error"]
+        return error["code"], error["message"], error["details"]
+
+    assert told(unknown) == told(wrong), (
+        "an unknown approver and a wrong password are distinguishable to the client, so this form "
+        f"is an oracle for which staff accounts exist: {told(unknown)} vs {told(wrong)}"
+    )
+
+    reasons = rows(
+        world,
+        "SELECT metadata->>'rejection_reason' FROM auth_events "
+        "WHERE event_type = 'step_up.approver_failed' ORDER BY created_at DESC LIMIT 2",
+    )
+    assert {row[0] for row in reasons} == {"unknown_approver", "wrong_password"}, reasons
 
 
 def test_a_correction_creates_n_plus_one_and_supersedes_n(world: dict[str, Any]) -> None:

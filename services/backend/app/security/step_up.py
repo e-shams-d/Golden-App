@@ -13,6 +13,7 @@ active session, action/purpose and resource:
 - **actor** — otherwise one person's step-up authorises another's command;
 - **session** — otherwise a context obtained on a laptop authorises a command
   from a stolen phone (`:556` prohibits cross-session reuse in terms);
+  **this one never bends**, including for the second-human case below;
 - **purpose** — otherwise a step-up for "change my password" authorises
   "approve a payment batch";
 - **resource** — otherwise a step-up for batch version 7 authorises version 8,
@@ -22,6 +23,15 @@ active session, action/purpose and resource:
 and `:536` requires it audit-linked without logging the secret in plaintext. So
 the caller receives a high-entropy string, the row keeps only its digest, and an
 audit row can name the context by id without ever holding something replayable.
+
+**The actor binding has a second reading, and only one command uses it.** A
+dual-control command has to prove that the *approver* was present, and the
+approver is by definition not the session holder — so comparing against the caller
+refuses the one case the requirement was written for. `rejection_for` takes
+`on_behalf_of` for that, and `05_API_Specification.md`'s correction is its only
+caller. Everything else keeps the plain reading, which is why the parameter
+defaults to `None` rather than being threaded through every call site: a binding
+that has to be re-affirmed at each use is one somebody eventually forgets.
 
 **One factor is registered, and that is ADR-009's decision to make.** `password`
 is the only entry. `:554` says the timeout "must be short enough for high-risk
@@ -179,6 +189,7 @@ def rejection_for(
     actor: ActorContext,
     request: StepUpRequest,
     now: datetime,
+    on_behalf_of: uuid.UUID | None = None,
 ) -> StepUpRejection | None:
     """`None` when the context authorises exactly this command, else why not.
 
@@ -186,11 +197,31 @@ def rejection_for(
     caller replaying somebody else's reference is recorded as the wrong actor
     rather than as a stale one. The client cannot tell the difference either way,
     but an investigator can.
+
+    **`on_behalf_of` names the second human, and it moves exactly one of the four
+    bindings.** The default — `None` — is every caller that existed before it: the
+    context must belong to whoever is asking, which is what "prove you are still
+    there" means for a command one person performs.
+
+    A dual-control command is the case that breaks. `command_catalog.yaml` asks the
+    correction for `recent_auth: "required_for_approving_second_human"`, and the
+    person whose presence must be proved is *not* the caller — the entire control
+    is that they are two people. Compared against the caller, the approver's own
+    context is `WRONG_ACTOR` by construction, so the binding that exists to stop
+    one person spending another's step-up would also stop the one case where that
+    is exactly the intent.
+
+    **The session binding is not relaxed, and that is what keeps this narrow.** The
+    context must still have been issued on the *calling* session, so the approver's
+    proof is spendable only at the machine where they gave it and only for as long
+    as that sitting lasts. That is the difference between a manager walking to a
+    desk and a manager sending a token by message — and it is why this is a
+    second-human step-up rather than a hole in the first three.
     """
 
     if stored is None:
         return StepUpRejection.UNKNOWN_REFERENCE
-    if stored.actor_id != actor.actor_id:
+    if stored.actor_id != (actor.actor_id if on_behalf_of is None else on_behalf_of):
         return StepUpRejection.WRONG_ACTOR
     if stored.session_id != actor.session_id:
         return StepUpRejection.WRONG_SESSION

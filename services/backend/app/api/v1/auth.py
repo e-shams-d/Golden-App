@@ -39,6 +39,7 @@ from app.commands.authenticate import (
     AuthenticationPolicy,
     LoginAttempt,
     SuccessfulAuthentication,
+    absent_user_hash,
     authenticate,
 )
 from app.commands.change_own_password import change_own_password
@@ -50,8 +51,9 @@ from app.core.runtime import RuntimeServices
 from app.core.time import utc_now
 from app.db.models.identity import AdminUser, TraderUser
 from app.db.models.session_and_security import AuthEvent, AuthSession, RecentAuthContext
-from app.security import cookies, passwords, sessions, step_up
-from app.security.actor import ActorContext, Audience
+from app.security import account_state, cookies, passwords, sessions, step_up
+from app.security.account_state import AccountAction
+from app.security.actor import ActorContext, ActorType, Audience
 from app.security.events import OUTCOME_FAILURE, OUTCOME_SUCCESS, SecurityEvent
 from app.security.lockout import LockoutPolicy
 from app.security.passwords import Argon2Parameters
@@ -802,6 +804,162 @@ def reauthenticate(
         recent_auth_reference=reference,
         expires_at=expires_at,
         authentication_level=sessions.AUTH_LEVELS[-1],
+    )
+
+
+class ApproverReauthenticateRequest(BaseModel):
+    """The second human's credentials, for a command the caller cannot authorise alone.
+
+    **This is the only place in the API where a password belongs to somebody other than the
+    session holder**, and the reason is structural rather than a convenience.
+    `command_catalog.yaml` gives the publication correction
+    `recent_auth: "required_for_approving_second_human"`. The approver is by definition not the
+    caller — that is the control — so there is no session to take them from, and
+    `/auth/reauthenticate` above can only ever prove the caller was present.
+
+    **Username and password, not the approver's id.** The correction command already takes
+    `approved_by_admin_user_id`, and this could have taken the same id with a password beside it.
+    It takes the username instead so that the two values a person types travel together and are
+    checked together: an id typed by the preparer and a password typed by the approver would let
+    a mistyped id produce a context bound to the wrong person, which the correction would then
+    accept because the id in its body matched the id in the context. The route resolves the
+    username and returns the id it resolved, and the screen sends *that* id.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    username: str = Field(min_length=1, max_length=160)
+    password: str = Field(min_length=1, max_length=1024)
+    purpose: str = Field(min_length=1, max_length=120)
+    resource_type: str = Field(min_length=1, max_length=80)
+    resource_id: uuid.UUID
+
+
+class ApproverReauthenticateResponse(BaseModel):
+    """The reference, and who it was bound to.
+
+    `approver_admin_user_id` is returned because the caller has to name the same person in the
+    command body, and re-deriving it from a username in two places is how the two come to disagree.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    recent_auth_reference: str
+    approver_admin_user_id: uuid.UUID
+    expires_at: datetime
+
+
+@router.post(
+    "/admin/approver-reauthenticate",
+    response_model=ApproverReauthenticateResponse,
+    operation_id="approverReauthenticate",
+    summary="A second human proves presence at this machine, for one exact dual-control action.",
+    responses=AUTH_RESPONSES,
+)
+def approver_reauthenticate(
+    request: Request,
+    payload: ApproverReauthenticateRequest,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ApproverReauthenticateResponse:
+    """The owner's decision of 2026-09-09: **the second human types their own password.**
+
+    The context is issued bound to the *approver's* actor id and the **caller's** session id.
+    That pairing is the whole design:
+
+    - bound to the approver, because what has to be proved is that *they* were here;
+    - bound to the caller's session, because they were here **at this machine, now**. A reference
+      that travelled would be a manager approving by message, which is what a presence check
+      exists to refuse.
+
+    `step_up.rejection_for(..., on_behalf_of=...)` is the reader of that pairing, and the
+    correction command is its only caller.
+
+    **A wrong password and an unknown username answer identically**, as login does: the response is
+    `RECENT_AUTH_REQUIRED` either way, so a preparer cannot enumerate colleagues' usernames by
+    watching which one changes the error. Both are recorded in `auth_events` with the reason, where
+    an investigator can tell them apart.
+
+    **This route does not check the approver's permissions.** It proves presence and nothing else —
+    `12_Security_RBAC_Audit.md:550` in terms. Whether the named person may approve *this* command
+    is read from their own roles inside the command, by `_refuse_an_approver_without_the_grant`,
+    which was already there. Two questions, two places, and a presence check that also granted
+    authority would be the second one answered by the wrong evidence.
+    """
+
+    now = utc_now()
+    client_host = _client_address(request)
+    parameters = Argon2Parameters.from_settings(settings)
+
+    with runtime.uow_factory() as uow:
+        session = uow.session
+        approver = session.scalar(select(AdminUser).where(AdminUser.username == payload.username))
+
+        # **The hash is verified even when the username is unknown.** `authenticate.py` states the
+        # rule and this route is subject to it for the same reason: skipping the Argon2 work on a
+        # miss makes an unknown username measurably faster than a wrong password, and no amount of
+        # identical response bodies hides a timing oracle. The dummy hash is that module's, reused
+        # rather than re-derived so both paths cost the same work by construction.
+        verification = passwords.verify_password(
+            approver.password_hash if approver is not None else absent_user_hash(parameters),
+            payload.password,
+            parameters,
+            max_length=settings.password_max_length,
+        )
+
+        refused: str | None
+        if approver is None:
+            refused = "unknown_approver"
+        else:
+            # **`refusal_for`, not `status == "active"`.** A locked account is a timestamp rather
+            # than a status, `recovery_required` means only the recovery flow may proceed, and an
+            # unrecognised status fails closed — three answers a direct comparison gets wrong, and
+            # the third silently. An approver who cannot sign in must not be able to approve.
+            state = account_state.refusal_for(
+                approver.status, approver.locked_until, now, AccountAction.AUTHENTICATE
+            )
+            refused = state.value if state is not None else None
+            if refused is None and not verification.is_valid:
+                refused = "wrong_password"
+
+        if refused is not None:
+            session.add(_security_event(actor, "step_up.approver_failed", refused, client_host))
+            uow.commit()
+            raise RecentAuthRequiredError()
+
+        assert approver is not None  # `refused` is set whenever it is None
+
+        reference = step_up.generate_reference()
+        expires_at = step_up.expiry_for(
+            now, step_up.StepUpPolicy(lifetime_seconds=settings.step_up_lifetime_seconds)
+        )
+        session.add(
+            RecentAuthContext(
+                # The approver's identity, on the caller's session. See the docstring.
+                session_id=actor.session_id,
+                actor_type=ActorType.ADMIN_USER.value,
+                actor_id=approver.id,
+                purpose=payload.purpose,
+                resource_type=payload.resource_type,
+                resource_id=payload.resource_id,
+                assurance_factor=step_up.require_registered_factor(step_up.PASSWORD_FACTOR),
+                challenge_hash=step_up.digest_reference(reference),
+                issued_at=now,
+                expires_at=expires_at,
+            )
+        )
+        session.flush()
+        session.add(
+            _security_event(actor, "step_up.approver_succeeded", None, client_host, OUTCOME_SUCCESS)
+        )
+        approver_id = approver.id
+        uow.commit()
+
+    return ApproverReauthenticateResponse(
+        recent_auth_reference=reference,
+        approver_admin_user_id=approver_id,
+        expires_at=expires_at,
     )
 
 
