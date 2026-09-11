@@ -16,10 +16,19 @@ catalog:
   "@tanstack/react-query": "5.101.2"
   "@types/node": "24.13.3"
   "@types/react": "19.2.17"
-  "@types/react-dom": "19.1.9"
+  # **Raised from 19.1.9 with the Next.js upgrade on 2026-09-10, and it had to be.** Next 16.3.3's
+  # own declarations reference `react-dom`'s partial-prerender surface — `PostponedState`,
+  # `resume`, `PrerenderOptions.onHeaders` — which 19.1.9 does not declare, so `tsc` failed inside
+  # `node_modules/next` before it reached a line of this project's code. 19.2.7 is the highest
+  # 19.2 release and matches the pinned `react-dom` runtime exactly, which is the version this
+  # entry should have tracked all along: the types were a minor behind the runtime they describe.
+  "@types/react-dom": "19.2.7"
   "eslint": "9.39.5"
-  "eslint-config-next": "16.2.11"
-  "next": "16.2.11"
+  # Raised together on 2026-09-10 for the two CRITICALs in the overrides note below.
+  # `eslint-config-next` tracks the framework version by design; leaving it a minor behind is how
+  # the lint rules and the framework come to disagree about what an app may do.
+  "eslint-config-next": "16.3.3"
+  "next": "16.3.3"
   "postcss": "8.5.18"
   "react": "19.2.7"
   "react-dom": "19.2.7"
@@ -84,11 +93,35 @@ allowBuilds:
 # "this is where the advisory says the fix landed" stops being checkable against the advisory.
 # Both 4.28.7 and 4.28.8 were read from the GitHub advisory database on 2026-09-02, and no
 # advisory lists either as affected.
+#
+# --- 2026-09-10: three floors raised, and two of them are the recurring lesson again ---
+#
+# **js-yaml 4.3.1 -> 4.3.2**, for CVE-2026-84375, a denial of service in YAML parsing. 4.3.1 was
+# this file's own floor, chosen for CVE-2026-59870 — and it is now itself affected. The nanoid
+# entry above records the identical shape: an override holds the tree at a floor while the floor
+# becomes vulnerable underneath it, and the scan keeps passing because the pin looks deliberate.
+# That is the argument for re-reading every advisory on every finding rather than trusting the
+# comment beside the pin, and it has now happened twice.
+#
+# **sharp 0.35.1 -> 0.35.4**, for GHSA-rgj7-g3m4-5g8c, which is libheif's GHSA-g89c-p67h-r497 and
+# GHSA-2jg2-4ch7-h545 reaching the tree through sharp's bundled libvips. This project *does* feed
+# sharp untrusted bytes — it renders previews and crops of bank documents people upload — so
+# unlike js-yaml and browserslist above, the exposure here is real rather than theoretical. The
+# note at the top of this block says to re-check sharp whenever Next.js is upgraded, and the entry
+# below does exactly that in the same commit.
+#
+# **next 16.2.11 -> 16.3.3** is a *catalog* change rather than an override, because Next.js is a
+# direct dependency this project chose. Two CRITICALs: CVE-2026-75604, unauthenticated remote code
+# execution on Windows-hosted servers, and GHSA-2xp9-vwfh-vxw4, unauthenticated remote code
+# execution in the image optimization API when handling AVIF files. The first does not describe
+# this deployment — ADR-002 puts one Linux server behind nginx — and **the second does**: the image
+# optimizer is reachable and the bytes it optimizes are uploaded documents. The advisory names
+# 15.5.24 and 16.3.3 as first patched; 16.3.3 is the one on this major line.
 overrides:
   "postcss@<8.5.18": "8.5.18"
   "nanoid@<3.3.18": "3.3.18"
-  "sharp@<0.35.1": "0.35.1"
+  "sharp@<0.35.4": "0.35.4"
   "brace-expansion@^5.0.0": "5.0.9"
   "brace-expansion@^1.0.0": "1.1.18"
-  "js-yaml@<4.3.1": "4.3.1"
+  "js-yaml@<4.3.2": "4.3.2"
   "browserslist@<4.28.7": "4.28.7"

@@ -266,9 +266,25 @@ def audit_actions(world: dict[str, Any], request_id: str) -> list[str]:
 
 
 def outbox_events(world: dict[str, Any], request_id: str) -> list[str]:
+    """One aggregate's events, in the order the aggregate produced them.
+
+    **Ordered by `aggregate_version`, not by `created_at`, and the difference is not cosmetic.**
+    `test_only_the_correction_request_publishes_an_outbox_event` asserts an exact sequence, and a
+    CI run on 2026-09-10 returned that sequence reversed. Nothing was wrong with the events: two
+    rows written close together can share a wall-clock timestamp, and `ORDER BY created_at` then
+    has no defined order between them — so a test about *sequence* was resolving ties by luck and
+    had been passing on luck since it was written.
+
+    `OutboxEvent.aggregate_version` is the column for this, and its own comment says so: it is
+    captured inside the transaction that produced the event precisely so that "consumers relying
+    on it to order or deduplicate" are not misled. A timestamp is when a row was written; a
+    version is where it sits in the aggregate's history, and only the second is a sequence.
+    """
+
     with psycopg.connect(_psycopg(world["owner_url"])) as connection:
         rows = connection.execute(
-            "SELECT event_type FROM outbox_events WHERE aggregate_id = %s ORDER BY created_at",
+            "SELECT event_type FROM outbox_events WHERE aggregate_id = %s "
+            "ORDER BY aggregate_version, created_at",
             (request_id,),
         ).fetchall()
     return [str(row[0]) for row in rows]
