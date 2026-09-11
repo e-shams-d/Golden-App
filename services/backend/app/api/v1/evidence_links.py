@@ -34,7 +34,12 @@ from app.api.v1.auth import authenticated_actor, requires
 from app.audit.redaction import RedactionPolicy
 from app.audit.writer import AuditActor, AuditContext
 from app.commands import confirmed_evidence_link as link_commands
-from app.core.errors import ErrorEnvelope, ForbiddenError, PreconditionRequiredError
+from app.core.errors import (
+    ErrorEnvelope,
+    ForbiddenError,
+    NotFoundError,
+    PreconditionRequiredError,
+)
 from app.core.request_context import get_request_id
 from app.core.runtime import RuntimeServices
 from app.core.time import utc_now
@@ -163,6 +168,50 @@ def _require_key(idempotency_key: str | None) -> str:
     if idempotency_key is None:
         raise PreconditionRequiredError("Idempotency-Key")
     return idempotency_key
+
+
+@router.get(
+    "/{link_id}",
+    response_model=EvidenceLinkDetail,
+    operation_id="getEvidenceLink",
+    summary="One confirmed evidence link, so a screen can resolve what a publication cites.",
+    responses=RESPONSES,
+    dependencies=[requires(declare("receipt_segment.read"))],
+)
+def get_evidence_link(
+    link_id: uuid.UUID,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+) -> EvidenceLinkDetail:
+    """`GET /api/v1/evidence-links/{link_id}`.
+
+    **This route exists because a published result was unresolvable.** A publication carries
+    `primary_evidence_link_id` and this surface was three POSTs, so a screen holding that id could
+    not turn it into anything: not the segment, not the attempt, not whether the link is still
+    active. The correction screen is the caller that made the gap visible — it has to show what a
+    trader is being shown before offering to change it — and the same hop is what lets any
+    publication read display its evidence instead of a UUID.
+
+    **`receipt_segment.read` rather than a new `evidence_link.read`.** The catalogue has no such
+    permission, and `list_payment_result_publications` set the precedent for this exact situation:
+    reuse the narrowest catalogued grant that covers the disclosure rather than "asking for a grant
+    no catalogue names". What this discloses is that a particular segment is evidence for a
+    particular attempt, and `receipt_segment.read` is the grant M8 created for evidence —
+    `accountant` and `manager` hold it, which is both halves of the correction split, plus
+    `read_only_auditor` by explicit sensitive-read grant. A trader reaches none of it.
+
+    **No `ETag`.** §12.6 gives this table no `record_version` and none of the three commands below
+    takes an `If-Match` — the module docstring says why. A route publishing a precondition its
+    commands do not accept would be inventing one, which `test_preconditions_have_a_source.py`
+    exists to refuse.
+    """
+
+    del actor
+    with runtime.uow_factory() as uow:
+        link = uow.session.get(ConfirmedEvidenceLink, link_id)
+        if link is None:
+            raise NotFoundError()
+        return _detail(link)
 
 
 @router.post(

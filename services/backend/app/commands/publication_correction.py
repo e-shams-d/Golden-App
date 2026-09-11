@@ -92,8 +92,12 @@ from app.db.models.payment_result_publication import (
     PaymentResultPublication,
 )
 from app.db.models.receipt_segment import ReceiptSegment
+from app.db.models.session_and_security import RecentAuthContext
 from app.db.unit_of_work import SqlAlchemyUnitOfWork
 from app.idempotency import IdempotencyResolver
+from app.security import step_up
+from app.security.actor import ActorContext
+from app.security.step_up import StepUpRefused
 
 METADATA_SCHEMA = "audit.publication_correction"
 METADATA_VERSION = 1
@@ -128,6 +132,12 @@ class CorrectPublishedResult:
     caller; the approver is the human whose step-up reference is presented. A command that took one
     actor and checked a permission could be satisfied by one person holding both grants, which is
     the accountant-only default POL-002 rejects.
+
+    **`caller` and `recent_auth_reference` arrived in M0 slice A2, and until then that second
+    sentence was aspirational** — the approver was named and never presented anything. The
+    reference is the approver's step-up; `caller` is the preparer's live `ActorContext`, needed
+    because the context is bound to *their* session as well as to the approver's identity, and
+    `AuditActor` does not carry a session id in the shape `rejection_for` compares.
     """
 
     payment_request_id: uuid.UUID
@@ -137,6 +147,8 @@ class CorrectPublishedResult:
     correction_reason: str
     prepared_by_admin_user_id: uuid.UUID
     approved_by_admin_user_id: uuid.UUID
+    recent_auth_reference: str
+    caller: ActorContext
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,6 +211,7 @@ def correct_published_result(
         )
 
     active = _active_publication(session, request)
+    _consume_the_approvers_presence(session, command, publication_id=active.id, now=now)
     replacement = _replace_the_evidence(session, command, request=request, now=now)
     _refuse_unverified_privacy(session, replacement)
 
@@ -342,6 +355,81 @@ def _refuse_an_approver_without_the_grant(
             "halves to different roles on 2026-09-08 — the accountant prepares, the manager "
             "approves. Naming somebody outside the approving role is not a second authorisation."
         )
+
+
+def _consume_the_approvers_presence(
+    session: Session,
+    command: CorrectPublishedResult,
+    *,
+    publication_id: uuid.UUID,
+    now: datetime,
+) -> None:
+    """The third half of the control: the approver was **here**, not merely named.
+
+    `_refuse_a_single_human` proves the two ids differ. `_refuse_an_approver_without_the_grant`
+    proves the named person may approve. Neither proves they were present — until this, an
+    accountant who knew a manager's user id could complete a correction alone, and every existing
+    assertion in `test_publication_correction.py` would still have passed. That is what
+    `command_catalog.yaml`'s `recent_auth: "required_for_approving_second_human"` has always asked
+    for, and what the owner decided on 2026-09-09: the second human types their own password.
+
+    **`on_behalf_of` is the approver, and it is the only place in this system that passes it.** The
+    context was issued by `POST /auth/admin/approver-reauthenticate` bound to the approver's actor
+    id and the *preparer's* session — so it proves the manager stood at this machine during this
+    sitting. Checked against the caller instead, it would be `WRONG_ACTOR` every time.
+
+    **Bound to publication N, not to the request.** `STEP_UP_RESOURCE_TYPE` has said
+    `payment_result_publication` since M9 and nothing read it; this is the caller it was written
+    for. A step-up obtained while looking at version 3 cannot correct version 4 — the same
+    binding the batch approval uses to stop a context for version 7 approving version 8, and the
+    reason `active` is resolved before this runs rather than after.
+
+    **Consumed inside the caller's transaction**, so a timeout-and-retry cannot correct twice on
+    one step-up. The refusal is deliberately not distinguished to the client: `StepUpRefused`
+    carries the reason for `auth_events`, and the route renders one message, exactly as the batch
+    decision routes do.
+    """
+
+    stored = session.scalar(
+        select(RecentAuthContext).where(
+            RecentAuthContext.challenge_hash == step_up.digest_reference(
+                command.recent_auth_reference
+            )
+        )
+    )
+    presented = (
+        None
+        if stored is None
+        else step_up.PresentedContext(
+            actor_id=stored.actor_id,
+            session_id=stored.session_id,
+            purpose=stored.purpose,
+            resource_type=stored.resource_type,
+            resource_id=stored.resource_id,
+            assurance_factor=stored.assurance_factor,
+            expires_at=stored.expires_at,
+            consumed_at=stored.consumed_at,
+            revoked_at=stored.revoked_at,
+        )
+    )
+
+    rejection = step_up.rejection_for(
+        presented,
+        actor=command.caller,
+        request=step_up.StepUpRequest(
+            purpose=STEP_UP_PURPOSE,
+            resource_type=STEP_UP_RESOURCE_TYPE,
+            resource_id=publication_id,
+        ),
+        now=now,
+        on_behalf_of=command.approved_by_admin_user_id,
+    )
+    if rejection is not None:
+        raise StepUpRefused(rejection)
+
+    assert stored is not None  # `rejection_for` answers UNKNOWN_REFERENCE for None
+    stored.consumed_at = now
+    stored.consumed_by_command = CORRECT_OPERATION
 
 
 def _locked_request(session: Session, request_id: uuid.UUID) -> PaymentRequest:

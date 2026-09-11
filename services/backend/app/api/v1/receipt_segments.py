@@ -35,6 +35,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.contract import VALIDATION_ERROR_RESPONSE
@@ -492,6 +493,58 @@ def create_receipt_crop(
         uow.commit()
 
     return rendered
+
+
+@router.get(
+    "/bank-result-bundles/{bundle_id}/receipt-segments",
+    response_model=list[SegmentDetail],
+    operation_id="listBundleReceiptSegments",
+    summary="Every segment cut from one bank result bundle, oldest first.",
+    responses=RESPONSES,
+    dependencies=[requires(declare("receipt_segment.read"))],
+)
+def list_bundle_receipt_segments(
+    bundle_id: uuid.UUID,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+) -> list[SegmentDetail]:
+    """`GET /api/v1/bank-result-bundles/{bundle_id}/receipt-segments`.
+
+    **Nothing could enumerate segments, and three things looked as though they could.**
+    `GET /bank-result-bundles/{bundle_id}` returns `segment_count`, `resolved_segment_count` and
+    `unresolved_segment_count` — three numbers about rows a caller cannot then see.
+    `GET /queues/unresolved-bundles-segments` reads as though it lists both and its
+    `QueueDefinition` carries `entity=BankResultBundle`, so it returns bundles.
+    `GET /receipt-segments/{segment_id}` reads one, given an id that had no source.
+
+    So a person could be told a bundle holds four segments and reach none of them. The correction
+    screen is what made that concrete — replacing published evidence means choosing a different
+    crop, and there was no list to choose from — but the gap is older than that screen: M8 built
+    the segment surface and left it addressable only by an id nothing published.
+
+    **Oldest first, and `id` breaks the tie.** These rows are cut from one document in the order a
+    person worked through it, and that order is what makes a list of otherwise near-identical crops
+    readable. `created_at` alone is not a total order — two crops from one batch operation can
+    share a timestamp — and an unstable order in a chooser puts a different row under the cursor on
+    a re-render.
+
+    **A missing bundle is an empty list, not a 404.** A bundle with no segments and a bundle id
+    that does not exist are the same answer here on purpose: this route discloses segments, and
+    distinguishing the two would make it a probe for which bundle ids are real. The reads that are
+    *about* a bundle answer that question, guarded by `bank_result_bundle.read`.
+    """
+
+    del actor
+    with runtime.uow_factory() as uow:
+        session = uow.session
+        rows = list(
+            session.scalars(
+                select(ReceiptSegment)
+                .where(ReceiptSegment.bank_result_bundle_id == bundle_id)
+                .order_by(ReceiptSegment.created_at, ReceiptSegment.id)
+            )
+        )
+        return [_detail(row, session) for row in rows]
 
 
 @router.get(

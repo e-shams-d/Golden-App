@@ -78,6 +78,20 @@ UNGUARDED_ROUTES: dict[tuple[str, str], str] = {
     # the purpose and resource bindings are what stop it authorising anything
     # other than the one action it was obtained for.
     ("POST", "/api/v1/auth/reauthenticate"): "raises assurance; grants nothing",
+    # M0 slice A2, and the same argument one person further along: this proves a *second* human
+    # was present, so it grants even less than the route above — the presenter is not the person
+    # whose password is checked, and the context it issues authorises nothing on its own.
+    #
+    # **A permission here would be the wrong question and a dangerous one.** `requires(...)` asks
+    # "may the caller do this", and the caller is a preparer who is by definition not entitled to
+    # approve. Whether the *named approver* may approve is read from the approver's own roles
+    # inside the correction command, where `_refuse_an_approver_without_the_grant` has always done
+    # it. Guarding this route on `payment_publication.correct` would have demanded the caller hold
+    # the approver's grant, which is POL-002's split inverted.
+    (
+        "POST",
+        "/api/v1/auth/admin/approver-reauthenticate",
+    ): "proves a second human was present; grants nothing, and the caller is not the subject",
     # M11 slice 1. `permission_catalog.yaml` contains no notification permission — not for a
     # trader, not for an accountant, not for the manager — and `declare()` refuses a name the
     # catalogue does not hold, so `requires("notification.read_own")` would not have imported.

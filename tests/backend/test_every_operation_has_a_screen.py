@@ -32,6 +32,7 @@ Covers: TRACE-SCREENS-002.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from app.queues.registry import BUILT
@@ -182,6 +183,44 @@ NO_SCREEN: dict[tuple[str, str], str] = {
     # left this list — which is what a closed entry looks like here: a deletion rather than an
     # edit. `test_no_recorded_operation_has_quietly_gained_a_screen` is what would have caught
     # them being left behind.
+    # --- found by making this file's matcher method-aware, 2026-09-10 ---------------------------
+    #
+    # **Five operations that were passing and should not have been.** Reachability was matched on
+    # path segments alone, so any method on a path some screen names counted as reached. These
+    # five have no caller at all: `frontend_calls` finds no request with their method, and
+    # grepping the applications for their operation ids finds nothing. The old matcher passed them
+    # because "admin-users", "beneficiaries", "me" and "roles" appear in screens that perform
+    # *other* operations on those paths.
+    #
+    # They are recorded rather than built because each is a real piece of work with its own
+    # question, and inventing five screens inside a slice about a publication correction would be
+    # the opposite of what this list is for.
+    ("PATCH", "/api/v1/admin-users/{admin_user_id}"): (
+        "editing a staff account's name or username. The admin-users screen performs the state "
+        "changes — activate, suspend, deactivate, password reset — and has no edit form. M3 built "
+        "the route; no screens slice owned an edit surface for it."
+    ),
+    ("PATCH", "/api/v1/beneficiaries/{beneficiary_id}"): (
+        "editing a beneficiary. The trader application creates and deactivates them and offers no "
+        "way to change one — which may well be right, because a beneficiary's IBAN is what a "
+        "payment was built against. Whether an edit should exist at all is a question for the "
+        "owner rather than a missing form."
+    ),
+    ("PATCH", "/api/v1/me/trader/profile"): (
+        "a trader editing their own profile. The profile screen reads; M3 built the write and no "
+        "slice has owned the form."
+    ),
+    ("PUT", "/api/v1/roles/{role_id}/permissions"): (
+        "**deliberately not called, and the roles screen says so in its own docstring.** A change "
+        "requires a step-up context bound to that role, and the screen was built read-only rather "
+        "than half-building the dialog. This entry records a decision that was already made and "
+        "was invisible to this gate."
+    ),
+    ("GET", "/api/v1/meta/release"): (
+        "the release commit and build metadata. Consumed by an operator checking what is "
+        "deployed, and the health surface above is where that belongs; a screen would be a page "
+        "about the page."
+    ),
     # --- the report ----------------------------------------------------------------------------
     ("GET", "/api/v1/reports/queue-summary"): (
         "**superseded by a better surface rather than unbuilt.** The dashboard shows the same "
@@ -231,6 +270,64 @@ def literal_segments(path: str) -> list[str]:
     ]
 
 
+# Every transport call names its method and then its path. The window is what makes this survive
+# the shapes that actually occur: `path:` is usually the next line, and in `notifications.ts` it is
+# a conditional whose two branches are both paths. Anchoring on the next line alone missed that one
+# and reported a working screen as absent.
+_METHOD = re.compile(r'method:\s*"([A-Z]+)"')
+_PATH_LITERAL = re.compile(r'[`"](/[^`"\n]*)[`"]')
+# The other way this frontend reaches the API, and it is deliberate rather than an oversight:
+# routes that return **bytes** are fetched raw, because `transport.request` parses JSON.
+# `trader-pwa/src/evidence.ts` says so in terms — "correct for every other route and wrong for one
+# that returns bytes" — and `previewPath` in `admin-web/src/bundles.ts` builds one the same way.
+# A bare `fetch` with no `method` is a GET.
+_FETCH = re.compile(r'fetch\(\s*[`"](/[^`"\n]*)[`"]')
+
+
+def frontend_calls(source: str) -> set[tuple[str, str]]:
+    """`(method, first literal segment)` for every call the applications make.
+
+    **Why the method matters, found on 2026-09-10.** Reachability was matched on path segments
+    alone, so `GET /evidence-links/{link_id}` — added by M0 slice A2 for the correction screen —
+    made `POST /evidence-links`, `.../replace` and `.../void` look reached as well. Three
+    operations nobody can perform would have read as built, and their `NO_SCREEN` entries would
+    have been deleted as stale. That is the exact inversion this file exists to prevent, arriving
+    through the matcher rather than through the list.
+
+    **The first segment only, and the looseness is deliberate.** `POST /admin-users/{id}/activate`
+    is reached by a call whose path is `` `/admin-users/${id}/${action}` `` — the action is a
+    variable, so requiring every literal segment per call would report a working screen as
+    missing. The whole-source segment check below still does that work; this narrows *which
+    method* may satisfy it.
+    """
+
+    calls: set[tuple[str, str]] = set()
+    for match in _METHOD.finditer(source):
+        method = match.group(1).upper()
+        # The object literal a call is written in. Long enough to reach a conditional path and
+        # short enough not to run into the next call — every occurrence in this codebase puts the
+        # two within a few lines of each other.
+        window = source[match.end() : match.end() + 300]
+        for written in _PATH_LITERAL.findall(window):
+            segments = [
+                part
+                for part in written.split("?", 1)[0].split("/")
+                if part and not part.startswith("$")
+            ]
+            if segments:
+                calls.add((method, segments[0]))
+
+    for written in _FETCH.findall(source):
+        segments = [
+            part
+            for part in written.split("?", 1)[0].split("/")
+            if part and not part.startswith("$") and part not in {"api", "v1"}
+        ]
+        if segments:
+            calls.add(("GET", segments[0]))
+    return calls
+
+
 def is_dynamic(path: str) -> bool:
     """Does a declared dynamic rule cover this path?"""
 
@@ -258,6 +355,18 @@ def test_the_reader_finds_the_operations_and_the_screens() -> None:
     # would not satisfy the length check alone.
     assert "/payment-requests" in source and "/gold-sale-orders" in source
 
+    # **The method half needs its own floor.** `frontend_calls` reads a shape rather than a
+    # string: `method: "X",` on one line and `path:` on the next. Reformatting the applications —
+    # a prettier change, a refactor onto a helper — would return an empty set, and an empty set
+    # makes *every* operation orphaned, which fails loudly. The dangerous direction is the other
+    # one: a set that shrinks quietly would let `test_no_recorded_operation_has_quietly_gained_a
+    # _screen` stop noticing. Both anchors are pairs no plausible edit removes together.
+    calls = frontend_calls(source)
+    assert len(calls) >= 30, f"only {len(calls)} method/path pairs were extracted: {sorted(calls)}"
+    assert {("GET", "payment-requests"), ("POST", "auth")} <= calls, (
+        f"the call reader no longer finds two calls that certainly exist: {sorted(calls)}"
+    )
+
 
 def test_every_operation_is_reachable_or_recorded() -> None:
     """**The obligation.** An operation with no screen and no entry is a surface nobody can use.
@@ -268,13 +377,14 @@ def test_every_operation_is_reachable_or_recorded() -> None:
     """
 
     source = frontend_source()
+    calls = frontend_calls(source)
     orphaned: dict[str, str] = {}
 
     for (method, path), operation in sorted(published_operations().items()):
         if (method, path) in NO_SCREEN or is_dynamic(path):
             continue
         parts = literal_segments(path)
-        if parts and all(part in source for part in parts):
+        if parts and all(part in source for part in parts) and (method, parts[0]) in calls:
             continue
         orphaned[f"{method} {path}"] = operation
 
@@ -294,11 +404,12 @@ def test_no_recorded_operation_has_quietly_gained_a_screen() -> None:
     """
 
     source = frontend_source()
+    calls = frontend_calls(source)
     covered: list[str] = []
 
     for method, path in NO_SCREEN:
         parts = literal_segments(path)
-        if parts and all(part in source for part in parts):
+        if parts and all(part in source for part in parts) and (method, parts[0]) in calls:
             covered.append(f"{method} {path}")
 
     assert covered == [], (

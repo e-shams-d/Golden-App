@@ -447,6 +447,77 @@
         "title": "ApproveVersionRequest",
         "type": "object"
       },
+      "ApproverReauthenticateRequest": {
+        "additionalProperties": false,
+        "description": "The second human's credentials, for a command the caller cannot authorise alone.\n\n**This is the only place in the API where a password belongs to somebody other than the\nsession holder**, and the reason is structural rather than a convenience.\n`command_catalog.yaml` gives the publication correction\n`recent_auth: \"required_for_approving_second_human\"`. The approver is by definition not the\ncaller — that is the control — so there is no session to take them from, and\n`/auth/reauthenticate` above can only ever prove the caller was present.\n\n**Username and password, not the approver's id.** The correction command already takes\n`approved_by_admin_user_id`, and this could have taken the same id with a password beside it.\nIt takes the username instead so that the two values a person types travel together and are\nchecked together: an id typed by the preparer and a password typed by the approver would let\na mistyped id produce a context bound to the wrong person, which the correction would then\naccept because the id in its body matched the id in the context. The route resolves the\nusername and returns the id it resolved, and the screen sends *that* id.",
+        "properties": {
+          "password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "purpose": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Purpose",
+            "type": "string"
+          },
+          "resource_id": {
+            "format": "uuid",
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "resource_type": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Resource Type",
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password",
+          "purpose",
+          "resource_type",
+          "resource_id"
+        ],
+        "title": "ApproverReauthenticateRequest",
+        "type": "object"
+      },
+      "ApproverReauthenticateResponse": {
+        "additionalProperties": false,
+        "description": "The reference, and who it was bound to.\n\n`approver_admin_user_id` is returned because the caller has to name the same person in the\ncommand body, and re-deriving it from a username in two places is how the two come to disagree.",
+        "properties": {
+          "approver_admin_user_id": {
+            "format": "uuid",
+            "title": "Approver Admin User Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "recent_auth_reference": {
+            "title": "Recent Auth Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recent_auth_reference",
+          "approver_admin_user_id",
+          "expires_at"
+        ],
+        "title": "ApproverReauthenticateResponse",
+        "type": "object"
+      },
       "AssignRequest": {
         "additionalProperties": false,
         "properties": {
@@ -9264,6 +9335,58 @@
         ]
       }
     },
+    "/api/v1/auth/admin/approver-reauthenticate": {
+      "post": {
+        "description": "The owner's decision of 2026-09-09: **the second human types their own password.**\n\nThe context is issued bound to the *approver's* actor id and the **caller's** session id.\nThat pairing is the whole design:\n\n- bound to the approver, because what has to be proved is that *they* were here;\n- bound to the caller's session, because they were here **at this machine, now**. A reference\n  that travelled would be a manager approving by message, which is what a presence check\n  exists to refuse.\n\n`step_up.rejection_for(..., on_behalf_of=...)` is the reader of that pairing, and the\ncorrection command is its only caller.\n\n**A wrong password and an unknown username answer identically**, as login does: the response is\n`RECENT_AUTH_REQUIRED` either way, so a preparer cannot enumerate colleagues' usernames by\nwatching which one changes the error. Both are recorded in `auth_events` with the reason, where\nan investigator can tell them apart.\n\n**This route does not check the approver's permissions.** It proves presence and nothing else —\n`12_Security_RBAC_Audit.md:550` in terms. Whether the named person may approve *this* command\nis read from their own roles inside the command, by `_refuse_an_approver_without_the_grant`,\nwhich was already there. Two questions, two places, and a presence check that also granted\nauthority would be the second one answered by the wrong evidence.",
+        "operationId": "approverReauthenticate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproverReauthenticateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApproverReauthenticateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The login information is not valid."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "A second human proves presence at this machine, for one exact dual-control action.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/v1/auth/admin/login": {
       "post": {
         "operationId": "loginAdmin",
@@ -10719,6 +10842,104 @@
         "summary": "Record that everything in this bundle has been dealt with.",
         "tags": [
           "bank-result-bundles"
+        ]
+      }
+    },
+    "/api/v1/bank-result-bundles/{bundle_id}/receipt-segments": {
+      "get": {
+        "description": "`GET /api/v1/bank-result-bundles/{bundle_id}/receipt-segments`.\n\n**Nothing could enumerate segments, and three things looked as though they could.**\n`GET /bank-result-bundles/{bundle_id}` returns `segment_count`, `resolved_segment_count` and\n`unresolved_segment_count` — three numbers about rows a caller cannot then see.\n`GET /queues/unresolved-bundles-segments` reads as though it lists both and its\n`QueueDefinition` carries `entity=BankResultBundle`, so it returns bundles.\n`GET /receipt-segments/{segment_id}` reads one, given an id that had no source.\n\nSo a person could be told a bundle holds four segments and reach none of them. The correction\nscreen is what made that concrete — replacing published evidence means choosing a different\ncrop, and there was no list to choose from — but the gap is older than that screen: M8 built\nthe segment surface and left it addressable only by an id nothing published.\n\n**Oldest first, and `id` breaks the tie.** These rows are cut from one document in the order a\nperson worked through it, and that order is what makes a list of otherwise near-identical crops\nreadable. `created_at` alone is not a total order — two crops from one batch operation can\nshare a timestamp — and an unstable order in a chooser puts a different row under the cursor on\na re-render.\n\n**A missing bundle is an empty list, not a 404.** A bundle with no segments and a bundle id\nthat does not exist are the same answer here on purpose: this route discloses segments, and\ndistinguishing the two would make it a probe for which bundle ids are real. The reads that are\n*about* a bundle answer that question, guarded by `bank_result_bundle.read`.",
+        "operationId": "listBundleReceiptSegments",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SegmentDetail"
+                  },
+                  "title": "Response Listbundlereceiptsegments",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The rectangle, rotation, page or client dimensions cannot produce a reproducible crop."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the segment permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such bundle, file or segment."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The bundle is closed, or the file is not usable as evidence."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Every segment cut from one bank result bundle, oldest first.",
+        "tags": [
+          "receipt-segments"
         ]
       }
     },
@@ -12190,6 +12411,100 @@
           }
         },
         "summary": "Confirm that a receipt segment is evidence for a payment attempt.",
+        "tags": [
+          "evidence-links"
+        ]
+      }
+    },
+    "/api/v1/evidence-links/{link_id}": {
+      "get": {
+        "description": "`GET /api/v1/evidence-links/{link_id}`.\n\n**This route exists because a published result was unresolvable.** A publication carries\n`primary_evidence_link_id` and this surface was three POSTs, so a screen holding that id could\nnot turn it into anything: not the segment, not the attempt, not whether the link is still\nactive. The correction screen is the caller that made the gap visible — it has to show what a\ntrader is being shown before offering to change it — and the same hop is what lets any\npublication read display its evidence instead of a UUID.\n\n**`receipt_segment.read` rather than a new `evidence_link.read`.** The catalogue has no such\npermission, and `list_payment_result_publications` set the precedent for this exact situation:\nreuse the narrowest catalogued grant that covers the disclosure rather than \"asking for a grant\nno catalogue names\". What this discloses is that a particular segment is evidence for a\nparticular attempt, and `receipt_segment.read` is the grant M8 created for evidence —\n`accountant` and `manager` hold it, which is both halves of the correction split, plus\n`read_only_auditor` by explicit sensitive-read grant. A trader reaches none of it.\n\n**No `ETag`.** §12.6 gives this table no `record_version` and none of the three commands below\ntakes an `If-Match` — the module docstring says why. A route publishing a precondition its\ncommands do not accept would be inventing one, which `test_preconditions_have_a_source.py`\nexists to refuse.",
+        "operationId": "getEvidenceLink",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "link_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Link Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceLinkDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the evidence permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such link, attempt or segment."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "An active primary link already exists for this attempt or segment."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Idempotency-Key is required."
+          }
+        },
+        "summary": "One confirmed evidence link, so a screen can resolve what a publication cites.",
         "tags": [
           "evidence-links"
         ]
@@ -20617,7 +20932,7 @@
     },
     "/api/v1/payment-requests/{request_id}/publications/corrections": {
       "post": {
-        "description": "`POST /api/v1/payment-requests/{request_id}/publications/corrections`.\n\n**The path is this implementation's, and the catalogue says so.**\n`command_catalog.yaml`'s `payment_publication.correct_paid_result` row carries `method: TBD,\npath: TBD`, and document 05 defines no correction endpoint. Two candidates existed: overload\n`/evidence-links/{id}/replace` with dual-control headers, or give the correction its own\naddress under the request the way §20 gives every other publication operation one. The second\nwins because a route that means \"ordinary replacement\" for one caller and \"corrected\npublication, superseded predecessor, trader notified\" for another is a route whose guard\ndepends on data. Recorded in the M9 plan as a path M0 owes.\n\n**Both halves are now assigned, and the control does not depend on that.** Until 2026-09-08\n`payment_publication.correct` and `payment_attempt.correct_result` both carried\n`default_roles: []` and this docstring said so: nobody held either, and POL-002's split was\nenforced by nobody being able to correct anything. `20260914_0045` gave the preparer's half to\n`accountant` and the approver's half to `manager`, on the owner's decision — so a wrong\npublished result became correctable for the first time.\n\nWhat the grants cannot do is switch the control off. `_refuse_a_single_human` compares the two\nids, so one person holding both permissions is still refused; the approver's grant is read\nfrom the approver's own roles, so naming a colleague who does not hold it is not a second\nauthorisation. That was true when the defaults were empty and it is true now, which is the\nproperty POL-002 actually asked for.",
+        "description": "`POST /api/v1/payment-requests/{request_id}/publications/corrections`.\n\n**The path is this implementation's, and the catalogue says so.**\n`command_catalog.yaml`'s `payment_publication.correct_paid_result` row carries `method: TBD,\npath: TBD`, and document 05 defines no correction endpoint. Two candidates existed: overload\n`/evidence-links/{id}/replace` with dual-control headers, or give the correction its own\naddress under the request the way §20 gives every other publication operation one. The second\nwins because a route that means \"ordinary replacement\" for one caller and \"corrected\npublication, superseded predecessor, trader notified\" for another is a route whose guard\ndepends on data. Recorded in the M9 plan as a path M0 owes.\n\n**Both halves are now assigned, and the control does not depend on that.** Until 2026-09-08\n`payment_publication.correct` and `payment_attempt.correct_result` both carried\n`default_roles: []` and this docstring said so: nobody held either, and POL-002's split was\nenforced by nobody being able to correct anything. `20260914_0045` gave the preparer's half to\n`accountant` and the approver's half to `manager`, on the owner's decision — so a wrong\npublished result became correctable for the first time.\n\nWhat the grants cannot do is switch the control off. `_refuse_a_single_human` compares the two\nids, so one person holding both permissions is still refused; the approver's grant is read\nfrom the approver's own roles, so naming a colleague who does not hold it is not a second\nauthorisation. That was true when the defaults were empty and it is true now, which is the\nproperty POL-002 actually asked for.\n\n**`X-Recent-Auth` carries the approver's step-up, and it closes the last of the three.** The\ntwo checks above prove the second human is a different person who may approve; neither proves\nthey were *there*. `command_catalog.yaml` has asked for\n`recent_auth: \"required_for_approving_second_human\"` since M0 and nothing supplied it, so\nuntil now an accountant who knew a manager's user id could complete a correction alone.\n\nThe reference comes from `POST /auth/admin/approver-reauthenticate`, which the owner's\ndecision of 2026-09-09 defines: the manager types their own password at the preparer's\nmachine. The context it issues is bound to the manager's identity and the preparer's session,\nand `_consume_the_approvers_presence` spends it inside this transaction.\n\n**428 when the header is absent, 401 when it does not authorise** — the same two answers the\nbatch decision routes give, and for the same reason: a missing precondition is a client that\ncan retry correctly, and a refused one is told nothing about *why* it was refused.",
         "operationId": "correctPaymentResultPublication",
         "parameters": [
           {
@@ -20661,6 +20976,22 @@
               ],
               "title": "Idempotency-Key"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Recent-Auth",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Recent-Auth"
+            }
           }
         ],
         "requestBody": {
@@ -20702,7 +21033,7 @@
                 }
               }
             },
-            "description": "No valid session."
+            "description": "No valid session, or X-Recent-Auth did not prove the named approver was present."
           },
           "403": {
             "content": {
@@ -20762,7 +21093,7 @@
                 }
               }
             },
-            "description": "If-Match and Idempotency-Key are required."
+            "description": "If-Match, Idempotency-Key or X-Recent-Auth is missing."
           }
         },
         "summary": "Correct a published result: publication N+1, N superseded, trader notified.",

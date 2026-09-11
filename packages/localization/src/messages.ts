@@ -306,6 +306,32 @@ export const faMessages = {
   "publication.correctionBlocked":
     "اصلاح یک نتیجه منتشرشده به دو نفر نیاز دارد: حسابدار آماده می‌کند و مدیر تأیید. این تفکیک تصویب شده، مجوز هر دو نقش داده شده و مسیر بک‌اند آماده و آزموده است. آنچه هنوز تعیین نشده این است که حضور نفر دوم پای همین دستگاه چگونه اثبات شود؛ تا آن تعیین نشود، فرمی که این پرسش را نادیده بگیرد ساخته نمی‌شود.",
   "publication.viewPublication": "انتشار نتیجه",
+  // M0 slice A2. The correction, and the one dialog in this application that asks two people —
+  // the accountant prepares and the manager approves by typing their own password here.
+  "correction.open": "اصلاح نتیجه منتشرشده",
+  "correction.title": "اصلاح نتیجه منتشرشده",
+  "correction.body":
+    "نتیجه فعلی باطل نمی‌شود؛ نسخه تازه‌ای ساخته می‌شود و نسخه قبلی به‌عنوان «جایگزین‌شده» در سابقه می‌ماند. تاجر از این تغییر باخبر می‌شود.",
+  "correction.currentEvidence": "مدرکی که الان منتشر شده:",
+  "correction.chooseEvidence": "مدرک درست را انتخاب کنید",
+  "correction.noAlternatives":
+    "در این دسته بانکی مدرک دیگری نیست. اول باید تصویر درست از سند بانکی بریده شود، بعد اینجا قابل انتخاب می‌شود.",
+  "correction.privacyUnverified": "بررسی حریم خصوصی انجام نشده",
+  "correction.reasonLabel": "دلیل اصلاح",
+  "correction.approverLegend": "تأیید نفر دوم",
+  "correction.approverHint":
+    "اصلاح یک نتیجه منتشرشده با یک نفر انجام نمی‌شود. مدیر باید همین‌جا، پای همین دستگاه، نام کاربری و رمز خودش را وارد کند.",
+  "correction.approverUsername": "نام کاربری مدیر",
+  "correction.approverPassword": "رمز مدیر",
+  "correction.confirm":
+    "می‌دانم که این کار نتیجه‌ای را که به تاجر گفته شده تغییر می‌دهد و به او اطلاع داده می‌شود.",
+  "correction.submit": "ثبت اصلاح",
+  "correction.working": "در حال ثبت…",
+  "correction.failed": "اصلاح ثبت نشد.",
+  "correction.recentAuthFailed":
+    "نام کاربری یا رمز مدیر پذیرفته نشد، یا مهلت آن گذشته است. دوباره وارد کنید.",
+  "correction.evidenceUnavailable":
+    "مدرک این انتشار خوانده نشد، پس فهرست جایگزین‌ها ساخته نشد. صفحه را دوباره باز کنید.",
   // M11 Screens slice 5. Gold orders — the trader files one, the centre prices it.
   "gold.nav": "سفارش‌های طلا",
   "gold.listTitle": "سفارش‌های طلا",

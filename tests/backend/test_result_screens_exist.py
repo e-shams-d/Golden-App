@@ -82,22 +82,41 @@ def test_the_result_surface_exists(path: Path) -> None:
 def test_no_screen_sends_a_step_up_the_server_does_not_require() -> None:
     """The first correction to this obligation, asserted so it cannot drift back.
 
-    `X-Recent-Auth` is enforced on two surfaces in this application — role permission changes and
-    batch version approval — and neither is here. A publish that asked for it would be a control
-    the backend does not have, and the cost is not merely cosmetic: a person taught to
-    reauthenticate whenever a screen asks will do it for a screen that should not have asked.
+    A publish that asked for a step-up would be a control the backend does not have, and the cost
+    is not merely cosmetic: a person taught to reauthenticate whenever a screen asks will do it
+    for a screen that should not have asked.
+
+    **The claim is "exactly one command carries it", not "no command does."** This test asserted
+    the second until M0 slice A2, and the two were indistinguishable only because the one command
+    that *does* require a step-up had no screen. Its own message said so at the time —
+    "`command_catalog.yaml` requires one for the publication *correction* and not for the
+    publish". So the assertion is now counted rather than absolute: the token reaches the
+    transport once, from `correctPublication`, and a second occurrence means some other command
+    grew one.
     """
 
     for path in SCREENS:
         source = code(path)
-        assert "X-Recent-Auth" not in source, (
-            f"{path.name} sends a step-up header. `command_catalog.yaml` requires one for the "
-            "publication *correction* and not for the publish; a screen adding it is inventing a "
-            "control."
+        if path is not DATA_MODULE:
+            # The pages themselves never touch the header. The correction dialog collects a
+            # password and hands it to the data module; a page building the header itself would be
+            # a second place for the binding to be got wrong.
+            assert "X-Recent-Auth" not in source and "recentAuthToken" not in source, (
+                f"{path.name} sends a step-up header. Only `payment-results.ts` does, and only "
+                "for the correction."
+            )
+            continue
+
+        assert source.count("recentAuthToken") == 1, (
+            f"the data module passes a recent-auth token {source.count('recentAuthToken')} times. "
+            "`command_catalog.yaml` requires one for `payment_publication.correct_paid_result` "
+            "and for no other command on this surface; a second is a screen inventing a control."
         )
-        assert "recentAuthToken" not in source, (
-            f"{path.name} passes a recent-auth token to the transport for a command that does "
-            "not require one"
+        # And it is the correction that carries it. Counting alone would pass if the token moved
+        # from the correction to the publish, which is precisely the drift this test exists for.
+        correction = source[source.index("export async function correctPublication") :]
+        assert "recentAuthToken" in correction, (
+            "the recent-auth token is passed by something other than `correctPublication`"
         )
 
 
@@ -126,27 +145,29 @@ def test_the_catalogue_still_puts_the_step_up_where_this_slice_says_it_is() -> N
     )
 
 
-def test_the_correction_screen_is_absent_and_the_step_up_is_still_unimplemented() -> None:
-    """The deferral, with the reason that is now true — and the old one expired on schedule.
+def test_the_correction_screen_exists_and_asks_the_second_human_for_a_password() -> None:
+    """**A deferral that expired twice, and this is what replaced it.**
 
-    **Slice 4 wrote this to fail the day a role held `payment_publication.correct`.** The owner
-    assigned it on 2026-09-08 (the accountant prepares, the manager approves) and it fired. That is
-    the design working: a deferral recorded as an assertion rather than a comment cannot be
-    forgotten.
+    Slice 4 wrote the first version to fail the day a role held `payment_publication.correct`. The
+    owner assigned it on 2026-09-08 and it fired. The second version failed the day the route
+    declared `X-Recent-Auth`, which the owner's decision of 2026-09-09 made possible. Both fired
+    exactly as designed, which is the argument for recording a deferral as an assertion rather
+    than as a comment: neither reason could quietly stop being true.
 
-    Building the screen then found a **second blocker**, and it is a discrepancy rather than
-    missing work. `command_catalog.yaml` gives this command
-    `recent_auth: "required_for_approving_second_human"`. The implemented route declares **no
-    `X-Recent-Auth` header at all** — it names the second human through `approved_by_admin_user_id`
-    in the body.
+    What replaces them asserts the three things that had to arrive, because a screen that reaches
+    the route is not the claim — a screen that reaches it *correctly* is:
 
-    A screen built against that gap would either send a header the server ignores, which teaches
-    people to type their password whenever a dialog asks, or omit the step-up the catalogue
-    requires. Neither is a screen; both are a decision about which document is authoritative, and
-    that is not an implementer's to make.
+    - **the catalogue still asks for the step-up.** If this stops being
+      `required_for_approving_second_human`, the dialog below is asking for a password nothing
+      requires, and that is worth failing over rather than leaving in place;
+    - **the route declares the header**, so the screen is not sending one the server ignores;
+    - **the screen asks the approver for their own credentials**, which is the whole of the
+      owner's decision. A dialog that took only a reason and a segment would satisfy the first two
+      and prove the preparer alone can correct a published result.
 
-    **This expires the same way the last reason did:** the day the route declares the header, this
-    fails and asks somebody to build the dialog.
+    The read chain is asserted separately in `test_the_correction_screen_resolves_its_evidence`,
+    because "can reach the command" and "can show a person what they are changing" fail for
+    different reasons and a single test would report the wrong one.
     """
 
     catalogue = json.loads(COMMANDS.read_text(encoding="utf-8"))
@@ -154,8 +175,9 @@ def test_the_correction_screen_is_absent_and_the_step_up_is_still_unimplemented(
     correction = commands.get("payment_publication.correct_paid_result")
     assert correction is not None, "the correction command is no longer in the catalogue"
     assert correction.get("recent_auth") == "required_for_approving_second_human", (
-        "the catalogue no longer requires a step-up for the correction; the reason this screen is "
-        "deferred has changed and the deferral should be revisited rather than this line relaxed"
+        "the catalogue no longer requires a step-up for the correction. The dialog asks a second "
+        "human for their password on the strength of this line; revisit the screen rather than "
+        "relaxing the assertion."
     )
 
     contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
@@ -165,31 +187,87 @@ def test_the_correction_screen_is_absent_and_the_step_up_is_still_unimplemented(
         for parameter in route["post"].get("parameters", [])
         if parameter.get("in") == "header"
     }
-    assert "x-recent-auth" not in headers, (
-        "the correction route now declares a step-up header, so the discrepancy this deferral "
-        "rests on is closed. Build the screen with the dialog §8.11 specifies, and replace this "
-        "test with one asserting it exists."
+    assert "x-recent-auth" in headers, (
+        "the correction route no longer declares X-Recent-Auth, so the screen is sending a header "
+        f"the server does not read. Declared headers: {sorted(headers)}"
     )
 
-    # And no screen reaches the route in the meantime.
-    for path in SCREENS:
-        assert "/corrections" not in code(path), (
-            f"{path.name} reaches the correction route while its step-up is unimplemented"
+    reached = [path for path in SCREENS if "/publications/corrections" in code(path)]
+    assert len(reached) == 1, (
+        f"{len(reached)} screens reach the correction route; expected exactly the publication "
+        f"screen's data module: {[path.name for path in reached]}"
+    )
+
+    dialog = (ADMIN / "components" / "correction-dialog.tsx").read_text(encoding="utf-8")
+    for marker, why in (
+        ("correction-approver-username", "the approver is not identified"),
+        ("correction-approver-password", "the second human never proves they are present"),
+        ("correction.approverHint", "nothing tells the preparer whose password this is"),
+        ("correction-confirm", "§13.5's explicit confirmation is missing"),
+    ):
+        assert marker in dialog, f"the correction dialog has no {marker}: {why}"
+
+
+def test_the_correction_screen_resolves_its_evidence() -> None:
+    """The blocker found behind the step-up, and the reason it was the larger one.
+
+    A publication carries `primary_evidence_link_id`. Until M0 slice A2 the evidence surface was
+    three POSTs, `GET /bank-result-bundles/{id}` returned three segment *counts* and no segments,
+    and `GET /queues/unresolved-bundles-segments` returns bundles despite its name. So a screen
+    holding that id could not show which crop is published, could not offer an alternative, and
+    could not name a replacement — and a correction form with a free-text segment id would have
+    been a way to publish the wrong evidence twice.
+
+    Asserted over the contract *and* the screen, because either half alone is a shape this
+    repository has shipped before: a route no screen calls, or a screen calling a route the
+    contract does not publish.
+    """
+
+    contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+    for path in (
+        "/api/v1/evidence-links/{link_id}",
+        "/api/v1/bank-result-bundles/{bundle_id}/receipt-segments",
+    ):
+        assert "get" in contract["paths"].get(path, {}), (
+            f"{path} is not published, so the correction screen cannot resolve what it is changing"
         )
 
+    module = code(DATA_MODULE)
+    for marker, why in (
+        ("/evidence-links/", "the screen cannot resolve the link a publication cites"),
+        ("/receipt-segments", "the screen cannot offer an alternative crop"),
+    ):
+        assert marker in module, f"the data module never reaches {marker}: {why}"
 
-def test_the_publication_screen_explains_the_missing_control() -> None:
-    """A blank space would read as software that cannot fix a wrong result. It can.
 
-    The authority to do so has not been assigned, which is a different sentence — and the one the
-    screen says. Asserted because the alternative failure is silent: nobody complains about a
-    button that was never there.
+def test_the_publication_screen_no_longer_explains_an_absence() -> None:
+    """The panel is gone because the thing it apologised for arrived.
+
+    `publication.correctionBlocked` existed so that a blank space would not read as software that
+    cannot fix a wrong published result. That was the right thing to ship twice and its text was
+    false by the end: it told a person the permission had been given to no role, three weeks after
+    the owner gave it to two.
+
+    **Asserted rather than deleted, and the direction is what matters.** A test that merely
+    stopped checking would leave a screen free to acquire both — a working control *and* a panel
+    saying there is none, which is worse than either. The message keys are asserted absent from
+    the page, and `test_the_correction_screen_exists_and_asks_the_second_human_for_a_password`
+    asserts what stands in their place.
+
+    The strings stay in `messages.ts` for the moment, unreferenced. Removing a key is a separate
+    act with its own gate, and a slice that both replaced a control and pruned the vocabulary
+    would be two changes reviewed as one.
     """
 
     source = PUBLICATION_PAGE.read_text(encoding="utf-8")
-    assert "publication.correctionBlocked" in source, (
-        "the publication screen does not say why there is no correction control, so its absence "
-        "reads as a defect"
+    for key in ("publication.correctionBlocked", "publication.correctionBlockedTitle"):
+        assert key not in source, (
+            f"the publication screen still renders {key}. The correction control exists now, so "
+            "the panel explaining its absence contradicts the button beside it."
+        )
+    assert "correction.open" in source, (
+        "the publication screen offers no way into the correction, so removing the panel that "
+        "explained its absence has left a blank space — which is what that panel existed to avoid"
     )
 
 
@@ -307,7 +385,12 @@ def test_no_command_body_carries_an_amount_except_the_retry() -> None:
     amount is a *decision* about the unresolved remainder rather than a restatement.
     """
 
-    module = DATA_MODULE.read_text(encoding="utf-8")
+    # `extracted_amount_irr` is excluded, and the exclusion is narrow on purpose. It is what a
+    # person *read off a bank receipt*, carried on the segment type M0 slice A2 added so the
+    # correction screen can label the crops it offers. It is a read field on a read type and no
+    # command body has one; matching it here would have made this test fail for a reason it is not
+    # about, and raising the count to 3 would have made it stop noticing the thing it is about.
+    module = DATA_MODULE.read_text(encoding="utf-8").replace("extracted_amount_irr:", "")
     # `amount_irr` appears in the retry body and in the attempt type. Two, and no more: a third
     # would mean a confirmation had grown one.
     assert module.count("amount_irr:") == 2, (

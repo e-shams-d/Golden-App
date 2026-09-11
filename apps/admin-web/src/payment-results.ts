@@ -307,3 +307,127 @@ export async function listPublications(
   });
   return response.data;
 }
+
+/** The link a publication cites: which segment proves it, and whether it is still active. */
+export type EvidenceLink = Readonly<{
+  id: string;
+  payment_attempt_id: string;
+  receipt_segment_id: string;
+  link_type: string;
+  status: string;
+  replaces_link_id: string | null;
+  replacement_reason: string | null;
+  published_to_trader_at: string | null;
+  confirmed_at: string;
+}>;
+
+/** One piece of evidence. Only the fields this screen shows; the route returns many more. */
+export type ReceiptSegment = Readonly<{
+  id: string;
+  bank_result_bundle_id: string | null;
+  source_file_id: string;
+  segment_file_id: string | null;
+  creation_method: string;
+  status: string;
+  page_number: number | null;
+  extracted_tracking_number: string | null;
+  extracted_amount_irr: string | null;
+  privacy_verified: boolean;
+  record_version: number;
+}>;
+
+/**
+ * Resolve what a publication cites.
+ *
+ * **This read did not exist until M0 slice A2**, and its absence is why the correction screen was
+ * deferred twice. A publication carries `primary_evidence_link_id`; the evidence surface was three
+ * POSTs, so the id proving a trader's result resolved to nothing a person could look at.
+ */
+export async function readEvidenceLink(
+  linkId: string,
+  signal?: AbortSignal,
+): Promise<EvidenceLink> {
+  const response = await transport.request<EvidenceLink>({
+    method: "GET",
+    path: `/evidence-links/${linkId}`,
+    ...(signal ? { signal } : {}),
+  });
+  return response.data;
+}
+
+/**
+ * One segment, which is the hop from a link to the bundle its evidence was cut from.
+ *
+ * The correction screen needs `bank_result_bundle_id` and nothing else here, but the route
+ * returns the whole provenance record and this type narrows rather than reshapes: a client that
+ * renamed fields would make the contract and the screen disagree silently.
+ */
+export async function readReceiptSegment(
+  segmentId: string,
+  signal?: AbortSignal,
+): Promise<ReceiptSegment> {
+  const response = await transport.request<ReceiptSegment>({
+    method: "GET",
+    path: `/receipt-segments/${segmentId}`,
+    ...(signal ? { signal } : {}),
+  });
+  return response.data;
+}
+
+/**
+ * Every segment cut from one bundle — the alternatives a correction chooses between.
+ *
+ * A bare array for the same reason `listPublications` is one, and read from the contract rather
+ * than assumed: the note there records what typing a bare array as an envelope costs, which is an
+ * empty list rendered silently.
+ */
+export async function listBundleSegments(
+  bundleId: string,
+  signal?: AbortSignal,
+): Promise<readonly ReceiptSegment[]> {
+  const response = await transport.request<readonly ReceiptSegment[]>({
+    method: "GET",
+    path: `/bank-result-bundles/${bundleId}/receipt-segments`,
+    ...(signal ? { signal } : {}),
+  });
+  return response.data;
+}
+
+/**
+ * Correct a published result: publication N+1, N superseded, the trader notified.
+ *
+ * **Three headers, and `X-Recent-Auth` is the one this command exists to carry.** The reference
+ * comes from `approverReauthenticate` in `src/auth.ts` — the manager's own password, typed at this
+ * machine — and it is spent here, in the server's transaction. It is never cached: a recent-auth
+ * context is single-use, so holding one would be holding something the server will refuse.
+ *
+ * **`approvedByAdminUserId` is the id the step-up route resolved**, not one this screen looked up
+ * from the same username a second time. Two lookups of one name is how the id in the body and the
+ * id in the context come to disagree, and the server compares them.
+ */
+export async function correctPublication(
+  requestId: string,
+  ifMatch: string,
+  input: Readonly<{
+    replacesEvidenceLinkId: string;
+    newReceiptSegmentId: string;
+    correctionReason: string;
+    approvedByAdminUserId: string;
+    recentAuthReference: string;
+  }>,
+): Promise<Publication> {
+  const response = await transport.request<Publication, Record<string, unknown>>({
+    method: "POST",
+    path: `/payment-requests/${requestId}/publications/corrections`,
+    body: {
+      replaces_evidence_link_id: input.replacesEvidenceLinkId,
+      new_receipt_segment_id: input.newReceiptSegmentId,
+      correction_reason: input.correctionReason,
+      approved_by_admin_user_id: input.approvedByAdminUserId,
+    },
+    idempotencyKey: commandKey(),
+    ifMatch,
+    recentAuthToken: input.recentAuthReference,
+  });
+  return response.data;
+}

@@ -134,6 +134,13 @@ def world(migrated: RuntimeIdentities, tmp_path_factory: Any) -> Iterator[dict[s
             # Holds all three evidence permissions; nobody else holds any.
             ("evidence_accountant", "accountant"),
             ("evidence_manager", "manager"),
+            # M0 slice A2's negative for the *read*. The three write permissions are
+            # accountant-only, so `evidence_manager` is their sharp negative — but the read added
+            # in that slice is guarded by `receipt_segment.read`, which the manager **holds**
+            # (`permission_catalog.yaml:580`). A third account is what makes the read's guard
+            # provable at all, and `business_admin` is the sharpest one available: it holds every
+            # `user.*` grant and the bank-version activation, and still cannot look at evidence.
+            ("evidence_business_admin", "business_admin"),
         ):
             connection.execute(
                 "INSERT INTO admin_users (username, full_name, password_hash, status) "
@@ -690,12 +697,20 @@ def test_the_revocation_reason_is_recorded_on_the_audit_row(world: dict[str, Any
 def test_no_evidence_route_answers_a_caller_without_the_permission(
     world: dict[str, Any],
 ) -> None:
-    """One test over three routes, and the reason it cannot be sharper is asserted.
+    """Four routes, two different guards, and the reason each is as sharp as it can be.
 
-    `20260801_0008:218-220` seeds all three evidence permissions to `accountant` and to nobody
-    else. So there is no role holding one and not another, and slice 1's sharper negative — an
-    actor that passes a wrong-permission guard and must still be refused — does not exist here.
-    Rather than implying a sharpness this cannot have, the catalogue is read back.
+    `20260801_0008:218-220` seeds all three evidence *write* permissions to `accountant` and to
+    nobody else. So there is no role holding one and not another, and slice 1's sharper negative —
+    an actor that passes a wrong-permission guard and must still be refused — does not exist for
+    them. Rather than implying a sharpness this cannot have, the catalogue is read back.
+
+    **The read added by M0 slice A2 is guarded differently, and that is the interesting half.**
+    `GET /evidence-links/{link_id}` takes `receipt_segment.read`, which `accountant` and `manager`
+    both hold. So the manager is not one actor here but two facts: refused on all three writes,
+    **permitted** on the read. A guard that had drifted to an evidence permission would fail on
+    that 200, and a guard that had been dropped entirely would fail on the `business_admin` below
+    — which is the negative the read's own permission makes available, and it is a sharp one: that
+    role holds every `user.*` grant in the system and cannot look at a piece of evidence.
     """
 
     attempt_id = an_attempt(world)
@@ -704,11 +719,25 @@ def test_no_evidence_route_answers_a_caller_without_the_permission(
 
     sign_in_admin(client, "evidence_accountant")
     link_id = confirm(world, attempt_id, segment_id).json()["id"]
+    read_path = f"/api/v1/evidence-links/{link_id}"
 
     sign_in_admin(client, "evidence_manager")
     assert confirm(world, an_attempt(world), a_segment(world)).status_code == 403
     assert replace(world, link_id, a_segment(world)).status_code == 403
     assert void(world, link_id).status_code == 403
+    read = client.get(read_path)
+    assert read.status_code == 200, (
+        "a manager holds `receipt_segment.read` and was refused the evidence link read; the guard "
+        f"has drifted to a write permission: {read.text}"
+    )
+    assert read.json()["receipt_segment_id"] == str(segment_id)
+
+    sign_in_admin(client, "evidence_business_admin")
+    assert client.get(read_path).status_code == 403, (
+        "a business_admin, which holds no evidence or segment grant, read a confirmed evidence "
+        "link. The read is guarded by `receipt_segment.read` and this is what proves the guard "
+        "bites rather than merely being written down."
+    )
 
     holders = rows(
         world,
