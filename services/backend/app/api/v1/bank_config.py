@@ -1,10 +1,19 @@
 """Bank configuration over HTTP, per `05_API_Specification.md:2096-2136`.
 
-Creation, and activation that denies everyone. DOC-CONFLICT-045: the two activation
-permissions now exist and are granted to no role, so `POST .../activate` refuses every
-caller including `business_admin`. That is the interim rule rather than an omission — the
-route, its command, its audit record and its negative tests are all reviewable in that
-state, and approving the grant changes nothing else.
+Creation, and activation. DOC-CONFLICT-045 left both activation permissions seeded and granted to
+no role, so `POST .../activate` refused every caller including `business_admin` — an interim rule
+rather than an omission, chosen so the route, its command, its audit record and its negative tests
+were all reviewable while the owner decided.
+
+**The owner decided on 2026-09-08 and `20260914_0045` carries it: `bank_profile.activate_version`
+to `business_admin`, and to nobody else.** Not the accountant — a profile version carries the
+transfer limits, the cutoff time and the file rules, so it changes how *every* payment is built,
+and the person who creates payments should not be the one who changes the rules they are built
+under. `bank_mapping.activate` is a different permission and is still undecided; the two are not
+interchangeable.
+
+Nothing in this module changed when the grant arrived, which was the claim the interim state was
+chosen to make good.
 
 **Account numbers and IBANs are masked according to permission**
 (`05_API_Specification.md:2136`). POL-003 has not settled which roles see a full IBAN, so
@@ -198,15 +207,17 @@ def activate_bank_profile_version(
     runtime: Annotated[RuntimeServices, Depends(get_runtime)],
     actor: Annotated[ActorContext, Depends(authenticated_actor)],
 ) -> None:
-    """DOC-CONFLICT-045: **this route denies everyone today, deliberately.**
+    """DOC-CONFLICT-045, resolved. **`business_admin` alone, since 2026-09-08.**
 
-    `bank_profile.activate_version` exists as a permission and is granted to no role, so
-    the guard above refuses every caller including `business_admin`. The route, its
-    command, its audit record and its negative tests are reviewable in that state, and the
-    day the owner approves the grant nothing here changes.
+    This route denied everyone for two milestones, because `bank_profile.activate_version` was
+    seeded and granted to no role. Shipping it guarded by a borrowed permission was the
+    alternative, and it would have made the role that drafts a configuration the role that puts it
+    into production — deciding by default the question the owner had been asked.
 
-    Shipping it guarded by a borrowed permission was the alternative, and it would have
-    made the role that drafts a configuration the role that puts it into production.
+    `20260914_0045` grants it, and this function is unchanged: the guard already named the right
+    permission, so the decision was a row in `role_permissions` rather than an edit here.
+    `test_only_the_business_admin_may_activate_a_version` walks every seeded role and asserts three
+    refusals and one activation, so a second grant is a failure rather than a widening nobody sees.
     """
 
     with runtime.uow_factory() as uow:

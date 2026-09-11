@@ -295,6 +295,21 @@ def test_the_manager_only_set_is_real(manager_only: frozenset[str]) -> None:
     says "warehouse cannot override financial verification", so the operator who records dispatches
     holding it would defeat a separation that file states outright.
 
+    **The sixth arrived the same way, and this is the record of having looked a third time.**
+    `payment_publication.correct` came from the owner's decision of 2026-09-08, which finally
+    resolved the split POL-002 deferred to ADR-SEC-009: the accountant prepares a correction to a
+    published result and the manager approves it.
+
+    It belongs here for the set's own reason, and more directly than any entry before it. The
+    accountant *published* the result being corrected; letting them also approve the correction
+    would make the second signature their own, which is the one thing a dual-control command
+    cannot survive. `_refuse_a_single_human` refuses that at run time by comparing the two actor
+    ids — so this set is not what makes the control safe, but a grant here to the accountant would
+    make the control unreachable in the only shape that satisfies it.
+
+    Its preparer half, `payment_attempt.correct_result`, is deliberately **not** in this set: it
+    goes to the accountant, and a permission the manager does not hold is not manager-only.
+
     Not the accountant either, which is worth recording because the accountant is the obvious
     candidate: they are the ones who confirm that money arrived. Releasing metal when it did not is
     a decision about accepting risk rather than about reconciling a figure, and the manager's
@@ -305,6 +320,7 @@ def test_the_manager_only_set_is_real(manager_only: frozenset[str]) -> None:
         {
             "payment_batch_version.approve",
             "payment_batch_version.reject",
+            "payment_publication.correct",
             "payment_batch_version.invalidate_approval",
             "payment_batch.cancel_approved",
             "gold_sale.dispatch_override",

@@ -114,9 +114,13 @@ NO_SCREEN: dict[tuple[str, str], str] = {
     ): "bank configuration, like the profile routes above: performed once per bank and "
     "owned by no slice",
     ("POST", "/api/v1/bank-profile-versions/{version_id}/activate"): (
-        "**blocked rather than unbuilt.** `bank_profile.activate_version` is granted to no role in "
-        "`permission_catalog.yaml`, so a screen behind it would refuse every caller — the shape "
-        "this project refuses to build and already carries once."
+        "**this entry said 'blocked rather than unbuilt' and the block expired**, which is what "
+        "the note above promises an entry naming a blocking decision will do. "
+        "`bank_profile.activate_version` was granted to no role, so a screen behind it would have "
+        "refused every caller; the owner granted it to `business_admin` on 2026-09-08 and "
+        "`20260914_0045` carries it. What is left is the ordinary kind of gap — bank "
+        "configuration has no surface at all, exactly like the four profile and account "
+        "operations above — and the frontend completion plan's slice B owns all five together."
     ),
     # --- the statement import path ---------------------------------------------------------------
     ("GET", "/api/v1/bank-statements"): "the statement import path; see the POST below",

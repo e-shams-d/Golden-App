@@ -657,7 +657,7 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
         "test_an_actor_without_the_bank_permission_is_denied"
     ),
     ("POST", "/api/v1/bank-profile-versions/{version_id}/activate", "permission"): (
-        "test_activation_is_denied_to_every_role"
+        "test_only_the_business_admin_may_activate_a_version"
     ),
     # M5 slice 2. Ten entries because five routes are `DUAL` and each owes both.
     #
@@ -909,13 +909,23 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
         "/api/v1/payment-requests/{request_id}/publications/current",
         "permission",
     ): "test_a_manager_may_neither_preview_nor_publish",
-    # M9 slice 7B. Its negative test is sharper than the others in this block: nobody holds
-    # `payment_publication.correct` by default, so the accountant who can publish is refused here.
+    # M9 slice 7B, re-pointed by the owner's decision of 2026-09-08. The entry used to name
+    # `test_nobody_holds_the_correction_permission_by_default`, and its sharpness came from the
+    # emptiness of the grant: nobody held `payment_publication.correct`, so the accountant who
+    # could publish was refused. `20260914_0045` gave the preparer's half to `accountant`, that
+    # test became the positive case, and **this citation was left pointing at a name that no
+    # longer existed** — caught by `test_every_claimed_test_exists` below, which is the only
+    # reason the rename did not quietly empty this row.
+    #
+    # The replacement is sharper than what it replaces rather than merely current: `manager` holds
+    # the *approver's* grant and not the preparer's, so it proves the route asks for
+    # `payment_attempt.correct_result` specifically. An account holding neither would be refused
+    # by a guard that asked for any correction grant at all.
     (
         "POST",
         "/api/v1/payment-requests/{request_id}/publications/corrections",
         "permission",
-    ): "test_nobody_holds_the_correction_permission_by_default",
+    ): "test_the_approver_alone_cannot_prepare_a_correction",
     # The trader's three, all covered by one test — and it is one test on purpose. The claim is
     # not "each route refuses" but "a second trader cannot tell these requests exist", which is a
     # property of the surface rather than of any route on it. `404` is what it asserts, and a
