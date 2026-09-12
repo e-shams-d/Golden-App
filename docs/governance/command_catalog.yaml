@@ -500,6 +500,7 @@
       "id": "bank_profile.create_version",
       "method": "POST",
       "path": "/api/v1/bank-profiles/{profile_id}/versions",
+      "path_note": "This address is not served. `POST /api/v1/bank-profiles` creates a profile together with its first version and answers `{profile_id, version_id}`; nothing creates a *second* version over HTTP, so a bank that changes a transfer limit still cannot be recorded through the API. `bank_configuration.create_version` exists as a command and its only callers are tests. Recorded as a gap rather than built here, because `synthetic_fixture_only_until_ADR_007` below is the reason it was never served and ADR-007 is still Open — it needs a real bank file, per-transaction limits and a cutoff time, all of which are the owner's to supply.",
       "permission": ["bank_profile.create_version"],
       "idempotency": "required",
       "concurrency": "if_match_profile_required",
@@ -513,15 +514,16 @@
       "id": "bank_profile.activate_version",
       "method": "POST",
       "path": "/api/v1/bank-profile-versions/{version_id}/activate",
-      "permission": [],
-      "permission_gap": "No action-specific activation permission exists in document 12.",
-      "idempotency": "required",
+      "permission": ["bank_profile.activate_version"],
+      "permission_resolved": "Owner decision 2026-09-08: business_admin, and deliberately not the accountant. A profile version carries the transfer limits, the cutoff time and the file rules, so it changes how every payment is built; the person who creates payments must not change the rules they are built under. Granted by 20260914_0045. The `permission_gap` this row carried was written when document 12 named no action-specific permission; 20260816_0014 seeded one and this row was never updated, which is the drift `test_catalogued_permissions_match_the_routes` now refuses.",
+      "idempotency": "not_implemented_no_replayable_effect",
+      "idempotency_note": "This row said `required` and the route accepts no Idempotency-Key. Recorded as the discrepancy it is rather than closed either way: activation is idempotent by state — the command refuses a version that is not `draft`, so a replay is a business refusal rather than a duplicate — but `command_catalog.yaml` is approved-provisional and narrowing a requirement is an M0 decision, not an implementer's. See the route docstring.",
       "concurrency": "lock_profile_and_active_version",
       "preconditions": ["validated_fixture", "config_hash", "business_and_technical_review"],
       "audit_action": "bank_profile.version_activated",
       "outbox_event": null,
       "source": "05_API_Specification.md:2108",
-      "status": "blocked_by_permission_gap_and_ADR_007"
+      "status": "owner_decided_2026_09_08_permission_granted"
     },
     {
       "id": "bank_mapping.create_version",

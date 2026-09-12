@@ -49,6 +49,21 @@ export const adminNavigation = [
   // `role.manage` would hide the screen from `manager`, who holds the read and has a
   // legitimate reason to see why a colleague's menu differs from theirs.
   { href: "/roles", label: t("admin.nav.roles"), permission: "role.read", icon: "roles" },
+  // M0 slice B. Bank configuration.
+  //
+  // **`bank_profile.read` and not `bank_profile.activate_version`**, which is this list's action
+  // rule meeting its stated exception again. The screen's one command is the activation, held by
+  // `business_admin` alone — but the screen is mostly a *read*: which banks exist, which
+  // configuration is in force, what its transfer limits are. An accountant building a payment has
+  // a legitimate reason to look, and gating on the activation grant would hide that answer from
+  // everybody not allowed to change it. The activation control lives on the detail screen, and the
+  // server refuses it there — visibility is not authorization, which is §20.1 and `UI-NAV-001`.
+  {
+    href: "/bank-configuration",
+    label: t("bank.nav"),
+    permission: "bank_profile.read",
+    icon: "roles",
+  },
   // M5 slice 8. Payment requests return, and this is the one item where the docstring's
   // action rule and its stated exception meet: the acting permissions are
   // `payment_request.review`, `.request_correction` and `.mark_eligible`, and a
