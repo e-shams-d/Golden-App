@@ -51,6 +51,15 @@ ENV NODE_ENV=production \
 # dependency tree (tar, undici, brace-expansion) from the shipped image.
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
+# **Take Debian's published fixes at build time**, for the reason `admin-web.Dockerfile` states
+# beside the identical line: `libpcre2-8-0` at `10.42-1` against `10.42-1+deb12u1`, two HIGH
+# advisories in a base package nothing here asked for and nothing can remove. `nginx.Dockerfile`
+# has done this for Alpine since M1; the bookworm images never did. A tag bump does not help —
+# the newest 24.x carries the identical package set, which was measured.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --gid 10001 app \
     && useradd --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app \
     && mkdir -p /app \
