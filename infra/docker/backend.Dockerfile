@@ -54,6 +54,26 @@ RUN rm -rf /usr/local/lib/python3.12/site-packages/pip \
     /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.12 \
     && ! python -c "import pip" 2>/dev/null
 
+# **Take Debian's published fixes at build time**, which is what `nginx.Dockerfile` has done for
+# Alpine since M1 and what the three bookworm images never did.
+#
+# The finding that prompted it: `libpcre2-8-0` at `10.42-1` against `10.42-1+deb12u1`, two HIGH
+# advisories — an out-of-bounds write allowing arbitrary code execution, and a memory corruption.
+# It is a base-image package this project never asked for and cannot remove: unlike `pip` above,
+# something in the base depends on it.
+#
+# **A tag bump does not help, and that was checked rather than assumed** — the same conclusion
+# `nginx.Dockerfile` reached for its own base. `python:3.12.13-slim-bookworm` cannot move at all
+# (`verify-native.sh` asserts the toolchain is exactly 3.12.13 and uv has no 3.12.14 download), and
+# for the node images the newest 24.x tag carries the identical package set. The fix exists in
+# Debian's repository and not yet in any published image, so it has to be asked for.
+#
+# `upgrade` rather than an `install --only-upgrade libpcre2-8-0`: a named package pins this line to
+# one advisory, and the next one is a different package. The lists are removed so no index ships.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --gid 10001 app \
     && useradd --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app \
     && mkdir -p /app/storage \

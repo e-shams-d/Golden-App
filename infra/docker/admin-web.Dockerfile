@@ -51,6 +51,21 @@ ENV NODE_ENV=production \
 # dependency tree (tar, undici, brace-expansion) from the shipped image.
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
+# **Take Debian's published fixes at build time.** `nginx.Dockerfile` has done this for Alpine
+# since M1; the three bookworm images never did, and `libpcre2-8-0` at `10.42-1` against
+# `10.42-1+deb12u1` — an out-of-bounds write allowing arbitrary code execution, plus a memory
+# corruption — is what that cost. It is a base package this project never asked for and cannot
+# remove, unlike the npm above.
+#
+# A tag bump does not help and that was measured: `node:24.21.0-bookworm-slim`, the newest 24.x,
+# carries the identical package set. The fix is in Debian's repository and in no published image.
+#
+# `upgrade` rather than a named `--only-upgrade`: a named package pins this to one advisory and the
+# next one is a different package. `backend.Dockerfile` carries the same line and the same reason.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --gid 10001 app \
     && useradd --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app \
     && mkdir -p /app \
