@@ -11,8 +11,10 @@ real rather than a comment.
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import psycopg
@@ -30,6 +32,7 @@ CSRF_HEADER = "X-CSRF-Token"
 BUSINESS_ADMIN = "business_admin1"
 # Holds bank_profile.read and neither write permission.
 ACCOUNTANT = "accountant1"
+WAREHOUSE = "warehouse1"
 
 
 @pytest.fixture
@@ -72,7 +75,16 @@ def _build(migrated: RuntimeIdentities, tmp_path: Any, app_env: str) -> Any:
     with psycopg.connect(_psycopg(migrated.owner_url)) as connection:
         existing = connection.execute("SELECT count(*) FROM admin_users").fetchone()
         if existing and existing[0] == 0:
-            for username, role in ((BUSINESS_ADMIN, "business_admin"), (ACCOUNTANT, "accountant")):
+            for username, role in (
+                (BUSINESS_ADMIN, "business_admin"),
+                (ACCOUNTANT, "accountant"),
+                # M0 slice B. The read negative this file did not have: `bank_profile.read` goes to
+                # accountant, manager, business_admin, technical_admin and read_only_auditor
+                # (`permission_catalog.yaml:735`), so both accounts above hold it and neither can
+                # show that the reads are guarded at all. `warehouse_operator` is the one internal
+                # role outside that list.
+                (WAREHOUSE, "warehouse_operator"),
+            ):
                 row = connection.execute(
                     "INSERT INTO admin_users (username, full_name, password_hash, status) "
                     "VALUES (%s, %s, %s, 'active') RETURNING id",
@@ -121,6 +133,52 @@ def sign_in(client: Any, username: str = BUSINESS_ADMIN) -> str:
 def create_profile(client: Any, token: str, *, code: str = "synthetic_bank_a", **extra: Any) -> Any:
     body = {"code": code, "display_name": "بانک آزمایشی", **extra}
     return client.post("/api/v1/bank-profiles", headers={CSRF_HEADER: token}, json=body)
+
+
+def test_the_profile_read_says_which_version_is_in_force(world: dict[str, Any]) -> None:
+    """The content of `GET /bank-profiles/{id}`, not merely its guard.
+
+    **Written because a negative control said the guard was all this read had.** Control 5 of
+    `scripts/sabotage-m0-slice-b.sh` replaces `current_version_id=profile.current_version_id` with
+    `None` — a read that lists a bank's configurations and refuses to say which one is in force —
+    and nothing failed. The permission sweep above checks status codes; nobody checked the body.
+
+    `current_version_id` is what makes the list *decidable*. Without it a screen must infer the
+    live version by scanning for `status == "active"`, which is a second opinion about a fact the
+    profile row already holds — and the two disagreeing is precisely the state an operator most
+    needs to see rather than have papered over.
+
+    Activation goes through the route rather than the database, because `20260914_0045` made that
+    reachable and this is the first test in this file that can use it.
+    """
+
+    client = world["client"]
+    token = sign_in(client, BUSINESS_ADMIN)
+    created = create_profile(client, token, code="synthetic_bank_live")
+    assert created.status_code == 201, created.text
+    profile_id = created.json()["profile_id"]
+    version_id = created.json()["version_id"]
+
+    before = client.get(f"/api/v1/bank-profiles/{profile_id}")
+    assert before.status_code == 200, before.text
+    assert [v["id"] for v in before.json()["versions"]] == [version_id]
+    assert before.json()["versions"][0]["status"] == "draft"
+    assert before.json()["current_version_id"] is None, (
+        "a profile whose only version is a draft already names one as in force"
+    )
+
+    activated = client.post(
+        f"/api/v1/bank-profile-versions/{version_id}/activate",
+        headers={CSRF_HEADER: token},
+    )
+    assert activated.status_code == 204, activated.text
+
+    after = client.get(f"/api/v1/bank-profiles/{profile_id}").json()
+    assert after["current_version_id"] == version_id, (
+        "the version was activated and the profile read does not name it as current. A screen "
+        "would have to guess which configuration is in force."
+    )
+    assert after["versions"][0]["status"] == "active"
 
 
 def test_a_profile_and_its_first_version_are_created_together(
@@ -342,13 +400,57 @@ def test_an_actor_without_the_bank_permission_is_denied(world: dict[str, Any]) -
 
     The accountant holds `bank_profile.read` and neither write permission — genuinely
     authenticated, genuinely unauthorised, which is the combination the guards exist for.
+
+    **The reads had no negative at all until M0 slice B**, and the reason is worth naming because
+    it is easy to reproduce: every account this fixture had held `bank_profile.read`, so the two
+    `200`s below proved the guard *admits* and nothing proved it *refuses*. Deleting
+    `dependencies=[requires(...)]` from either read would have changed no assertion here.
+    `warehouse_operator` is the one internal role the catalogue leaves out, and it is what makes
+    the second half of this test possible.
+
+    The reads are swept rather than listed, and the sweep asserts its own completeness: the third
+    read arrived in slice B and would otherwise have been the first route this file silently did
+    not cover.
     """
 
     client = world["client"]
     token = sign_in(client, ACCOUNTANT)
+    profile_id = create_profile(client, sign_in(client), code="synthetic_bank_r").json()[
+        "profile_id"
+    ]
 
-    assert client.get("/api/v1/bank-profiles").status_code == 200
-    assert client.get("/api/v1/bank-accounts").status_code == 200
+    reads = (
+        "/api/v1/bank-profiles",
+        f"/api/v1/bank-profiles/{profile_id}",
+        "/api/v1/bank-accounts",
+    )
+
+    contract = json.loads(
+        (Path(__file__).resolve().parents[2] / "services/backend/openapi/v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    published = {
+        path
+        for path, operations in contract["paths"].items()
+        if "get" in operations
+        and path.startswith(("/api/v1/bank-profiles", "/api/v1/bank-accounts"))
+    }
+    assert len(published) == len(reads), (
+        f"the contract publishes {len(published)} bank configuration reads and this test exercises "
+        f"{len(reads)}: {sorted(published)}"
+    )
+
+    sign_in(client, ACCOUNTANT)
+    for path in reads:
+        assert client.get(path).status_code == 200, path
+
+    # And the role outside the catalogue's list reaches none of them.
+    sign_in(client, WAREHOUSE)
+    for path in reads:
+        assert client.get(path).status_code == 403, path
+
+    token = sign_in(client, ACCOUNTANT)
 
     assert create_profile(client, token, code="synthetic_bank_z").status_code == 403
     denied = client.post(
