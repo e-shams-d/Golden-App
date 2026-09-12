@@ -51,8 +51,8 @@
   },
   "summary": {
     "file_count": 17,
-    "total_bytes": 348173,
-    "total_lines": 3801
+    "total_bytes": 349840,
+    "total_lines": 3803
   },
   "validation": {
     "utf8": true,
@@ -108,9 +108,9 @@
     },
     {
       "path": "docs/governance/command_catalog.yaml",
-      "bytes": 31153,
-      "lines": 726,
-      "sha256": "0028809b008d2356ecf8aae41a4b8bfbe13cae808de0f66d9169b4efeae1d751"
+      "bytes": 32820,
+      "lines": 728,
+      "sha256": "67bb39ddbc598adbe6d199f96ab1cd3ab47f90b100d24827caf385454957fd4a"
     },
     {
       "path": "docs/governance/CONFLICT_REGISTER.md",

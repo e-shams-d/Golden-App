@@ -143,6 +143,11 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # everyone — shipping it before the guard is reviewable ships a decision as an
         # accident.
         "listBankProfiles",
+        # M0 slice B. A profile with its versions — the read that made the activation usable. The
+        # list returns four fields and no versions, and `createBankProfile` answers with the id of
+        # the version it just made, so until this route the only version anybody could activate was
+        # one they had personally created moments earlier.
+        "getBankProfile",
         "createBankProfile",
         "listBankAccounts",
         "createBankAccount",

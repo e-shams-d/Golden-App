@@ -167,6 +167,11 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # belongs to no trader, so there is no owner to compare an actor against. A trader
     # session is refused at the audience boundary before any of this is reached.
     ("GET", "/api/v1/bank-profiles"): PERMISSION,
+    # M0 slice B. The read that made activation reachable: nothing returned a profile's versions,
+    # so the only `version_id` obtainable was the one the profile create had just answered with.
+    # `PERMISSION` like its neighbours — a bank's configuration is internal and has no owning
+    # trader to scope by.
+    ("GET", "/api/v1/bank-profiles/{profile_id}"): PERMISSION,
     ("POST", "/api/v1/bank-profiles"): PERMISSION,
     ("GET", "/api/v1/bank-accounts"): PERMISSION,
     ("POST", "/api/v1/bank-accounts"): PERMISSION,
@@ -663,6 +668,13 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
         "test_a_trader_cannot_reach_an_internal_bank_bundle"
     ),
     ("GET", "/api/v1/bank-profiles", "permission"): (
+        "test_an_actor_without_the_bank_permission_is_denied"
+    ),
+    # M0 slice B. The same test, which that slice made able to answer for a read at all: every
+    # account the fixture had held `bank_profile.read`, so the reads were only ever shown to
+    # *admit*. `warehouse_operator` is the negative, and the test now sweeps every bank
+    # configuration read the contract publishes rather than naming two by hand.
+    ("GET", "/api/v1/bank-profiles/{profile_id}", "permission"): (
         "test_an_actor_without_the_bank_permission_is_denied"
     ),
     ("POST", "/api/v1/bank-profiles", "permission"): (
