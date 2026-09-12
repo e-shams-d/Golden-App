@@ -753,6 +753,58 @@
         "title": "BackgroundProcessingResponse",
         "type": "object"
       },
+      "BankProfileDetail": {
+        "additionalProperties": false,
+        "description": "A profile and every configuration it has ever had.\n\n**This read did not exist, and its absence made the activation command unreachable.** The list\nabove returns four fields and no versions; `POST /bank-profiles` returns the id of the version\nit just created and no other. So a person could activate exactly one version — the one they\nhad personally created moments earlier — and nothing could show them what was already there,\nwhich is in force, or what activating would replace.\n\n`current_version_id` is the profile's own pointer rather than a version derived by scanning\nstatuses. The two must agree — `20260816_0014` moves them in one transaction — and deriving it\nhere would hide a disagreement the operator most needs to see.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "current_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version Id"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/BankProfileVersionSummary"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "status",
+          "current_version_id",
+          "versions"
+        ],
+        "title": "BankProfileDetail",
+        "type": "object"
+      },
       "BankProfileListResponse": {
         "additionalProperties": false,
         "properties": {
@@ -798,6 +850,115 @@
           "status"
         ],
         "title": "BankProfileSummary",
+        "type": "object"
+      },
+      "BankProfileVersionSummary": {
+        "additionalProperties": false,
+        "description": "One configuration snapshot, as a person choosing between them needs to see it.\n\n**No `record_version`, because the row has none.** `BankProfileVersion` says why in its own\ndocstring: a version is \"superseded by inserting a new row, never edited\", so the runtime's\nUPDATE grant covers `status` alone and there is nothing for an `If-Match` to be stale against.\n`command_catalog.yaml` agrees — the activation's concurrency is\n`lock_profile_and_active_version`, a server-side lock, not a client precondition.\n\nThe limits and the cutoff are here because they are *what the operator is choosing between*.\nA list of version numbers and statuses would make somebody activate a configuration by its\nordinal, which is exactly how the wrong transfer limit reaches production.",
+        "properties": {
+          "after_cutoff_transfer_limit_irr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Cutoff Transfer Limit Irr"
+          },
+          "config_hash": {
+            "title": "Config Hash",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "cutoff_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cutoff Time"
+          },
+          "default_transfer_limit_irr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Transfer Limit Irr"
+          },
+          "effective_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective From"
+          },
+          "effective_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective To"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "splitting_enabled": {
+            "title": "Splitting Enabled",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "supports_description_field": {
+            "title": "Supports Description Field",
+            "type": "boolean"
+          },
+          "version_number": {
+            "title": "Version Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version_number",
+          "status",
+          "effective_from",
+          "effective_to",
+          "default_transfer_limit_irr",
+          "after_cutoff_transfer_limit_irr",
+          "cutoff_time",
+          "splitting_enabled",
+          "supports_description_field",
+          "config_hash",
+          "created_at"
+        ],
+        "title": "BankProfileVersionSummary",
         "type": "object"
       },
       "BatchCreated": {
@@ -10366,6 +10527,60 @@
           }
         },
         "summary": "Create Bank Profile",
+        "tags": [
+          "bank-configuration"
+        ]
+      }
+    },
+    "/api/v1/bank-profiles/{profile_id}": {
+      "get": {
+        "description": "`GET /api/v1/bank-profiles/{profile_id}`. **The read that made activation reachable.**\n\nM2 built `POST /bank-profile-versions/{version_id}/activate` and M0 granted it to\n`business_admin` on 2026-09-08. Neither made it *usable*: a `version_id` could be obtained from\nexactly one place, the response to creating a profile, so the only version anybody could\nactivate was one they had just made. Nothing listed what a bank already had, which of them was\nin force, or what activating would replace.\n\nThat is the same shape M0 slice A2 found behind the correction screen — a command with no read\nto feed it — and it is worth naming as a pattern rather than a coincidence: a write surface\nbuilt before anybody tried to *operate* it tends to be missing the read that makes choosing\npossible, and the gap is invisible to a gate that counts published operations.\n\n**Newest version first.** An operator opening a bank is asking \"what is in force and what came\nbefore\", and the answer they need is at the top. `version_number` is monotonic per profile —\n`uq_bank_profile_versions_number` enforces it — so it is a total order and needs no tiebreaker,\nunlike the timestamps this repository has twice been bitten by ordering on.",
+        "operationId": "getBankProfile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Profile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankProfileDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Get Bank Profile",
         "tags": [
           "bank-configuration"
         ]

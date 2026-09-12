@@ -98,31 +98,14 @@ NO_SCREEN: dict[tuple[str, str], str] = {
     ),
     # M11 Screens slice 10 built the settings surface this entry said was missing, so it left
     # the list — a deletion rather than an edit, which is what a closed entry looks like here.
-    # --- bank configuration ----------------------------------------------------------------------
-    ("GET", "/api/v1/bank-profiles"): "bank configuration has no screen; see the POST below",
-    ("POST", "/api/v1/bank-profiles"): (
-        "creating a bank profile is a configuration act performed once per bank. M2 built it for "
-        "the seeding path and no slice has owned a configuration surface."
-    ),
-    (
-        "GET",
-        "/api/v1/bank-accounts",
-    ): "bank configuration, like the profile routes above: performed once per bank and "
-    "owned by no slice",
-    (
-        "POST",
-        "/api/v1/bank-accounts",
-    ): "bank configuration, like the profile routes above: performed once per bank and "
-    "owned by no slice",
-    ("POST", "/api/v1/bank-profile-versions/{version_id}/activate"): (
-        "**this entry said 'blocked rather than unbuilt' and the block expired**, which is what "
-        "the note above promises an entry naming a blocking decision will do. "
-        "`bank_profile.activate_version` was granted to no role, so a screen behind it would have "
-        "refused every caller; the owner granted it to `business_admin` on 2026-09-08 and "
-        "`20260914_0045` carries it. What is left is the ordinary kind of gap — bank "
-        "configuration has no surface at all, exactly like the four profile and account "
-        "operations above — and the frontend completion plan's slice B owns all five together."
-    ),
+    # M0 slice B built the bank configuration surface, so its six operations left this list —
+    # `GET`/`POST` on profiles and accounts, the profile detail read that slice added, and the
+    # version activation. A deletion rather than an edit, which is what a closed entry looks like.
+    #
+    # The activation's entry is worth remembering for the shape it had: it said "**blocked rather
+    # than unbuilt**" because `bank_profile.activate_version` was granted to no role, and the note
+    # at the top of this list promises such an entry expires when the decision is made. The owner
+    # granted it on 2026-09-08, the entry became an ordinary gap, and slice B closed it.
     # --- the statement import path ---------------------------------------------------------------
     ("GET", "/api/v1/bank-statements"): "the statement import path; see the POST below",
     ("POST", "/api/v1/bank-statements"): (

@@ -92,6 +92,11 @@ const paths = [
   "/review-tasks/00000000-0000-4000-8000-000000000008",
   // M11 Screens slice 10. Changing your own password.
   "/password",
+  // M0 slice B. Bank configuration: the list with its two forms, and one profile's versions.
+  // Both, because they fail differently — the list renders forms with no session, the detail
+  // renders a table and an activation control whose confirmation step is its own markup.
+  "/bank-configuration",
+  "/bank-configuration/00000000-0000-4000-8000-000000000009",
 ] as const;
 
 for (const path of paths) {
