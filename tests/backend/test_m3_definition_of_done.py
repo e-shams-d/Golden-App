@@ -314,6 +314,10 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # M0 slice A2. The read that made a publication's `primary_evidence_link_id` resolvable; this
     # surface was three POSTs, so a screen holding that id could turn it into nothing.
     ("GET", "/api/v1/evidence-links/{link_id}"): PERMISSION,
+    # M0 slice C. The list, keyed on an attempt. `confirm-paid` has accepted a
+    # `primary_evidence_link_id` since M9 and nothing enumerated an attempt's links, so the
+    # confirmation screen could only ever offer the reason evidence was unavailable.
+    ("GET", "/api/v1/evidence-links"): PERMISSION,
     ("POST", "/api/v1/evidence-links"): PERMISSION,
     ("POST", "/api/v1/evidence-links/{link_id}/replace"): PERMISSION,
     ("POST", "/api/v1/evidence-links/{link_id}/void"): PERMISSION,
@@ -907,6 +911,11 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     # `manager` appears there twice: refused on every write and **permitted** on the read. The
     # negative for the read itself is `business_admin`, which holds no segment grant at all.
     ("GET", "/api/v1/evidence-links/{link_id}", "permission"): (
+        "test_no_evidence_route_answers_a_caller_without_the_permission"
+    ),
+    # M0 slice C's list, covered by the same test and for the same reason: it shares the read's
+    # guard, so `business_admin` — holding no segment grant at all — is its negative too.
+    ("GET", "/api/v1/evidence-links", "permission"): (
         "test_no_evidence_route_answers_a_caller_without_the_permission"
     ),
     ("POST", "/api/v1/evidence-links", "permission"): (

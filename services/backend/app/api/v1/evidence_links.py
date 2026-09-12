@@ -27,6 +27,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 
 from app.api.contract import VALIDATION_ERROR_RESPONSE
 from app.api.dependencies import get_runtime
@@ -168,6 +169,56 @@ def _require_key(idempotency_key: str | None) -> str:
     if idempotency_key is None:
         raise PreconditionRequiredError("Idempotency-Key")
     return idempotency_key
+
+
+@router.get(
+    "",
+    response_model=list[EvidenceLinkDetail],
+    operation_id="listEvidenceLinks",
+    summary="Every evidence link for one payment attempt, oldest first.",
+    responses=RESPONSES,
+    dependencies=[requires(declare("receipt_segment.read"))],
+)
+def list_evidence_links(
+    payment_attempt_id: uuid.UUID,
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+) -> list[EvidenceLinkDetail]:
+    """`GET /api/v1/evidence-links?payment_attempt_id=...`.
+
+    **The read that makes confirming a payment with evidence possible.** `POST
+    /payment-attempts/{id}/confirm-paid` has accepted a `primary_evidence_link_id` since M9, and
+    nothing listed an attempt's links — `getEvidenceLink` reads one by an id, and `AttemptResult`
+    carries no evidence fields at all. So the confirmation screen could only ever offer the
+    *reason evidence is unavailable*, and every confirmed payment in this system records an excuse
+    where it could record a document.
+
+    **Required rather than optional, and that is the disclosure decision.** An unfiltered list
+    would hand any holder of `receipt_segment.read` every evidence link in the centre, which is a
+    different and much larger disclosure than "what proves this attempt". A screen always has an
+    attempt in hand; a query parameter that could be omitted would be an enumeration surface
+    nobody asked for.
+
+    **Replaced links are included.** §12.6 at `:1306` — a replacement "never deletes or overwrites
+    the old relationship" — and the history is the point: a person looking at an attempt whose
+    evidence was corrected needs to see that it *was* corrected, not a single row that quietly
+    changed. `status` distinguishes them.
+
+    Oldest first by `confirmed_at`, with `id` breaking the tie. This repository has been bitten
+    twice by ordering on a timestamp alone, most recently in
+    `test_only_the_correction_request_publishes_an_outbox_event`.
+    """
+
+    del actor
+    with runtime.uow_factory() as uow:
+        rows = list(
+            uow.session.scalars(
+                select(ConfirmedEvidenceLink)
+                .where(ConfirmedEvidenceLink.payment_attempt_id == payment_attempt_id)
+                .order_by(ConfirmedEvidenceLink.confirmed_at, ConfirmedEvidenceLink.id)
+            )
+        )
+        return [_detail(row) for row in rows]
 
 
 @router.get(

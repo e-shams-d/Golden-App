@@ -7,11 +7,16 @@ import { useCallback, useEffect, useState } from "react";
 
 import { AdminShell } from "../../../components/admin-shell";
 import {
+  confirmEvidenceLink,
   confirmFailed,
   confirmPaid,
   createRetry,
+  listEvidenceLinks,
   markRetryRequired,
   readAttempt,
+  replaceEvidenceLink,
+  voidEvidenceLink,
+  type EvidenceLink,
   type PaymentAttempt,
 } from "../../../src/payment-results";
 
@@ -44,7 +49,13 @@ import {
 
 type Phase =
   | { readonly kind: "loading" }
-  | { readonly kind: "ready"; readonly attempt: PaymentAttempt; readonly ifMatch: string }
+  | {
+      readonly kind: "ready";
+      readonly attempt: PaymentAttempt;
+      readonly ifMatch: string;
+      /** M0 slice C. Read with the attempt, because the confirmation form's shape depends on it. */
+      readonly links: readonly EvidenceLink[];
+    }
   | { readonly kind: "failed" };
 
 /** Which form is open. Only one at a time: these are four different claims about one attempt. */
@@ -71,10 +82,19 @@ export default function AdminAttemptPage() {
   const [revisionId, setRevisionId] = useState("");
   const [amount, setAmount] = useState("");
 
+  // M0 slice C. What could prove this attempt.
+  const [segmentId, setSegmentId] = useState("");
+
   const load = useCallback(
     async (signal?: AbortSignal): Promise<Phase> => {
       const { attempt, ifMatch } = await readAttempt(attemptId, signal);
-      return { kind: "ready", attempt, ifMatch };
+      // Read with the attempt and carried on the same state, rather than set separately inside the
+      // effect. The confirmation form below offers a link *or* a reason and its shape depends on
+      // whether one exists, so the two must arrive together — and a second `setState` in the
+      // effect is what `react-hooks/set-state-in-effect` refuses, for the cascading render it
+      // causes.
+      const links = await listEvidenceLinks(attemptId, signal);
+      return { kind: "ready", attempt, ifMatch, links };
     },
     [attemptId],
   );
@@ -88,6 +108,12 @@ export default function AdminAttemptPage() {
       });
     return () => controller.abort();
   }, [load]);
+
+  // Derived from the phase rather than held separately, so there is one source for "what proves
+  // this attempt" and no second state to fall out of step with the attempt it describes.
+  const links = phase.kind === "ready" ? phase.links : [];
+  /** The link a confirmation would cite. One active primary link per attempt is a database rule. */
+  const activeLink = links.find((link) => link.status === "active") ?? null;
 
   const act = async (run: () => Promise<unknown>) => {
     setBusy(true);
@@ -249,11 +275,18 @@ export default function AdminAttemptPage() {
                     confirmPaid(attemptId, phase.ifMatch, {
                       bankTrackingNumber: tracking,
                       bankResultAt: resultAt,
-                      // One or the other, never neither: the command's precondition is
-                      // `evidence_policy_satisfied`, and a confirmation with no evidence and no
-                      // explanation is the shape that policy exists to refuse. This slice offers
-                      // the explanation; linking an evidence record is slice 6's surface.
-                      evidenceUnavailableReason: unavailableReason,
+                      // **One or the other, never neither**, which is what `evidence_policy_
+                      // satisfied` means. Until M0 slice C this screen could only ever send the
+                      // explanation — not by choice, but because nothing listed an attempt's
+                      // evidence links and the form had nothing to cite. Every payment confirmed
+                      // through this screen therefore recorded an excuse.
+                      //
+                      // Now it cites the link when one exists and asks for the reason only when
+                      // none does. The two are exclusive here rather than merely optional: sending
+                      // both would record a document *and* an apology for its absence.
+                      primaryEvidenceLinkId: activeLink?.id ?? null,
+                      evidenceUnavailableReason:
+                        activeLink === null ? unavailableReason : null,
                     }),
                   );
                 }}
@@ -280,16 +313,31 @@ export default function AdminAttemptPage() {
                     value={resultAt}
                   />
                 </label>
-                <label className="flex flex-col gap-1 text-sm">
-                  <span className="font-medium">{t("attempt.evidenceUnavailable")}</span>
-                  <input
-                    className="rounded border px-2 py-1"
-                    disabled={busy}
-                    onChange={(event) => setUnavailableReason(event.target.value)}
-                    required
-                    value={unavailableReason}
-                  />
-                </label>
+                {activeLink === null ? (
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span className="font-medium">{t("attempt.evidenceUnavailable")}</span>
+                    <input
+                      className="rounded border px-2 py-1"
+                      data-testid="attempt-evidence-unavailable"
+                      disabled={busy}
+                      onChange={(event) => setUnavailableReason(event.target.value)}
+                      required
+                      value={unavailableReason}
+                    />
+                    <span className="text-[var(--ink-600)]">
+                      {t("attempt.evidenceUnavailableHint")}
+                    </span>
+                  </label>
+                ) : (
+                  <p className="text-sm" data-testid="attempt-evidence-cited">
+                    {t("attempt.evidenceWillBeCited")}{" "}
+                    <BidiText>
+                      <span className="break-all font-mono text-xs">
+                        {activeLink.receipt_segment_id}
+                      </span>
+                    </BidiText>
+                  </p>
+                )}
                 <button className="rounded border px-3 py-1" disabled={busy} type="submit">
                   {t("attempt.submit")}
                 </button>
@@ -421,6 +469,131 @@ export default function AdminAttemptPage() {
                 </button>
               </form>
             ) : null}
+
+            {/*
+              M0 slice C. The evidence panel, and the reason the confirmation form above changed
+              shape. Before it, `POST /evidence-links` had existed since M9 with no caller and no
+              read to feed it, so a confirmation could only ever record why evidence was
+              unavailable.
+
+              **Replaced and revoked links stay listed.** §12.6 `:1306` — a replacement never
+              deletes the old relationship — and somebody looking at an attempt whose evidence was
+              corrected needs to see that it was, not one row that quietly changed.
+            */}
+            <section aria-labelledby="attempt-evidence-heading" className="space-y-3">
+              <h2 className="text-lg font-semibold" id="attempt-evidence-heading">
+                {t("attempt.evidenceHeading")}
+              </h2>
+
+              {links.length === 0 ? (
+                <StateView
+                  description={t("attempt.noEvidence")}
+                  headingLevel={3}
+                  kind="empty"
+                  title={t("attempt.noEvidenceTitle")}
+                />
+              ) : (
+                <ul className="space-y-2" data-testid="attempt-evidence-list">
+                  {links.map((link) => (
+                    <li className="rounded border p-3 text-sm" data-status={link.status} key={link.id}>
+                      <BidiText>
+                        <span className="break-all font-mono text-xs">
+                          {link.receipt_segment_id}
+                        </span>
+                      </BidiText>
+                      <span className="ms-3">
+                        <BidiText>{link.status}</BidiText>
+                      </span>
+                      {link.replacement_reason === null ? null : (
+                        <span className="ms-3 text-[var(--ink-600)]">
+                          <BidiText>{link.replacement_reason}</BidiText>
+                        </span>
+                      )}
+                      {link.status === "active" ? (
+                        <span className="ms-3 flex flex-wrap gap-2 pt-2">
+                          <button
+                            className="rounded border px-2 py-1 disabled:opacity-50"
+                            data-testid="attempt-evidence-replace"
+                            disabled={busy || segmentId.trim() === "" || reason.trim() === ""}
+                            onClick={() =>
+                              void act(() =>
+                                replaceEvidenceLink(link.id, {
+                                  newReceiptSegmentId: segmentId.trim(),
+                                  replacementReason: reason,
+                                }),
+                              )
+                            }
+                            type="button"
+                          >
+                            {t("attempt.evidenceReplace")}
+                          </button>
+                          <button
+                            className="rounded border px-2 py-1 disabled:opacity-50"
+                            data-testid="attempt-evidence-void"
+                            disabled={busy || reason.trim() === ""}
+                            onClick={() => void act(() => voidEvidenceLink(link.id, reason))}
+                            type="button"
+                          >
+                            {t("attempt.evidenceVoid")}
+                          </button>
+                        </span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="space-y-3 rounded border p-4">
+                <p className="text-sm text-[var(--ink-600)]">{t("attempt.evidenceHint")}</p>
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="font-medium">{t("attempt.evidenceSegment")}</span>
+                  {/* An id typed or pasted, and that is the honest shape today. Choosing a crop
+                      visually needs the segment browser the frontend plan gives slice E: the
+                      bundle's segment list exists (M0 slice A2 added it) and the screen that
+                      renders crops for selection does not. A picker built over a list the person
+                      cannot see would be worse than a field they can paste into from the bundle
+                      workspace, which is where segment ids are visible today. */}
+                  <input
+                    className="rounded border px-2 py-1 font-mono"
+                    data-testid="attempt-evidence-segment"
+                    disabled={busy}
+                    onChange={(event) => setSegmentId(event.target.value)}
+                    value={segmentId}
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="font-medium">{t("attempt.reason")}</span>
+                  <input
+                    className="rounded border px-2 py-1"
+                    data-testid="attempt-evidence-reason"
+                    disabled={busy}
+                    onChange={(event) => setReason(event.target.value)}
+                    value={reason}
+                  />
+                </label>
+                <button
+                  className="rounded border px-3 py-1 disabled:opacity-50"
+                  data-testid="attempt-evidence-confirm"
+                  disabled={busy || segmentId.trim() === "" || activeLink !== null}
+                  onClick={() =>
+                    void act(() =>
+                      confirmEvidenceLink({
+                        paymentAttemptId: attemptId,
+                        receiptSegmentId: segmentId.trim(),
+                      }),
+                    )
+                  }
+                  type="button"
+                >
+                  {t("attempt.evidenceConfirm")}
+                </button>
+                {activeLink === null ? null : (
+                  <p className="text-sm text-[var(--ink-600)]">
+                    {t("attempt.evidenceAlreadyLinked")}
+                  </p>
+                )}
+              </div>
+            </section>
           </>
         ) : null}
       </section>

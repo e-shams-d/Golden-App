@@ -259,6 +259,24 @@ export const faMessages = {
   "attempt.failureCode": "کد ناموفقی",
   "attempt.failureReason": "شرح ناموفقی",
   "attempt.evidenceUnavailable": "دلیل نبودن مستند",
+  // M0 slice C. The evidence panel, and the reason the confirmation form changed shape: until this
+  // slice nothing listed an attempt's evidence links, so a confirmation could only record an
+  // excuse.
+  "attempt.evidenceUnavailableHint":
+    "این فیلد فقط وقتی لازم است که مدرکی به این تلاش وصل نشده باشد. اگر مدرک را در بخش پایین وصل کنید، همان ثبت می‌شود و این پرسش برداشته می‌شود.",
+  "attempt.evidenceWillBeCited": "این تأیید به این مدرک استناد می‌کند:",
+  "attempt.evidenceHeading": "مدرک این تلاش",
+  "attempt.noEvidenceTitle": "مدرکی به این تلاش وصل نشده",
+  "attempt.noEvidence":
+    "تا وقتی مدرکی وصل نشود، تأیید پرداخت فقط می‌تواند دلیلِ نبودنش را ثبت کند.",
+  "attempt.evidenceHint":
+    "شناسهٔ تصویر بریده‌شده را از صفحهٔ دستهٔ بانکی بردارید و اینجا وارد کنید. انتخاب تصویری از میان تصویرها هنوز ساخته نشده.",
+  "attempt.evidenceSegment": "شناسهٔ تصویر مدرک",
+  "attempt.evidenceConfirm": "وصل کردن مدرک",
+  "attempt.evidenceReplace": "جایگزینی مدرک",
+  "attempt.evidenceVoid": "باطل کردن پیوند",
+  "attempt.evidenceAlreadyLinked":
+    "این تلاش یک مدرک فعال دارد. برای عوض کردنش از «جایگزینی» استفاده کنید — تا وقتی نتیجه منتشر نشده باشد.",
   "attempt.reason": "دلیل",
   "attempt.revisionId": "شناسه نسخه درخواست",
   "attempt.retryAmount": "مبلغ تلاش تازه (ریال)",

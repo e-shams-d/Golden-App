@@ -12522,6 +12522,102 @@
       }
     },
     "/api/v1/evidence-links": {
+      "get": {
+        "description": "`GET /api/v1/evidence-links?payment_attempt_id=...`.\n\n**The read that makes confirming a payment with evidence possible.** `POST\n/payment-attempts/{id}/confirm-paid` has accepted a `primary_evidence_link_id` since M9, and\nnothing listed an attempt's links — `getEvidenceLink` reads one by an id, and `AttemptResult`\ncarries no evidence fields at all. So the confirmation screen could only ever offer the\n*reason evidence is unavailable*, and every confirmed payment in this system records an excuse\nwhere it could record a document.\n\n**Required rather than optional, and that is the disclosure decision.** An unfiltered list\nwould hand any holder of `receipt_segment.read` every evidence link in the centre, which is a\ndifferent and much larger disclosure than \"what proves this attempt\". A screen always has an\nattempt in hand; a query parameter that could be omitted would be an enumeration surface\nnobody asked for.\n\n**Replaced links are included.** §12.6 at `:1306` — a replacement \"never deletes or overwrites\nthe old relationship\" — and the history is the point: a person looking at an attempt whose\nevidence was corrected needs to see that it *was* corrected, not a single row that quietly\nchanged. `status` distinguishes them.\n\nOldest first by `confirmed_at`, with `id` breaking the tie. This repository has been bitten\ntwice by ordering on a timestamp alone, most recently in\n`test_only_the_correction_request_publishes_an_outbox_event`.",
+        "operationId": "listEvidenceLinks",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "payment_attempt_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Payment Attempt Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EvidenceLinkDetail"
+                  },
+                  "title": "Response Listevidencelinks",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the evidence permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such link, attempt or segment."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "An active primary link already exists for this attempt or segment."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          },
+          "428": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Idempotency-Key is required."
+          }
+        },
+        "summary": "Every evidence link for one payment attempt, oldest first.",
+        "tags": [
+          "evidence-links"
+        ]
+      },
       "post": {
         "description": "`POST /api/v1/evidence-links`, per `:1824`.\n\n**\"The command enforces one active primary link per attempt and one active primary attempt per\nsegment\"** (`:1836`) — and it is enforced by two partial unique indexes rather than by a read\nin the handler, because two accountants on two screens would both pass a read.",
         "operationId": "confirmEvidenceLink",

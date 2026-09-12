@@ -277,6 +277,10 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # M0 slice A2 adds the read. A publication carries `primary_evidence_link_id` and this
         # surface was three POSTs, so the id a trader's result is proved by resolved to nothing.
         "getEvidenceLink",
+        # M0 slice C. The list an attempt's confirmation needs. Required `payment_attempt_id`
+        # rather than an optional filter: an unfiltered list would hand every holder of
+        # `receipt_segment.read` every evidence link in the centre.
+        "listEvidenceLinks",
         "confirmEvidenceLink",
         "replaceEvidenceLink",
         "voidEvidenceLink",
