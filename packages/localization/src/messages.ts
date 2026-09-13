@@ -426,6 +426,76 @@ export const faMessages = {
   "statement.runQueued": "درخواست خواندن ثبت شد. نتیجه پس از پایان کار نمایش داده می‌شود.",
   "statement.runFailed": "شروع خواندن فایل انجام نشد.",
   "statement.errorSummary": "خطای این نوبت",
+  // M0 slice E. The candidate drawer: which payment this cut of a bank result is evidence for.
+  //
+  // **`candidate.advisory` and `candidate.acceptNotPaid` are the two sentences that must not be
+  // softened.** `05_API_Specification.md:1810` forbids acceptance from marking anything paid, and
+  // this is the one screen where a person could believe money had moved because a button implied
+  // it. Said before the click and again beside it.
+  "candidate.segments": "قطعه‌های این دسته",
+  "candidate.noSegmentsTitle": "هنوز قطعه‌ای بریده نشده است",
+  "candidate.noSegments":
+    "برای اینکه بتوان یک رسید را به پرداختی نسبت داد، اول باید تصویر آن از سند بانکی بریده شود.",
+  "candidate.title": "پرداخت‌های پیشنهادی برای این رسید",
+  "candidate.advisory":
+    "این‌ها فقط پیشنهادند. پذیرفتن یک پیشنهاد هیچ پرداختی را «انجام‌شده» ثبت نمی‌کند؛ فقط مشخص می‌کند این رسید مدرکِ کدام پرداخت است.",
+  "candidate.noneTitle": "هنوز پیشنهادی ثبت نشده است",
+  "candidate.noneDescription":
+    "با جستجوی مبلغ یا شماره پیگیری، پرداخت مربوط به این رسید را پیدا کنید و پیشنهاد بدهید.",
+  "candidate.attempt": "شناسهٔ پرداخت",
+  "candidate.status": "وضعیت",
+  "candidate.method": "منبع پیشنهاد",
+  "candidate.score": "درجهٔ اطمینان",
+  "candidate.noScore": "محاسبه نشده",
+  "candidate.accept": "پذیرفتن این پیشنهاد",
+  "candidate.acceptNotPaid":
+    "این کار پرداخت را «انجام‌شده» ثبت نمی‌کند. ثبت نهایی در صفحهٔ همان پرداخت و با شمارهٔ پیگیری بانک انجام می‌شود.",
+  "candidate.rejectReason": "دلیل رد کردن",
+  "candidate.reject": "رد کردن",
+  "candidate.propose": "پیدا کردن پرداخت مربوط به این رسید",
+  "candidate.nothingExtracted":
+    "از روی این رسید نه مبلغی خوانده شد و نه شماره پیگیری‌ای. مقدارها را از روی تصویر خودتان وارد کنید.",
+  "candidate.amount": "مبلغ (ریال)",
+  "candidate.tracking": "شماره پیگیری بانک",
+  "candidate.search": "جستجوی پرداخت",
+  "candidate.noMatches": "پرداختی با این مشخصات پیدا نشد.",
+  "candidate.attemptNumber": "پرداخت شمارهٔ",
+  "candidate.proposeThis": "این یکی است",
+  "candidate.amountTooLarge": "این مبلغ برای جستجو بزرگ‌تر از حد مجاز است.",
+  "candidate.searchFailed": "جستجوی پرداخت‌ها انجام نشد. لطفاً دوباره تلاش کنید.",
+  "candidate.failedTitle": "پیشنهادها خوانده نشد",
+  "candidate.failed": "اطلاعات پیشنهادها دریافت نشد. لطفاً دوباره تلاش کنید.",
+  // M0 slice E, on the owner's decision of 2026-09-13: the accountant chooses which batch a
+  // returned bundle answers, by its number.
+  //
+  // **`batchLink.notProof` must not be softened.** `05_API_Specification.md:1688` calls this
+  // association "operational context only"; a batch number beside a bundle reads as a claim about
+  // payment unless a sentence says it is not one.
+  //
+  // **`batchLink.suggestionIsAGuess` is the other load-bearing string.** The file name pre-selects
+  // a batch and never decides — a name that arrived renamed would otherwise attach a bundle to the
+  // wrong batch silently, and every receipt in it would be matched against the wrong payments.
+  "batchLink.title": "این نتیجه، جوابِ کدام دسته است؟",
+  "batchLink.notProof":
+    "این فقط مشخص می‌کند فایل بانک مربوط به کدام دسته است؛ به‌معنای انجام‌شدن هیچ پرداختی نیست.",
+  "batchLink.noneTitle": "هنوز به هیچ دسته‌ای وصل نشده است",
+  "batchLink.noneDescription":
+    "تا وقتی مشخص نشود این فایل جواب کدام دسته است، رسیدهایش را نمی‌توان به پرداخت‌ها نسبت داد.",
+  "batchLink.method": "روش",
+  "batchLink.by": "توسط",
+  "batchLink.bySystem": "سیستم",
+  "batchLink.previous": "پیوندهای قبلی",
+  "batchLink.choose": "دسته را انتخاب کنید",
+  "batchLink.chooseNone": "یک دسته انتخاب کنید",
+  "batchLink.noBatches": "هنوز دسته‌ای ساخته نشده است.",
+  "batchLink.suggestion": "از روی نام فایل حدس زده شد:",
+  "batchLink.suggestionIsAGuess":
+    "(این فقط یک حدس از روی نام فایل است. نام فایل ممکن است عوض شده باشد؛ خودتان تأیید کنید.)",
+  "batchLink.link": "وصل کردن به این دسته",
+  "batchLink.relink": "تغییر دسته",
+  "batchLink.relinkKeepsHistory": "پیوند قبلی پاک نمی‌شود و در سابقه می‌ماند.",
+  "batchLink.linked": "وصل شد.",
+  "batchLink.failed": "وصل کردن انجام نشد. لطفاً دوباره تلاش کنید.",
   // M0 slice A2. The correction, and the one dialog in this application that asks two people —
   // the accountant prepares and the manager approves by typing their own password here.
   "correction.open": "اصلاح نتیجه منتشرشده",

@@ -468,6 +468,11 @@ ROUTE_CLASSES: dict[tuple[str, str], str] = {
     # which is what the four POST routes' own negatives already rely on. `PERMISSION`, and it owes
     # a negative naming a caller who holds nothing.
     ("GET", "/api/v1/payment-attempts/{attempt_id}"): PERMISSION,
+    # M0 slice E. §17.1's list, under the same grant as the read above — and it owes its **own**
+    # negative rather than inheriting that one's. A leaky list fails differently from a leaky read:
+    # the detail route discloses one attempt to a caller who already had its id, and this one would
+    # hand over every attempt in the centre to a caller who had nothing.
+    ("GET", "/api/v1/payment-attempts"): PERMISSION,
     ("GET", "/api/v1/reports/queue-summary"): PERMISSION,
     # M11 Screens slice 2, the queue index. `PERMISSION` although the route declares none, and
     # the classification is the point rather than a formality: what a caller receives is decided
@@ -1172,6 +1177,12 @@ NEGATIVE_COVERAGE: dict[tuple[str, str, str], str] = {
     # a route nobody can reach.
     ("GET", "/api/v1/payment-attempts/{attempt_id}", "permission"): (
         "test_reading_an_attempt_needs_its_own_grant_and_is_not_permission_to_confirm"
+    ),
+    # M0 slice E. Its own name rather than the one above, for the reason the classification gives:
+    # the two routes share a grant and fail differently, and one test over both would let the list
+    # go unasserted while the entry still looked covered.
+    ("GET", "/api/v1/payment-attempts", "permission"): (
+        "test_searching_attempts_needs_the_read_grant"
     ),
     # M11 slice 1. Three separate tests rather than one shared name, because the three routes fail
     # in three different ways. A leaky list returns rows; a leaky mark-read edits one row that is

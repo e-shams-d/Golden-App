@@ -893,6 +893,98 @@ def test_reading_an_attempt_needs_its_own_grant_and_is_not_permission_to_confirm
     assert confirm_paid(world, attempts[0], evidence_unavailable_reason="x").status_code == 403
 
 
+def search_attempts(world: dict[str, Any], **query: Any) -> Any:
+    return world["client"].get("/api/v1/payment-attempts", params=query)
+
+
+def test_searching_attempts_needs_the_read_grant(world: dict[str, Any]) -> None:
+    """The negative `test_m3_definition_of_done.py` classifies this route as owing.
+
+    **`warehouse_operator` negative, `manager` positive**, the same pairing the detail read uses
+    and for the same reason: a test that only refused somebody would also pass against a route
+    nobody can reach.
+
+    Asserted separately rather than inferred from the detail route sharing a grant, because a leaky
+    *list* fails differently: the detail route discloses one attempt at a time, and this one would
+    hand over every attempt in the centre at once.
+    """
+
+    a_request_with_attempts(world, requested=900_000_000, splits=(900_000_000,))
+
+    sign_in_admin(world["client"], "result_warehouse")
+    refused = search_attempts(world)
+    assert refused.status_code == 403, (
+        f"a role with no attempt permission searched attempts and got {refused.status_code}"
+    )
+
+    sign_in_admin(world["client"], "result_manager")
+    allowed = search_attempts(world)
+    assert allowed.status_code == 200, (
+        "the manager holds `payment_attempt.read` and was refused, so the 403 above may be about "
+        "the route rather than about the grant"
+    )
+
+
+def test_the_search_finds_an_attempt_by_the_amount_a_bank_row_would_show(
+    world: dict[str, Any],
+) -> None:
+    """The content test, and the reason this route exists at all.
+
+    **Matching a receipt segment to an attempt is an amount question first.** The queue that lists
+    attempts awaiting a result renders `QueueRow`, which carries no amount, so a picker built on it
+    would ask an operator to choose between "attempt-1" and "attempt-2".
+
+    Asserted on the amounts returned rather than on how many came back: a route that ignored the
+    filter would return every attempt, and a count assertion would pass whenever the fixture
+    happened to hold one.
+    """
+
+    _, attempts = a_request_with_attempts(
+        world, requested=1_500_000_000, splits=(900_000_000, 600_000_000)
+    )
+
+    sign_in_admin(world["client"], "result_accountant")
+    found = search_attempts(world, amount_irr=600_000_000)
+    assert found.status_code == 200, found.text
+
+    items = found.json()["items"]
+    assert [item["amount_irr"] for item in items] == [600_000_000], (
+        f"the amount filter did not select: {[item['amount_irr'] for item in items]}"
+    )
+    assert items[0]["id"] == str(attempts[1])
+    # The precondition travels with the row. Without it a screen acting from this list would have
+    # to re-read every attempt to obtain the `If-Match` its command requires.
+    assert items[0]["record_version"] >= 1
+
+
+def test_the_search_discloses_neither_the_iban_nor_the_beneficiary(
+    world: dict[str, Any],
+) -> None:
+    """§17.1 lists an IBAN filter and this route has none, deliberately.
+
+    POL-003 is **open**, so widening disclosure is the owner's decision. Two things follow and both
+    are asserted here: the response carries neither the IBAN snapshot nor the beneficiary name, and
+    an undeclared query parameter cannot smuggle one in — FastAPI never binds a parameter the route
+    does not declare, which is a stronger refusal than a check.
+
+    Written as a positive assertion over the keys rather than over one field name, so a later field
+    carrying payee data fails this too.
+    """
+
+    a_request_with_attempts(world, requested=900_000_000, splits=(900_000_000,))
+
+    sign_in_admin(world["client"], "result_accountant")
+    response = search_attempts(world, beneficiary_iban_snapshot="IR000000000000000000000000")
+    assert response.status_code == 200, response.text
+
+    items = response.json()["items"]
+    assert items, "the fixture produced no attempts, so this test asserted nothing"
+    disclosed = {key for item in items for key in item}
+    assert not any("iban" in key or "beneficiary" in key for key in disclosed), (
+        f"a search response carries payee data: {sorted(disclosed)}"
+    )
+
+
 def test_an_attempt_that_does_not_exist_is_404_not_403(world: dict[str, Any]) -> None:
     """The order of the guards, asserted from the outside.
 

@@ -621,6 +621,35 @@
         "title": "AttachFileRequest",
         "type": "object"
       },
+      "AttemptPageResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AttemptSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "AttemptPageResponse",
+        "type": "object"
+      },
       "AttemptResult": {
         "additionalProperties": false,
         "description": "What a confirmed attempt looks like, and what its request became.\n\n`request_status` is included because the confirmation changes it and a client that had to\nre-read the request to find out would be reading a value that another confirmation may already\nhave moved.",
@@ -728,6 +757,79 @@
           "request_status"
         ],
         "title": "AttemptResult",
+        "type": "object"
+      },
+      "AttemptSummary": {
+        "additionalProperties": false,
+        "description": "One row of §17.1's list, and **deliberately narrower than the detail read**.\n\n**No beneficiary name and no IBAN.** `AttemptResult` carries neither either, so a list that\ndid would disclose more than the read it links to — and POL-003 is open, which makes widening\ndisclosure an owner's decision rather than a convenience. The absence is also not a loss: the\ntwo fields an operator matches a bank row against are the amount and the tracking number, which\nare exactly what `app/statements/parser.py` makes `REQUIRED_FIELDS` for the same reason.",
+        "properties": {
+          "amount_irr": {
+            "title": "Amount Irr",
+            "type": "integer"
+          },
+          "attempt_number": {
+            "title": "Attempt Number",
+            "type": "integer"
+          },
+          "bank_result_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Result At"
+          },
+          "bank_tracking_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Tracking Number"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "payment_request_id": {
+            "format": "uuid",
+            "title": "Payment Request Id",
+            "type": "string"
+          },
+          "record_version": {
+            "title": "Record Version",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "payment_request_id",
+          "attempt_number",
+          "status",
+          "amount_irr",
+          "bank_tracking_number",
+          "bank_result_at",
+          "created_at",
+          "record_version"
+        ],
+        "title": "AttemptSummary",
         "type": "object"
       },
       "BackgroundProcessingResponse": {
@@ -17691,6 +17793,188 @@
         "summary": "Release identity, applied schema revision and flag snapshot",
         "tags": [
           "operations"
+        ]
+      }
+    },
+    "/api/v1/payment-attempts": {
+      "get": {
+        "description": "`GET /api/v1/payment-attempts`, per §17.1 `:1553`.\n\n**M0 slice E, and it exists because a published command could not be reached.** Proposing a\nmatching candidate takes a `payment_attempt_id`, and until this route nothing in the contract\nproduced one that a person could choose:\n\n- `GET /payment-attempts/{id}` needs the id it returns.\n- `GET /queues/sent-attempts-awaiting-result` renders `QueueRow` — five fields by a deliberate\n  disclosure decision — and **carries no amount**. Matching a bank receipt to an attempt is an\n  amount question before it is anything else, so a picker built on that queue would list\n  \"attempt-1, attempt-2, attempt-3\" and ask an operator to guess.\n\nThat is the same defect this project has now found five times in five consecutive slices: a\ncommand published without the read that makes it operable. It is invisible to\n`test_every_operation_has_a_screen.py`, because the *command* has a screen.\n\n**`payment_attempt.read`, the same grant the detail read carries**, which `20260801_0008:313`\ngives to `manager` while granting neither confirmation permission. Searching is not permission\nto confirm.\n\nSorting and the cursor come from `app/db/pagination.py`, so an unknown *sort* is refused rather\nthan ignored — ignoring one returns a different page than the caller asked for and says nothing\nabout it. `record_version` is on every row for the reason `get_attempt` gives about the `ETag`:\na screen that acts from a list would otherwise have to re-read each row to obtain the\nprecondition its command requires.\n\n**Filters are declared rather than checked at runtime, and the check moved to a test.** An\nearlier draft called `ATTEMPT_LIST_SPEC.require_filterable(name)` inside the loop below. A\nnegative control removing that call was **not caught**, and it was right not to be: every name\nin the loop is a literal that is in the spec by construction, so the call could not fail. An\nundeclared query parameter never binds at all — FastAPI refuses it before this function runs.\n\nWhat that guard was actually for is a parameter added *here* without being added to the spec,\nand `test_every_attempt_filter_is_allowlisted` is where that is now caught — at test time\nrather than on a request.",
+        "operationId": "listPaymentAttempts",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "payment_request_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Payment Request Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "amount_irr",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Amount Irr"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bank_tracking_number",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bank Tracking Number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttemptPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "An unknown sort, filter or cursor."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks `payment_attempt.read`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request failed canonical validation."
+          }
+        },
+        "summary": "Search payment attempts by amount, tracking number, status or request.",
+        "tags": [
+          "payment-attempts"
         ]
       }
     },

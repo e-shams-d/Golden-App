@@ -425,6 +425,11 @@ def test_openapi_operations_are_stable_and_error_schema_matches_runtime() -> Non
         # `record_version`, so a screen could only guess a precondition. `AttemptResult` was
         # already the shape — it was just only ever a *response* to a confirmation.
         "getPaymentAttempt",
+        # M0 slice E. §17.1's list, and it exists because a *command* could not be reached:
+        # proposing a matching candidate takes a `payment_attempt_id`, and the only other source of
+        # one was `GET /queues/sent-attempts-awaiting-result`, whose `QueueRow` carries no amount.
+        # Matching a bank receipt to an attempt is an amount question before it is anything else.
+        "listPaymentAttempts",
         # M11 Screens slice 6, closing the two gaps slice 5's precondition gate recorded. `confirm`
         # needs the receipt's version and `reject` needs the *match's* — which slice 5 had recorded
         # as the receipt's, so one read would not have been enough.

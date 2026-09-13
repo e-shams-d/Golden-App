@@ -27,8 +27,9 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header, Response
+from fastapi import APIRouter, Depends, Header, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 
 from app.api.contract import VALIDATION_ERROR_RESPONSE
 from app.api.dependencies import get_runtime
@@ -49,6 +50,7 @@ from app.core.runtime import RuntimeServices
 from app.core.time import utc_now
 from app.db.models.payment_batch import PaymentAttempt
 from app.db.models.payment_request import PaymentRequest
+from app.db.pagination import ListSpec, SortField, apply_pagination, build_page
 from app.security.actor import ActorContext
 from app.security.permissions import declare
 
@@ -144,6 +146,82 @@ class AttemptResult(BaseModel):
     request_status: str
 
 
+class AttemptSummary(BaseModel):
+    """One row of §17.1's list, and **deliberately narrower than the detail read**.
+
+    **No beneficiary name and no IBAN.** `AttemptResult` carries neither either, so a list that
+    did would disclose more than the read it links to — and POL-003 is open, which makes widening
+    disclosure an owner's decision rather than a convenience. The absence is also not a loss: the
+    two fields an operator matches a bank row against are the amount and the tracking number, which
+    are exactly what `app/statements/parser.py` makes `REQUIRED_FIELDS` for the same reason.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    payment_request_id: uuid.UUID
+    attempt_number: int
+    status: str
+    amount_irr: int
+    bank_tracking_number: str | None
+    bank_result_at: datetime | None
+    created_at: datetime
+    record_version: int
+
+
+class AttemptPageResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[AttemptSummary]
+    next_cursor: str | None
+
+
+# **Four of §17.1's nine filters, and the other five are absent rather than forgotten.**
+#
+# Built: `payment_request_id`, `status`, `amount_irr`, `bank_tracking_number`. Those are what the
+# one caller needs — matching a receipt segment to the attempt it is evidence for — and a filter
+# with no caller is this repository's most-repeated defect in its other form.
+#
+# Not built, each for its own reason rather than a shared one:
+#
+# - **IBAN.** §17.1 lists it; accepting one as a query parameter writes a beneficiary's IBAN into
+#   every access log and proxy along the way, which is the disclosure POL-003 is open about. A
+#   search by IBAN is a decision the owner should make knowing that, not one an implementer makes
+#   because a document lists the field.
+# - **Batch version and export.** `payment_attempts` carries neither column; both are reached
+#   through the allocation tables, and an unindexed join added for a filter nothing calls is the
+#   thing `ListSpec`'s docstring warns against in terms.
+# - **Trader.** A join through `payment_requests`, and the screens that care about one trader
+#   start from that trader rather than from this list.
+# - **Result date.** A range filter, which this spec has no vocabulary for — every filter here is
+#   an equality. Inventing `*_from`/`*_to` for a caller that does not exist would be inventing the
+#   convention too.
+ATTEMPT_LIST_SPEC = ListSpec(
+    sorts=(
+        SortField("created_at", PaymentAttempt.created_at),
+        SortField("id", PaymentAttempt.id, unique=True),
+    ),
+    filters=frozenset(
+        {"payment_request_id", "status", "amount_irr", "bank_tracking_number"}
+    ),
+    default_sort="created_at",
+)
+
+
+def _summary(attempt: PaymentAttempt) -> AttemptSummary:
+    return AttemptSummary(
+        id=attempt.id,
+        payment_request_id=attempt.payment_request_id,
+        attempt_number=attempt.attempt_number,
+        status=attempt.status,
+        amount_irr=attempt.amount_irr,
+        bank_tracking_number=attempt.bank_tracking_number,
+        bank_result_at=attempt.bank_result_at,
+        created_at=attempt.created_at,
+        record_version=attempt.record_version,
+    )
+
+
 def _rendered(attempt: PaymentAttempt, request_status: str) -> AttemptResult:
     return AttemptResult(
         id=attempt.id,
@@ -219,6 +297,95 @@ def _require_key(idempotency_key: str | None) -> str:
     if idempotency_key is None:
         raise PreconditionRequiredError("Idempotency-Key")
     return idempotency_key
+
+
+@router.get(
+    "",
+    response_model=AttemptPageResponse,
+    operation_id="listPaymentAttempts",
+    summary="Search payment attempts by amount, tracking number, status or request.",
+    responses={
+        400: {"model": ErrorEnvelope, "description": "An unknown sort, filter or cursor."},
+        401: {"model": ErrorEnvelope, "description": "No valid session."},
+        403: {"model": ErrorEnvelope, "description": "The caller lacks `payment_attempt.read`."},
+        **VALIDATION_ERROR_RESPONSE,
+    },
+    dependencies=[requires(declare("payment_attempt.read"))],
+)
+def list_attempts(
+    actor: Annotated[ActorContext, Depends(authenticated_actor)],
+    runtime: Annotated[RuntimeServices, Depends(get_runtime)],
+    payment_request_id: Annotated[uuid.UUID | None, Query()] = None,
+    status: Annotated[str | None, Query(max_length=40)] = None,
+    amount_irr: Annotated[int | None, Query(gt=0)] = None,
+    bank_tracking_number: Annotated[str | None, Query(max_length=128)] = None,
+    sort: Annotated[str | None, Query()] = None,
+    limit: Annotated[int | None, Query(ge=1, le=200)] = None,
+    cursor: Annotated[str | None, Query()] = None,
+) -> AttemptPageResponse:
+    """`GET /api/v1/payment-attempts`, per §17.1 `:1553`.
+
+    **M0 slice E, and it exists because a published command could not be reached.** Proposing a
+    matching candidate takes a `payment_attempt_id`, and until this route nothing in the contract
+    produced one that a person could choose:
+
+    - `GET /payment-attempts/{id}` needs the id it returns.
+    - `GET /queues/sent-attempts-awaiting-result` renders `QueueRow` — five fields by a deliberate
+      disclosure decision — and **carries no amount**. Matching a bank receipt to an attempt is an
+      amount question before it is anything else, so a picker built on that queue would list
+      "attempt-1, attempt-2, attempt-3" and ask an operator to guess.
+
+    That is the same defect this project has now found five times in five consecutive slices: a
+    command published without the read that makes it operable. It is invisible to
+    `test_every_operation_has_a_screen.py`, because the *command* has a screen.
+
+    **`payment_attempt.read`, the same grant the detail read carries**, which `20260801_0008:313`
+    gives to `manager` while granting neither confirmation permission. Searching is not permission
+    to confirm.
+
+    Sorting and the cursor come from `app/db/pagination.py`, so an unknown *sort* is refused rather
+    than ignored — ignoring one returns a different page than the caller asked for and says nothing
+    about it. `record_version` is on every row for the reason `get_attempt` gives about the `ETag`:
+    a screen that acts from a list would otherwise have to re-read each row to obtain the
+    precondition its command requires.
+
+    **Filters are declared rather than checked at runtime, and the check moved to a test.** An
+    earlier draft called `ATTEMPT_LIST_SPEC.require_filterable(name)` inside the loop below. A
+    negative control removing that call was **not caught**, and it was right not to be: every name
+    in the loop is a literal that is in the spec by construction, so the call could not fail. An
+    undeclared query parameter never binds at all — FastAPI refuses it before this function runs.
+
+    What that guard was actually for is a parameter added *here* without being added to the spec,
+    and `test_every_attempt_filter_is_allowlisted` is where that is now caught — at test time
+    rather than on a request.
+    """
+
+    del actor
+    requested = {
+        "payment_request_id": payment_request_id,
+        "status": status,
+        "amount_irr": amount_irr,
+        "bank_tracking_number": bank_tracking_number,
+    }
+    statement = select(PaymentAttempt)
+    for name, value in requested.items():
+        if value is None:
+            continue
+        statement = statement.where(getattr(PaymentAttempt, name) == value)
+
+    statement, effective = apply_pagination(
+        statement, ATTEMPT_LIST_SPEC, sort=sort, limit=limit, cursor=cursor
+    )
+
+    with runtime.uow_factory() as uow:
+        rows = list(uow.session.scalars(statement))
+        page = build_page(rows, effective, ATTEMPT_LIST_SPEC, sort=sort)
+        response = AttemptPageResponse(
+            items=[_summary(row) for row in page.rows], next_cursor=page.next_cursor
+        )
+        uow.rollback()
+
+    return response
 
 
 @router.get(

@@ -5,18 +5,22 @@ import { StateView } from "@gold/ui";
 import { use, useCallback, useEffect, useState } from "react";
 
 import { AdminShell } from "../../../components/admin-shell";
+import { BundleBatchLink } from "../../../components/bundle-batch-link";
 import { PagePreview } from "../../../components/page-preview";
+import { SegmentCandidates } from "../../../components/segment-candidates";
 import {
   attachExternalEvidence,
   type BundleDetail,
   createCrop,
   type CropRequest,
   isPreviewable,
+  listSegments,
   type ManualFields,
   readBundle,
   rotateAnticlockwise,
   rotateClockwise,
   type Rotation,
+  type SegmentSummary,
   stepPage,
 } from "../../../src/bundles";
 
@@ -65,6 +69,8 @@ export default function BankResultBundlePage({
   const [fields, setFields] = useState<ManualFields>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [segments, setSegments] = useState<readonly SegmentSummary[]>([]);
+  const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
 
   const phaseForError = (error: unknown): Phase => {
     const status = (error as { status?: number }).status;
@@ -76,9 +82,18 @@ export default function BankResultBundlePage({
   const load = useCallback(
     () =>
       readBundle(bundleId)
-        .then((view) => {
+        .then(async (view) => {
           setPhase({ kind: "ready", view });
           setSelectedFileId((current) => current ?? view.files.find(isPreviewable)?.id ?? null);
+          // **Read after the bundle rather than beside it**, and its failure does not fail the
+          // page: cropping is what this workspace is for, and a segment list that 403s for a role
+          // holding `bank_result_bundle.read` but not the candidate grant must not take the crop
+          // surface down with it.
+          try {
+            setSegments(await listSegments(bundleId));
+          } catch {
+            setSegments([]);
+          }
         })
         .catch((error: unknown) => setPhase(phaseForError(error))),
     [bundleId],
@@ -90,6 +105,10 @@ export default function BankResultBundlePage({
 
   const detail = phase.kind === "ready" ? phase.view : null;
   const selected = detail?.files.find((file) => file.id === selectedFileId) ?? null;
+  // Derived rather than defaulted in an effect: `react-hooks/set-state-in-effect` forbids the
+  // second, and the first cannot go stale when a reload returns a different set of segments.
+  const selectedSegment =
+    segments.find((segment) => segment.id === selectedSegmentId) ?? segments[0] ?? null;
 
   const submitCrop = async (request: CropRequest) => {
     setBusy(true);
@@ -297,6 +316,56 @@ export default function BankResultBundlePage({
 
             {/* §16.3's "selected-segment fields". */}
             <FieldsForm fields={fields} onChange={setFields} />
+
+            {/* M0 slice E, on the owner's decision of 2026-09-13: which batch this bundle answers,
+                chosen by a person. Placed above the segments because it is the question asked
+                first — a bundle whose batch is wrong makes every match below it wrong too. */}
+            <BundleBatchLink bundle={detail} onLinked={() => void load()} />
+
+            {/* §16.3's "candidate drawer". M0 slice E.
+                The segments are listed here rather than inside the drawer because a bundle has
+                many and each has its own suggestions: a drawer that fetched its own segment would
+                have to be told which one, and the selection is the workspace's state. */}
+            <section aria-labelledby="bundle-segments" className="flex flex-col gap-3">
+              <h2 className="text-xl font-bold" id="bundle-segments">
+                {t("candidate.segments")}
+              </h2>
+              {segments.length === 0 ? (
+                <StateView
+                  description={t("candidate.noSegments")}
+                  headingLevel={3}
+                  kind="empty"
+                  title={t("candidate.noSegmentsTitle")}
+                />
+              ) : (
+                <>
+                  <ul className="flex flex-wrap gap-2">
+                    {segments.map((segment) => (
+                      <li key={segment.id}>
+                        <button
+                          aria-current={segment.id === selectedSegmentId}
+                          className="rounded-lg border border-[var(--border)] px-3 py-2 font-bold aria-[current=true]:bg-[var(--surface-sunken)]"
+                          data-testid="segment-choice"
+                          onClick={() => setSelectedSegmentId(segment.id)}
+                          type="button"
+                        >
+                          {segment.extracted_amount_irr === null
+                            ? segment.status
+                            : toPersianDigits(segment.extracted_amount_irr)}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  {selectedSegment ? (
+                    // Keyed on the segment, so choosing another remounts rather than leaving the
+                    // previous segment's candidates and search results on screen — the staleness
+                    // `PagePreview` avoids the same way, and here it would mean deciding one
+                    // segment's suggestion while looking at another's.
+                    <SegmentCandidates key={selectedSegment.id} segment={selectedSegment} />
+                  ) : null}
+                </>
+              )}
+            </section>
 
             {/* §16.3's "external evidence fallback", always reachable. */}
             {selected ? (

@@ -385,21 +385,37 @@ def test_no_command_body_carries_an_amount_except_the_retry() -> None:
     amount is a *decision* about the unresolved remainder rather than a restatement.
     """
 
-    # `extracted_amount_irr` is excluded, and the exclusion is narrow on purpose. It is what a
-    # person *read off a bank receipt*, carried on the segment type M0 slice A2 added so the
-    # correction screen can label the crops it offers. It is a read field on a read type and no
-    # command body has one; matching it here would have made this test fail for a reason it is not
-    # about, and raising the count to 3 would have made it stop noticing the thing it is about.
-    module = DATA_MODULE.read_text(encoding="utf-8").replace("extracted_amount_irr:", "")
-    # `amount_irr` appears in the retry body and in the attempt type. Two, and no more: a third
-    # would mean a confirmation had grown one.
-    assert module.count("amount_irr:") == 2, (
-        f"`amount_irr:` appears {module.count('amount_irr:')} times in the data module; the "
-        "attempt type and the retry body are the only two places it belongs"
-    )
+    module = DATA_MODULE.read_text(encoding="utf-8")
+
+    # **This counted occurrences until M0 slice E, and the count is gone deliberately.**
+    #
+    # The old assertion was `module.count("amount_irr:") == 2`, with `extracted_amount_irr` first
+    # subtracted by name. Its own comment said raising the number "would have made it stop noticing
+    # the thing it is about" — and it was right about that while being the wrong shape: a count over
+    # a whole file is a proxy, and every read type that legitimately carries an amount pushes the
+    # proxy off by one. M0 slice A2 already needed one exclusion; slice E's `AttemptSummary` needed
+    # a second, at which point the choice was to keep patching the proxy or to assert the claim.
+    #
+    # The claim is about **command bodies**, so that is what is read now. A read type carrying an
+    # amount is not a violation — `PaymentAttempt` has carried one since M9 — and a test that could
+    # not tell the two apart was going to be relaxed sooner or later by somebody in a hurry.
     for command in ("confirm-paid", "confirm-failed", "mark-retry-required"):
         section = module.split(command, 1)
         assert len(section) == 2, f"{command} is not called by the data module"
         assert "amount_irr" not in section[1].split("}", 1)[0], (
             f"the {command} body carries an amount, which §17 `:1131` keeps on the attempt"
+        )
+
+    # Every `body:` literal in the module, so a *new* command cannot carry an amount either — which
+    # the three names above could not have caught. The retry is the one exception and is named:
+    # its amount is a decision about the unresolved remainder rather than a restatement of the row.
+    for index, fragment in enumerate(module.split("body: {")[1:]):
+        literal = fragment.split("}", 1)[0]
+        if "amount_irr" not in literal:
+            continue
+        preceding = module.split("body: {")[index]
+        assert "retry" in preceding[-400:], (
+            f"a command body carries an amount and is not the retry: {literal.strip()!r}. §17 "
+            "`:1131` keeps the amount on the attempt, and the absence of the field is what "
+            "guarantees a client figure cannot disagree with the row."
         )

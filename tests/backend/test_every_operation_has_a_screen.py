@@ -131,28 +131,31 @@ NO_SCREEN: dict[tuple[str, str], str] = {
     # of 2026-09-13 — one fixed mapping function in code — removed the real blocker, and the bank's
     # file format never came into it.
     # --- the bundle and segment path -------------------------------------------------------------
-    ("GET", "/api/v1/receipt-segments/{segment_id}/matching-candidates"): (
-        "the automatic matching path over bank result bundles. A screen needs the segment viewer "
-        "M8 built the backend for and no slice has owned; the *manual* judgement it feeds — which "
-        "row proves a claim — is the incoming payment match surface, which slice 6 built."
-    ),
-    (
-        "POST",
-        "/api/v1/receipt-segments/{segment_id}/matching-candidates",
-    ): "part of the same unbuilt surface as the operation above it",
-    (
-        "POST",
-        "/api/v1/matching-candidates/{candidate_id}/accept-for-confirmation",
-    ): "part of the same unbuilt surface as the operation above it",
-    (
-        "POST",
-        "/api/v1/matching-candidates/{candidate_id}/reject",
-    ): "part of the same unbuilt surface as the operation above it",
-    ("POST", "/api/v1/bank-result-bundles/{bundle_id}/batch-links"): (
-        "links a result bundle to the batch it answers. The bundle screens exist; this operation "
-        "is performed by the import path rather than by a person, and no slice has decided "
-        "whether a human should ever do it by hand."
-    ),
+    # M0 slice E built the candidate drawer, so the four matching operations left this list.
+    #
+    # **The recorded reason was true and was not the whole blocker**, which is the second time in
+    # two slices that has been the finding. It said a screen needed "the segment viewer M8 built the
+    # backend for and no slice has owned" — accurate, and the segment read existed all along. What
+    # was missing was `GET /api/v1/payment-attempts`: proposing a candidate takes a
+    # `payment_attempt_id`, and the only other source of one was a queue whose rows carry no amount.
+    # Matching a bank receipt to an attempt is an amount question before it is anything else, so a
+    # picker built on that queue would have asked an operator to guess.
+    #
+    # That is the fifth consecutive slice to find a command published without the read that makes it
+    # operable, and this list cannot see it: the *command* has a screen either way.
+    # M0 slice E built the batch-link panel, so this operation left the list too.
+    #
+    # **It was an owner's decision and it was asked rather than assumed.** The frontend completion
+    # plan raised it in terms: should a person ever link a bundle to a batch by hand, or does that
+    # stay the import path's job? The owner answered on 2026-09-13 by improving the question — give
+    # every batch a clear name, have the accountant know which batch a returned file answers, and
+    # keep a manual correction possible.
+    #
+    # Half of their answer was not taken, and the departure is recorded in
+    # `components/bundle-batch-link.tsx` rather than here: they also suggested deciding the batch
+    # from the file's name with an instruction not to rename it. A name leaves the building, and a
+    # bundle attached to the *wrong* batch is invisible while one attached to nothing is not. The
+    # name pre-selects and says it is a guess; the accountant confirms.
     # M0 slice C built the evidence panel on the attempt screen, so the three link operations left
     # this list. Their entry said linking "needs the file browser M4 built the backend for and no
     # slice has owned" — and the blocker turned out to be one read rather than a browser: nothing
@@ -160,8 +163,8 @@ NO_SCREEN: dict[tuple[str, str], str] = {
     # offer the reason evidence was unavailable. `GET /evidence-links?payment_attempt_id=...` is
     # that read.
     #
-    # **Choosing a crop visually is still slice E's**, and the panel says so: a segment id is
-    # typed or pasted from the bundle workspace, which is where they are visible today.
+    # **Choosing a crop visually was slice E's**, and slice E built it: the candidate drawer above
+    # opens from the bundle workspace, where the segments are.
     # M11 Screens slice 9 built the review task screen, so the six manual-review operations
     # left this list — which is what a closed entry looks like here: a deletion rather than an
     # edit. `test_no_recorded_operation_has_quietly_gained_a_screen` is what would have caught

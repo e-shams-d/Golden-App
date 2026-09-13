@@ -84,6 +84,65 @@ export async function readAttempt(
 }
 
 /**
+ * One row of §17.1's search. **Narrower than `PaymentAttempt`, and that is the server's shape.**
+ *
+ * No beneficiary name and no IBAN: the detail read carries neither either, so the list discloses no
+ * more than the screen it links to. POL-003 is open, and widening disclosure is the owner's call.
+ */
+export type AttemptSummary = Readonly<{
+  id: string;
+  payment_request_id: string;
+  attempt_number: number;
+  status: string;
+  amount_irr: number;
+  bank_tracking_number: string | null;
+  bank_result_at: string | null;
+  created_at: string;
+  record_version: number;
+}>;
+
+/**
+ * Find the attempt a bank receipt belongs to. §17.1 `:1553`.
+ *
+ * **M0 slice E, and the reason it is here is that a command could not be reached.** Proposing a
+ * matching candidate takes a `payment_attempt_id`, and the only other source of one was the
+ * sent-attempts queue, whose rows carry no amount — so a picker built on it would list
+ * "attempt-1, attempt-2" and ask an operator to guess which receipt was which.
+ *
+ * **Every filter is an equality**, which is what the server allowlists. A caller sending a field
+ * outside that list is refused rather than quietly given the unfiltered page, so this sends only
+ * what it means.
+ */
+export async function searchAttempts(
+  query: Readonly<{
+    amountIrr?: number;
+    bankTrackingNumber?: string;
+    status?: string;
+    paymentRequestId?: string;
+    limit?: number;
+  }>,
+  signal?: AbortSignal,
+): Promise<readonly AttemptSummary[]> {
+  const parameters = new URLSearchParams();
+  if (query.amountIrr !== undefined) parameters.set("amount_irr", String(query.amountIrr));
+  if (query.bankTrackingNumber) parameters.set("bank_tracking_number", query.bankTrackingNumber);
+  if (query.status) parameters.set("status", query.status);
+  if (query.paymentRequestId) parameters.set("payment_request_id", query.paymentRequestId);
+  if (query.limit !== undefined) parameters.set("limit", String(query.limit));
+
+  const suffix = parameters.toString();
+  const response = await transport.request<{
+    items: readonly AttemptSummary[];
+    next_cursor: string | null;
+  }>({
+    method: "GET",
+    path: `/payment-attempts${suffix ? `?${suffix}` : ""}`,
+    ...(signal ? { signal } : {}),
+  });
+  return response.data.items;
+}
+
+/**
  * Confirm that the bank paid.
  *
  * `bank_tracking_number` and `bank_result_at` are required by the contract — they are the bank's
