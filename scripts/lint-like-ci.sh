@@ -1,26 +1,22 @@
 #!/usr/bin/env bash
-# Backend lint and types, invoked the way `infra/verification/verify-native.sh` invokes them.
+# Ruff and mypy with exactly the arguments `infra/scripts/verify-native.sh` uses.
 #
-# Written because linting `app/` alone passed while CI failed on a long line in `tests/`. The
-# verifier reads its target list from `infra/verification/lint_targets.txt`, which covers more than
-# the application package — so any subset of it is a different check with the same name.
-#
-# This is the third CI failure in this repository from verifying with a narrower command than the
-# one that gates the merge.
-
+# Running `ruff check services/backend tests` by hand reports hundreds of findings this repository
+# does not gate on: a different config and a different target list. Three CI failures have come from
+# verifying with a subset or a different invocation, so this exists to make the short loop identical
+# to the gate.
 set -euo pipefail
-cd "$(git rev-parse --show-toplevel)"
 
-PYTHON=services/backend/.venv/bin/python
-targets=$(grep -vE '^[[:space:]]*(#|$)' infra/verification/lint_targets.txt | tr '\n' ' ')
+cd "$(dirname "$0")/.."
 
-if [ -z "$targets" ]; then
-    printf '%s\n' "lint_targets.txt is empty; a check over nothing passes." >&2
+lint_targets=$(grep -vE '^\s*(#|$)' infra/verification/lint_targets.txt | tr '\n' ' ')
+if [ -z "$lint_targets" ]; then
+    printf '%s\n' "infra/verification/lint_targets.txt is empty or unreadable." >&2
     exit 1
 fi
 
-printf 'ruff over: %s\n' "$targets"
 # shellcheck disable=SC2086
-"$PYTHON" -m ruff check --config services/backend/pyproject.toml $targets
-"$PYTHON" -m mypy --config-file services/backend/pyproject.toml services/backend/app
-printf '%s\n' "backend lint and types clean, over the verifier's own target list."
+uv run --project services/backend --frozen \
+    ruff check --config services/backend/pyproject.toml $lint_targets
+uv run --project services/backend --frozen \
+    mypy --config-file services/backend/pyproject.toml services/backend/app

@@ -353,6 +353,61 @@ export const faMessages = {
   "bank.newVersionBlockedTitle": "ساختن نسخهٔ تازه در این نسخه از نرم‌افزار ممکن نیست",
   "bank.newVersionBlocked":
     "یک نسخهٔ پیکربندی هرگز ویرایش نمی‌شود؛ تغییر قوانین یک بانک یعنی ساختن نسخهٔ تازه. آن مسیر هنوز روی سرور فعال نشده، چون به فایل واقعی بانک، سقف هر تراکنش و ساعت قطع نیاز دارد که هنوز تعیین نشده‌اند.",
+  // M0 slice D. Bank statements: the bank's own record of what moved, filed and then parsed.
+  //
+  // **Nothing here mentions a "mapping".** The owner decided on 2026-09-13 that there is one fixed
+  // mapping in code, so the operator has no choice to make and a field for one would be a question
+  // with a single answer. `statement.expectedShape` says what file we expect instead, which is the
+  // part a person can actually act on.
+  "statement.nav": "صورت‌حساب بانکی",
+  "statement.title": "صورت‌حساب‌های بانکی",
+  "statement.noneTitle": "هنوز صورت‌حسابی ثبت نشده است",
+  "statement.noneDescription":
+    "صورت‌حسابی که بانک صادر کرده را اینجا ثبت کنید تا بتوان سطرهایش را خواند و با پرداخت‌ها تطبیق داد.",
+  "statement.fileNew": "ثبت صورت‌حساب تازه",
+  "statement.expectedShape":
+    "فایل باید ستون‌های «تاریخ، ساعت، بستانکار، بدهکار، مانده، شماره سند، شماره پیگیری، شرح، نام طرف حساب، شماره حساب طرف، شبا طرف حساب» را داشته باشد. فایل تبدیل نمی‌شود؛ اگر ستون‌ها فرق داشته باشد، خواندن فایل ناموفق می‌ماند.",
+  "statement.account": "حسابی که پول به آن رسیده",
+  "statement.chooseAccount": "یک حساب انتخاب کنید",
+  "statement.version": "پیکربندی بانک در آن زمان",
+  "statement.chooseVersion": "یک نسخه انتخاب کنید",
+  "statement.rangeStart": "از تاریخ (اختیاری)",
+  "statement.rangeEnd": "تا تاریخ (اختیاری)",
+  "statement.rangeNeedsBoth": "بازهٔ تاریخ یا باید هر دو سر را داشته باشد یا هیچ‌کدام.",
+  "statement.noRange": "بازهٔ تاریخ ثبت نشده",
+  "statement.file": "فایل صورت‌حساب",
+  "statement.fileHint": "فقط xlsx یا csv، حداکثر ۲۵ مگابایت.",
+  "statement.fileReady": "فایل بارگذاری شد. حالا می‌توانید صورت‌حساب را ثبت کنید.",
+  "statement.tooLarge": "این فایل از ۲۵ مگابایت بزرگ‌تر است.",
+  "statement.uploadFailed": "بارگذاری فایل انجام نشد. لطفاً دوباره تلاش کنید.",
+  "statement.fileIt": "ثبت صورت‌حساب",
+  "statement.failed": "اطلاعات صورت‌حساب‌ها دریافت نشد. لطفاً دوباره تلاش کنید.",
+  "statement.failedTitle": "صورت‌حساب‌ها خوانده نشد",
+  "statement.configureBankFirstTitle": "اول باید بانک پیکربندی شود",
+  "statement.configureBankFirst":
+    "هیچ بانکِ فعال یا حسابی برای دریافت وجه ثبت نشده است. ابتدا در «پیکربندی بانک» یک بانک بسازید و نسخه‌اش را فعال کنید؛ تا آن موقع صورت‌حساب قابل ثبت نیست.",
+  // The detail screen. An import run is a *parse attempt*, and the history of attempts is the
+  // point: reparsing never overwrites an earlier run, so the list only ever grows.
+  "statement.backToList": "بازگشت به فهرست صورت‌حساب‌ها",
+  "statement.detailTitle": "صورت‌حساب بانکی",
+  "statement.statusLabel": "وضعیت",
+  "statement.rangeLabel": "بازهٔ صورت‌حساب",
+  "statement.runs": "دفعات خوانده‌شدن فایل",
+  "statement.noRunsTitle": "هنوز این فایل خوانده نشده است",
+  "statement.noRuns":
+    "برای استخراج سطرها، «خواندن فایل» را بزنید. هر بار خواندن یک رکورد تازه می‌سازد و رکوردهای قبلی دست‌نخورده می‌مانند.",
+  "statement.runNumber": "نوبت",
+  "statement.runStatus": "وضعیت",
+  "statement.rowCount": "تعداد سطر",
+  "statement.rowCountPending": "هنوز خوانده نشده",
+  "statement.parserVersion": "نسخهٔ خواننده",
+  "statement.startRun": "خواندن فایل",
+  "statement.startRunAgain": "خواندن دوباره",
+  "statement.startRunHint":
+    "خواندن دوباره چیزی را پاک نمی‌کند؛ یک نوبت تازه ثبت می‌شود و نتیجهٔ نوبت‌های قبلی سر جایش می‌ماند.",
+  "statement.runQueued": "درخواست خواندن ثبت شد. نتیجه پس از پایان کار نمایش داده می‌شود.",
+  "statement.runFailed": "شروع خواندن فایل انجام نشد.",
+  "statement.errorSummary": "خطای این نوبت",
   // M0 slice A2. The correction, and the one dialog in this application that asks two people —
   // the accountant prepares and the manager approves by typing their own password here.
   "correction.open": "اصلاح نتیجه منتشرشده",
