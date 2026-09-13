@@ -90,12 +90,22 @@ NO_SCREEN: dict[tuple[str, str], str] = {
         "operations token, as above — and `test_preconditions_have_a_source.py` already records "
         "it as having no read to take a precondition from, for the same reason"
     ),
-    # --- authentication flows with no screen yet -------------------------------------------------
-    ("POST", "/api/v1/auth/admin/recover-password"): (
-        "the far side of an administrative reset. A screen needs the recovery token flow M3 left "
-        "to the operator, and building one without deciding how a person receives that token "
-        "would be a form with nothing to type into it."
-    ),
+    # M0 slice F built the recovery screen, so the last authentication entry left this list.
+    #
+    # **Its recorded reason described a flow this route does not have.** It said a screen "needs the
+    # recovery token flow M3 left to the operator" and that building one without deciding how a
+    # person receives that token "would be a form with nothing to type into it". There is no token:
+    # `RecoverPasswordRequest` takes a username, the temporary password an administrator set, and
+    # the one its owner chooses. The temporary password *is* what gets handed over, and
+    # `/admin-users` has generated and displayed one since M11 slice 8 — so the form always had
+    # three things to type into it.
+    #
+    # The owner's decision of 2026-09-13 — another administrator generates it and gives it in person
+    # or by phone — confirmed the flow that already existed rather than choosing a new one. **Three
+    # slices running have now found the recorded reason true in its own terms and not the blocker**
+    # (statement import, the matching drawer, and this), which is worth more than any one of them:
+    # a `NO_SCREEN` reason is written by whoever could not build the screen, and their account of
+    # why is the least examined sentence in this file.
     # M11 Screens slice 10 built the settings surface this entry said was missing, so it left
     # the list — a deletion rather than an edit, which is what a closed entry looks like here.
     # M0 slice B built the bank configuration surface, so its six operations left this list —
