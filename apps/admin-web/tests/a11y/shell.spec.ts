@@ -97,6 +97,11 @@ const paths = [
   // renders a table and an activation control whose confirmation step is its own markup.
   "/bank-configuration",
   "/bank-configuration/00000000-0000-4000-8000-000000000009",
+  // M0 slice F. Recovery, and the one page in this sweep that renders its **working** state rather
+  // than its failure state — it needs no session by design, which is the whole point of it. A form
+  // an unauthenticated person fills in is exactly the kind that ships without labels, and this is
+  // the only check that opens it.
+  "/recover-password",
 ] as const;
 
 for (const path of paths) {

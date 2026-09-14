@@ -468,6 +468,39 @@ export const faMessages = {
   "password.failed": "تغییر گذرواژه انجام نشد. لطفاً دوباره تلاش کنید.",
   "password.doneTitle": "گذرواژه تغییر کرد",
   "password.doneDescription": "از این پس با گذرواژه تازه وارد شوید.",
+  // M0 slice F. Recovery after an administrator reset somebody's credential. The owner decided on
+  // 2026-09-13 that another administrator generates the temporary password and hands it over in
+  // person or by phone — which is the flow `/admin-users` already implements.
+  //
+  // **`recover.refused` names three things to check and guesses none of them.** The route answers
+  // one 401 for an unknown username, a wrong temporary password and an account that is not awaiting
+  // recovery, because distinguishing them would make it a status oracle for the centre's own staff
+  // (`12_Security_RBAC_Audit.md:403`). A message saying "wrong password" would invent the
+  // distinction the server refused to make.
+  //
+  // **`recover.doneDescription` says no sign-in happened.** The response carries no session by
+  // design, and a person told "done" who is then asked to sign in would otherwise read the second
+  // step as the first one having failed.
+  "recover.fromLogin": "گذرواژه‌ام را فراموش کرده‌ام یا مدیر آن را بازنشانی کرده است",
+  "recover.title": "بازیابی گذرواژه",
+  "recover.formHeading": "گذرواژه تازه خود را تعیین کنید",
+  "recover.explanation":
+    "اگر مدیر سیستم گذرواژه شما را بازنشانی کرده باشد، یک گذرواژه موقت به شما داده است. آن را اینجا وارد کنید و گذرواژه تازه خودتان را بگذارید.",
+  "recover.username": "نام کاربری",
+  "recover.temporary": "گذرواژه موقت",
+  "recover.temporaryHint": "همان چیزی که مدیر سیستم به شما داده است.",
+  "recover.newPassword": "گذرواژه تازه",
+  "recover.repeatPassword": "تکرار گذرواژه تازه",
+  "recover.submit": "تعیین گذرواژه تازه",
+  "recover.submitting": "در حال انجام…",
+  "recover.mismatch": "دو گذرواژه تازه یکسان نیستند. لطفاً دوباره وارد کنید.",
+  "recover.refused":
+    "انجام نشد. سه چیز را بررسی کنید: نام کاربری درست باشد، گذرواژه موقت همانی باشد که مدیر داده، و گذرواژه شما واقعاً توسط مدیر بازنشانی شده باشد. اگر مطمئن نیستید، از مدیر سیستم بخواهید دوباره بازنشانی کند.",
+  "recover.tooMany": "تلاش‌های زیادی انجام شده است. چند دقیقه صبر کنید و دوباره تلاش کنید.",
+  "recover.doneTitle": "گذرواژه تازه شما ثبت شد",
+  "recover.doneDescription": "هنوز وارد نشده‌اید. حالا با نام کاربری و گذرواژه تازه‌تان وارد شوید.",
+  "recover.goToLogin": "رفتن به صفحه ورود",
+  "recover.backToLogin": "بازگشت به صفحه ورود",
   // M11 Screens slice 9. The review queue item, and the four decisions about it.
   "task.title": "کار بررسی",
   "task.status": "وضعیت",
