@@ -25,6 +25,10 @@ infra/scripts/scan_secrets.py
 infra/scripts/m0_manifest.py
 infra/scripts/bridge-demo-port.py
 infra/scripts/summarise_image_findings.py
+# M12 slice 2. It decides what "the restore reconciles" means, which makes it a gate —
+# and `test_every_infra_script_is_linted` caught it missing here, the same catch that
+# found `m0_manifest.py` unlinted for ten slices.
+infra/scripts/backup_manifest.py
 
 # `scripts/` holds the negative-control harnesses and the plan-citation checker. Only the
 # Python ones are listed: the rest are shell, which this linter does not read.
