@@ -136,34 +136,48 @@ def _digest(rows: list[tuple[Any, ...]]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-class DockerPsql:
-    """A `connection.execute(sql).fetchall()` that runs `psql` inside a container.
+# The image the PostgreSQL client tools come from. Pinned by tag **and matched to the server**:
+# `pg_dump` refuses a server newer than itself, and a host that upgraded its client independently
+# would produce dumps this server cannot read back.
+PG_IMAGE = "postgres:16.14-alpine3.24"
 
-    **Here rather than in `backup.sh`, and that placement is the point.** The first version lived in
-    a heredoc inside the shell script, which meant the manifest an operator takes in production was
-    parsed by code no test ever ran. `test_the_manifest_inside_the_bundle_matches_the_source` now
-    compares two manifests that differ only in *how they connect* — psycopg in the test, `psql` in
-    the script — rather than in how they read rows.
 
-    **CSV rather than zero-separated output.** The first attempt passed `--record-separator-zero`
+class NetworkPsql:
+    """A `connection.execute(sql).fetchall()` that runs `psql` over the network.
+
+    **Over the network rather than `docker exec`, and CI is what taught that.** The first version
+    took a container name — `m2-itest-pg` — and the drill failed in CI with `No such container`,
+    because GitHub Actions names its service containers differently. The name was an *environment*
+    fact wearing the shape of a design decision.
+
+    A throwaway container connecting to a URL works wherever that URL works: to `127.0.0.1:5432` on
+    a runner, to a bridge address locally, to a database host in production. It is also what a real
+    backup host does — nothing in a deployment runs `docker exec` against the database.
+
+    **Here rather than in `backup.sh`.** The first version lived in a heredoc inside the shell
+    script, which meant the manifest an operator takes in production was parsed by code no test ever
+    ran. `test_the_manifest_inside_the_bundle_matches_the_source` now compares two manifests that
+    differ only in *how they connect* — psycopg in the test, `psql` here — rather than in how they
+    read rows.
+
+    **CSV rather than zero-separated output.** An earlier attempt passed `--record-separator-zero`
     and `--field-separator-zero` together, which makes a record boundary and a field boundary the
     same byte: 122 rows of one column parsed as one row of 122 fields, and the manifest said
     `permissions: 1 row`. CSV has a quoting rule for every value a column can hold, and Python's
     `csv` module implements the same rule psql writes.
     """
 
-    def __init__(self, container: str, database: str, user: str) -> None:
-        self._container = container
-        self._database = database
-        self._user = user
+    def __init__(self, database_url: str) -> None:
+        self._url = database_url
         self._rows: list[tuple[str, ...]] = []
 
-    def execute(self, sql: str) -> DockerPsql:
+    def execute(self, sql: str) -> NetworkPsql:
         completed = subprocess.run(
             [
-                "docker", "exec", "-i", self._container,
-                "psql", "--username", self._user, "--dbname", self._database,
-                "--csv", "--tuples-only", "--command", sql,
+                # `--network host` so the URL means the same thing inside the container as outside.
+                # Without it a `127.0.0.1` in the URL would name the throwaway container itself.
+                "docker", "run", "--rm", "--network", "host", PG_IMAGE,
+                "psql", self._url, "--csv", "--tuples-only", "--command", sql,
             ],
             check=True, capture_output=True, text=True,
         )

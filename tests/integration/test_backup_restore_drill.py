@@ -51,9 +51,15 @@ pytestmark = pytest.mark.integration
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = REPOSITORY_ROOT / "infra" / "scripts"
 
-# The container `scripts/itest.sh` and the CI job both use. Named rather than discovered, because a
-# drill that silently pointed at a different database would be a drill of something else.
-CONTAINER = "m2-itest-pg"
+# **There is no container name here, and an earlier version had one.** It was `m2-itest-pg`, which
+# is what this machine calls its integration database — and CI names its service containers
+# differently, so the drill failed there with `No such container` after passing locally. The name
+# was an *environment* fact wearing the shape of a design decision.
+#
+# Everything below works from the database URL the suite is already given, which is the only thing
+# both environments agree on. `postgres:16.14-alpine3.24` supplies `psql` and `createdb`: matched to
+# the server, because `pg_dump` refuses a server newer than itself.
+PG_IMAGE = "postgres:16.14-alpine3.24"
 
 
 def _psycopg(url: str) -> str:
@@ -93,8 +99,9 @@ def drill(provisioned_database: RuntimeIdentities, tmp_path: Path) -> Iterator[d
 
     source_name = _database_name(provisioned_database.migrator_url)
     target_name = f"{source_name}_restored"[:63]
+    maintenance = _admin_url(provisioned_database.migrator_url, "postgres")
 
-    _run_psql(f'CREATE DATABASE "{target_name}"')
+    _run_psql(f'CREATE DATABASE "{target_name}"', maintenance)
 
     storage = tmp_path / "storage"
     restored_storage = tmp_path / "restored-storage"
@@ -109,19 +116,30 @@ def drill(provisioned_database: RuntimeIdentities, tmp_path: Path) -> Iterator[d
         "out": tmp_path / "backups",
     }
 
-    _run_psql(f'DROP DATABASE IF EXISTS "{target_name}"')
+    _run_psql(f'DROP DATABASE IF EXISTS "{target_name}"', maintenance)
 
 
 def _database_name(url: str) -> str:
     return url.rsplit("/", 1)[-1].split("?", 1)[0]
 
 
-def _run_psql(command: str, database: str = "postgres") -> str:
+def _admin_url(source_url: str, database: str) -> str:
+    """The same server, a different database, as `postgres`.
+
+    `postgres` rather than the migration role because creating and dropping a database needs
+    `CREATEDB`, and because `pg_restore --no-owner` will leave the restored objects owned by
+    whoever connects — see `_restored_url`.
+    """
+
+    host_and_port = source_url.split("@", 1)[1].rsplit("/", 1)[0]
+    return f"postgresql://postgres:postgres@{host_and_port}/{database}"
+
+
+def _run_psql(command: str, url: str) -> str:
     completed = subprocess.run(
         [
-            "docker", "exec", "-i", CONTAINER,
-            "psql", "--username", "postgres", "--dbname", database,
-            "--no-align", "--tuples-only", "--command", command,
+            "docker", "run", "--rm", "--network", "host", PG_IMAGE,
+            "psql", url, "--no-align", "--tuples-only", "--command", command,
         ],
         check=True, capture_output=True, text=True,
     )
@@ -189,13 +207,11 @@ def _restored_url(source_url: str, target: str) -> str:
 
 
 def _backup(world: dict[str, Any]) -> Path:
-    identities = world["identities"]
+    source_url = _admin_url(world["identities"].migrator_url, world["source"])
     completed = subprocess.run(
         [
             "bash", str(SCRIPTS / "backup.sh"),
-            "--container", CONTAINER,
-            "--database", world["source"],
-            "--user", "postgres",
+            "--database-url", source_url,
             "--storage", str(world["storage"]),
             "--out", str(world["out"]),
         ],
@@ -204,7 +220,6 @@ def _backup(world: dict[str, Any]) -> Path:
     assert completed.returncode == 0, (
         f"backup.sh failed\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
     )
-    del identities
 
     bundles = sorted(world["out"].glob("golden-backup-*.tar"))
     assert len(bundles) == 1, f"expected one bundle, found {bundles}"
@@ -217,9 +232,7 @@ def _restore(
     arguments = [
         "bash", str(SCRIPTS / "restore.sh"),
         "--bundle", str(bundle),
-        "--container", CONTAINER,
-        "--database", world["target"],
-        "--user", "postgres",
+        "--database-url", _admin_url(world["identities"].migrator_url, world["target"]),
         "--storage", str(world["restored_storage"]),
     ]
     if force:

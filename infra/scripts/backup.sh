@@ -11,14 +11,20 @@
 # files is a system that can name evidence it cannot show, and `file_objects.sha256_hash` would
 # then be a checksum of something that is gone.
 #
-# The **manifest** is taken *before* the bundle is sealed, from the same transaction as the dump, so
-# it records what the dump saw rather than what the database looked like afterwards.
+# The **manifest** is taken from the same database at the same moment as the dump, so it records
+# what the dump saw rather than what the database looked like afterwards.
 #
-# ## pg_dump runs inside the container
+# ## The PostgreSQL tools come from a pinned image, over the network
 #
-# There is no PostgreSQL client on the host, and there should not be: `pg_dump` must match the
-# server's major version, and a host that upgraded independently would produce a dump the server
-# cannot read back. `docker exec` makes the version question unaskable.
+# There is no `pg_dump` on this host and there should not be: it must match the server's major
+# version, and a host that upgraded independently would produce a dump the server cannot read back.
+# A throwaway container fixes the version at `postgres:16.14-alpine3.24`.
+#
+# **Over the network rather than `docker exec` into the database's own container.** The first
+# version of this script took a container name, which is an *environment* fact: it worked locally
+# and failed in CI with `No such container`, because GitHub Actions names service containers
+# differently. A URL works wherever the application's own URL works — and it is what a real backup
+# host does, since nothing in a deployment has a shell inside the database container.
 #
 # ## Encryption is gpg symmetric, and that is a deployment constraint rather than a preference
 #
@@ -30,14 +36,13 @@
 # box, and a backup passphrase in shell history is a backup anybody can read.
 set -euo pipefail
 
+PG_IMAGE="postgres:16.14-alpine3.24"
+
 usage() {
     cat >&2 <<'EOF'
-usage: backup.sh --container NAME --database NAME --user NAME --storage DIR --out DIR
-                 [--passphrase-file FILE]
+usage: backup.sh --database-url URL --storage DIR --out DIR [--passphrase-file FILE]
 
-  --container        the running PostgreSQL container (pg_dump runs inside it)
-  --database         database to dump
-  --user             PostgreSQL role to dump as
+  --database-url     postgresql://user:password@host:port/database
   --storage          the local storage root, as LOCAL_STORAGE_ROOT gives it
   --out              directory to write the bundle into
   --passphrase-file  encrypt the bundle with this passphrase. Omitted, the bundle is
@@ -46,12 +51,10 @@ usage: backup.sh --container NAME --database NAME --user NAME --storage DIR --ou
 EOF
 }
 
-container="" database="" user="" storage="" out="" passphrase_file=""
+database_url="" storage="" out="" passphrase_file=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        --container) container="$2"; shift 2 ;;
-        --database) database="$2"; shift 2 ;;
-        --user) user="$2"; shift 2 ;;
+        --database-url) database_url="$2"; shift 2 ;;
         --storage) storage="$2"; shift 2 ;;
         --out) out="$2"; shift 2 ;;
         --passphrase-file) passphrase_file="$2"; shift 2 ;;
@@ -60,9 +63,9 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-for required in container database user storage out; do
+for required in database_url storage out; do
     if [ -z "${!required}" ]; then
-        printf -- '--%s is required\n' "$required" >&2
+        printf -- '--%s is required\n' "${required//_/-}" >&2
         usage
         exit 2
     fi
@@ -79,37 +82,34 @@ stamp=$(date -u +%Y%m%dT%H%M%SZ)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-printf 'dumping %s from %s...\n' "$database" "$container"
-# Custom format: `pg_restore` can then create the schema and data separately, and a restore into a
-# *clean* database is what the drill needs. A plain SQL dump would work too and would make the
-# drill's "restore into an empty database" step depend on the dump not containing `DROP`s.
-docker exec "$container" pg_dump --username "$user" --dbname "$database" --format=custom --no-owner \
-    > "$work/database.dump"
+printf 'dumping the database...\n'
+# Custom format: `pg_restore` can then create schema and data separately, and a restore into a
+# *clean* database is what the drill needs. `--network host` so the URL means the same thing inside
+# the container as it does here.
+docker run --rm --network host "$PG_IMAGE" \
+    pg_dump "$database_url" --format=custom --no-owner > "$work/database.dump"
 
 printf 'copying the storage tree...\n'
 tar --create --gzip --file "$work/storage.tar.gz" --directory "$storage" .
 
 printf 'writing the manifest...\n'
 # Built by the Python module rather than by this script: it needs a stable digest over rows in a
-# defined order, and shelling out to psql for that would put the ordering rules in two places.
+# defined order, and shelling out for that would put the ordering rules in two places.
 #
-# **`DockerPsql` is in the module, not in this heredoc.** Its first version lived here and had a
-# parsing bug — `--record-separator-zero` and `--field-separator-zero` together make a row boundary
-# and a field boundary the same byte — which no test could reach, because the code an operator runs
-# in production was code no test imported.
+# **`NetworkPsql` is in the module, not in this heredoc.** An earlier version lived here and had a
+# parsing bug no test could reach, because the code an operator runs in production was code no test
+# imported.
 here=$(cd "$(dirname "$0")" && pwd)
-python3 - "$here" "$container" "$database" "$user" "$storage" "$work/manifest.json" <<'PYTHON'
+python3 - "$here" "$database_url" "$storage" "$work/manifest.json" <<'PYTHON'
 import json
 import sys
 from pathlib import Path
 
-here, container, database, user, storage, out = sys.argv[1:7]
+here, database_url, storage, out = sys.argv[1:5]
 sys.path.insert(0, here)
 import backup_manifest  # noqa: E402
 
-manifest = backup_manifest.build(
-    backup_manifest.DockerPsql(container, database, user), Path(storage)
-)
+manifest = backup_manifest.build(backup_manifest.NetworkPsql(database_url), Path(storage))
 Path(out).write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
 print(f"  {sum(t['rows'] for t in manifest['tables'].values())} rows, "
       f"{manifest['storage']['files']} stored files")

@@ -18,18 +18,23 @@
 # A merge would leave files from before the failure beside files from the backup, and the manifest
 # would then reconcile against a tree nobody has ever had. The target directory must be empty or
 # `--force`d, for the same reason as the database.
+#
+# ## The tools come from a pinned image over the network
+#
+# See `backup.sh` for why: the first version named a container, which is an environment fact that
+# worked locally and failed in CI.
 set -euo pipefail
+
+PG_IMAGE="postgres:16.14-alpine3.24"
 
 usage() {
     cat >&2 <<'EOF'
-usage: restore.sh --bundle FILE --container NAME --database NAME --user NAME --storage DIR
+usage: restore.sh --bundle FILE --database-url URL --storage DIR
                   [--passphrase-file FILE] [--force]
 
   --bundle           the .tar or .tar.gpg written by backup.sh
-  --container        the running PostgreSQL container to restore into
-  --database         the database to restore into. Must exist and must be EMPTY
-                     unless --force is given.
-  --user             PostgreSQL role to restore as
+  --database-url     postgresql://user:password@host:port/database — must exist and
+                     must be EMPTY unless --force is given.
   --storage          where to unpack the stored files. Must be empty or absent
                      unless --force is given.
   --passphrase-file  decrypt with this passphrase, if the bundle is encrypted
@@ -38,13 +43,11 @@ usage: restore.sh --bundle FILE --container NAME --database NAME --user NAME --s
 EOF
 }
 
-bundle="" container="" database="" user="" storage="" passphrase_file="" force=0
+bundle="" database_url="" storage="" passphrase_file="" force=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --bundle) bundle="$2"; shift 2 ;;
-        --container) container="$2"; shift 2 ;;
-        --database) database="$2"; shift 2 ;;
-        --user) user="$2"; shift 2 ;;
+        --database-url) database_url="$2"; shift 2 ;;
         --storage) storage="$2"; shift 2 ;;
         --passphrase-file) passphrase_file="$2"; shift 2 ;;
         --force) force=1; shift ;;
@@ -53,9 +56,9 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-for required in bundle container database user storage; do
+for required in bundle database_url storage; do
     if [ -z "${!required}" ]; then
-        printf -- '--%s is required\n' "$required" >&2
+        printf -- '--%s is required\n' "${required//_/-}" >&2
         usage
         exit 2
     fi
@@ -88,12 +91,12 @@ done
 # The emptiness check, and the reason it is a query rather than a file test: a database can exist,
 # have a schema, and hold no rows — which is exactly the state a drill wants and a file test cannot
 # tell from a database full of money.
-rows=$(docker exec -i "$container" psql --username "$user" --dbname "$database" \
-    --no-align --tuples-only --command \
-    "SELECT COALESCE(SUM(n_live_tup), 0) FROM pg_stat_user_tables" 2>/dev/null || echo "0")
+rows=$(docker run --rm --network host "$PG_IMAGE" \
+    psql "$database_url" --no-align --tuples-only \
+    --command "SELECT COALESCE(SUM(n_live_tup), 0) FROM pg_stat_user_tables" 2>/dev/null || echo "0")
 rows=${rows//[!0-9]/}
 if [ "${rows:-0}" -gt 0 ] && [ "$force" -eq 0 ]; then
-    printf 'refusing: %s already holds about %s rows.\n' "$database" "$rows" >&2
+    printf 'refusing: the target database already holds about %s rows.\n' "$rows" >&2
     printf 'A drill restores into a CLEAN database — rows that were already there reconcile\n' >&2
     printf 'with any manifest, which is how a drill passes while proving nothing.\n' >&2
     printf 'Pass --force only if this is a real recovery over a broken database.\n' >&2
@@ -109,8 +112,8 @@ fi
 printf 'restoring the database...\n'
 # `--clean --if-exists` so a `--force`d recovery replaces what is there rather than colliding with
 # it. On the empty database a drill uses, both are no-ops.
-docker exec -i "$container" pg_restore --username "$user" --dbname "$database" \
-    --no-owner --clean --if-exists < "$work/database.dump"
+docker run --rm --interactive --network host "$PG_IMAGE" \
+    pg_restore --dbname "$database_url" --no-owner --clean --if-exists < "$work/database.dump"
 
 printf 'restoring the storage tree...\n'
 mkdir -p "$storage"
@@ -119,9 +122,10 @@ if [ "$force" -eq 1 ]; then
 fi
 tar --extract --gzip --file "$work/storage.tar.gz" --directory "$storage"
 
-cp "$work/manifest.json" "$storage/../restored-manifest-source.json" 2>/dev/null || true
-
-printf '\nrestored. The bundle'"'"'s own manifest is at %s/manifest.json inside it.\n' "$work"
+printf '\nrestored.\n'
 printf 'Reconcile before believing this worked:\n'
 printf '  python3 infra/scripts/backup_manifest.py EXPECTED.json ACTUAL.json\n'
 printf 'A restore that ran is not a restore that is correct.\n'
+printf '\nOwnership is NOT restored: pg_restore --no-owner leaves every object owned by the\n'
+printf 'connecting role. Re-apply infra/postgres/bootstrap/020-runtime-roles.sql before the\n'
+printf 'application can use this database.\n'
