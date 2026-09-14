@@ -58,6 +58,8 @@ const WORKSPACE_PAGE = join(APP_ROOT, "app", "bank-result-bundles", "[bundleId]"
 const CROP_CANVAS = join(APP_ROOT, "components", "crop-canvas.tsx");
 const PAGE_PREVIEW = join(APP_ROOT, "components", "page-preview.tsx");
 const MODULE = join(APP_ROOT, "src", "bundles.ts");
+const SEGMENT_CANDIDATES = join(APP_ROOT, "components", "segment-candidates.tsx");
+const RESULTS_MODULE = join(APP_ROOT, "src", "payment-results.ts");
 
 const read = (path: string): string => readFileSync(path, "utf8");
 
@@ -88,9 +90,14 @@ function workspaceItems(): readonly string[] {
  * the second hide behind the first's evidence. Each half has its own live check below.
  */
 const ABSENT_NO_ROUTE: ReadonlyMap<string, string> = new Map([
-  // Doc 05 `:1553` specifies `GET /api/v1/payment-attempts` and nobody has built it. M9 slice 3
-  // is the first slice with a reason to.
-  ["attempt search", "/payment-attempts"],
+  // **Empty since M0 slice E, and that is what this map is for.** It held "attempt search" from M8
+  // until slice E, when the assertion below failed because `GET /api/v1/payment-attempts` had been
+  // built — by slice E itself, and for the reason the route's own docstring gives: proposing a
+  // matching candidate takes a `payment_attempt_id` and no read produced a choosable one.
+  //
+  // Left in place rather than deleted. A map with no entries is the honest record that every item
+  // §16.3 lists now has a server surface, and the next absence of this kind has somewhere to go
+  // with the reasoning above it.
 ]);
 
 /**
@@ -100,19 +107,62 @@ const ABSENT_NO_ROUTE: ReadonlyMap<string, string> = new Map([
  * unbuilt` fails when one appears, so this record cannot go stale in the other direction either.
  */
 const ABSENT_NO_SCREEN: ReadonlyMap<string, readonly string[]> = new Map([
-  // M9 slice 1 built `POST`/`GET /receipt-segments/{segment_id}/matching-candidates` and the two
-  // decision routes. The drawer is not this slice's: slice 1 is the table, the commands and the
-  // routes, and a panel drawn against half of M9's evidence surface would have to be redrawn when
-  // slice 2 adds evidence links and slice 5 adds history. Owed by M9's screens work, and named
-  // here so the debt is visible rather than inferred from an empty map.
-  ["candidate/evidence/history drawers", ["listMatchingCandidates", "acceptMatchingCandidate"]],
+  // Empty since M0 slice E built the candidate drawer. The item it held is now in `PARTIAL` below,
+  // because one of the three drawers §16.3 names in a single line is built and two are not.
 ]);
+
+/**
+ * Items the document states as one and the implementation answers in parts.
+ *
+ * **Why a third kind rather than moving the item into `evidence`.** §16.3 writes
+ * "candidate/evidence/history drawers" on one line; M0 slice E built the candidate drawer. Put in
+ * `evidence` with the candidate drawer's markers, the item would pass — and the two drawers nobody
+ * has built would have vanished from the record behind the one that exists. That is the shape
+ * `an-exemption-must-name-its-mechanism` describes: an exemption whose reason is true about part of
+ * its subject and silent about the rest.
+ *
+ * So a partial item carries **both halves**: the markers proving what is built, checked the same
+ * way `evidence` is, and the named remainder with a reason each. `every partial item names what is
+ * still owed` is what stops the second half becoming decorative.
+ */
+const PARTIAL: ReadonlyMap<string, { built: readonly string[]; owed: ReadonlyMap<string, string> }> =
+  new Map([
+    [
+      "candidate/evidence/history drawers",
+      {
+        built: ["SegmentCandidates", "listCandidates", "acceptCandidate", "candidate.advisory"],
+        owed: new Map([
+          // `confirmed_evidence_links.receipt_segment_id` exists, so a segment-scoped list is
+          // possible and is not served: the only reads are one link by id and — after M0 slice C —
+          // a list scoped by *payment attempt*. The evidence surface that does exist lives on the
+          // attempt screen, which is where a link is confirmed. A drawer here would need a route
+          // that answers "what evidence cites this segment".
+          ["evidence", "no segment-scoped read; `GET /evidence-links` is scoped by attempt"],
+          // Nothing returns a segment's history. `GET /receipt-segments/{id}` is the current state
+          // of one segment, and `audit_logs` is not reachable per-entity from any route here.
+          ["history", "no route returns a segment's history; the audit trail is not per-entity"],
+        ]),
+      },
+    ],
+  ]);
+
+/** Every file the workspace's §16.3 surface is spread across. */
+function workspaceSource(): string {
+  return [
+    read(WORKSPACE_PAGE),
+    read(CROP_CANVAS),
+    read(PAGE_PREVIEW),
+    read(MODULE),
+    // M0 slice E. The candidate drawer is a component and its data module is `payment-results.ts`,
+    // so a check that read only the four files above would report the drawer as unbuilt.
+    read(SEGMENT_CANDIDATES),
+    read(RESULTS_MODULE),
+  ].join("\n");
+}
 
 describe("the workspace covers §16.3", () => {
   it("renders or deliberately records every item the document lists", () => {
-    const source = [read(WORKSPACE_PAGE), read(CROP_CANVAS), read(PAGE_PREVIEW), read(MODULE)].join(
-      "\n",
-    );
+    const source = workspaceSource();
 
     // What each item looks like when it is actually built. Keyed by the document's own wording so a
     // reworded item fails here rather than silently dropping out of the check.
@@ -124,13 +174,16 @@ describe("the workspace covers §16.3", () => {
       ["rectangular crop selection", ["CropCanvas", "onPointerDown"]],
       ["normalized coordinates", ["normalizeRectangle", "admin.workspace.normalized"]],
       ["selected-segment fields", ["admin.workspace.fields", "manual_fields"]],
+      // M0 slice E. `searchAttempts` is the call and `candidate.search` is the control that makes
+      // it a search rather than a filter over a list the screen already had.
+      ["attempt search", ["searchAttempts", "candidate.search", "candidate-search"]],
       ["keyboard-accessible controls", ["onKeyDown", "ArrowLeft", "NumberField"]],
       ["external evidence fallback", ["attachExternalEvidence", "admin.workspace.external"]],
     ]);
 
     const unaccounted: string[] = [];
     for (const item of workspaceItems()) {
-      if (ABSENT_NO_ROUTE.has(item) || ABSENT_NO_SCREEN.has(item)) continue;
+      if (ABSENT_NO_ROUTE.has(item) || ABSENT_NO_SCREEN.has(item) || PARTIAL.has(item)) continue;
       const markers = evidence.get(item);
       if (!markers) {
         unaccounted.push(`${item} — no marker recorded`);
@@ -147,23 +200,54 @@ describe("the workspace covers §16.3", () => {
     // The control on the test above. Without it an item could be dropped from both the evidence map
     // and the absent maps and nothing would notice — the check would simply stop looking at it.
     const items = workspaceItems();
-    const recorded = new Set([...ABSENT_NO_ROUTE.keys(), ...ABSENT_NO_SCREEN.keys()]);
+    const recorded = new Set([
+      ...ABSENT_NO_ROUTE.keys(),
+      ...ABSENT_NO_SCREEN.keys(),
+      ...PARTIAL.keys(),
+    ]);
     const unknown = items.filter((item) => recorded.has(item));
 
     expect(items.length).toBe(11);
-    expect(unknown.length).toBe(ABSENT_NO_ROUTE.size + ABSENT_NO_SCREEN.size);
+    expect(unknown.length).toBe(ABSENT_NO_ROUTE.size + ABSENT_NO_SCREEN.size + PARTIAL.size);
   });
 
   it("the items recorded as having no route still have none", () => {
     // **The assertion that makes the first kind of absence honest.** It failed when M9 slice 1
-    // added the candidate routes, which is what moved that item to `ABSENT_NO_SCREEN`. Without it,
-    // an item could stay "deliberately absent" forever while the reason quietly expired.
+    // added the candidate routes, which moved that item to `ABSENT_NO_SCREEN`; it failed again on
+    // M0 slice E, which built `GET /payment-attempts` and emptied this map. Without it, an item
+    // could stay "deliberately absent" forever while the reason quietly expired.
     const contract = read(CONTRACT);
     const built = [...ABSENT_NO_ROUTE.entries()].filter(([, route]) =>
       contract.includes(`"/api/v1${route}"`),
     );
 
     expect(built).toEqual([]);
+  });
+
+  it("every partial item really has the part it claims", () => {
+    // Half of what makes a partial record honest: the built half is checked exactly the way a full
+    // item's is. Without this, "partial" would be a place to put an item nobody had started.
+    const source = workspaceSource();
+    const missing = [...PARTIAL.entries()].flatMap(([item, record]) =>
+      record.built.filter((marker) => !source.includes(marker)).map((m) => `${item} — missing ${m}`),
+    );
+
+    expect(missing).toEqual([]);
+  });
+
+  it("every partial item names what is still owed, with a reason", () => {
+    // The other half, and the one this record exists for. §16.3 writes three drawers on one line;
+    // an item allowed into `PARTIAL` with an empty `owed` would be a full item wearing a softer
+    // label, which is how two unbuilt drawers hide behind one built one.
+    const empty = [...PARTIAL.entries()].filter(([, record]) => record.owed.size === 0);
+    expect(empty).toEqual([]);
+
+    const unexplained = [...PARTIAL.entries()].flatMap(([item, record]) =>
+      [...record.owed.entries()]
+        .filter(([, reason]) => reason.trim().length < 20)
+        .map(([part]) => `${item}/${part}`),
+    );
+    expect(unexplained).toEqual([]);
   });
 
   it("the items recorded as having a route really do have one", () => {
@@ -181,10 +265,8 @@ describe("the workspace covers §16.3", () => {
   it("the recorded screens are still unbuilt, so that record is not stale either", () => {
     // The staleness check for the second kind. When somebody draws the drawer, this fails and the
     // item moves into the evidence map above — the same conversation the route check forced, one
-    // layer later.
-    const source = [read(WORKSPACE_PAGE), read(CROP_CANVAS), read(PAGE_PREVIEW), read(MODULE)].join(
-      "\n",
-    );
+    // layer later. It failed on M0 slice E, which is what emptied this map into `PARTIAL`.
+    const source = workspaceSource();
     const appeared = [...ABSENT_NO_SCREEN.entries()].filter(([, markers]) =>
       markers.some((marker) => source.includes(marker)),
     );

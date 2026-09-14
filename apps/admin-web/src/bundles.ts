@@ -56,6 +56,31 @@ export type BundleSummary = Readonly<{
   record_version: number;
 }>;
 
+/**
+ * Which batch this bundle appears to answer.
+ *
+ * **`proves_payment` is a field and is always `false`.** `05_API_Specification.md:1688` calls the
+ * association "operational context only" — a screen that put a batch number beside a bundle would
+ * be read as a claim about payment unless something contradicted it, and the server contradicts it
+ * in the payload rather than leaving it to a caption.
+ *
+ * `link_method` records **how** the link was made: a person choosing, a reference on the export, or
+ * a note. `replaced_at` is set when a later link supersedes this one — the row stays, so how a
+ * bundle came to be attached to a batch is answerable after somebody changed their mind.
+ */
+export type BatchLink = Readonly<{
+  id: string;
+  payment_batch_id: string;
+  batch_number: string;
+  payment_batch_version_id: string | null;
+  link_method: string;
+  status: string;
+  created_by: string | null;
+  created_at: string;
+  replaced_at: string | null;
+  proves_payment: boolean;
+}>;
+
 /** `05_API_Specification.md:1680`'s detail response. */
 export type BundleDetail = Readonly<{
   id: string;
@@ -67,6 +92,14 @@ export type BundleDetail = Readonly<{
   unresolved_segment_count: number;
   notes: string | null;
   files: readonly BundleFile[];
+  batch_links: readonly BatchLink[];
+  /**
+   * The vocabulary the server accepts, **read rather than copied**.
+   *
+   * `bank_result_bundle.py` sends these so a client does not hold its own list — one that would
+   * disagree the day the server gains a value, and disagree silently.
+   */
+  accepted_link_methods: readonly string[];
   record_version: number;
 }>;
 
@@ -406,6 +439,223 @@ export async function readBundle(bundleId: string, signal?: AbortSignal): Promis
     method: "GET",
     path: `/bank-result-bundles/${encodeURIComponent(bundleId)}`,
     ...(signal ? { signal } : {}),
+  });
+  return response.data;
+}
+
+/**
+ * One cut of a bank result, and what the platform read out of it.
+ *
+ * M0 slice E. The four `extracted_*` fields are what a person matches against — the amount and the
+ * tracking number above all, which is the same pair `app/statements/parser.py` makes its
+ * `REQUIRED_FIELDS`. `null` in any of them means the platform could not read it, not that the
+ * receipt lacked it: §8.4 requires an unparseable field to be left null rather than guessed.
+ */
+export type SegmentSummary = Readonly<{
+  id: string;
+  status: string;
+  creation_method: string;
+  page_number: number | null;
+  segment_file_id: string | null;
+  extracted_amount_irr: string | null;
+  extracted_tracking_number: string | null;
+  extracted_beneficiary_name: string | null;
+  privacy_verified: boolean;
+  record_version: number;
+  created_at: string;
+}>;
+
+/** A suggestion. **Advisory** — `05_API_Specification.md:1802` says so in terms. */
+export type MatchingCandidate = Readonly<{
+  id: string;
+  receipt_segment_id: string;
+  payment_attempt_id: string;
+  method: string;
+  score: string | null;
+  reasons: readonly string[];
+  status: string;
+  created_at: string;
+  resolved_at: string | null;
+}>;
+
+export async function listSegments(
+  bundleId: string,
+  signal?: AbortSignal,
+): Promise<readonly SegmentSummary[]> {
+  const response = await transport.request<readonly SegmentSummary[]>({
+    method: "GET",
+    path: `/bank-result-bundles/${encodeURIComponent(bundleId)}/receipt-segments`,
+    ...(signal ? { signal } : {}),
+  });
+  return response.data;
+}
+
+export async function listCandidates(
+  segmentId: string,
+  signal?: AbortSignal,
+): Promise<readonly MatchingCandidate[]> {
+  const response = await transport.request<readonly MatchingCandidate[]>({
+    method: "GET",
+    path: `/receipt-segments/${encodeURIComponent(segmentId)}/matching-candidates`,
+    ...(signal ? { signal } : {}),
+  });
+  return response.data;
+}
+
+/**
+ * Suggest that this segment is evidence for an attempt.
+ *
+ * **No `method` and no `score`.** The route defaults `method` to `manual`, and a score sent from
+ * here would be a human guess wearing the shape of something computed — `ProposeRequest`'s own
+ * docstring refuses a default of 1.0 for exactly that reason. When an engine proposes, it will
+ * send both, and the unique on `(segment, attempt, method)` is what lets it suggest the same pair a
+ * person already did without colliding.
+ */
+export async function proposeCandidate(
+  segmentId: string,
+  paymentAttemptId: string,
+): Promise<MatchingCandidate> {
+  const response = await transport.request<MatchingCandidate, Record<string, unknown>>({
+    method: "POST",
+    path: `/receipt-segments/${encodeURIComponent(segmentId)}/matching-candidates`,
+    body: { payment_attempt_id: paymentAttemptId },
+    // Load bearing rather than decorative: without it a retried request is refused by
+    // `uq_candidate_segment_attempt_method`, which tells the operator somebody else proposed this
+    // link when in fact they did it themselves.
+    idempotencyKey: crypto.randomUUID(),
+  });
+  return response.data;
+}
+
+/**
+ * Accept a suggestion. **This marks nothing paid**, and the screen says so where it is clicked.
+ *
+ * `05_API_Specification.md:1810` states the prohibition, `:1274` repeats it and
+ * `command_catalog.yaml:296` carries it as a precondition. What acceptance opens is the
+ * confirmation context; what closes it is `confirm-paid`, which needs a tracking number, a result
+ * timestamp and a person — none of which a candidate carries.
+ */
+export async function acceptCandidate(
+  candidateId: string,
+  reason?: string,
+): Promise<MatchingCandidate> {
+  const response = await transport.request<MatchingCandidate, Record<string, unknown>>({
+    method: "POST",
+    path: `/matching-candidates/${encodeURIComponent(candidateId)}/accept-for-confirmation`,
+    body: { reason: reason?.trim() ? reason : null },
+    idempotencyKey: crypto.randomUUID(),
+  });
+  return response.data;
+}
+
+/**
+ * Refuse a suggestion, **always with a reason**.
+ *
+ * The command requires one where `:1820` asks for it only "when rejecting a high-confidence
+ * candidate or overriding a previously accepted candidate" — the second case is exact and the first
+ * has no approved threshold, so the server refuses "sometimes" rather than inventing the boundary.
+ * The screen collects one for every rejection because that is what the server will accept.
+ */
+export async function rejectCandidate(
+  candidateId: string,
+  reason: string,
+): Promise<MatchingCandidate> {
+  const response = await transport.request<MatchingCandidate, Record<string, unknown>>({
+    method: "POST",
+    path: `/matching-candidates/${encodeURIComponent(candidateId)}/reject`,
+    body: { reason },
+    idempotencyKey: crypto.randomUUID(),
+  });
+  return response.data;
+}
+
+/**
+ * The batch number an accountant chooses from, and the one thing this list must not become.
+ *
+ * **The owner's decision of 2026-09-13**: a person picks the batch by its number rather than the
+ * platform deciding from a file name. Their first instinct was the safe half of it — "the
+ * accountant should know which batch this is for" — and the unsafe half was recognising it from
+ * the file's name with an instruction not to rename. A name leaves this building: the bank renames
+ * it, a mail client renames it, a download adds `(1)`, and an instruction is what gets skipped on a
+ * busy day. A bundle attached to the wrong batch is invisible; one attached to nothing is not.
+ *
+ * So the file name may be shown as a hint and never decides. `link_method: "manual_selection"` is
+ * what the server then records, and a later reader can tell a person's choice from a guess.
+ */
+export type BatchChoice = Readonly<{
+  id: string;
+  batch_number: string;
+  status: string;
+  row_count: number;
+  /** A base-10 integer string. `MONEY_TIME_CONTRACT.md` rule 9 keeps it out of `Number`. */
+  total_amount_irr: string;
+  version_created_at: string | null;
+}>;
+
+/**
+ * Every batch, for the picker.
+ *
+ * **`{ batches: [...] }`, and no `limit`.** Written after reading the contract rather than assuming
+ * the `{ items, next_cursor }` shape three other lists in this application use: `GET
+ * /payment-batches` answers a bare envelope and takes one query parameter, `awaiting_decision`. A
+ * guessed shape would have been a runtime error the type system waved through, and a guessed
+ * `limit` would have been refused as an undeclared parameter.
+ */
+/**
+ * A batch number as it appears inside a file name, or `null`.
+ *
+ * **Deliberately strict**: the full `PB-YYYYMMDD-NNNNNN` shape, anchored to word boundaries. A
+ * looser pattern would match a bare date in a file name and pre-select a batch at random — worse
+ * than matching nothing, because the operator would then be confirming a suggestion instead of
+ * making a choice.
+ *
+ * Here rather than in the component that shows it, so it can be tested as what it is: a pure
+ * function over a string, with the names that actually arrive — renamed by a mail client, suffixed
+ * by a download, appended to by the bank.
+ *
+ * **The boundaries are explicit rather than `\b`, and a test is why.** `\b` after the digits fails
+ * on `PB-20260913-000001_bank_final.xlsx`, because `_` is a word character and there is no boundary
+ * between `1` and `_` — which is exactly the rename a bank produces. The leading guard refuses a
+ * number glued to other text, and the trailing one refuses a longer digit run, so
+ * `PB-20260913-0000012` matches nothing rather than matching a different batch.
+ */
+export function batchNumberInFileName(fileName: string): string | null {
+  const found = /(?<![0-9A-Za-z])PB-\d{8}-\d{6}(?!\d)/.exec(fileName);
+  return found ? found[0] : null;
+}
+
+export async function listBatchesForLinking(
+  signal?: AbortSignal,
+): Promise<readonly BatchChoice[]> {
+  const response = await transport.request<{ batches: readonly BatchChoice[] }>({
+    method: "GET",
+    path: "/payment-batches",
+    ...(signal ? { signal } : {}),
+  });
+  return response.data.batches;
+}
+
+/**
+ * Record that this bundle appears to answer that batch.
+ *
+ * **Not evidence of payment**, and the route's own summary says so. A repeat call supersedes the
+ * previous link rather than deleting it — `uq_bundle_links_active_pair` keeps one active pair and
+ * the old row stays with a `replaced_at`, so changing your mind is recorded rather than erased.
+ *
+ * **No `Idempotency-Key`, and that is checked rather than assumed.** `command_catalog.yaml` has no
+ * row for this command, so there is no idempotency contract to honour, and the unique makes a
+ * repeat harmless. The route accepts no such header; sending one would be this screen inventing a
+ * control.
+ */
+export async function linkBundleToBatch(
+  bundleId: string,
+  paymentBatchId: string,
+  linkMethod: string,
+): Promise<BatchLink> {
+  const response = await transport.request<BatchLink, Record<string, unknown>>({
+    method: "POST",
+    path: `/bank-result-bundles/${encodeURIComponent(bundleId)}/batch-links`,
+    body: { payment_batch_id: paymentBatchId, link_method: linkMethod },
   });
   return response.data;
 }
