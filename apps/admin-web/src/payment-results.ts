@@ -343,6 +343,93 @@ export type ReceiptSegment = Readonly<{
  * deferred twice. A publication carries `primary_evidence_link_id`; the evidence surface was three
  * POSTs, so the id proving a trader's result resolved to nothing a person could look at.
  */
+/**
+ * Every evidence link for one attempt, oldest first — replaced ones included.
+ *
+ * **The read that turns a confirmation's excuse into a document.** `confirmPaid` has accepted a
+ * `primaryEvidenceLinkId` since M9 and nothing listed an attempt's links, so the form could only
+ * ever offer `evidenceUnavailableReason`. Every confirmed payment in this system therefore records
+ * why evidence was unavailable, including the ones where it was not.
+ *
+ * The replaced rows are kept rather than filtered: §12.6 says a replacement never deletes the old
+ * relationship, and an attempt whose evidence was corrected should read as corrected rather than
+ * as one row that quietly changed.
+ */
+export async function listEvidenceLinks(
+  paymentAttemptId: string,
+  signal?: AbortSignal,
+): Promise<readonly EvidenceLink[]> {
+  const response = await transport.request<readonly EvidenceLink[]>({
+    method: "GET",
+    path: `/evidence-links?payment_attempt_id=${encodeURIComponent(paymentAttemptId)}`,
+    ...(signal ? { signal } : {}),
+  });
+  return response.data;
+}
+
+/**
+ * Confirm that a receipt segment is the evidence for an attempt.
+ *
+ * **No `If-Match`.** §12.6 gives this table no `record_version`, and the command's concurrency is
+ * two partial unique indexes — one active primary link per attempt, one per segment — enforced in
+ * the database rather than by a precondition the client echoes. A screen sending one would be
+ * inventing a control the route does not accept.
+ */
+export async function confirmEvidenceLink(
+  input: Readonly<{
+    paymentAttemptId: string;
+    receiptSegmentId: string;
+    confirmationNote?: string | null;
+  }>,
+): Promise<EvidenceLink> {
+  const response = await transport.request<EvidenceLink, Record<string, unknown>>({
+    method: "POST",
+    path: "/evidence-links",
+    body: {
+      payment_attempt_id: input.paymentAttemptId,
+      receipt_segment_id: input.receiptSegmentId,
+      confirmation_note: input.confirmationNote ?? null,
+    },
+    idempotencyKey: commandKey(),
+  });
+  return response.data;
+}
+
+/**
+ * Swap the segment an attempt's evidence points at.
+ *
+ * **This is not the correction flow and must not be confused with it.** Once a result is
+ * published, `confirmed_evidence_link.replace_evidence_link` refuses and sends the caller to the
+ * dual-control correction instead — the screen does not have to know that rule, but somebody
+ * reading this function does, because a 400 here is the system doing its job.
+ */
+export async function replaceEvidenceLink(
+  linkId: string,
+  input: Readonly<{ newReceiptSegmentId: string; replacementReason: string }>,
+): Promise<EvidenceLink> {
+  const response = await transport.request<EvidenceLink, Record<string, unknown>>({
+    method: "POST",
+    path: `/evidence-links/${encodeURIComponent(linkId)}/replace`,
+    body: {
+      new_receipt_segment_id: input.newReceiptSegmentId,
+      replacement_reason: input.replacementReason,
+    },
+    idempotencyKey: commandKey(),
+  });
+  return response.data;
+}
+
+/** Retire a link that should never have been made. The row survives; its status becomes revoked. */
+export async function voidEvidenceLink(linkId: string, reason: string): Promise<EvidenceLink> {
+  const response = await transport.request<EvidenceLink, Record<string, unknown>>({
+    method: "POST",
+    path: `/evidence-links/${encodeURIComponent(linkId)}/void`,
+    body: { reason },
+    idempotencyKey: commandKey(),
+  });
+  return response.data;
+}
+
 export async function readEvidenceLink(
   linkId: string,
   signal?: AbortSignal,

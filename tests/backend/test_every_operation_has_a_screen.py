@@ -153,20 +153,15 @@ NO_SCREEN: dict[tuple[str, str], str] = {
         "is performed by the import path rather than by a person, and no slice has decided "
         "whether a human should ever do it by hand."
     ),
-    # --- evidence -------------------------------------------------------------------------------
-    ("POST", "/api/v1/evidence-links"): (
-        "confirming an evidence link. Slice 4's payment confirmation offers the *reason* evidence "
-        "is unavailable rather than a link, because linking needs the file browser M4 built the "
-        "backend for and no slice has owned."
-    ),
-    (
-        "POST",
-        "/api/v1/evidence-links/{link_id}/replace",
-    ): "part of the same unbuilt surface as the operation above it",
-    (
-        "POST",
-        "/api/v1/evidence-links/{link_id}/void",
-    ): "part of the same unbuilt surface as the operation above it",
+    # M0 slice C built the evidence panel on the attempt screen, so the three link operations left
+    # this list. Their entry said linking "needs the file browser M4 built the backend for and no
+    # slice has owned" — and the blocker turned out to be one read rather than a browser: nothing
+    # enumerated an attempt's links, so the confirmation form had nothing to cite and could only
+    # offer the reason evidence was unavailable. `GET /evidence-links?payment_attempt_id=...` is
+    # that read.
+    #
+    # **Choosing a crop visually is still slice E's**, and the panel says so: a segment id is
+    # typed or pasted from the bundle workspace, which is where they are visible today.
     # M11 Screens slice 9 built the review task screen, so the six manual-review operations
     # left this list — which is what a closed entry looks like here: a deletion rather than an
     # edit. `test_no_recorded_operation_has_quietly_gained_a_screen` is what would have caught
