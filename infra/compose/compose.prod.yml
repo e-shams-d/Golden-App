@@ -1,0 +1,88 @@
+# The production delta, applied over `compose.local.yml`.
+#
+# M12 slice 3. §20.4 asks for a production-like Compose stack, pinned immutable images and an Nginx
+# HTTPS configuration.
+#
+# ## An overlay, not a second stack
+#
+# Run as:
+#
+#     docker compose -f compose.local.yml -f compose.prod.yml up -d
+#
+# **A standalone production file would be a copy of the local one**, and copies drift — which is
+# exactly what `infra/verification/lint_targets.txt` exists to record about two copies of a path
+# list. Everything already true of the local stack stays true here without being restated:
+# `no-new-privileges`, `cap_drop: ALL`, `read_only`, log rotation, healthchecks, and the three
+# networks. This file says only what production changes.
+#
+# ## What it changes, and why each one
+#
+# **Images are pinned by digest.** A tag is a pointer somebody can move; `16.14-alpine3.24` today
+# and `16.14-alpine3.24` after a rebuild need not be the same bytes. §20.4 says "pinned immutable
+# images" and a digest is the only form of that. `test_production_stack.py` fails if a digest is
+# missing, and the digests are the ones CI's trivy gate scanned.
+#
+# **TLS terminates at nginx, on 443.** The local stack listens on 8080 over HTTP, which is correct
+# for a laptop and is not a deployment. `SECURITY_HSTS_ENABLED=true` goes with it and not before it:
+# HSTS on a host with no certificate tells every browser to refuse the only scheme that works.
+#
+# **The admin panel's network exposure is one include away, deliberately.** OPS-004 is open — the
+# owner deferred it on 2026-09-14 — and `infra/nginx/conf.d/admin-access.conf` is the whole of the
+# answer either way. Today it allows everyone and says so in a comment; restricting it is editing
+# that file and reloading, not rebuilding this stack. **That does not close OPS-004**, and §20.5
+# still requires it resolved before the exit gate.
+
+services:
+  postgres:
+    # postgres:16.14-alpine3.24 as of 2026-09-14. The tag stays in a comment so a human can read
+    # which version this is; the digest is what Docker resolves.
+    image: postgres@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+
+  db-bootstrap:
+    image: postgres@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+
+  redis:
+    # redis:7.4.9-alpine3.21 as of 2026-09-14.
+    image: redis@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
+
+  nginx:
+    ports:
+      # **443 only.** No port 80 redirect service: a listener on 80 exists to upgrade the first
+      # request, and until OPS-004 is answered the safer shape is no plaintext listener at all. An
+      # operator typing `http://` gets a connection refusal rather than a redirect an attacker on
+      # the path could intercept — HSTS then keeps the browser on HTTPS for a year.
+      - "${HTTPS_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:8443"
+    volumes:
+      # The certificate and its key, supplied by the operator. Read-only, and **not baked into the
+      # image**: an image carrying a private key is a key in every registry that ever stored it.
+      - ${TLS_CERT_DIR:?TLS_CERT_DIR must point at the directory holding fullchain.pem and privkey.pem}:/etc/nginx/tls:ro
+      # **Mounted over `local.conf`, not beside it.** `infra/nginx/nginx.conf:31` includes
+      # `/etc/nginx/conf.d/*.conf`, so a production file added alongside the local one would give
+      # nginx two definitions of every upstream and it would refuse to start. Replacing the file
+      # that is there is the only shape that works.
+      - ../nginx/deployment/production.conf:/etc/nginx/conf.d/local.conf:ro
+      # The three per-deployment decisions, in a directory `conf.d/*.conf` does **not** sweep up:
+      # the two hostnames, and OPS-004's answer. Included by name from inside the one server block
+      # each belongs to — `admin-access.conf` at http level would have restricted traders too.
+      - ../nginx/deployment/admin-access.conf:/etc/nginx/deployment/admin-access.conf:ro
+      - ../nginx/deployment/trader-host.conf:/etc/nginx/deployment/trader-host.conf:ro
+      - ../nginx/deployment/admin-host.conf:/etc/nginx/deployment/admin-host.conf:ro
+    healthcheck:
+      # Over TLS, against the certificate the deployment actually holds. `--no-check-certificate`
+      # because a self-signed certificate is a legitimate production choice behind a VPN, and a
+      # health check that failed on it would report the stack down while it served every request.
+      test: ["CMD", "wget", "--no-check-certificate", "-qO-", "https://127.0.0.1:8443/nginx-health"]
+
+  backend:
+    environment:
+      # HSTS is enabled here and nowhere else. `packages/config/src/security-headers.mjs:61` reads
+      # it, and it must not be true on a stack without TLS.
+      SECURITY_HSTS_ENABLED: "true"
+
+  admin-web:
+    environment:
+      SECURITY_HSTS_ENABLED: "true"
+
+  trader-pwa:
+    environment:
+      SECURITY_HSTS_ENABLED: "true"

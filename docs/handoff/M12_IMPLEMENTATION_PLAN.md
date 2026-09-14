@@ -239,10 +239,53 @@ leaves every object owned by the restoring role, and handing ownership back is a
 runbook owes. The drill reads the restored database as the role that restored it, and says so,
 rather than connecting as whichever role happens to work.
 
-### Slice 3 — the production-like stack and HTTPS
+### Slice 3 — the production-like stack and HTTPS — **done 2026-09-14**
 
-Pinned digests rather than tags, TLS in nginx, private network validation. This is also what
-slice 2's drill should run against, so it may merge into slice 2 if the drill needs it first.
+`infra/compose/compose.prod.yml:1` is an **overlay**, not a second stack: everything already true of
+`infra/compose/compose.local.yml:1` — `no-new-privileges`, `cap_drop: ALL`, `read_only`, log
+rotation, healthchecks, three networks — stays true without being restated. A standalone production
+file would be a copy, and copies drift; that is what `infra/verification/lint_targets.txt:1` exists
+to record about two copies of one list.
+
+It changes three things: images pinned **by digest**, TLS terminated in nginx on 443, and
+`SECURITY_HSTS_ENABLED` set — which `packages/config/src/security-headers.mjs:61` reads, and which
+must never be true on a stack without a certificate.
+
+**OPS-004's answer is one file.** `infra/nginx/deployment/admin-access.conf:1` is the whole of it:
+today `allow all;` with the consequence written beside it, and restricting the panel is editing that
+file and reloading — no image rebuild, no restart, no session lost. **That does not close OPS-004**,
+and §20.5 still requires it resolved.
+
+### What `nginx -t` found that reading did not
+
+The first draft parsed in my head and not in nginx. Three defects, each of which would have shipped:
+
+- **`${TRADER_HOST}` is nine literal characters.** The official image substitutes `${VAR}` only in
+  `/etc/nginx/templates/*.template`, through an entrypoint `infra/docker/nginx.Dockerfile:29`
+  replaces with `ENTRYPOINT []` — and `read_only: true` means nothing could write the result anyway.
+- **`admin-access.conf` in `conf.d/` would have restricted traders too.**
+  `infra/nginx/nginx.conf:31` includes `conf.d/*.conf` at `http` level, so its `allow` rules would
+  have applied to every server block. The file's own comment warned against exactly that while its
+  placement caused it.
+- **A production file beside `local.conf` gives nginx two of every upstream** and it refuses to
+  start.
+
+All three are fixed by `infra/nginx/deployment/`, a directory the wildcard include does not sweep
+up, holding one decision per file.
+
+### What proves it
+
+- `OPS-STACK-001` — `tests/backend/test_production_stack.py:1` asserts every third-party image is
+  pinned by digest **and** that the overlay pins every image the local stack pulls: an overlay that
+  pinned one and dropped another would satisfy the first check while shipping from a moving tag.
+- `OPS-STACK-002` — the production nginx serves every location the local one does, **counted per
+  audience**, sets every header the local one sets plus HSTS, has no plaintext listener, and applies
+  the admin access rule to the admin block alone.
+
+Eight negative controls in `scripts/sabotage-m12-slice-3.sh:1`, and control 0 asserts both that the
+suite is green and that the configuration **parses**. One was NOT CAUGHT: the location comparison
+was set-based, so removing `/files/` from one of the two audiences left the path present and the
+check silent — every trader would have got a 404 for every receipt. It counts now.
 
 ### Slice 4 — runbooks, release and rollback
 
