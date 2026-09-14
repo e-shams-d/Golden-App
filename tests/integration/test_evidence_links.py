@@ -694,6 +694,62 @@ def test_the_revocation_reason_is_recorded_on_the_audit_row(world: dict[str, Any
 # ---------------------------------------------------------------------------------------------
 
 
+def test_the_list_returns_one_attempts_links_including_replaced_ones(
+    world: dict[str, Any],
+) -> None:
+    """The content of `GET /evidence-links?payment_attempt_id=...`, not merely its guard.
+
+    **Written with the route rather than after it**, because three negative controls in this
+    milestone found a new read tested only for who may call it: blanking the field a screen depends
+    on changed nothing any assertion could see. A read owes two tests.
+
+    Three claims, and each is a decision the route made:
+
+    - **scoped to the attempt.** A second attempt's link must not appear. The parameter is required
+      precisely so that an unfiltered list — every evidence link in the centre to any holder of
+      `receipt_segment.read` — is not reachable by omitting it.
+    - **replaced links are included.** §12.6 `:1306`: a replacement "never deletes or overwrites
+      the old relationship". A person looking at an attempt whose evidence was corrected needs to
+      see that it *was* corrected; a list of active links alone would show a single row that had
+      quietly changed.
+    - **ordered oldest first**, so the replacement follows what it replaced rather than preceding
+      it by the luck of a tie.
+    """
+
+    client = world["client"]
+    attempt_id = an_attempt(world)
+    other_attempt = an_attempt(world)
+    first_segment = a_segment(world)
+
+    sign_in_admin(client, "evidence_accountant")
+    first_link = confirm(world, attempt_id, first_segment).json()["id"]
+    confirm(world, other_attempt, a_segment(world))
+
+    replacement_segment = a_segment(world)
+    # 201: a replacement *creates* the new link rather than editing the old one, which is the whole
+    # reason the old relationship survives and this list has two rows to return.
+    replaced = replace(world, first_link, replacement_segment)
+    assert replaced.status_code == 201, replaced.text
+
+    listed = client.get(f"/api/v1/evidence-links?payment_attempt_id={attempt_id}")
+    assert listed.status_code == 200, listed.text
+    links = listed.json()
+
+    assert [link["payment_attempt_id"] for link in links] == [str(attempt_id)] * len(links), (
+        "the list returned a link belonging to another attempt, so the scoping parameter is not "
+        "scoping anything"
+    )
+    assert len(links) == 2, (
+        f"expected the replaced link and its replacement, got {len(links)}. A replacement never "
+        "deletes the old relationship, and a list that showed only the active one would hide that "
+        "the evidence had been corrected at all."
+    )
+    assert [link["status"] for link in links] == ["replaced", "active"]
+    assert links[0]["id"] == first_link
+    assert links[1]["replaces_link_id"] == first_link
+    assert links[1]["receipt_segment_id"] == str(replacement_segment)
+
+
 def test_no_evidence_route_answers_a_caller_without_the_permission(
     world: dict[str, Any],
 ) -> None:
@@ -732,12 +788,16 @@ def test_no_evidence_route_answers_a_caller_without_the_permission(
     )
     assert read.json()["receipt_segment_id"] == str(segment_id)
 
+    list_path = f"/api/v1/evidence-links?payment_attempt_id={attempt_id}"
+    assert client.get(list_path).status_code == 200
+
     sign_in_admin(client, "evidence_business_admin")
-    assert client.get(read_path).status_code == 403, (
-        "a business_admin, which holds no evidence or segment grant, read a confirmed evidence "
-        "link. The read is guarded by `receipt_segment.read` and this is what proves the guard "
-        "bites rather than merely being written down."
-    )
+    for path in (read_path, list_path):
+        assert client.get(path).status_code == 403, (
+            f"a business_admin, which holds no evidence or segment grant, reached {path}. Both "
+            "reads are guarded by `receipt_segment.read` and this is what proves the guard bites "
+            "rather than merely being written down."
+        )
 
     holders = rows(
         world,
