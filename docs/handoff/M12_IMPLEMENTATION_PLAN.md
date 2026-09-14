@@ -193,12 +193,51 @@ right — an exemption from a rule that never applied is its own kind of untruth
   way the two lists drifted apart, and the gate failed five times against its author's own data
   before it went green.
 
-### Slice 2 — backup, and the restore drill that proves it
+### Slice 2 — backup, and the restore drill that proves it — **done 2026-09-14**
 
-The exit gate's hardest item. In order: a backup script, an off-server encrypted copy, a
-consistency manifest, then a **restore into a clean database followed by reconciliation** —
-counts and checksums for files, approvals, publications and audit rows, compared against the
-source. The drill is the deliverable; the script is what it needs.
+The exit gate's hardest item, and the one with no partial credit.
+
+`infra/scripts/backup.sh:1` dumps the database from inside the container, copies the storage tree,
+writes a manifest and encrypts the bundle with `gpg --symmetric` — no external key service, which
+is the same constraint the owner's 2026-09-13 secrets decision answers.
+`infra/scripts/restore.sh:1` puts it back, and **refuses a database that already has rows** unless
+`--force` is given. `infra/scripts/backup_manifest.py:1` decides what "reconcile" means.
+`tests/integration/test_backup_restore_drill.py:1` is the drill: seed, back up, restore into a
+second clean database and an empty storage tree, compare.
+
+**Three of six negative controls were NOT CAUGHT on the first run, and all three were defects in the
+tests rather than in the scripts.** Each is recorded where it was found:
+
+- **The content digests were unreachable.** Every provoking test deleted rows, which a count alone
+  catches, so replacing every digest with a constant changed nothing.
+  `test_a_row_changed_without_changing_the_count_is_reported` now provokes the case a count cannot
+  see — same rows, different money.
+- **The database refusal was masked by the storage refusal.** After one restore both the database
+  and the storage directory are non-empty, so removing the database check entirely still produced a
+  refusal and the test still passed. It asserted "something refused", which is not the claim in its
+  name.
+- **The storage digest was indistinguishable from a size comparison**, because the provoking test
+  emptied a file. The bytes are now replaced with the same number of different bytes.
+
+That is the third and fourth time in this milestone that a negative control has found one of my own
+assertions weaker than its name. No green test run showed any of it.
+
+### What proves it
+
+- `OPS-BACKUP-001` — a backup restores into a **clean** database and reconciles: every table §20.5
+  names, every other table carrying state, and the bytes of every stored file.
+  `test_a_backup_restores_into_a_clean_database_and_reconciles` asserts the reconciliation rather
+  than the exit code, because `pg_restore` exits zero having skipped objects it could not create.
+- `OPS-BACKUP-002` — the restore **refuses a populated target**. Restoring over rows that are
+  already there reconciles with any manifest, which is how a drill passes while proving nothing —
+  and how one run against production destroys it. Six controls in
+  `scripts/sabotage-m12-slice-2.sh:1`, each producing a backup that runs and a restore that
+  succeeds.
+
+**What this slice does not prove**: that grants and ownership survive. `pg_restore --no-owner`
+leaves every object owned by the restoring role, and handing ownership back is a step slice 4's
+runbook owes. The drill reads the restored database as the role that restored it, and says so,
+rather than connecting as whichever role happens to work.
 
 ### Slice 3 — the production-like stack and HTTPS
 
