@@ -42,12 +42,26 @@ from app.audit import AuditActor, AuditContext, AuditEntry, AuditWriter
 from app.audit.redaction import RedactionPolicy
 from app.audit.registry import ACTIVATE_BANK_PROFILE_VERSION
 from app.core.errors import BusinessRuleViolationError, NotFoundError
-from app.db.models.bank import BankProfile, BankProfileVersion
+from app.db.models.bank import BankMapping, BankProfile, BankProfileVersion
 from app.db.unit_of_work import SqlAlchemyUnitOfWork
+from app.statements.expected_file import (
+    EXPECTED_CONFIG_HASH,
+    EXPECTED_NORMALIZATION_RULES,
+    EXPECTED_STATEMENT_MAPPING,
+    EXPECTED_STATEMENT_TEMPLATE_VERSION,
+)
 
 DRAFT: Final = "draft"
 ACTIVE: Final = "active"
 RETIRED: Final = "retired"
+
+# `bank_statement.py` spells the same two values for its own guards. Restated here rather than
+# imported from that module, because importing a *command* from a configuration resolver would
+# invert the dependency — and
+# `test_a_run_needs_no_mapping_id_and_uses_the_statements_own_version` is what keeps the two
+# spellings honest, by using one to satisfy the other.
+STATEMENT_MAPPING_TYPE: Final = "statement_import"
+MAPPING_ACTIVE: Final = "active"
 
 
 @dataclass(frozen=True)
@@ -199,6 +213,7 @@ def activate_version(
 
     version.status = ACTIVE
     profile.current_version_id = version.id
+    _give_this_version_the_expected_statement_mapping(uow, version)
     uow.flush()
 
     AuditWriter(uow.session, policy).record(
@@ -215,4 +230,66 @@ def activate_version(
         ),
         actor=actor,
         context=context,
+    )
+
+
+def _give_this_version_the_expected_statement_mapping(
+    uow: SqlAlchemyUnitOfWork, version: BankProfileVersion
+) -> None:
+    """The statement mapping this platform expects, attached to the version now in force.
+
+    **Why activation is where this happens.** A statement is parsed "with exact BankProfileVersion
+    and BankMapping" (§8.2), and `bank_statement.py` refuses a mapping belonging to any other
+    version. Activation is the moment a new version becomes the one statements will be filed
+    against — so without this, the first ordinary use of the bank-configuration screen would leave
+    the new version with no mapping, and every import filed against it would refuse. The operator's
+    action would be "raise a transfer limit" and the consequence would be "statement import stops",
+    with nothing connecting the two.
+
+    **This is configuration written from code, and that is the owner's decision of 2026-09-13**, not
+    an invention here: the mapping is a single fixed function, the file we expect *is* the input.
+    The two commands that would let an operator supply a mapping are catalogued and never served, so
+    there is no operator intent this could overwrite.
+
+    **And it is written here rather than by a migration because ADR-007 is open.** Its safe default
+    is synthetic fixtures only, and `TestNothingIsSeeded` enforces that against the revision files
+    themselves. A row that appears when an admin activates a configuration is not a seed; a row that
+    appears in a database nobody has touched is. The difference is the whole of ADR-007's concern.
+
+    **Nothing is written if the version already has one.** No path reaches that today —
+    `activate_version` refuses a version that is not a draft, and a draft has never been activated —
+    so this is a precondition rather than a guard against a known failure, and it is recorded as one
+    rather than justified with a scenario that does not exist. What it buys is that this function is
+    safe to call twice, which is what would make it safe to give a second caller: without it,
+    `UNIQUE(bank_profile_version_id, file_type, template_version)` turns the second call into a 500
+    during an activation. The check is on the pair rather than on an id, so a row written by any
+    other means is respected rather than duplicated.
+
+    `created_by_admin_user_id` and `approved_by_admin_user_id` stay null deliberately. Naming the
+    activating admin as the author would record that a person wrote and approved this mapping, and
+    nobody did — it came from `expected_file.py`. The audit entry for the activation is what ties a
+    human to this moment.
+    """
+
+    existing = uow.session.scalars(
+        select(BankMapping).where(
+            BankMapping.bank_profile_version_id == version.id,
+            BankMapping.file_type == STATEMENT_MAPPING_TYPE,
+        )
+    ).first()
+    if existing is not None:
+        return
+
+    uow.session.add(
+        BankMapping(
+            # No id: `uuid_primary_key()` generates one. An id derived from the version would be
+            # machinery for agreeing with a second writer, and there is no second writer.
+            bank_profile_version_id=version.id,
+            file_type=STATEMENT_MAPPING_TYPE,
+            template_version=EXPECTED_STATEMENT_TEMPLATE_VERSION,
+            status=MAPPING_ACTIVE,
+            mapping=EXPECTED_STATEMENT_MAPPING,
+            normalization_rules=EXPECTED_NORMALIZATION_RULES,
+            config_hash=EXPECTED_CONFIG_HASH,
+        )
     )

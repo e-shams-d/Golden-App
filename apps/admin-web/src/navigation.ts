@@ -64,6 +64,20 @@ export const adminNavigation = [
     permission: "bank_profile.read",
     icon: "roles",
   },
+  // M0 slice D. Bank statements.
+  //
+  // **`bank_statement.read` rather than `.upload` or `.import`**, which is this list's action rule
+  // meeting its stated exception for the same reason the bank-configuration item above does. The
+  // two acting grants are the accountant's alone; the read also goes to `manager`, whose job
+  // includes seeing whether the bank's own record was filed and whether reading it succeeded. The
+  // read is what the list route is guarded on, so the item appears to exactly the people whose
+  // click will not end in a 403.
+  {
+    href: "/bank-statements",
+    label: t("statement.nav"),
+    permission: "bank_statement.read",
+    icon: "requests",
+  },
   // M5 slice 8. Payment requests return, and this is the one item where the docstring's
   // action rule and its stated exception meet: the acting permissions are
   // `payment_request.review`, `.request_correction` and `.mark_eligible`, and a

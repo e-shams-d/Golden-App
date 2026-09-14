@@ -37,10 +37,10 @@ const nextConfig: NextConfig = {
         "/bank-configuration/:path*",
         "/bank-exports/:path*",
         "/bank-result-bundles/:path*",
-        // `/bank-statements` is deliberately absent: M0 slice D builds that page and
-        // has not merged. The gate refuses a pattern with no page behind it, and will
-        // refuse the *page* with no pattern the moment slice D lands — so it is added
-        // on the rebase that follows, named by a failing test rather than remembered.
+        // Added on this rebase, and **named by a failing test rather than remembered**:
+        // M12 slice 1 left it out because the page did not exist yet, and predicted that
+        // the gate would demand it the moment slice D landed. It did, by name.
+        "/bank-statements/:path*",
         "/batches/:path*",
         "/gold-orders/:path*",
         "/incoming-payments/:path*",

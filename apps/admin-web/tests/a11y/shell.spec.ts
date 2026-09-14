@@ -102,6 +102,11 @@ const paths = [
   // an unauthenticated person fills in is exactly the kind that ships without labels, and this is
   // the only check that opens it.
   "/recover-password",
+  // M0 slice D. Statement import: the list with its upload form, and one statement's run history.
+  // Both, because they fail differently — the list renders a file input and two selects with no
+  // session, the detail renders a definition list and a button whose label changes with the state.
+  "/bank-statements",
+  "/bank-statements/00000000-0000-4000-8000-000000000010",
 ] as const;
 
 for (const path of paths) {

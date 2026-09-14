@@ -435,6 +435,171 @@ def test_activation_records_who_did_it_in_the_audit_log(world: dict[str, Any]) -
     assert pointer and str(pointer[0]) == version_id
 
 
+def test_activation_gives_the_new_version_the_expected_statement_mapping(
+    world: dict[str, Any],
+) -> None:
+    """M0 slice D. The regression this whole per-version design exists to prevent.
+
+    A statement is parsed "with exact BankProfileVersion and BankMapping" (§8.2), and
+    `bank_statement.py` refuses a mapping belonging to any other version. Activation retires the
+    previous version and puts a new one in force — the ordinary use of the bank-configuration
+    screen M0 slice B built. So if activation did not also seed this version's mapping, a centre
+    that raised a transfer limit on Sunday would find every statement import refusing on Monday,
+    and the refusal would name a mapping id rather than the change that caused it.
+
+    **Asserted against `expected_file.py` rather than against a literal shape.** The owner decided
+    on 2026-09-13 that the mapping is a single fixed function in code; a test restating the columns
+    here would agree with whatever the module was changed to, and the point is that the row in the
+    database is that module's output.
+
+    **And activation is the only writer**, because ADR-007 is open and its safe default forbids a
+    migration from seeding bank configuration. So this is not one of two paths that must agree — it
+    is the path.
+    """
+
+    from app.audit.redaction import RedactionPolicy
+    from app.audit.writer import AuditActor, AuditContext
+    from app.bankconfig.resolution import activate_version
+    from app.statements.expected_file import (
+        EXPECTED_CONFIG_HASH,
+        EXPECTED_NORMALIZATION_RULES,
+        EXPECTED_STATEMENT_MAPPING,
+        EXPECTED_STATEMENT_TEMPLATE_VERSION,
+    )
+
+    client, runtime, url = world["client"], world["runtime"], world["url"]
+    _profile_id, version_id = make_profile(client, sign_in(client))
+
+    with runtime.uow_factory() as uow:
+        activate_version(
+            uuid.UUID(version_id),
+            uow=uow,
+            actor=AuditActor(
+                actor_type="admin_user", actor_id=_an_admin_id(url), role_snapshot=("manager",)
+            ),
+            context=AuditContext(request_id="test"),
+            policy=RedactionPolicy(mask_iban=True),
+        )
+        uow.commit()
+
+    with psycopg.connect(_psycopg(url)) as connection:
+        row = connection.execute(
+            "SELECT template_version, status, mapping, normalization_rules, config_hash, "
+            "created_by_admin_user_id, approved_by_admin_user_id FROM bank_mappings "
+            "WHERE bank_profile_version_id = %s AND file_type = 'statement_import'",
+            (version_id,),
+        ).fetchall()
+
+    assert len(row) == 1, (
+        f"activating a version produced {len(row)} statement mappings, not one. With none, every "
+        "import filed against this version refuses; with two, which one parses is undefined."
+    )
+    (
+        template_version,
+        status,
+        mapping,
+        rules,
+        config_hash,
+        created_by,
+        approved_by,
+    ) = row[0]
+
+    assert template_version == EXPECTED_STATEMENT_TEMPLATE_VERSION
+    # `active`, because `bank_statement.py` refuses anything else as unapproved — a draft here
+    # would be a mapping that exists and cannot be used, which reads identically to none.
+    assert status == "active"
+    assert mapping == EXPECTED_STATEMENT_MAPPING
+    assert rules == EXPECTED_NORMALIZATION_RULES
+    assert config_hash == EXPECTED_CONFIG_HASH
+    # Null, deliberately: nobody wrote or approved this mapping. Naming the activating admin would
+    # record a human judgement that was never made, and `audit_logs` already ties a person to the
+    # activation itself.
+    assert created_by is None and approved_by is None
+
+
+def test_activating_a_second_version_does_not_collide_with_the_first_mapping(
+    world: dict[str, Any],
+) -> None:
+    """Two activations on one profile, which is what a bank changing its rules looks like.
+
+    The failure this guards is specific: a writer that inserted without checking, or that reused a
+    row across versions, would make the *second* activation fail on
+    `UNIQUE(bank_profile_version_id, file_type, template_version)`. The operator's action would be
+    "put the new limit into force" and the error would be about mappings.
+    """
+
+    from app.audit.redaction import RedactionPolicy
+    from app.audit.writer import AuditActor, AuditContext
+    from app.bankconfig.resolution import activate_version
+
+    client, runtime, url = world["client"], world["runtime"], world["url"]
+    token = sign_in(client)
+    profile_id, first_version = make_profile(client, token)
+
+    actor = AuditActor(
+        actor_type="admin_user", actor_id=_an_admin_id(url), role_snapshot=("manager",)
+    )
+    policy = RedactionPolicy(mask_iban=True)
+
+    # The windows are set before either activation, because two open-ended windows overlap and
+    # `activate_version` refuses that — correctly, and for a reason unrelated to mappings. The
+    # boundary is shared: `[from, to)` is half-open, so the second begins exactly where the first
+    # ends and no instant belongs to both.
+    handover = NOON
+    with psycopg.connect(_psycopg(url)) as connection:
+        connection.execute(
+            "UPDATE bank_profile_versions SET effective_from = %s, effective_to = %s WHERE id = %s",
+            (NOON - timedelta(days=1), handover, first_version),
+        )
+        # A second version of the same bank, as a draft — the shape `POST /bank-profiles` produces
+        # for the first one, written directly because no route creates a subsequent version.
+        second_version = uuid.uuid4()
+        connection.execute(
+            "INSERT INTO bank_profile_versions (id, bank_profile_id, version_number, status, "
+            "config_hash, effective_from) VALUES (%s, %s, 2, 'draft', %s, %s)",
+            (second_version, profile_id, "b" * 64, handover),
+        )
+        connection.commit()
+
+    with runtime.uow_factory() as uow:
+        activate_version(
+            uuid.UUID(first_version),
+            uow=uow,
+            actor=actor,
+            context=AuditContext(request_id="test"),
+            policy=policy,
+        )
+        uow.commit()
+
+    with runtime.uow_factory() as uow:
+        activate_version(
+            second_version,
+            uow=uow,
+            actor=actor,
+            context=AuditContext(request_id="test"),
+            policy=policy,
+        )
+        uow.commit()
+
+    with psycopg.connect(_psycopg(url)) as connection:
+        mappings = connection.execute(
+            "SELECT bank_profile_version_id FROM bank_mappings "
+            "WHERE file_type = 'statement_import' AND bank_profile_version_id IN (%s, %s)",
+            (uuid.UUID(first_version), second_version),
+        ).fetchall()
+        retired = connection.execute(
+            "SELECT status FROM bank_profile_versions WHERE id = %s", (first_version,)
+        ).fetchone()
+
+    assert {str(one[0]) for one in mappings} == {first_version, str(second_version)}, (
+        "both versions need their own mapping: the retired one so an old statement can still be "
+        "reparsed, the new one so a statement filed today can be parsed at all"
+    )
+    # The premise of the test, asserted rather than assumed: the first version really was retired,
+    # so its mapping really would have been the only one had activation not written a second.
+    assert retired and retired[0] == "retired"
+
+
 def test_no_public_function_returns_a_rule_without_its_version(world: dict[str, Any]) -> None:
     """BANK-VER-007, and the third claim of M4's Definition of Done.
 

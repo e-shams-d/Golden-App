@@ -111,10 +111,17 @@ class CreateStatementImportRun:
     could choose a run number could collide with a previous run through the unique; a caller that
     could choose a parser version could label this run's rows as another parser's, which is the one
     thing `TRACE-IMPORT-001` exists to prevent.
+
+    **`bank_mapping_id` is optional since 2026-09-13**, when the owner decided the mapping is a
+    single fixed function in code rather than operator configuration. Left unset, the statement's
+    own bank-profile version decides — see `_the_statements_own_mapping`. The field stays because
+    `command_catalog.yaml` still describes a command that takes one, and because a second mapping
+    would arrive through it; removing it would decide that mappings are permanently singular, which
+    is not what the owner said.
     """
 
     bank_statement_file_id: uuid.UUID
-    bank_mapping_id: uuid.UUID
+    bank_mapping_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,7 +222,13 @@ def create_import_run(
         idempotency_key=idempotency_key,
         payload={
             "bank_statement_file_id": str(command.bank_statement_file_id),
-            "bank_mapping_id": str(command.bank_mapping_id),
+            # The mapping **as the caller asked for it**, which is `null` when they did not ask.
+            # The claim is made before the statement is loaded, so the resolved id is not knowable
+            # here — and it does not need to be: the payload fingerprints the *request*, and two
+            # requests naming the same statement and no mapping are the same request.
+            "bank_mapping_id": (
+                None if command.bank_mapping_id is None else str(command.bank_mapping_id)
+            ),
         },
     )
 
@@ -232,7 +245,14 @@ def create_import_run(
             "is not reparsed. Document 06 §10.3 draws no edge out of it."
         )
 
-    mapping = _approved_statement_mapping(session, command.bank_mapping_id)
+    mapping = (
+        _the_statements_own_mapping(session, statement)
+        if command.bank_mapping_id is None
+        else _approved_statement_mapping(session, command.bank_mapping_id)
+    )
+    # Checked either way. The resolution above selects on version, so this cannot fail for a
+    # resolved mapping — and it runs anyway, because a guard that is skipped when the value came
+    # from a trusted path is a guard that stops holding the moment a third path appears.
     _refuse_a_mapping_for_another_bank_version(mapping, statement)
     _refuse_a_second_run_while_one_is_in_flight(session, statement)
 
@@ -385,6 +405,39 @@ def _approved_statement_mapping(session: Session, mapping_id: uuid.UUID) -> Bank
             f"mapping {mapping.id} is a {mapping.file_type!r} mapping; parsing a statement with "
             f"one requires a {STATEMENT_MAPPING_TYPE!r} mapping. An export mapping reads different "
             "columns and would report a template mismatch that looks like a bad statement."
+        )
+    return mapping
+
+
+def _the_statements_own_mapping(session: Session, statement: BankStatementFile) -> BankMapping:
+    """The active statement mapping for the version this statement was filed against.
+
+    **The owner's decision of 2026-09-13 made the mapping a fixed function rather than operator
+    configuration**, which means a caller has nothing to choose between: there is one shape, and the
+    row carrying it belongs to the statement's own version. A client that named the id would be
+    holding a copy of a value the server derives, and a stale copy would aim a run at another
+    version's mapping — which the guard below would then refuse, for a reason no operator could act
+    on.
+
+    **Selected on the version, not on a known id.** The row is written by `activate_version` with a
+    generated id, so there is no id to know — and selecting means a mapping written by any other
+    means, including a future operator-supplied one, is still found. A lookup by a computed id would
+    report that no mapping exists beside a row that does.
+    """
+
+    mapping = session.scalars(
+        select(BankMapping)
+        .where(BankMapping.bank_profile_version_id == statement.bank_profile_version_id)
+        .where(BankMapping.file_type == STATEMENT_MAPPING_TYPE)
+        .where(BankMapping.status == APPROVED_MAPPING_STATUS)
+        .order_by(BankMapping.template_version.desc())
+    ).first()
+    if mapping is None:
+        raise BusinessRuleViolationError(
+            f"bank-profile version {statement.bank_profile_version_id} has no "
+            f"{APPROVED_MAPPING_STATUS!r} {STATEMENT_MAPPING_TYPE!r} mapping, so there is nothing "
+            "to parse this statement with. A version receives one when it is activated; a version "
+            "that was never activated has none, and a statement should not be filed against it."
         )
     return mapping
 

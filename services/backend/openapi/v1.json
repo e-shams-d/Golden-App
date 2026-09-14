@@ -4072,17 +4072,21 @@
       },
       "ImportRunRequest": {
         "additionalProperties": false,
-        "description": "§21.4's import-run body: the mapping to parse with, and that is all.\n\n**No `run_number`.** `04_Database_Schema.md:774` makes a reparse a new run, and a caller that\ncould name the number could aim a new run at an old one's slot. The platform chooses it.",
+        "description": "§21.4's import-run body: the mapping to parse with, and that is all.\n\n**No `run_number`.** `04_Database_Schema.md:774` makes a reparse a new run, and a caller that\ncould name the number could aim a new run at an old one's slot. The platform chooses it.\n\n**`bank_mapping_id` became optional on 2026-09-13**, when the owner decided the mapping is a\nsingle fixed function in code rather than operator configuration. Left unset, the command reads\nthe active `statement_import` mapping for the statement's own bank-profile version — a client\nthat had to name it would be holding a copy of a value the server derives, which is the drift\nthis project has spent four slices finding in other forms.\n\nThe field stays rather than being removed. It is what a second mapping would arrive through,\nand `command_catalog.yaml` still describes a command that takes one; removing it would be\ndeciding that mappings are permanently singular, which is not what the owner said.",
         "properties": {
           "bank_mapping_id": {
-            "format": "uuid",
-            "title": "Bank Mapping Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Mapping Id"
           }
         },
-        "required": [
-          "bank_mapping_id"
-        ],
         "title": "ImportRunRequest",
         "type": "object"
       },

@@ -524,7 +524,7 @@ export interface components {
     "FeatureFlagState": { flag_key: string; is_enabled: boolean };
     "FileMetadataResponse": { allowed_actions: Array<string>; id: string; mime_type: string; original_filename: string; purpose: string; sha256: string | null; size_bytes: number; status: string };
     "FinalizeVersionRequest": { note?: string | null };
-    "ImportRunRequest": { bank_mapping_id: string };
+    "ImportRunRequest": { bank_mapping_id?: string | null };
     "ImportRunResponse": { bank_mapping_id: string; bank_statement_file_id: string; created_at: string; created_by_job_id: string | null; error_summary: { [key: string]: unknown } | null; finished_at: string | null; id: string; parser_version: string; row_count: number | null; run_number: number; source_hash: string; started_at: string | null; status: string };
     "IncomingReceiptRequest": { amount_irr: number; destination_bank_account_id?: string | null; entered_amount_unit?: string | null; entered_amount_value?: number | null; evidence_file_id?: string | null; payment_at_normalized?: string | null; raw_payment_date?: string | null; sender_name?: string | null; source_account_hint?: string | null; source_bank_name?: string | null; tracking_number?: string | null };
     "IncomingReceiptResponse": { amount_irr: number; confirmed_amount_irr: number | null; created_at: string; evidence_file_id: string | null; gold_sale_order_id: string; id: string; order_status: string; record_version: number; status: string; tracking_number: string | null };

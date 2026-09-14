@@ -102,11 +102,21 @@ class ImportRunRequest(BaseModel):
 
     **No `run_number`.** `04_Database_Schema.md:774` makes a reparse a new run, and a caller that
     could name the number could aim a new run at an old one's slot. The platform chooses it.
+
+    **`bank_mapping_id` became optional on 2026-09-13**, when the owner decided the mapping is a
+    single fixed function in code rather than operator configuration. Left unset, the command reads
+    the active `statement_import` mapping for the statement's own bank-profile version — a client
+    that had to name it would be holding a copy of a value the server derives, which is the drift
+    this project has spent four slices finding in other forms.
+
+    The field stays rather than being removed. It is what a second mapping would arrive through,
+    and `command_catalog.yaml` still describes a command that takes one; removing it would be
+    deciding that mappings are permanently singular, which is not what the owner said.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    bank_mapping_id: uuid.UUID
+    bank_mapping_id: uuid.UUID | None = None
 
 
 class ImportRunResponse(BaseModel):
@@ -330,6 +340,10 @@ def create_import_run(
         result = bank_statement_commands.create_import_run(
             bank_statement_commands.CreateStatementImportRun(
                 bank_statement_file_id=statement_id,
+                # Passed through as given, including `None`. The command resolves an absent mapping
+                # from the statement's own bank-profile version, which this route cannot do without
+                # loading the statement twice — and a constant here would be the defect the
+                # per-version derivation exists to remove.
                 bank_mapping_id=payload.bank_mapping_id,
             ),
             uow=uow,

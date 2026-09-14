@@ -116,25 +116,20 @@ NO_SCREEN: dict[tuple[str, str], str] = {
     # than unbuilt**" because `bank_profile.activate_version` was granted to no role, and the note
     # at the top of this list promises such an entry expires when the decision is made. The owner
     # granted it on 2026-09-08, the entry became an ordinary gap, and slice B closed it.
-    # --- the statement import path ---------------------------------------------------------------
-    ("GET", "/api/v1/bank-statements"): "the statement import path; see the POST below",
-    ("POST", "/api/v1/bank-statements"): (
-        "**blocked on the bank.** The owner has confirmed the bank returns no Excel, so M10's "
-        "parser has no input in practice and a screen would be a surface for a flow that cannot "
-        "start. Recorded in the M11 screens plan against slice 6."
-    ),
-    (
-        "GET",
-        "/api/v1/bank-statements/{statement_id}",
-    ): "part of the statement import path above, and blocked by the same bank question",
-    (
-        "GET",
-        "/api/v1/bank-statements/{statement_id}/import-runs",
-    ): "part of the same unbuilt surface as the operation above it",
-    (
-        "POST",
-        "/api/v1/bank-statements/{statement_id}/import-runs",
-    ): "part of the same unbuilt surface as the operation above it",
+    # M0 slice D built the statement import surface, so its five operations left this list.
+    #
+    # **Their recorded reason was wrong, and that is worth keeping.** The entry said the path was
+    # "blocked on the bank", which returns no Excel — a true fact that was not the blocker. An
+    # import run requires an *active* `statement_import` mapping, and the two commands that would
+    # let an operator supply one are catalogued and never served, so the flow could not have
+    # started with a real file either. A screen was impossible for a reason nobody had written
+    # down, and the reason that *was* written down made the impossibility look like somebody
+    # else's problem to solve.
+    #
+    # The lesson is `an-exemption-must-name-its-mechanism` in another form: an exemption is only as
+    # good as the reason on it, and a plausible reason is the dangerous kind. The owner's decision
+    # of 2026-09-13 — one fixed mapping function in code — removed the real blocker, and the bank's
+    # file format never came into it.
     # --- the bundle and segment path -------------------------------------------------------------
     ("GET", "/api/v1/receipt-segments/{segment_id}/matching-candidates"): (
         "the automatic matching path over bank result bundles. A screen needs the segment viewer "

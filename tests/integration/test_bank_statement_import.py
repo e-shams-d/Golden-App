@@ -94,6 +94,7 @@ def world(migrated: RuntimeIdentities, tmp_path_factory: Any) -> Iterator[dict[s
             "other_bank",
             "our_version",
             "other_version",
+            "mappingless_version",
             "incoming_account",
             "outgoing_account",
             "other_bank_account",
@@ -121,14 +122,18 @@ def world(migrated: RuntimeIdentities, tmp_path_factory: Any) -> Iterator[dict[s
                 "INSERT INTO bank_profiles (id, code, name, status) VALUES (%s, %s, %s, 'active')",
                 (ids[key], code, name),
             )
-        for key, bank_key in (
-            ("our_version", "our_bank"),
-            ("other_version", "other_bank"),
+        for key, bank_key, number, status in (
+            ("our_version", "our_bank", 1, "active"),
+            ("other_version", "other_bank", 1, "active"),
+            # A version nobody activated, and therefore one with no statement mapping: activation
+            # is what writes it. This is the world in which "start an import and let the server
+            # choose the mapping" has nothing to choose, and the refusal has to say so.
+            ("mappingless_version", "our_bank", 2, "draft"),
         ):
             connection.execute(
                 "INSERT INTO bank_profile_versions (id, bank_profile_id, version_number, status, "
-                "config_hash) VALUES (%s, %s, 1, 'active', %s)",
-                (ids[key], ids[bank_key], _hash(key)),
+                "config_hash) VALUES (%s, %s, %s, %s, %s)",
+                (ids[key], ids[bank_key], number, status, _hash(key)),
             )
         for key, bank_key, role, label in (
             ("incoming_account", "our_bank", "incoming_destination", "Incoming"),
@@ -654,6 +659,71 @@ def test_a_mapping_from_another_bank_version_cannot_parse_this_statement(
     )
     assert response.status_code == 400, response.text
     assert "exact version" in response.text
+
+
+def test_a_run_needs_no_mapping_id_and_uses_the_statements_own_version(
+    world: dict[str, Any],
+) -> None:
+    """M0 slice D, and the owner's decision of 2026-09-13.
+
+    The mapping is a single fixed function in code, so a caller has nothing to choose between. This
+    asserts the server chooses, and chooses **by the statement's own version** rather than by a
+    constant — a constant would belong to whichever version was active when it was written, and
+    `activate_version` retires that version the first time a bank changes a rule.
+
+    The run's recorded `bank_mapping_id` is read back rather than the response trusted, because
+    what a later reader asks of `TRACE-IMPORT-001` is which mapping the row says was used.
+    """
+
+    sign_in_admin(world)
+    statement_id = a_statement(world)
+
+    response = world["client"].post(
+        f"/api/v1/bank-statements/{statement_id}/import-runs",
+        # No `bank_mapping_id` at all — not null, absent, which is what the screen sends.
+        json={},
+        headers={**csrf(world), "Idempotency-Key": str(uuid.uuid4())},
+    )
+
+    assert response.status_code == 202, response.text
+    recorded = run_record(world, response.json()["id"])[5]
+    assert str(recorded) == str(world["statement_mapping_id"]), (
+        "the run did not use our version's active statement mapping, so the server either chose a "
+        "constant or chose nothing"
+    )
+
+
+def test_a_statement_filed_against_a_version_nobody_activated_is_told_why(
+    world: dict[str, Any],
+) -> None:
+    """The honest refusal, which is the other half of choosing the mapping server-side.
+
+    **Without this the failure is silent in the worst way**: the command would fall back to some
+    other version's mapping and parse the bank's columns in the wrong places, producing rows that
+    match nothing. A refusal naming the version is recoverable; rows that quietly mean the wrong
+    thing are not.
+    """
+
+    sign_in_admin(world)
+    upload = upload_statement(
+        world,
+        original_file_id=a_fresh_file(world),
+        bank_profile_version_id=str(world["mappingless_version_id"]),
+    )
+    assert upload.status_code == 201, upload.text
+
+    response = world["client"].post(
+        f"/api/v1/bank-statements/{upload.json()['id']}/import-runs",
+        json={},
+        headers={**csrf(world), "Idempotency-Key": str(uuid.uuid4())},
+    )
+
+    assert response.status_code == 400, response.text
+    assert str(world["mappingless_version_id"]) in response.text, (
+        "the refusal must name the version, because the operator's next question is which "
+        "configuration is missing one"
+    )
+    assert "activated" in response.text
 
 
 def test_no_trader_can_see_or_touch_a_statement(world: dict[str, Any]) -> None:
