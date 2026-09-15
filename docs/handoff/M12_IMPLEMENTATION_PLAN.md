@@ -287,10 +287,48 @@ suite is green and that the configuration **parses**. One was NOT CAUGHT: the lo
 was set-based, so removing `/files/` from one of the two audiences left the path present and the
 check silent — every trader would have got a 404 for every receipt. It counts now.
 
-### Slice 4 — runbooks, release and rollback
+### Slice 4 — runbooks, release and rollback — **done 2026-09-15**
 
-Written against the stack slice 3 produces, and **tested** — §20.4 says "runbook testing", and a
-runbook nobody has followed is prose.
+`15_Agent_Implementation_Plan.md:2110` names four — deployment, rollback/forward-fix, incident and
+restore — and `infra/runbooks/secret-rotation.md:1` is the fifth, OPS-001's answer written where it
+is used rather than in a decision register nobody opens during a rotation.
+
+**"Runbook testing" is answered honestly rather than claimed.** Three of the five cannot be executed
+without a server with a certificate and a domain, which is M13's, and each says so in its own words.
+What `tests/backend/test_runbooks.py:1` asserts is the half that rots:
+
+- every script a runbook names exists, and **accepts the flags it is told to pass**;
+- every database column its diagnostic queries name exists in the models;
+- every setting `secret-rotation.md` tells an operator to rotate is one `.env.example` declares;
+- every runbook says how it is tested, including when the answer is "it is not".
+
+`infra/runbooks/restore.md:1` is the exception: steps 1, 2 and 4 are executed on every verifier run
+by slice 2's drill. Step 3 — re-applying `020-runtime-roles.sql` — is the step the drill
+deliberately does not cover, and this runbook is now the only place it is recorded.
+
+### What the gate caught while being written
+
+**The runbooks named `--database-url` on scripts that still took `--container`.** This branch
+carried slice 2's pre-CI interface, so every restore instruction would have failed on its first
+argument. That is exactly the failure this gate exists for, found before it shipped rather than
+during a recovery.
+
+Two negative controls were NOT CAUGHT and both were the gate reading too narrowly:
+
+- the column check read only what lay between `SELECT` and `FROM`, so a rename inside a `WHERE`
+  clause was invisible — and `incident.md`'s audit-chain query does all of its work in `WHERE`;
+- the first fix then matched across markdown, from a `SELECT` in one block through the prose to a
+  semicolon in the next, and reported that "money" and "should" are not columns. **A check whose
+  first output is nonsense gets an exception added to it rather than being fixed**, so it is scoped
+  to fenced blocks now.
+
+### What proves it
+
+- `OPS-RUNBOOK-001` — `tests/backend/test_runbooks.py:1`, with seven negative controls in
+  `scripts/sabotage-m12-slice-4.sh:1`. Each leaves a runbook that reads perfectly and instructs
+  somebody to do something that will not work: a renamed flag, a moved script, a renamed column, a
+  setting nothing reads, the missing ownership step, a runbook that stops saying whether it is
+  tested, and a required runbook deleted from a directory that still looks full.
 
 ### Slice 5 — the remaining test gaps
 
