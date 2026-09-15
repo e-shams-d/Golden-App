@@ -86,14 +86,13 @@ _PROVES_SECTION = re.compile(r"### What proves it\n(.*?)(?=\n### |\n## |\Z)", re
 # Obligations M2 does not discharge, with the reason. Each must be a real decision
 # rather than a deferral of convenience.
 RECORDED_GAPS: dict[str, str] = {
-    "PERF-QUEUE-001": (
-        "Performance evidence requires a recorded p95 together with the test data "
-        "volume and the environment it was measured on. A latency figure without "
-        "both is not acceptable evidence, and M2 produces neither a representative "
-        "volume nor a production-shaped environment. The evidence emitter records "
-        "this field as unfilled with the same reason rather than omitting it, so a "
-        "release reader sees the gap instead of a complete-looking set."
-    ),
+    # `PERF-QUEUE-001` was here from M2 until M12 slice 5, and it is gone rather than edited.
+    # Its reason named two things M2 could not produce — a representative volume and a
+    # production-shaped environment — and both now exist:
+    # `tests/integration/test_queue_performance.py` builds the volume and slice 3 built the stack.
+    # A gap entry is a statement that something will not be discharged; leaving one in place after
+    # it has been is how a stale excuse outlives its reason, which is what
+    # `test_no_recorded_gap_is_actually_covered` refuses.
     "BANK-VER-005": (
         "Activation is supposed to be refused unless the version's mappings parse the "
         "synthetic fixtures (08_Bank_File_and_Result_Processing.md:343). No parser "
@@ -1227,21 +1226,49 @@ def test_each_gap_states_a_reason_not_a_placeholder(identifier: str) -> None:
     assert "TODO" not in reason and "later" not in reason.lower()[:40]
 
 
-def test_the_recorded_gap_matches_what_the_evidence_emitter_reports() -> None:
-    """The gap must say the same thing in both places a reader might look.
+def test_the_filled_gap_is_filled_in_both_places_a_reader_might_look() -> None:
+    """The successor to `test_the_recorded_gap_matches_what_the_evidence_emitter_reports`.
 
-    `PERF-QUEUE-001` is unfilled here and `performance_p95` is unfilled in the
-    emitter's artifact. If those two disagreed, one of them would be reassuring
-    somebody falsely.
+    Until M12 slice 5 this asserted that `PERF-QUEUE-001` was unfilled *here* and
+    `performance_p95` was unfilled in the emitter, with the same reason in both — because two
+    records of one gap that disagree mean one of them is reassuring somebody falsely.
+
+    **The pairing still matters; the direction reversed.** The gap is discharged, so what has to
+    agree now is that neither place still carries the excuse. A `RECORDED_GAPS` entry removed
+    while `UNFILLABLE_AT_M2` kept its copy would leave a release artifact reporting a gap the
+    traceability suite thinks is closed.
+
+    The third assertion is the one that keeps this honest. Removing a field from
+    `UNFILLABLE_AT_M2` is not the same as filling it, and an emitter that dropped the field
+    entirely would satisfy the first two lines while reporting **nothing at all** about
+    performance — which is the "complete-looking set" the original entry was written against.
     """
 
-    from scripts.emit_evidence import UNFILLABLE_AT_M2
+    from scripts.emit_evidence import (
+        PERFORMANCE_NOT_MEASURED_BY_THIS_RUN,
+        UNFILLABLE_AT_M2,
+        queue_performance,
+    )
 
-    assert "performance_p95" in UNFILLABLE_AT_M2
-    assert "PERF-QUEUE-001" in RECORDED_GAPS
-    for phrase in ("volume", "environment"):
-        assert phrase in UNFILLABLE_AT_M2["performance_p95"].lower()
-        assert phrase in RECORDED_GAPS["PERF-QUEUE-001"].lower()
+    assert "PERF-QUEUE-001" not in RECORDED_GAPS
+    assert "performance_p95" not in UNFILLABLE_AT_M2
+
+    # Either a measurement or a stated absence, never silence.
+    measurement, absent_because = queue_performance()
+    assert (measurement is None) != (absent_because is None), (
+        "the emitter reported both a measurement and a reason there is none, or neither"
+    )
+    if measurement is None:
+        assert absent_because == PERFORMANCE_NOT_MEASURED_BY_THIS_RUN or absent_because.startswith(
+            PERFORMANCE_NOT_MEASURED_BY_THIS_RUN
+        )
+        # The obligation is "a p95 *with* volume and environment", so the reason a run has none
+        # must name what taking one requires rather than saying the field is empty.
+        for phrase in ("volume", "environment", "test_queue_performance"):
+            assert phrase in absent_because, f"the absence reason does not mention {phrase}"
+    else:
+        for key in ("volume", "environment", "queues"):
+            assert key in measurement, f"a measurement with no {key} is the gap, reported closed"
 
 
 def test_every_cited_id_uses_a_catalogue_prefix() -> None:
@@ -1365,6 +1392,15 @@ SHARED_OBLIGATIONS: dict[str, str] = {
         "states the same thing concretely as the separation-of-duties refusal, which is "
         "where the code was written. One obligation, promised in the earlier plan and "
         "discharged in the later one."
+    ),
+    "PERF-QUEUE-001": (
+        "The same shape as the entry above, and less ambiguous than it: M2:1365 states the "
+        "obligation and M2 then recorded it in RECORDED_GAPS as one it could not discharge, "
+        "naming what was missing — a representative volume and a production-shaped "
+        "environment. M12 built both and states it again where the measurement lives. This is "
+        "not a second plan reusing a plausible id and inheriting somebody else's evidence, "
+        "which is what this gate exists to catch; it is one obligation handed forward with the "
+        "conditions for discharging it written down, and then discharged."
     ),
 }
 

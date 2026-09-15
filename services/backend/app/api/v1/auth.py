@@ -427,11 +427,50 @@ def _authenticate_request(
 def _require_csrf(request: Request, digest: str, settings: Settings) -> None:
     if not cookies.requires_csrf(request.method):
         return
+    _refuse_a_foreign_origin(request)
     key = settings.auth_csrf_key_secret
     presented = request.headers.get(cookies.CSRF_HEADER)
     if not cookies.csrf_token_matches(
         presented, digest, (key.get_secret_value() if key else "").encode("utf-8")
     ):
+        raise CsrfRequiredError()
+
+
+def _refuse_a_foreign_origin(request: Request) -> None:
+    """§20.2's "origin controls", as a **second lock rather than the missing one**.
+
+    M12 slice 5. The token below is the primary control and a strong one: an HMAC bound to the
+    session secret, delivered in a `__Host-` cookie with `SameSite=strict`, presented in a custom
+    header a cross-site form cannot set, compared in constant time. This closes nothing that leaves
+    open.
+
+    **It is still worth having, for the reason `security/cookies.py` records about `SameSite`**:
+    that attribute is a claim about *sites*, and `trader.example.ir` and `admin.example.ir` are the
+    same site. Script running on the trader origin is not stopped by `SameSite` from reaching the
+    admin one — the cookie names differ and the server refuses the wrong audience, but neither of
+    those is an origin boundary. This is.
+
+    **An absent `Origin` is allowed, and that is the exemption worth examining.** A browser sends it
+    on every cross-origin request and on same-origin unsafe requests, so a browser-driven attack
+    always carries one. Refusing its absence would break non-browser callers — a migration script,
+    an operator with `curl` — without closing anything a browser could do.
+    `test_an_absent_origin_is_allowed_and_a_foreign_one_is_not` asserts both halves, because the
+    permissive half is the one that would quietly become the whole rule.
+    """
+
+    origin = request.headers.get("origin")
+    if origin is None:
+        return
+
+    host = request.headers.get("host")
+    if host is None:  # pragma: no cover - HTTP/1.1 requires it and the proxy sets it
+        raise CsrfRequiredError()
+
+    # Compared against the `Host` the request arrived with rather than a configured list, because
+    # nginx serves only the two `server_name`s it is given — a request reaching this process has a
+    # host this deployment answers on. A list here would be a third place to write the deployment's
+    # hostnames, after `deployment/trader-host.conf` and `deployment/admin-host.conf`.
+    if origin not in {f"https://{host}", f"http://{host}"}:
         raise CsrfRequiredError()
 
 
