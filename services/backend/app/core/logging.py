@@ -86,7 +86,19 @@ class JsonFormatter(logging.Formatter):
         event_data = getattr(record, "event_data", None)
         if isinstance(event_data, Mapping):
             payload.update(sanitize_log_value(event_data))
-        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str)
+        line = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str)
+        # **U+2028 and U+2029 are line terminators to a JavaScript engine and not to `json.dumps`.**
+        # `ensure_ascii=False` is deliberate — a Persian name or reason should be readable in a log
+        # rather than escaped into hex — and its one cost is these two code points, which a
+        # browser-based log viewer renders as a line break. A value carrying one can make a single
+        # record *look* like two, which is the whole of the log-injection property.
+        #
+        # Escaped here rather than in `sanitize_log_value`, because the message text does not pass
+        # through that function and is exactly where somebody in a hurry interpolates a value.
+        #
+        # M12 slice 5; found by `test_a_control_character_cannot_break_the_line_either`, which was
+        # written expecting to assert something already true.
+        return line.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
 
 
 class ServiceContextFilter(logging.Filter):

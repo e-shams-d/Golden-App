@@ -514,6 +514,51 @@ def test_an_unsafe_request_without_the_csrf_header_is_refused(client: Any) -> No
     assert client.post("/api/v1/auth/logout", headers={CSRF_HEADER: token}).status_code == 200
 
 
+def test_an_absent_origin_is_allowed_and_a_foreign_one_is_not(
+    client: Any, migrated: RuntimeIdentities
+) -> None:
+    """§20.2's "origin controls". M12 slice 5.
+
+    **A second lock, and the permissive half is the one worth asserting.** The CSRF token is the
+    primary control and this closes nothing it leaves open — but `security/cookies.py` records that
+    `SameSite` is a claim about *sites*, and `trader.` and `admin.` are the same site. An origin
+    check is the boundary `SameSite` cannot draw.
+
+    Both halves are here deliberately. **A test of the refusal alone would pass against a rule
+    that refused everything**, including migration scripts and operators with `curl` that
+    legitimately send no `Origin` — and the permissive half is the one that would quietly become
+    the whole rule if somebody "tightened" it later.
+
+    The refusal is browser-shaped: a browser sends `Origin` on every cross-origin unsafe request, so
+    that is exactly the case this check exists for.
+    """
+
+    del migrated
+
+    client.post(
+        "/api/v1/auth/admin/login",
+        json={"identifier": ADMIN_USERNAME, "password": ADMIN_PASSWORD},
+    )
+    token = client.cookies.get(ADMIN_CSRF_COOKIE)
+    assert token, "the login set no CSRF cookie"
+
+    foreign = client.post(
+        "/api/v1/auth/logout",
+        headers={CSRF_HEADER: token, "Origin": "https://evil.example.com"},
+    )
+    assert foreign.status_code == 403, (
+        "a request carrying a foreign Origin was accepted; the token alone was enough"
+    )
+
+    # The same request with no Origin at all. A non-browser caller sends none, and refusing that
+    # would break them while closing nothing a browser could do.
+    absent = client.post("/api/v1/auth/logout", headers={CSRF_HEADER: token})
+    assert absent.status_code == 200, (
+        "a request with no Origin was refused, which breaks every non-browser caller and closes "
+        "nothing — a browser always sends one on a cross-origin unsafe request"
+    )
+
+
 def test_logout_revokes_and_is_idempotent(client: Any, migrated: RuntimeIdentities) -> None:
     """API-AUTH-003 and SEC-SESS-003.
 
