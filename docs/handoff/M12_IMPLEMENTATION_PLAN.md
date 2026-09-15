@@ -330,10 +330,122 @@ Two negative controls were NOT CAUGHT and both were the gate reading too narrowl
   setting nothing reads, the missing ownership step, a runbook that stops saying whether it is
   tested, and a required runbook deleted from a directory that still looks full.
 
-### Slice 5 — the remaining test gaps
+### Slice 5 — the remaining test gaps — **done 2026-09-15**
 
 XSS, log injection, origin checks, performance checks with realistic fixtures. Last because each
 is defence in depth over a control that already holds, and none is named by the exit gate.
+
+Three of the four were **protections that were already true and had no test**, which is the weakest
+state a control can be in: it holds today and nothing notices the day it stops. React escapes
+interpolated text by default; `JsonFormatter` emits one JSON object per line; and the CSRF token
+was carrying the whole cross-origin burden alone.
+
+#### A real defect, in the file an operator reads first
+
+`U+2028` and `U+2029` passed through `app/core/logging.py` unescaped. To `json.dumps` they are
+ordinary characters; to a JavaScript engine they are **line terminators**, so a browser-based log
+viewer renders one record as two — the log-injection property itself, in the evidence
+`infra/runbooks/incident.md` tells an operator to read before deciding whether money moved. Two
+`str.replace` calls at the end of `format`, and a test that asserts on the output rather than on
+the design.
+
+#### The origin check, and why its permissive half is the assertion that matters
+
+`app/security/cookies.py` already records that `SameSite` is a claim about *sites*, and that
+`trader.` and `admin.` are the same site. `_refuse_a_foreign_origin` is the boundary `SameSite`
+cannot draw. It closes nothing the CSRF token leaves open; it is a second lock, not a replacement.
+
+**An absent `Origin` is allowed, and the test asserts that half too.** A test of the refusal alone
+passes against a rule that refuses everything — which is what "tightening" looks like from the
+inside, and which breaks every non-browser caller while closing nothing a browser could do.
+
+#### The performance measurement, and what it found
+
+`PERF-QUEUE-001` is **discharged, not deferred again.** Its reason named two things M2 could not
+produce — a representative volume and a production-shaped environment — and slice 3 built the
+second while `tests/integration/test_queue_performance.py` builds the first: 50,000 payment
+requests with 5,000 unworked in the accountant's first queue, a month of intake with nobody
+reviewing.
+
+**No wall-clock threshold is asserted**, because a millisecond bound measured on a shared runner is
+a flake generator and a flaky gate gets its threshold raised until it asserts nothing. What is
+asserted is how many rows the database touches to return one page — a property of the plan, not of
+the machine. The latency is *recorded*, with its volume and environment beside it, which is the
+obligation's own wording: "recorded p95 and queue timings with volume and environment captured
+alongside".
+
+| queue | plan | rows touched | p95 |
+|---|---|---|---|
+| `new-requests` | bitmap index scan, then sort | 5,000 — the queue | 2.8 ms |
+| `correction-responses` | bitmap index scan, then sort | 5,000 — the queue | 1.7 ms |
+| `eligible-for-batching` | index scan | 0 — the queue was empty | 0.5 ms |
+| `trader-disputes` | **sequential scan** | **50,000 — the table** | 11.1 ms |
+
+**`trader-disputes` is the one read whose cost tracks all history rather than its own depth.**
+`trader_disputed_at IS NOT NULL` is covered by no index, and `app/db/pagination.py:17-20` states
+this exact failure mode as the reason sort and filter fields are allowlisted — here it is the
+queue's own predicate rather than a caller's filter, so the allowlist cannot see it. Compounding
+it, `app/queues/payment_requests.py:118` records that **no command resolves a dispute**, so the
+queue never drains.
+
+It is **recorded rather than fixed, and the measurement is the reason**: 11 ms at fifty thousand
+rows projects to roughly 110 ms at half a million, which is a decade of this platform's traffic,
+and an index is paid for on every insert and every status change of the busiest table in the
+system. The one-line migration is written out in the test's docstring for whoever decides it is
+time. Nothing blocks it — `test_schema_matches_the_specification.py` checks that document 04's
+indexes exist, not that no others do — so this is a decision, not an obstacle.
+
+**Two long-standing comments are answered.** `app/db/models/payment_request.py:211` and
+`alembic/versions/20260820_0017_batching_tables.py:564` both record that
+`idx_payment_request_accountant_queue` looks redundant and both decline to drop it for want of a
+measurement. The planner chose it for `eligible-for-batching` and chose the other for
+`new-requests`. Both are used; the question is closed.
+
+#### What the work caught in itself
+
+- **The count test measured a query nobody runs.** It rebuilt `read_queue_page`'s count the same
+  way `read_queue_page` does, so the control that made the count scan the whole table went
+  **NOT CAUGHT** — every number it produced was correct and none of them came from the code under
+  test. Both statements are captured from the production call now, through the engine event that
+  sees what is sent to the server. This is the same defect as a gate reading another gate's
+  artefact, wearing different clothes.
+- **`Actual Rows` is the wrong field to bound.** On a scan node it reports what *survived* the
+  filter, so a sequential scan of fifty thousand rows returning none reads as zero, and a bound
+  written against it would pass against the exact plan it exists to refuse. `Rows Removed by
+  Filter` and `Rows Removed by Index Recheck` are added back in, and the `trader-disputes` finding
+  is only visible because of it.
+- **A suite that was green for a reason outside itself.** `tests/integration/` could import
+  `scripts.emit_evidence` only because `tests/backend/conftest.py` had already put
+  `services/backend` on `sys.path` — the editable install maps `app` and nothing else. The
+  verifier always runs both directories, so the test would have passed there and failed when run
+  alone. The integration conftest inserts it now.
+- **`restore_drill`'s unfilled reason had gone stale.** It said "no restore drill has been
+  performed", which slice 2 made false — while the field's conclusion stayed right, because
+  ADR-004 is open for a different reason: the RPO and RTO targets, the restore authority, and who
+  owns the off-server copy. A reader of the evidence artifact was being told something untrue about
+  the exact thing they were checking. Corrected, and the new test checks the cited drill exists so
+  it cannot go stale in the other direction either.
+
+### What proves it
+
+- `SEC-XSS-001`, `SEC-LOGINJ-001` — `tests/backend/test_injection_surfaces.py:1`, six tests, with
+  six negative controls in `scripts/sabotage-m12-slice-5.sh:1`. Controls 1 and 2 add
+  `dangerouslySetInnerHTML` and a bare `innerHTML =` to a component that already manipulates DOM
+  geometry for legitimate reasons; control 3 restores the `U+2028` defect; control 5 makes the
+  origin check refuse an absent header, which reads as stricter and is the one that breaks every
+  non-browser caller.
+- `PERF-QUEUE-001` — `tests/integration/test_queue_performance.py:1`, seven tests, with eight
+  negative controls in `scripts/sabotage-m12-slice-5b.sh:1`. Each leaves a system that answers
+  every request correctly and returns the same rows; only the cost changes, which is why no other
+  suite in the repository would notice any of them. Control 2 replaces the row count with the naive
+  `Actual Rows` reading, and control 8 records a measurement for the three fast queues while
+  omitting the slow one — every number in it correct, and the omission the whole point.
+- The evidence emitter's half — `tests/backend/test_evidence_emitter.py:1` asserts it reads the
+  measurement whole, refuses a partial one, refuses an unreadable one, and says so rather than
+  inventing a figure when a run took none. `tests/backend/test_traceability.py:1` asserts the gap
+  is closed in both places a reader might look, **and that the field was filled rather than merely
+  deleted** — an emitter that dropped it entirely would satisfy the first two checks while
+  reporting nothing at all about performance.
 
 ---
 

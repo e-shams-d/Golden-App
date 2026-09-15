@@ -45,24 +45,75 @@ from typing import Any
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 FIXTURES = REPOSITORY_ROOT / "tests" / "fixtures"
 
+# Where `tests/integration/test_queue_performance.py` writes what it measured, and the only place
+# this script will look for it. Gitignored: a measurement belongs to the run that took it, and a
+# committed one would be a figure from somebody else's machine presented as this release's
+# evidence. Not under `.local/`, which Docker owns as root — the same reason
+# `/.verify-diagnostics/` sits beside it rather than inside it.
+QUEUE_PERFORMANCE_MEASUREMENT = REPOSITORY_ROOT / ".performance" / "queue-performance.json"
+
 # Fields the evidence set requires that M2 cannot supply, with the reason. Emitted
 # as null with the reason attached rather than left out.
 UNFILLABLE_AT_M2: dict[str, str] = {
     "restore_drill": (
-        "ADR-004 is Open: no backup or restore claim may be made at M2, so no "
-        "restore drill has been performed. This field stays null until that "
-        "decision is approved and a drill is run."
+        "ADR-004 is Open. **The drill itself is no longer what is missing**: M12 built "
+        "`infra/scripts/backup.sh`, `infra/scripts/restore.sh` and a seven-test drill at "
+        "`tests/integration/test_backup_restore_drill.py`, and it passes. What ADR-004 still "
+        "leaves undecided is the part a passing drill cannot supply — the RPO and RTO targets the "
+        "drill's timings should be measured against, who holds restore authority, and who owns "
+        "the off-server copy. So this field records no production restore claim, and the reason "
+        "is the targets rather than the exercise."
     ),
     "image_signature": (
         "PKG-001 is Open: the signing authority for release artifacts is not "
         "decided, so no signature exists to record."
     ),
-    "performance_p95": (
-        "Recorded separately with its data volume and environment. A latency "
-        "figure without both is not acceptable evidence, and this script has "
-        "neither to hand."
-    ),
 }
+
+# `performance_p95` used to sit above with the reason that this script had neither a volume nor an
+# environment to hand. That was true of M2 and stopped being true at M12: the environment arrived
+# with the production-shaped stack and the volume with
+# `tests/integration/test_queue_performance.py`, which writes what it measured to
+# `QUEUE_PERFORMANCE_MEASUREMENT`.
+#
+# **This script still refuses to invent it.** The field is filled from the measurement file if the
+# run that produced this artifact also took a measurement, and otherwise reported as unfilled with
+# the command that would take one. A default figure here, or a figure carried over from a previous
+# run, would describe a deployment nobody measured — the same failure as reading the schema
+# revision from `alembic/versions/` instead of from the instance.
+PERFORMANCE_NOT_MEASURED_BY_THIS_RUN = (
+    "This run took no queue performance measurement. `PERF-QUEUE-001` requires a p95 with the data "
+    "volume and the environment it was measured on, and only the run that measured it knows those. "
+    "Take one with `pytest tests/integration/test_queue_performance.py`, which writes "
+    f"{QUEUE_PERFORMANCE_MEASUREMENT.relative_to(REPOSITORY_ROOT)}, and emit again."
+)
+
+
+def queue_performance() -> tuple[dict[str, Any] | None, str | None]:
+    """The measurement, or the reason there is none. Never a number this script made up.
+
+    Returned whole rather than reduced to a millisecond figure: a p95 without its volume and
+    environment is precisely what `PERF-QUEUE-001` calls unacceptable evidence, so flattening the
+    record here would reintroduce the gap while reporting it closed.
+    """
+
+    if not QUEUE_PERFORMANCE_MEASUREMENT.exists():
+        return None, PERFORMANCE_NOT_MEASURED_BY_THIS_RUN
+
+    try:
+        record = json.loads(QUEUE_PERFORMANCE_MEASUREMENT.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return None, f"{PERFORMANCE_NOT_MEASURED_BY_THIS_RUN} (the file was unreadable: {error})"
+
+    missing = [key for key in ("volume", "environment", "queues") if key not in record]
+    if missing:
+        # A partial record is worse than none: it would be filed as a measurement and read as
+        # complete. Refused with the same shape as an absent one.
+        return None, (
+            f"{PERFORMANCE_NOT_MEASURED_BY_THIS_RUN} (the file was missing {sorted(missing)}, so "
+            "it is not evidence of the kind PERF-QUEUE-001 asks for)"
+        )
+    return record, None
 
 # The same treatment for M3's two, kept in a separate dictionary so a reader can tell which
 # milestone owes which. Merged into `unfilled` on the way out.
@@ -246,6 +297,14 @@ def build_artifact(instance: dict[str, Any], *, run_id: str, moment: datetime) -
         f"{versions['file_fixtures']}+{versions['bank_fixtures']}"
         f"@{'.'.join(schema['applied_revisions'])}"
     )
+
+    # Filled or unfilled, never both — the same rule every other field here follows, and the one
+    # `test_no_unfillable_field_is_also_reported_as_filled` exists to keep.
+    measurement, absent_because = queue_performance()
+    if measurement is None:
+        artifact["unfilled"]["performance_p95"] = absent_because
+    else:
+        artifact["performance_p95"] = measurement
     return artifact
 
 

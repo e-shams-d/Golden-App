@@ -21,6 +21,13 @@
 /.verify-diagnostics/
 *.log
 
+# The queue performance measurement, written by
+# tests/integration/test_queue_performance.py and read by emit_evidence.py. Out of
+# .local/ for the same root-ownership reason. Ignored rather than committed because
+# a measurement belongs to the run that took it: a committed figure would be
+# somebody else's machine, presented as this release's evidence.
+/.performance/
+
 # Python
 __pycache__/
 *.py[cod]
