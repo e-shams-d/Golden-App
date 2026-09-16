@@ -26,6 +26,7 @@ CONTRACT=services/backend/app/queues/contract.py
 PAGINATION=services/backend/app/db/pagination.py
 EMITTER=services/backend/scripts/emit_evidence.py
 PERF=tests/integration/test_queue_performance.py
+M3ITEMS=tests/backend/test_evidence_m3_items.py
 
 WORK=$(mktemp -d)
 cp "$QUEUES" "$WORK/queues.py"
@@ -33,6 +34,7 @@ cp "$CONTRACT" "$WORK/contract.py"
 cp "$PAGINATION" "$WORK/pagination.py"
 cp "$EMITTER" "$WORK/emitter.py"
 cp "$PERF" "$WORK/perf.py"
+cp "$M3ITEMS" "$WORK/m3items.py"
 
 restore_files() {
   cp "$WORK/queues.py" "$QUEUES"
@@ -40,10 +42,17 @@ restore_files() {
   cp "$WORK/pagination.py" "$PAGINATION"
   cp "$WORK/emitter.py" "$EMITTER"
   cp "$WORK/perf.py" "$PERF"
+  cp "$WORK/m3items.py" "$M3ITEMS"
 }
 trap restore_files EXIT
 
-SUITE="tests/integration/test_queue_performance.py tests/backend/test_evidence_emitter.py tests/backend/test_traceability.py"
+# **Removed before every run, because its presence is what hid a defect from a full local
+# verifier and let CI find it instead.** `.performance/` is gitignored, so a developer's second
+# run always has it and a fresh checkout never does; controls 9 and 10 are about exactly that
+# difference, and the other eight must not depend on which state they happen to start in.
+rm -rf .performance
+
+SUITE="tests/integration/test_queue_performance.py tests/backend/test_evidence_emitter.py tests/backend/test_traceability.py tests/backend/test_evidence_m3_items.py"
 
 run_suite() {
   # shellcheck disable=SC2086
@@ -226,6 +235,46 @@ p.write_text(s, encoding="utf-8")
 EOF
 probe "8. the recorded measurement omits the one slow queue"
 
+# 9. **The defect CI found and a full local verifier did not.** The collision check counts the
+#    merged dictionary instead of comparing the two. It is right whenever `performance_p95` is
+#    filled and wrong whenever it is not — and which of those a run sees depends on whether an
+#    earlier run left a gitignored file behind. Restored here to prove the fix is not vacuous.
+$PY - <<'EOF'
+import pathlib
+p = pathlib.Path("tests/backend/test_evidence_m3_items.py")
+s = p.read_text(encoding="utf-8")
+before = s
+s = s.replace(
+    "    assert set(UNFILLABLE_AT_M2) & set(UNFILLABLE_AT_M3) == set(), (\n"
+    "        \"a key is in both the M2 and M3 unfilled sets, so `{**M2, **M3}` drops one milestone's \"\n"
+    "        \"reason and the artifact reports the other's for a gap it does not describe\"\n"
+    "    )",
+    "    assert len(unfilled) == len(UNFILLABLE_AT_M2) + len(UNFILLABLE_AT_M3)",
+)
+assert s != before, "control 9 did not modify the file; the sabotage is stale"
+p.write_text(s, encoding="utf-8")
+EOF
+probe "9. the collision check counts the merged dictionary instead of comparing the two"
+
+# 10. The emitter drops the field entirely when no measurement exists, rather than recording it
+#     as unfilled with a reason. Every reader of the artifact then sees a complete-looking
+#     evidence set that says nothing whatsoever about performance — which is the failure the
+#     original PERF-QUEUE-001 entry was written against, arrived at from the other direction.
+$PY - <<'EOF'
+import pathlib
+p = pathlib.Path("services/backend/scripts/emit_evidence.py")
+s = p.read_text(encoding="utf-8")
+before = s
+s = s.replace(
+    "    if measurement is None:\n"
+    "        artifact[\"unfilled\"][\"performance_p95\"] = absent_because",
+    "    if measurement is None:\n        pass",
+)
+assert s != before, "control 10 did not modify the file; the sabotage is stale"
+p.write_text(s, encoding="utf-8")
+EOF
+probe "10. a run with no measurement omits the field instead of recording why"
+
 echo
 echo "=== restored ==="
-git status --short "$QUEUES" "$CONTRACT" "$PAGINATION" "$EMITTER" "$PERF"
+git status --short "$QUEUES" "$CONTRACT" "$PAGINATION" "$EMITTER" "$PERF" "$M3ITEMS"

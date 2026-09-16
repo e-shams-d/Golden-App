@@ -419,6 +419,24 @@ measurement. The planner chose it for `eligible-for-batching` and chose the othe
   `services/backend` on `sys.path` — the editable install maps `app` and nothing else. The
   verifier always runs both directories, so the test would have passed there and failed when run
   alone. The integration conftest inserts it now.
+- **The same shape a third time, and this one only CI could find.** A full local verifier passed
+  and CI failed on `test_m2_s_unfilled_fields_survive_the_merge`, whose collision check counted
+  the keys of the merged `unfilled` dictionary. `performance_p95` is no longer a constant in
+  either source dictionary — it is filled from a measurement when a run took one and added to
+  `unfilled` with a reason when it did not — so the merged total is four keys or five, and the
+  count read the five-key case as a collision.
+
+  **The five-key case is the fresh-checkout case, and a developer's machine almost never has
+  it**: `.performance/` is gitignored, so the first run creates it and every run afterwards takes
+  the other branch. CI checks out clean every time. The collision is asserted directly over the
+  two dictionaries now — which is what the test's own docstring always said it was about — and
+  the `artifact` fixture pins the measurement path so these tests stop depending on ambient
+  filesystem state. `scripts/sabotage-m12-slice-5b.sh` removes `.performance/` before control 0
+  for the same reason, and controls 9 and 10 are about exactly this difference.
+
+  Worth stating plainly: **a gitignored file written by one test and read by another is a state
+  dependency between suites**, and it is invisible in the place people look for such things — the
+  diff. This is the third time in one slice that something was green for a reason outside itself.
 - **`restore_drill`'s unfilled reason had gone stale.** It said "no restore drill has been
   performed", which slice 2 made false — while the field's conclusion stayed right, because
   ADR-004 is open for a different reason: the RPO and RTO targets, the restore authority, and who
@@ -434,12 +452,14 @@ measurement. The planner chose it for `eligible-for-batching` and chose the othe
   geometry for legitimate reasons; control 3 restores the `U+2028` defect; control 5 makes the
   origin check refuse an absent header, which reads as stricter and is the one that breaks every
   non-browser caller.
-- `PERF-QUEUE-001` — `tests/integration/test_queue_performance.py:1`, seven tests, with eight
+- `PERF-QUEUE-001` — `tests/integration/test_queue_performance.py:1`, seven tests, with ten
   negative controls in `scripts/sabotage-m12-slice-5b.sh:1`. Each leaves a system that answers
   every request correctly and returns the same rows; only the cost changes, which is why no other
   suite in the repository would notice any of them. Control 2 replaces the row count with the naive
   `Actual Rows` reading, and control 8 records a measurement for the three fast queues while
-  omitting the slow one — every number in it correct, and the omission the whole point.
+  omitting the slow one — every number in it correct, and the omission the whole point. Controls 9
+  and 10 are the CI failure above, put back: the collision check counting a merged dictionary, and
+  an emitter that omits the field rather than recording why it is empty.
 - The evidence emitter's half — `tests/backend/test_evidence_emitter.py:1` asserts it reads the
   measurement whole, refuses a partial one, refuses an unreadable one, and says so rather than
   inventing a figure when a run took none. `tests/backend/test_traceability.py:1` asserts the gap
