@@ -26,6 +26,7 @@ import ipaddress
 import uuid
 from datetime import datetime
 from typing import Annotated, Any
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -470,8 +471,39 @@ def _refuse_a_foreign_origin(request: Request) -> None:
     # nginx serves only the two `server_name`s it is given — a request reaching this process has a
     # host this deployment answers on. A list here would be a third place to write the deployment's
     # hostnames, after `deployment/trader-host.conf` and `deployment/admin-host.conf`.
-    if origin not in {f"https://{host}", f"http://{host}"}:
+    #
+    # **Hostnames only, and the port is the reason this was nearly a production outage.** Every
+    # `proxy_pass` in `infra/nginx/` sets `Host $host`, and nginx's `$host` is the hostname with
+    # the port *removed*. A browser's `Origin` always carries the port when it is not the scheme's
+    # default. So the first version of this compared `http://admin.example.ir:8080` against
+    # `http://admin.example.ir` and refused every state-changing request the admin panel made —
+    # while passing CI, because `TestClient` speaks to the app directly and never crosses a proxy.
+    #
+    # Dropping the port is not a weakening. The boundary this exists to draw is the one `SameSite`
+    # cannot: `trader.` against `admin.`, which is a *hostname* distinction. A different port on
+    # the same hostname is the same deployment; a different hostname is what an attacker has.
+    from_origin = _hostname(origin)
+    from_host = _hostname(host)
+    # **`None` is refused rather than compared.** Two unparseable values would otherwise be equal
+    # to each other, which is an accept, and `Origin: null` — what a sandboxed iframe sends — is
+    # exactly the input that would arrive there.
+    if from_origin is None or from_host is None or from_origin != from_host:
         raise CsrfRequiredError()
+
+
+def _hostname(value: str) -> str | None:
+    """The host part of an `Origin` or a `Host`, lowercased, without scheme or port.
+
+    Both forms go through one function because they are spelled differently for the same thing:
+    an `Origin` carries a scheme and a `Host` header does not. `urlsplit` needs the `//` to treat
+    what follows as an authority, so a bare host gets one.
+    """
+
+    candidate = value if "//" in value else f"//{value}"
+    try:
+        return urlsplit(candidate).hostname
+    except ValueError:  # pragma: no cover - urlsplit raises only on a malformed IPv6 literal
+        return None
 
 
 def authenticated_actor(

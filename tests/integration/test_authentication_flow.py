@@ -559,6 +559,88 @@ def test_an_absent_origin_is_allowed_and_a_foreign_one_is_not(
     )
 
 
+def test_a_browser_origin_behind_the_proxy_is_accepted(
+    client: Any, migrated: RuntimeIdentities
+) -> None:
+    """**The case whose absence made the first origin check a production outage.**
+
+    The test above had two halves — a foreign origin refused, an absent one allowed — and no
+    third: a *legitimate browser request succeeding*. Without it, a rule that refused every
+    request carrying an `Origin` passed, and that is precisely what shipped.
+
+    Every `proxy_pass` in `infra/nginx/` sets `Host $host`, and nginx's `$host` is the hostname
+    with **the port removed**. A browser's `Origin` carries the port whenever it is not the
+    scheme's default, so the admin panel on `http://admin.localhost:8080` sent
+    `Origin: http://admin.localhost:8080` and the backend received `Host: admin.localhost`.
+    Comparing the two strings refused every state-changing request the panel made.
+
+    CI could not see it. `TestClient` speaks to the ASGI app directly, so `Host` and `Origin` are
+    whatever the test sets and nothing ever strips a port. **The mismatch only exists across a
+    proxy**, which is the one place the suite does not go — so the case is written here as the
+    two headers a proxy actually produces.
+    """
+
+    del migrated
+
+    client.post(
+        "/api/v1/auth/admin/login",
+        json={"identifier": ADMIN_USERNAME, "password": ADMIN_PASSWORD},
+    )
+    token = client.cookies.get(ADMIN_CSRF_COOKIE)
+    assert token, "the login set no CSRF cookie"
+
+    accepted = client.post(
+        "/api/v1/auth/logout",
+        headers={
+            CSRF_HEADER: token,
+            # What the browser sends.
+            "Origin": "http://admin.localhost:8080",
+            # What nginx forwards: `$host`, which has no port.
+            "Host": "admin.localhost",
+        },
+    )
+
+    assert accepted.status_code == 200, (
+        "a legitimate same-host browser request was refused. The Origin carries the port and the "
+        "proxied Host does not, so comparing them as strings refuses every action the admin panel "
+        "takes — which is a total outage of the panel, reached by tightening a second lock."
+    )
+
+
+def test_a_sibling_host_is_still_refused_once_ports_are_ignored(
+    client: Any, migrated: RuntimeIdentities
+) -> None:
+    """Guard the fix. Ignoring the port must not quietly ignore the hostname too.
+
+    `trader.` against `admin.` is the whole reason this check exists — `app/security/cookies.py`
+    records that `SameSite` cannot separate them because they are the same *site*. A fix for the
+    port that compared nothing would pass the test above and close nothing at all.
+    """
+
+    del migrated
+
+    client.post(
+        "/api/v1/auth/admin/login",
+        json={"identifier": ADMIN_USERNAME, "password": ADMIN_PASSWORD},
+    )
+    token = client.cookies.get(ADMIN_CSRF_COOKIE)
+    assert token, "the login set no CSRF cookie"
+
+    sibling = client.post(
+        "/api/v1/auth/logout",
+        headers={
+            CSRF_HEADER: token,
+            "Origin": "http://trader.localhost:8080",
+            "Host": "admin.localhost",
+        },
+    )
+
+    assert sibling.status_code == 403, (
+        "script on the trader origin reached the admin one. That is the exact boundary SameSite "
+        "cannot draw and this check exists for"
+    )
+
+
 def test_logout_revokes_and_is_idempotent(client: Any, migrated: RuntimeIdentities) -> None:
     """API-AUTH-003 and SEC-SESS-003.
 
