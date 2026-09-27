@@ -72,8 +72,17 @@ test.describe("the landing surface and audience isolation", () => {
     // part that had no caller at all.
     await page.goto(`${ADMIN}/`);
     const navigation = page.getByRole("navigation", { name: "ناوبری عملیات داخلی" });
-    // Anonymous: only the dashboard, which carries no permission.
-    await expect(navigation.getByRole("link")).toHaveCount(1);
+    // Anonymous: only the items that carry no permission. Three of them, not one — the
+    // dashboard, and since M11 Screens the self-service pair `/password` (slice 10) and
+    // `/notifications` (slice 1), both ungated because their authority is the session itself,
+    // not a grant. `navigation-permissions.test.ts` asserts exactly `["/", "/password",
+    // "/notifications"]`; this counts the same set against the live deployment. Asserted as a
+    // set rather than a bare count of 3, because a filter that had stopped filtering and shown
+    // everything-that-is-ungated-plus-something would also need to be caught.
+    await expect(navigation.getByRole("link", { name: "داشبورد" })).toBeVisible();
+    await expect(navigation.getByRole("link", { name: "گذرواژه" })).toBeVisible();
+    await expect(navigation.getByRole("link", { name: "اعلان‌ها" })).toBeVisible();
+    await expect(navigation.getByRole("link")).toHaveCount(3);
 
     await page.goto(`${ADMIN}/login`);
     await page.getByLabel(/نام کاربری/).fill(adminUser);

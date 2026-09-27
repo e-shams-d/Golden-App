@@ -63,7 +63,26 @@ INSTANCE: dict[str, Any] = {
 
 
 @pytest.fixture
-def artifact() -> dict[str, Any]:
+def artifact(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any]:
+    """An artifact from a run that took no performance measurement, pinned deliberately.
+
+    **`performance_p95` makes `build_artifact` depend on the filesystem**, which M12 slice 5
+    introduced: the field is filled from `QUEUE_PERFORMANCE_MEASUREMENT` when a run wrote one and
+    recorded as unfilled with a reason when it did not. Every assertion in this file is about the
+    *other* fields, so leaving that to ambient state means these tests describe whichever branch
+    the developer's last run happened to leave behind — and CI, on a fresh checkout, always gets
+    the other one. That is exactly how the count in `test_m2_s_unfilled_fields_survive_the_merge`
+    passed here and failed there.
+
+    Pinned to absent because that is the shape a fresh checkout has. The filled branch is covered
+    on purpose in `test_evidence_emitter.py`.
+    """
+
+    from scripts import emit_evidence
+
+    monkeypatch.setattr(
+        emit_evidence, "QUEUE_PERFORMANCE_MEASUREMENT", tmp_path / "no-measurement.json"
+    )
     return build_artifact(INSTANCE, run_id="run-1", moment=datetime(2026, 8, 14, tzinfo=UTC))
 
 
@@ -142,16 +161,32 @@ def test_m2_s_unfilled_fields_survive_the_merge(artifact: dict[str, Any]) -> Non
 
     `{**M2, **M3}` with a shared key would drop one silently. Asserted because the two
     dictionaries are edited by different milestones and nothing else would report it.
+
+    **The collision check used to be a count of the merged dictionary, and M12 slice 5 broke it
+    honestly.** `performance_p95` is no longer a constant in either dictionary: it is filled from
+    a measurement when a run took one, and added to `unfilled` at runtime with the reason when it
+    did not. So the merged total is four keys or five depending on something that is not a
+    collision, and the count read the second case as one.
+
+    It went unnoticed locally for the worst possible reason — a leftover measurement file from an
+    earlier run meant the five-key branch never executed, and CI runs on a fresh checkout where it
+    always does. The collision is asserted directly now, over the two dictionaries rather than
+    over their merged output, which is what the docstring always said it was about.
     """
 
     unfilled = artifact["unfilled"]
 
     assert set(UNFILLABLE_AT_M2) <= set(unfilled)
     assert set(UNFILLABLE_AT_M3) <= set(unfilled)
-    assert len(unfilled) == len(UNFILLABLE_AT_M2) + len(UNFILLABLE_AT_M3), (
-        "a key collided between the M2 and M3 unfilled sets, so one milestone's reason "
-        "has been overwritten by the other's"
+    assert set(UNFILLABLE_AT_M2) & set(UNFILLABLE_AT_M3) == set(), (
+        "a key is in both the M2 and M3 unfilled sets, so `{**M2, **M3}` drops one milestone's "
+        "reason and the artifact reports the other's for a gap it does not describe"
     )
+    # And the reasons survive the merge as themselves, which the count never checked: a collision
+    # is one way a reason gets replaced, and it is not the only one.
+    for source in (UNFILLABLE_AT_M2, UNFILLABLE_AT_M3):
+        for field, reason in source.items():
+            assert unfilled[field] == reason, f"{field}'s reason changed on the way out"
 
 
 def test_no_unfilled_field_is_also_filled(artifact: dict[str, Any]) -> None:

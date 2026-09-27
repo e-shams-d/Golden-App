@@ -34,7 +34,10 @@ from scripts.emit_evidence import (
     fetch_instance_evidence,
     fixture_versions,
     main,
+    queue_performance,
 )
+
+from scripts import emit_evidence
 
 MOMENT = datetime(2026, 8, 7, 9, 0, tzinfo=UTC)
 
@@ -166,12 +169,125 @@ class TestWhatM2CannotSupplyIsStatedRatherThanOmitted:
 
         assert "ADR-004" in UNFILLABLE_AT_M2["restore_drill"]
 
+    def test_the_restore_drill_reason_no_longer_claims_no_drill_has_been_run(self) -> None:
+        """**A reason can go stale without going missing**, and this one did.
+
+        Until M12 slice 5 the text read "no restore drill has been performed". M12 slice 2 built
+        one and it passes, so a reader of the artifact was being told something false about the
+        very thing they were checking — while the field's *conclusion* stayed correct, because
+        ADR-004 is still Open for a different reason: the RPO and RTO targets, the restore
+        authority, and who owns the off-server copy.
+
+        Checked against the drill's real path, so deleting the drill breaks this rather than
+        leaving a reason that has quietly become true again by accident.
+        """
+
+        reason = UNFILLABLE_AT_M2["restore_drill"]
+
+        assert "test_backup_restore_drill.py" in reason
+        assert (
+            Path(__file__).resolve().parents[1]
+            / "integration"
+            / "test_backup_restore_drill.py"
+        ).exists(), "the reason cites a drill that is not there"
+        for target in ("RPO", "RTO", "authority"):
+            assert target in reason, f"the reason does not say that {target} is what is undecided"
+
     def test_no_unfillable_field_is_also_reported_as_filled(self) -> None:
         """Guard the guard: a field in both places would satisfy either reader."""
 
         artifact = build_artifact(instance_response(), run_id="r1", moment=MOMENT)
 
         assert set(artifact) & set(UNFILLABLE_AT_M2) == set()
+
+
+class TestThePerformanceMeasurementIsReadAndNeverInvented:
+    """`performance_p95` left `UNFILLABLE_AT_M2` at M12 slice 5.
+
+    It is now filled from what `tests/integration/test_queue_performance.py` measured — which
+    means the emitter has a new way to be wrong that it did not have while the field was a
+    constant: it could report a figure no run produced.
+    """
+
+    def test_a_run_with_no_measurement_says_so_rather_than_omitting_the_field(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(
+            emit_evidence, "QUEUE_PERFORMANCE_MEASUREMENT", tmp_path / "absent.json"
+        )
+
+        artifact = build_artifact(instance_response(), run_id="r1", moment=MOMENT)
+
+        assert "performance_p95" not in artifact
+        assert "performance_p95" in artifact["unfilled"]
+        assert "test_queue_performance" in artifact["unfilled"]["performance_p95"], (
+            "the reason does not say how to produce the missing measurement"
+        )
+
+    def test_a_measurement_is_carried_through_whole(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """**Whole, not reduced to a number.**
+
+        A p95 without its volume and environment is exactly what `PERF-QUEUE-001` called
+        unacceptable evidence, so an emitter that flattened the record to a millisecond figure
+        would reintroduce the gap while reporting it closed.
+        """
+
+        measured = {
+            "volume": {"payment_requests": 50_000, "assumption": "a year of intake"},
+            "environment": {"postgres_version": "PostgreSQL 16.14", "ci": False},
+            "queues": {"new-requests": {"milliseconds": {"p95": 4.3}}},
+        }
+        path = tmp_path / "queue-performance.json"
+        path.write_text(json.dumps(measured), encoding="utf-8")
+        monkeypatch.setattr(emit_evidence, "QUEUE_PERFORMANCE_MEASUREMENT", path)
+
+        artifact = build_artifact(instance_response(), run_id="r1", moment=MOMENT)
+
+        assert artifact["performance_p95"] == measured
+        assert "performance_p95" not in artifact["unfilled"], (
+            "the field was reported as both measured and missing"
+        )
+
+    @pytest.mark.parametrize("dropped", ["volume", "environment", "queues"])
+    def test_a_partial_measurement_is_refused_rather_than_filed(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, dropped: str
+    ) -> None:
+        """A record missing any of the three is not the evidence the obligation asks for.
+
+        Refused with the same shape as an absent one, because a partial record filed as a
+        measurement is worse than none: it reads as complete.
+        """
+
+        measured: dict[str, object] = {
+            "volume": {"payment_requests": 50_000},
+            "environment": {"postgres_version": "PostgreSQL 16.14"},
+            "queues": {"new-requests": {}},
+        }
+        del measured[dropped]
+        path = tmp_path / "queue-performance.json"
+        path.write_text(json.dumps(measured), encoding="utf-8")
+        monkeypatch.setattr(emit_evidence, "QUEUE_PERFORMANCE_MEASUREMENT", path)
+
+        record, reason = queue_performance()
+
+        assert record is None
+        assert reason is not None and dropped in reason
+
+    def test_an_unreadable_file_is_not_treated_as_an_empty_measurement(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Truncated output from an interrupted run is the realistic corruption here."""
+
+        path = tmp_path / "queue-performance.json"
+        path.write_text('{"volume": {"payment', encoding="utf-8")
+        monkeypatch.setattr(emit_evidence, "QUEUE_PERFORMANCE_MEASUREMENT", path)
+
+        record, reason = queue_performance()
+
+        assert record is None
+        assert reason is not None and "unreadable" in reason
 
 
 class TestTheAiDisabledClaim:

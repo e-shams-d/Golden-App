@@ -26,6 +26,7 @@ import ipaddress
 import uuid
 from datetime import datetime
 from typing import Annotated, Any
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -427,12 +428,82 @@ def _authenticate_request(
 def _require_csrf(request: Request, digest: str, settings: Settings) -> None:
     if not cookies.requires_csrf(request.method):
         return
+    _refuse_a_foreign_origin(request)
     key = settings.auth_csrf_key_secret
     presented = request.headers.get(cookies.CSRF_HEADER)
     if not cookies.csrf_token_matches(
         presented, digest, (key.get_secret_value() if key else "").encode("utf-8")
     ):
         raise CsrfRequiredError()
+
+
+def _refuse_a_foreign_origin(request: Request) -> None:
+    """§20.2's "origin controls", as a **second lock rather than the missing one**.
+
+    M12 slice 5. The token below is the primary control and a strong one: an HMAC bound to the
+    session secret, delivered in a `__Host-` cookie with `SameSite=strict`, presented in a custom
+    header a cross-site form cannot set, compared in constant time. This closes nothing that leaves
+    open.
+
+    **It is still worth having, for the reason `security/cookies.py` records about `SameSite`**:
+    that attribute is a claim about *sites*, and `trader.example.ir` and `admin.example.ir` are the
+    same site. Script running on the trader origin is not stopped by `SameSite` from reaching the
+    admin one — the cookie names differ and the server refuses the wrong audience, but neither of
+    those is an origin boundary. This is.
+
+    **An absent `Origin` is allowed, and that is the exemption worth examining.** A browser sends it
+    on every cross-origin request and on same-origin unsafe requests, so a browser-driven attack
+    always carries one. Refusing its absence would break non-browser callers — a migration script,
+    an operator with `curl` — without closing anything a browser could do.
+    `test_an_absent_origin_is_allowed_and_a_foreign_one_is_not` asserts both halves, because the
+    permissive half is the one that would quietly become the whole rule.
+    """
+
+    origin = request.headers.get("origin")
+    if origin is None:
+        return
+
+    host = request.headers.get("host")
+    if host is None:  # pragma: no cover - HTTP/1.1 requires it and the proxy sets it
+        raise CsrfRequiredError()
+
+    # Compared against the `Host` the request arrived with rather than a configured list, because
+    # nginx serves only the two `server_name`s it is given — a request reaching this process has a
+    # host this deployment answers on. A list here would be a third place to write the deployment's
+    # hostnames, after `deployment/trader-host.conf` and `deployment/admin-host.conf`.
+    #
+    # **Hostnames only, and the port is the reason this was nearly a production outage.** Every
+    # `proxy_pass` in `infra/nginx/` sets `Host $host`, and nginx's `$host` is the hostname with
+    # the port *removed*. A browser's `Origin` always carries the port when it is not the scheme's
+    # default. So the first version of this compared `http://admin.example.ir:8080` against
+    # `http://admin.example.ir` and refused every state-changing request the admin panel made —
+    # while passing CI, because `TestClient` speaks to the app directly and never crosses a proxy.
+    #
+    # Dropping the port is not a weakening. The boundary this exists to draw is the one `SameSite`
+    # cannot: `trader.` against `admin.`, which is a *hostname* distinction. A different port on
+    # the same hostname is the same deployment; a different hostname is what an attacker has.
+    from_origin = _hostname(origin)
+    from_host = _hostname(host)
+    # **`None` is refused rather than compared.** Two unparseable values would otherwise be equal
+    # to each other, which is an accept, and `Origin: null` — what a sandboxed iframe sends — is
+    # exactly the input that would arrive there.
+    if from_origin is None or from_host is None or from_origin != from_host:
+        raise CsrfRequiredError()
+
+
+def _hostname(value: str) -> str | None:
+    """The host part of an `Origin` or a `Host`, lowercased, without scheme or port.
+
+    Both forms go through one function because they are spelled differently for the same thing:
+    an `Origin` carries a scheme and a `Host` header does not. `urlsplit` needs the `//` to treat
+    what follows as an authority, so a bare host gets one.
+    """
+
+    candidate = value if "//" in value else f"//{value}"
+    try:
+        return urlsplit(candidate).hostname
+    except ValueError:  # pragma: no cover - urlsplit raises only on a malformed IPv6 literal
+        return None
 
 
 def authenticated_actor(

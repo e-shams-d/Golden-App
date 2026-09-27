@@ -32,6 +32,13 @@ import pytest
 # `tests/`, so pytest never collects a conftest above these directories.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "fixtures"))
 
+# `services/backend`, so `scripts.*` imports. **The editable install maps `app` and nothing
+# else**, so until M12 slice 5 this suite could import `scripts.emit_evidence` only when
+# `tests/backend/conftest.py` had already run in the same session and inserted the path. The
+# verifier always runs both directories, so a test relying on it would pass there and fail when
+# run alone — a suite that is green for a reason outside itself.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "services" / "backend"))
+
 from alembic_runner import run_alembic
 from bootstrap_replay import RuntimeIdentities, replay_all
 from settings_environment import environment_without_settings_variables
