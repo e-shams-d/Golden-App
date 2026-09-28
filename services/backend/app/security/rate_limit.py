@@ -113,6 +113,13 @@ class AuthenticationRateLimiter:
     up to twice the ceiling across two adjacent windows — is bounded and
     acceptable for a control whose job is to make guessing slow rather than to
     make it impossible.
+
+    **The window is fixed only because the TTL is set once per window**, which is
+    what `nx=True` on the EXPIRE in `_count` buys. Without it the expiry moved on
+    every attempt, including refused ones, and a caller who kept retrying was
+    locked out for as long as they kept trying. `test_a_caller_who_keeps_retrying
+    _still_recovers_when_the_window_passes` is the assertion that would have caught
+    that, and it needs a fake clock to make the claim at all.
     """
 
     def __init__(self, client: Redis, policy: RateLimitPolicy, key_secret: bytes) -> None:
@@ -132,11 +139,29 @@ class AuthenticationRateLimiter:
         try:
             pipeline = self._client.pipeline()
             pipeline.incr(key)
-            # Refreshed on every attempt rather than set once on creation. A TTL
-            # set only when the counter is created leaves a key with no
-            # expiry if the process dies between INCR and EXPIRE, and that key
-            # then blocks the identifier forever.
-            pipeline.expire(key, self._policy.window_seconds)
+            # EXPIRE accompanies every INCR, and `nx=True` is what keeps that from
+            # extending a window that is already running. Both halves are load-bearing.
+            #
+            # Sending EXPIRE every time was deliberate and its reason still holds: a TTL
+            # set only when the counter is created is lost if the process dies between
+            # INCR and EXPIRE, and the key left behind blocks that identifier for ever.
+            # What the original missed is that refreshing a *live* TTL turns the fixed
+            # window into a sliding one. A refused attempt is still counted and still
+            # pushed the expiry out, and the counter is never reset, so any caller that
+            # retried more often than `window_seconds` held its own lockout open
+            # indefinitely — the bound this module claims below, "up to twice the
+            # ceiling across two adjacent windows", did not hold at all.
+            #
+            # That made a remote, unauthenticated denial of service against any known
+            # phone number: one request every four minutes keeps an account shut, and
+            # because the network axis is deliberately loose for CGNAT it does not
+            # notice a single caller at that rate.
+            #
+            # Found during local acceptance testing on 2026-09-28: a correct password
+            # was refused for half an hour while the stored Argon2 hash matched it,
+            # `failed_login_count` stayed at zero, and the refusal was an ordinary 401
+            # indistinguishable from a wrong password.
+            pipeline.expire(key, self._policy.window_seconds, nx=True)
             # redis-py's pipeline is untyped, so the result is narrowed here
             # rather than trusted. INCR answers with an integer; anything else
             # means the key holds something this module did not put there, and

@@ -44,9 +44,28 @@ class FakeRedis:
 
     def __init__(self, *, fail: bool = False, value: Any = None) -> None:
         self.counts: dict[str, int] = {}
-        self.expiries: list[tuple[str, int]] = []
+        self.expiries: list[tuple[str, int, bool]] = []
         self._fail = fail
         self._value = value
+        # A clock the test moves by hand. Without one this fake can record that EXPIRE
+        # was called but never that it did anything, so the property that matters —
+        # whether a counter is still there a window later — cannot be asserted. The
+        # absence of this clock is why the unbounded lockout survived a suite that
+        # already had a test about the expiry.
+        self.now: float = 0.0
+        self._expires_at: dict[str, float] = {}
+
+    def advance(self, seconds: float) -> None:
+        """Move the clock and drop whatever has fallen due, as a real server would."""
+
+        self.now += seconds
+        self._collect()
+
+    def _collect(self) -> None:
+        for key, due in list(self._expires_at.items()):
+            if due <= self.now:
+                del self._expires_at[key]
+                self.counts.pop(key, None)
 
     def pipeline(self) -> FakeRedis:
         self._queued: list[tuple[str, Any]] = []
@@ -55,21 +74,29 @@ class FakeRedis:
     def incr(self, key: str) -> None:
         self._queued.append(("incr", key))
 
-    def expire(self, key: str, seconds: int) -> None:
-        self._queued.append(("expire", (key, seconds)))
+    def expire(self, key: str, seconds: int, nx: bool = False) -> None:
+        self._queued.append(("expire", (key, seconds, nx)))
 
     def execute(self) -> list[Any]:
         if self._fail:
             raise RedisError("connection refused")
+        self._collect()
         results: list[Any] = []
         for operation, argument in self._queued:
             if operation == "incr":
                 self.counts[argument] = self.counts.get(argument, 0) + 1
                 results.append(self._value if self._value is not None else self.counts[argument])
             else:
-                key, seconds = argument
-                self.expiries.append((key, seconds))
-                results.append(True)
+                key, seconds, nx = argument
+                self.expiries.append((key, seconds, nx))
+                # NX is the whole point: an EXPIRE that arrives while a TTL is already
+                # running must not move it. Modelled rather than ignored, or the fake
+                # would report success for the behaviour that caused the defect.
+                if nx and key in self._expires_at:
+                    results.append(False)
+                else:
+                    self._expires_at[key] = self.now + seconds
+                    results.append(True)
         return results
 
 
@@ -287,8 +314,17 @@ def test_an_empty_key_secret_is_refused() -> None:
         key_for(RateLimitScope.IDENTIFIER, "09123456789", b"")
 
 
-def test_the_window_is_refreshed_on_every_attempt() -> None:
-    """A TTL set only on creation can be lost, leaving a key that blocks forever."""
+def test_expire_accompanies_every_attempt_but_never_extends_the_window() -> None:
+    """Both halves, because each without the other is a way to lock an account forever.
+
+    EXPIRE on every INCR: a TTL set only on creation is lost if the process dies between
+    the two, and the key left behind blocks the identifier permanently.
+
+    `nx=True` on every one of them: without it the expiry moves on each attempt, refused
+    attempts included, and since the counter is never reset a caller who keeps retrying
+    keeps their own lockout alive. The original asserted only the first half, which is
+    why the second could be wrong for as long as it was.
+    """
 
     client = FakeRedis()
     limit = limiter(client)
@@ -298,7 +334,46 @@ def test_the_window_is_refreshed_on_every_attempt() -> None:
 
     identifier_expiries = [entry for entry in client.expiries if "identifier" in entry[0]]
     assert len(identifier_expiries) == 2, "EXPIRE must accompany every INCR, not just the first"
-    assert all(seconds == 300 for _, seconds in identifier_expiries)
+    assert all(seconds == 300 for _, seconds, _nx in identifier_expiries)
+    assert all(nx for *_rest, nx in identifier_expiries), (
+        "an EXPIRE without NX extends a window that is already running, which is how a "
+        "300-second limit became an unbounded lockout"
+    )
+
+
+def test_a_caller_who_keeps_retrying_still_recovers_when_the_window_passes() -> None:
+    """The property the whole control rests on, and the one nothing asserted.
+
+    A person who mistypes their password past the ceiling and then keeps trying — which
+    is what people do — must be let back in one window after their FIRST attempt, not one
+    window after their last. Under the old EXPIRE the counter's life was extended by every
+    refused attempt, so this test would loop to its end still refused.
+
+    Measured against the running stack on 2026-09-28 before the fix: retrying every 30
+    seconds for six minutes never recovered, while 330 seconds of complete silence let the
+    very same password through on the first try.
+    """
+
+    client = FakeRedis()
+    limit = limiter(client)
+    phone = "09123456789"
+
+    for _ in range(11):  # ceiling is 10; the eleventh is the first refusal
+        decision = limit.check(phone, None)
+    assert not decision.allowed, "the ceiling did not refuse"
+    assert decision.scope is RateLimitScope.IDENTIFIER
+
+    # The caller keeps trying inside the window. None of this may postpone recovery.
+    for _ in range(10):
+        client.advance(30)
+        decision = limit.check(phone, None)
+
+    assert decision.allowed, (
+        "still refused a full window after the first attempt. The expiry is being pushed "
+        "out by attempts that are themselves being refused, so anyone who keeps retrying "
+        "can never get back in — and an attacker who knows a phone number can hold that "
+        "account shut with one request every few minutes"
+    )
 
 
 def test_a_redis_outage_allows_the_attempt_and_says_so() -> None:
