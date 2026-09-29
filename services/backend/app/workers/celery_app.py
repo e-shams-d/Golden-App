@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 from datetime import timedelta
 
 from celery import Celery
@@ -30,6 +31,9 @@ STALE_LEASE_SWEEP_INTERVAL = timedelta(minutes=5)
 # six days before anything noticed.
 CHECKSUM_VERIFY_INTERVAL = timedelta(days=1)
 
+# See the two `files` entries in BEAT_SCHEDULE: this period is a choice, not a citation.
+FILES_POLL_INTERVAL = timedelta(seconds=30)
+
 # M11 slice 6B. Daily, and it costs two counting queries per activated policy — of which
 # there are currently none. The interval is about the day the first policy is activated: an
 # impact report a day old is fine, and one nobody has seen since last month is not.
@@ -43,6 +47,22 @@ BEAT_SCHEDULE: dict[str, dict[str, object]] = {
         # checking which queue a scheduled task lands on should not have to
         # resolve a glob to find out.
         "options": {"queue": "maintenance"},
+    },
+    # **The two `files` pollers, and an interval that is a choice.** `render_crops_task` and
+    # `parse_statements_task` claim rows from `processing_jobs`, and nothing enqueues them:
+    # `enqueue_after_commit` exists and has no caller, so polling is the only trigger this
+    # architecture has. No document sets a period for either — thirty seconds is chosen to be
+    # short enough that an operator who uploads a statement does not wonder whether it worked,
+    # and long enough to be a cheap query against an empty queue. Worth the owner's word.
+    "crop-render": {
+        "task": "app.workers.tasks.files.render_crops_task",
+        "schedule": FILES_POLL_INTERVAL,
+        "options": {"queue": "files"},
+    },
+    "statement-parse": {
+        "task": "app.workers.tasks.files.parse_statements_task",
+        "schedule": FILES_POLL_INTERVAL,
+        "options": {"queue": "files"},
     },
     "stale-lease-sweep": {
         "task": "app.workers.tasks.maintenance.recover_stale_leases_task",
@@ -70,8 +90,41 @@ BEAT_SCHEDULE: dict[str, dict[str, object]] = {
 }
 
 
+# The four modules that define Celery entry points. `app/workers/tasks/__init__.py` lists the
+# six *queue* names, which is a different set: `checksums` and `retention` route to
+# `maintenance` explicitly and have no queue of their own, and `exports`, `notifications`,
+# `reports` and `ai` have no tasks yet. `test_task_routing.py` checks both directions.
+TASK_MODULES: tuple[str, ...] = (
+    "app.workers.tasks.maintenance",
+    "app.workers.tasks.files",
+    "app.workers.tasks.checksums",
+    "app.workers.tasks.retention",
+)
+
+
+def _import_task_modules() -> None:
+    """Import every module that defines a task, so its decorators have run."""
+
+    for name in TASK_MODULES:
+        importlib.import_module(name)
+
+
 def create_celery_app(settings: Settings) -> Celery:
-    app = Celery(settings.service_name)
+    # **Imported before the app is built, and that order is the whole fix.** `shared_task`
+    # registers a callback that runs when an app finalizes; `include` imports its modules
+    # during that same finalization, so a callback connected by one of those imports can
+    # arrive after the list has already been walked. Measured: with `include` alone,
+    # `maintenance` and `files` registered — earlier imports in the process had connected
+    # them — and `checksums` and `retention` did not. Importing here means registration no
+    # longer depends on what else the process happened to import first.
+    #
+    # `include` stays because it is what the worker's own loader reads, and because the set
+    # belongs in the constructor where a reader looks for it.
+    _import_task_modules()
+    app = Celery(
+        settings.service_name,
+        include=list(TASK_MODULES),
+    )
     queues = tuple(Queue(name) for name in settings.queue_names)
     routes = {
         "app.workers.tasks.files.*": {"queue": "files"},

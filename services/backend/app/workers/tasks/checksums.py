@@ -11,9 +11,12 @@ of storage provider should touch one package.
 
 from __future__ import annotations
 
+from celery import shared_task
+
 from app.storage.verification import verify_recent_checksums
 
 
+@shared_task  # type: ignore[misc]  # celery ships no annotations; the wrapped function is typed
 def verify_checksums_task() -> dict[str, int]:
     """One scheduled pass, reported as counts.
 

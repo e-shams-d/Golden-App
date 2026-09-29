@@ -19,6 +19,7 @@ import logging
 import os
 from datetime import timedelta
 
+from celery import shared_task
 from sqlalchemy import func, select
 
 from app.core.logging import get_logger, log_event
@@ -31,6 +32,7 @@ from app.workers.dispatcher import DispatchReport, dispatch_once
 logger = get_logger("workers.maintenance")
 
 
+@shared_task  # type: ignore[misc]  # celery ships no annotations; the wrapped function is typed
 def poll_outbox_task() -> dict[str, int]:
     """The beat entry point. Named separately from `poll_outbox` on purpose.
 
@@ -62,6 +64,7 @@ def poll_outbox_task() -> dict[str, int]:
     }
 
 
+@shared_task  # type: ignore[misc]  # celery ships no annotations; the wrapped function is typed
 def recover_stale_leases_task() -> int:
     """The beat entry point for the lease sweep."""
 

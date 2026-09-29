@@ -32,6 +32,8 @@ import logging
 import uuid
 from dataclasses import dataclass
 
+from celery import shared_task
+
 from app.audit.redaction import RedactionPolicy
 from app.audit.writer import AuditActor, AuditContext
 from app.commands.bank_statement import IMPORT_JOB_TYPE
@@ -65,6 +67,7 @@ class RenderReport:
     escalated: int
 
 
+@shared_task  # type: ignore[misc]  # celery ships no annotations; the wrapped function is typed
 def render_crops_task() -> dict[str, int]:
     """The Celery entry point. A thin wrapper, on `maintenance.py`'s precedent.
 
@@ -265,6 +268,7 @@ class StatementParseReport:
     failed: int
 
 
+@shared_task  # type: ignore[misc]  # celery ships no annotations; the wrapped function is typed
 def parse_statements_task() -> dict[str, int]:
     """The Celery entry point. Thin, on `render_crops_task`'s precedent."""
 

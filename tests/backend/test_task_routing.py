@@ -87,3 +87,60 @@ def test_the_ai_queue_exists_without_a_producer() -> None:
     module = importlib.import_module("app.workers.tasks.ai")
 
     assert module.QUEUE_NAME == "ai"
+
+
+def test_every_scheduled_task_is_registered(settings_factory) -> None:
+    """A beat entry names its task with a string, and a string can name nothing.
+
+    This is what F-22 was: `BEAT_SCHEDULE` named four tasks, no module was ever imported by
+    the app, and the worker answered every send with
+    `KeyError: 'app.workers.tasks.maintenance.poll_outbox_task'`. The outbox went unpublished
+    for the platform's whole life — thirty-seven events, all `pending` — so no notification
+    was ever delivered.
+
+    Routing tests cannot see this: routing is computed from the string, and the string routes
+    correctly whether or not anything answers to it.
+    """
+
+    app = create_celery_app(settings_factory())
+    scheduled = {entry["task"] for entry in app.conf.beat_schedule.values()}
+
+    missing = sorted(name for name in scheduled if name not in app.tasks)
+
+    assert not missing, (
+        "these tasks are scheduled and not registered, so the worker will raise KeyError "
+        f"once per interval and the work will never run: {missing}"
+    )
+
+
+def test_every_task_entry_point_is_registered(settings_factory) -> None:
+    """The silent half of the same failure.
+
+    A scheduled task that is not registered at least shouts. An entry point that is not
+    scheduled and not registered says nothing at all: the rows it was meant to claim stay
+    queued, and the only symptom is that nothing happens. `parse_statements_task` was in that
+    state — written, tested through its inner function, and unreachable.
+
+    The task modules are read from disk rather than imported and inspected, so a module the
+    app forgot to `include` is still discovered here.
+    """
+
+    app = create_celery_app(settings_factory())
+
+    expected: set[str] = set()
+    for module in sorted(TASKS_DIR.glob("*.py")):
+        if module.stem == "__init__":
+            continue
+        for line in module.read_text(encoding="utf-8").splitlines():
+            if line.startswith("def ") and line.split("(", 1)[0].endswith("_task"):
+                name = line[len("def ") :].split("(", 1)[0]
+                expected.add(f"app.workers.tasks.{module.stem}.{name}")
+
+    assert expected, "no task entry points were found; this test has stopped looking"
+
+    missing = sorted(name for name in expected if name not in app.tasks)
+
+    assert not missing, (
+        "these functions are written as Celery entry points and are not registered, so "
+        f"whatever enqueues or schedules them will never be answered: {missing}"
+    )
