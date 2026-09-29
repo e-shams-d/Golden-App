@@ -76,7 +76,12 @@ def world(migrated: RuntimeIdentities, tmp_path_factory: Any) -> Iterator[dict[s
     settings = Settings(
         _env_file=None,
         app_env="test",
-        database_url=migrated.owner_url,
+        # **The application role, not the owner.** Every other integration suite hands the
+        # application `owner_url`, which can do anything, so none of them can see a missing
+        # grant. This suite covers a table whose UPDATE grant is deliberately narrowed to
+        # five columns, and an import that wrote a sixth failed in every real deployment
+        # while passing here. Running as `app_role` is what makes that observable.
+        database_url=migrated.app_url,
         redis_url="redis://127.0.0.1:6379/0",
         local_storage_root=tmp_path_factory.mktemp("statement-storage"),
         release_commit="abcdef1234567",
