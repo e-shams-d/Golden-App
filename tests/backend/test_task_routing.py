@@ -9,6 +9,7 @@ empty.
 from __future__ import annotations
 
 import importlib
+import sys
 from pathlib import Path
 
 import pytest
@@ -143,4 +144,45 @@ def test_every_task_entry_point_is_registered(settings_factory) -> None:
     assert not missing, (
         "these functions are written as Celery entry points and are not registered, so "
         f"whatever enqueues or schedules them will never be answered: {missing}"
+    )
+
+
+def test_the_entrypoint_connects_the_worker_runtime(monkeypatch, settings_factory) -> None:
+    """The wiring three docstrings describe, asserted by something that runs.
+
+    `runtime.py` says "configure_worker is wired to Celery's worker_process_init signal by
+    the entrypoint". `configure_worker` says it can be connected directly, without a
+    wrapper. The RuntimeError a task gets without it names the entrypoint as the place that
+    does it. None of that was true: the entrypoint built the app and connected nothing, so
+    every task that touched the database failed — invisibly, because until the tasks were
+    registered (see the two tests above) none of them ran.
+
+    `worker_process_init` and not `worker_init`, which is the part worth pinning rather than
+    merely counting receivers: the engine must be built after the fork, or every child
+    inherits the parent's pool and they share sockets each believes it owns.
+
+    `load_settings` is patched because the entrypoint calls it at import time and a test
+    process has no deployment environment. The import itself is the thing under test, so it
+    is performed rather than simulated.
+    """
+
+    import weakref
+
+    from celery.signals import worker_process_init
+
+    monkeypatch.setattr("app.core.config.load_settings", lambda: settings_factory())
+    monkeypatch.delitem(sys.modules, "app.workers.entrypoint", raising=False)
+    importlib.import_module("app.workers.entrypoint")
+
+    from app.workers.runtime import configure_worker
+
+    listening = [
+        receiver() if isinstance(receiver, weakref.ref) else receiver
+        for _key, receiver in worker_process_init.receivers
+    ]
+
+    assert configure_worker in listening, (
+        "app.workers.entrypoint does not connect configure_worker to worker_process_init, "
+        "so every task that touches the database raises 'the worker runtime is not "
+        "configured in this process'"
     )
