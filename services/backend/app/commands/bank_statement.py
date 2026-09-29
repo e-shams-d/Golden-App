@@ -258,7 +258,48 @@ def create_import_run(
 
     source_hash = _source_hash(session, statement)
 
+    # **The run's id is chosen here, and that is what lets the run be written once.**
+    #
+    # The run and its job each need the other's identifier: the job's payload and
+    # idempotency key name the run, and the run records which job produced it. The first
+    # version resolved that by inserting the run, creating the job, then updating
+    # `run.created_by_job_id` — and that UPDATE is refused to the application role. It is
+    # refused on purpose: `20260906_0037` grants UPDATE on `status`, `row_count`,
+    # `started_at`, `finished_at` and `error_summary` and on nothing else, so that a
+    # finished run's provenance cannot be rewritten afterwards. The import therefore failed
+    # with a 500 in every deployment, while passing every test — because the integration
+    # suite runs the application as the database owner, which has no such limit.
+    #
+    # Generating the id here breaks the cycle without touching the grant: the job goes in
+    # first, the run goes in complete, and the column stays exactly as unwritable as it was
+    # meant to be.
+    run_id = uuid.uuid4()
+
+    job = new_job(
+        job_type=IMPORT_JOB_TYPE,
+        queue_name=IMPORT_QUEUE,
+        input_payload={
+            "bank_statement_import_run_id": str(run_id),
+            "bank_statement_file_id": str(statement.id),
+            "bank_mapping_id": str(mapping.id),
+            # The same spelling the run records, so an operator comparing the job with the run is
+            # comparing like with like — M8's crop makes the same argument about `render_scale`.
+            "parser_version": PARSER_VERSION,
+        },
+        # One job per run. The route's `Idempotency-Key` covers a retried *request*; this covers a
+        # retried *enqueue*, which is a different event. A reparse is a new run and therefore a new
+        # key, which is the point: reparsing is meant to work.
+        idempotency_key=f"{IMPORT_JOB_TYPE}:{run_id}",
+        entity_type="bank_statement_import_run",
+        entity_id=run_id,
+    )
+    job.provider = PARSER_NAME
+    job.provider_version = PARSER_VERSION
+    session.add(job)
+    uow.flush()
+
     run = BankStatementImportRun(
+        id=run_id,
         bank_statement_file_id=statement.id,
         bank_mapping_id=mapping.id,
         # **The next number, never a reused one.** `UNIQUE(bank_statement_file_id, run_number)` is
@@ -270,35 +311,9 @@ def create_import_run(
         parser_version=PARSER_VERSION,
         source_hash=source_hash,
         created_by_admin_user_id=actor.actor_id,
-        created_by_job_id=None,
+        created_by_job_id=job.id,
     )
     session.add(run)
-    uow.flush()
-
-    job = new_job(
-        job_type=IMPORT_JOB_TYPE,
-        queue_name=IMPORT_QUEUE,
-        input_payload={
-            "bank_statement_import_run_id": str(run.id),
-            "bank_statement_file_id": str(statement.id),
-            "bank_mapping_id": str(mapping.id),
-            # The same spelling the run records, so an operator comparing the job with the run is
-            # comparing like with like — M8's crop makes the same argument about `render_scale`.
-            "parser_version": PARSER_VERSION,
-        },
-        # One job per run. The route's `Idempotency-Key` covers a retried *request*; this covers a
-        # retried *enqueue*, which is a different event. A reparse is a new run and therefore a new
-        # key, which is the point: reparsing is meant to work.
-        idempotency_key=f"{IMPORT_JOB_TYPE}:{run.id}",
-        entity_type="bank_statement_import_run",
-        entity_id=run.id,
-    )
-    job.provider = PARSER_NAME
-    job.provider_version = PARSER_VERSION
-    session.add(job)
-    uow.flush()
-
-    run.created_by_job_id = job.id
     uow.flush()
 
     _audit_run(session, policy, run=run, statement=statement, actor=actor, context=context, now=now)
