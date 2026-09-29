@@ -15,12 +15,15 @@ from __future__ import annotations
 
 import logging
 
+from celery import shared_task
+
 from app.core.logging import get_logger, log_event
 from app.retention.dry_run import plan_retention
 
 logger = get_logger("workers.retention")
 
 
+@shared_task  # type: ignore[misc]  # celery ships no annotations; the wrapped function is typed
 def retention_dry_run_task() -> dict[str, int]:
     """One pass, reported as counts and logged where it cannot answer.
 

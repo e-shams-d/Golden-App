@@ -239,6 +239,22 @@ def test_every_scheduled_task_is_one_that_removes_nothing() -> None:
         # module implements it. `test_no_deletion_verbs_*` below is what keeps that true; this list
         # only records which tasks are scheduled.
         "retention-dry-run",
+        # M12 acceptance testing added the last two, and they are the first entries here that
+        # are not sweeps: both claim rows from `processing_jobs` and do the work found there.
+        # They are on the schedule because polling is the only trigger this architecture has —
+        # `enqueue_after_commit` exists with no caller, and nothing calls `.delay()` anywhere —
+        # so without a beat entry a claimed job waits for a consumer that never runs. That was
+        # F-22: six entry points, none registered, thirty-seven outbox events unpublished, and
+        # a statement import that stayed `queued` for ever.
+        #
+        # Admitted under this gate's rule for the same reason the others are: neither removes
+        # anything. Rendering a crop writes a file and a row; parsing a statement inserts rows
+        # and opens a review when it finds a duplicate. Neither is asserted by reading them —
+        # `test_no_deletion_verbs_in_runtime_code` walks the whole application's AST and
+        # `test_no_sql_string_deletes_rows_or_installs_a_trigger` scans every string literal in
+        # it, and both pass with these two on the schedule.
+        "crop-render",
+        "statement-parse",
     }
 
 
