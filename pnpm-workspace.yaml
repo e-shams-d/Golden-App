@@ -62,6 +62,14 @@ allowBuilds:
 # at all, which is why it was carried as a documented exception. 1.1.18 now
 # exists, so the exception is removed rather than extended — an exception whose
 # stated reason has expired is worse than none, because it reads as reviewed.
+# Raised again on 2026-09-30 for CVE-2026-102276 (stack exhaustion from crafted brace
+# patterns) and CVE-2026-102278 (uncontrolled recursion in nested ones). Both lines are
+# affected by both, and the two advisories name different first-fixed releases — 1.1.19
+# and 5.0.10 for the first, 1.1.20 and 5.0.11 for the second. The pin takes the higher of
+# each pair: stopping at the first advisory's version would close one and leave the other
+# open while looking addressed. That is now three rounds on this package in two months;
+# if there is a fourth, the question worth asking is whether minimatch 3 can leave the
+# tree rather than whether the pin can rise again.
 # js-yaml is pinned to 4.3.1 for CVE-2026-59870 (GHSA-5p4m-2wfm-xmqj), quadratic
 # CPU consumption resolving `!!omap`. It reaches the tree only through
 # `@eslint/eslintrc`, so nothing this project ships parses untrusted YAML with it —
@@ -121,7 +129,7 @@ overrides:
   "postcss@<8.5.18": "8.5.18"
   "nanoid@<3.3.18": "3.3.18"
   "sharp@<0.35.4": "0.35.4"
-  "brace-expansion@^5.0.0": "5.0.9"
-  "brace-expansion@^1.0.0": "1.1.18"
+  "brace-expansion@^5.0.0": "5.0.11"
+  "brace-expansion@^1.0.0": "1.1.20"
   "js-yaml@<4.3.2": "4.3.2"
   "browserslist@<4.28.7": "4.28.7"
