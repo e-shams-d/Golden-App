@@ -69,6 +69,8 @@ from app.db.models.file_object import CLEAN_SCAN_STATUS, FileObject
 from app.db.models.manual_review_task import ENTITY_BANK_EXPORT, TASK_TYPE_EXPORT_INTEGRITY
 from app.db.models.payment_batch import (
     BatchApproval,
+    PaymentAttempt,
+    PaymentAttemptAllocation,
     PaymentBatch,
     PaymentBatchItem,
     PaymentBatchVersion,
@@ -135,6 +137,16 @@ STATUS_SENT = "sent_to_bank_marked"
 # The container follows. `status_catalog.yaml` marks nine of eleven `payment_batch` states
 # `derived: true`, so this is a projection rather than an independent decision.
 BATCH_SENT = "sent_to_bank"
+
+# `docs/governance/status_catalog.yaml:317` defines this attempt status as "Exact final export
+# has been marked sent", and until M12 acceptance testing nothing wrote it. The batch and the
+# attempts carry the same word for the same event at two levels — `:40` of that file says so
+# explicitly, and says neither is an alias of the other.
+ATTEMPT_SENT = "sent_to_bank"
+
+# The state an attempt leaves when its export is sent. Filtered rather than updated blindly: a
+# superseded or cancelled attempt still has an allocation row, and moving it would resurrect it.
+ATTEMPT_INCLUDED = "included_in_batch_version"
 
 # `file_objects.storage_status`. The bytes are on disk before the row exists, so `available` is
 # the only honest value — anything else would describe a file that is in fact there.
@@ -665,6 +677,30 @@ def mark_sent(
     if batch is None:  # pragma: no cover - the FK guarantees it
         raise NotFoundError()
     batch.status = BATCH_SENT
+
+    # **The attempts this export contains move with it.** `status_catalog.yaml:317` defines the
+    # attempt state `sent_to_bank` as "Exact final export has been marked sent", and nothing
+    # wrote it — so `confirm_paid`, which accepts only `sent_to_bank` and `bank_result_pending`,
+    # could never accept anything. No attempt could be confirmed, no request could reach `paid`,
+    # and publication — whose only inbound arrow is from `paid` — was unreachable for every
+    # request the platform had ever accepted, along with the trader's acknowledgement and
+    # dispute behind it.
+    #
+    # Filtered to `included_in_batch_version` on purpose: a superseded or cancelled attempt
+    # keeps its allocation row, and sweeping the allocation without the filter would put a
+    # retired attempt back into the live path.
+    for attempt in session.scalars(
+        select(PaymentAttempt)
+        .join(
+            PaymentAttemptAllocation,
+            PaymentAttemptAllocation.payment_attempt_id == PaymentAttempt.id,
+        )
+        .where(
+            PaymentAttemptAllocation.payment_batch_version_id == version.id,
+            PaymentAttempt.status == ATTEMPT_INCLUDED,
+        )
+    ):
+        attempt.status = ATTEMPT_SENT
 
     uow.flush()
 

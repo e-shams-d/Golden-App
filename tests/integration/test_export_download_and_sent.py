@@ -835,3 +835,94 @@ def _looks_like_an_identifier(value: str) -> bool:
     except ValueError:
         return False
     return True
+
+
+def test_marking_sent_moves_the_attempts_that_export_contains(world: dict[str, Any]) -> None:
+    """`status_catalog.yaml:317` defines the attempt state and nothing used to write it.
+
+    That file says `sent_to_bank` means "Exact final export has been marked sent". Until M12
+    acceptance testing, the only attempt states any code ever assigned were `created`,
+    `included_in_batch_version`, `paid`, `failed`, `retry_required` and `superseded`.
+
+    The consequence ran the length of the product. `confirm_paid` accepts only `sent_to_bank`
+    and `bank_result_pending` — rightly: "confirming one that never left claims a bank did
+    something it was never asked to do" — so no attempt could be confirmed, no request could
+    reach `paid`, and publication, whose only inbound arrow is from `paid`, was unreachable
+    for every request the platform had ever accepted. Trader acknowledgement and dispute sit
+    behind publication.
+
+    The batch and the attempt carry the same word for the same event at two levels, and
+    `status_catalog.yaml:40` says neither is an alias of the other — so both are asserted.
+    """
+
+    target = a_final_export(world)
+    sign_in_admin(world["client"], "sent_accountant")
+
+    before = rows(
+        world,
+        "SELECT DISTINCT a.status FROM payment_attempts a "
+        "JOIN payment_attempt_allocations x ON x.payment_attempt_id = a.id "
+        "WHERE x.payment_batch_version_id = %s",
+        target["version_id"],
+    )
+    assert before == [("included_in_batch_version",)], before
+
+    assert download(world, target["export_id"]).status_code == 200
+    assert mark_sent(world, target["export_id"]).status_code == 200
+
+    after = rows(
+        world,
+        "SELECT DISTINCT a.status FROM payment_attempts a "
+        "JOIN payment_attempt_allocations x ON x.payment_attempt_id = a.id "
+        "WHERE x.payment_batch_version_id = %s",
+        target["version_id"],
+    )
+    assert after == [("sent_to_bank",)], (
+        "the attempts this export contains were left behind, so confirm-paid will refuse "
+        f"every one of them and no result can ever be published: {after}"
+    )
+
+    batch = rows(
+        world,
+        "SELECT status FROM payment_batches WHERE id = %s",
+        target["batch_id"],
+    )
+    assert batch == [("sent_to_bank",)], batch
+
+
+def test_marking_sent_does_not_revive_an_attempt_that_left_the_batch(
+    world: dict[str, Any],
+) -> None:
+    """The filter, which is the half a sweep would get wrong.
+
+    A superseded attempt keeps its allocation row — that is the record of where it had been.
+    Moving every allocated attempt would put a retired one back on the live path, where
+    `confirm_paid` would then accept it.
+    """
+
+    target = a_final_export(world)
+    sign_in_admin(world["client"], "sent_accountant")
+
+    attempt_id = rows(
+        world,
+        "SELECT a.id FROM payment_attempts a "
+        "JOIN payment_attempt_allocations x ON x.payment_attempt_id = a.id "
+        "WHERE x.payment_batch_version_id = %s LIMIT 1",
+        target["version_id"],
+    )[0][0]
+    # `rows` always fetches, so the statement has to produce a row. RETURNING is also the
+    # honest form here: it names the row the test actually retired.
+    retired = rows(
+        world,
+        "UPDATE payment_attempts SET status = 'superseded' WHERE id = %s RETURNING id",
+        attempt_id,
+    )
+    assert len(retired) == 1, retired
+
+    assert download(world, target["export_id"]).status_code == 200
+    assert mark_sent(world, target["export_id"]).status_code == 200
+
+    still = rows(world, "SELECT status FROM payment_attempts WHERE id = %s", attempt_id)
+    assert still == [("superseded",)], (
+        f"a superseded attempt was moved back onto the live path by mark-sent: {still}"
+    )
