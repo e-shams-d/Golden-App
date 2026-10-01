@@ -43,7 +43,7 @@ TRADER_CSRF_COOKIE = "__Host-gp_trader_csrf"
 ADMIN_CSRF_COOKIE = "__Host-gp_admin_csrf"
 
 TRADER_PHONE = "+989120002001"
-IBAN = "IR060120000000000000000042"
+IBAN = "IR030120000000000000000042"
 
 # One billion rial, the profile version's per-transfer limit. Chosen so that 2.5 billion splits
 # into exactly three rows — two at the limit and a residual of half a billion — which is the

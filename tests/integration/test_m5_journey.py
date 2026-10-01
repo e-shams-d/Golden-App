@@ -54,7 +54,7 @@ TRADER_CSRF_COOKIE = "__Host-gp_trader_csrf"
 ADMIN_CSRF_COOKIE = "__Host-gp_admin_csrf"
 
 TRADERS: dict[str, str] = {"ok": "+989120000901"}
-IBAN = "IR060120000000000000000031"
+IBAN = "IR090120000000000000000031"
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 MILESTONE_DOC = (

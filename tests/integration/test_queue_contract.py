@@ -63,8 +63,8 @@ TRADER_PHONE = "+989120041001"
 OTHER_PHONE = "+989120041002"
 # `IR` plus twenty-four digits, which is what `ck_beneficiaries_normalized_iban_shape` enforces.
 IBANS = {
-    "trader": "IR060120000000000000000101",
-    "other": "IR060120000000000000000102",
+    "trader": "IR590120000000000000000101",
+    "other": "IR320120000000000000000102",
 }
 ACCOUNTANT = "queue_accountant"
 # `permission_catalog.yaml:444` gives `payment_request.read` to four roles. The warehouse operator

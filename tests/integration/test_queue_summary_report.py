@@ -37,7 +37,7 @@ pytestmark = pytest.mark.integration
 PASSWORD = "correct-horse-battery-staple"
 ADMIN_CSRF_COOKIE = "__Host-gp_admin_csrf"
 TRADER_PHONE = "+989120051001"
-IBAN = "IR060120000000000000000201"
+IBAN = "IR750120000000000000000201"
 
 ACCOUNTANT = "report_accountant"
 WAREHOUSE = "report_warehouse"

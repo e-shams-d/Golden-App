@@ -37,7 +37,7 @@ function revision(overrides: Partial<Revision> = {}): Revision {
     id: "44444444-4444-4444-4444-444444444444",
     revision_number: 1,
     beneficiary_name_snapshot: "علی یک",
-    beneficiary_iban_snapshot: "IR060120000000000000000001",
+    beneficiary_iban_snapshot: "IR430120000000000000000001",
     amount_irr: "5000",
     entered_amount: { value: "500", unit: "TOMAN" },
     description: null,

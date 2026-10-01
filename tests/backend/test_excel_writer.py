@@ -24,7 +24,7 @@ from openpyxl import load_workbook
 
 PERSIAN_NAME = "علی رضایی"
 ENGLISH_NAME = "Ali Rezaei"
-IBAN = "IR060120000000000000000044"
+IBAN = "IR460120000000000000000044"
 
 HYPERLINK = '=HYPERLINK("http://evil.example","click")'
 

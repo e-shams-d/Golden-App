@@ -113,7 +113,7 @@ UNBOUNDED_QUEUE = "trader-disputes"
 BOUNDED_QUEUES = ("new-requests", "correction-responses", "eligible-for-batching")
 
 TRADER_PHONE = "+989120079001"
-IBAN = "IR060120000000000000000701"
+IBAN = "IR580120000000000000000701"
 
 
 def _psycopg(url: str) -> str:

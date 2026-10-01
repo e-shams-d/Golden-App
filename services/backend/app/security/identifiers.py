@@ -164,6 +164,12 @@ def normalize_iban(value: str) -> str:
 
     `iban` keeps what the trader typed, for display. This is what anything
     compares.
+
+    The shape is checked here and *also* by a CHECK constraint on the column; the
+    check digits are checked only here. A mod-97 remainder is not something a
+    readable CHECK expression computes, and the two rules sit at different levels
+    on purpose: the database refuses a string that is not an IBAN at all, and the
+    application refuses one that is shaped like an IBAN and cannot be one.
     """
 
     folded = _SEPARATORS.sub("", fold_digits(value)).strip().upper()
@@ -176,7 +182,42 @@ def normalize_iban(value: str) -> str:
             "not an Iranian IBAN: expected IR followed by twenty-four digits"
         )
 
+    if _iso_7064_remainder(folded) != 1:
+        raise InvalidIdentifier(
+            "the IBAN's check digits do not match the rest of it; one of the "
+            "twenty-six characters is mistyped"
+        )
+
     return folded
+
+
+def _iso_7064_remainder(iban: str) -> int:
+    """The mod-97 remainder ISO 13616 requires to be 1.
+
+    Four characters move from the front to the back, letters become two digits
+    each (`A` is 10, so `I` is 18 and `R` is 27), and the result read as one
+    integer must leave 1 on division by 97. Python's arbitrary-precision integers
+    make the whole thing four lines; the piecewise form other languages need is
+    only there to avoid a twenty-six-digit number.
+
+    **This is what the check digits are for.** Without it a single mistyped digit
+    produces an IBAN that passes every validation in this system, reaches a
+    beneficiary record, is snapshotted onto a payment request, and leaves in the
+    bank export — money addressed to an account nobody chose. Two IBANs differing
+    only in their check digits were both accepted before this, and at most one of
+    any such pair can be correct.
+
+    Not imported from a library: `schwifty` and friends carry country registries
+    and bank directories this project has no use for, and the rule itself is
+    stable — ISO 13616 has not changed the algorithm since 1997.
+    """
+
+    rearranged = iban[4:] + iban[:4]
+    numeric = "".join(
+        str(ord(character) - 55) if character.isalpha() else character
+        for character in rearranged
+    )
+    return int(numeric) % 97
 
 
 def normalize_person_name(value: str) -> str:

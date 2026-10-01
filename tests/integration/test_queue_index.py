@@ -36,7 +36,7 @@ pytestmark = pytest.mark.integration
 
 PASSWORD = "correct-horse-battery-staple"
 TRADER_PHONE = "+989120052001"
-IBAN = "IR060120000000000000000202"
+IBAN = "IR480120000000000000000202"
 
 ACCOUNTANT = "index_accountant"
 WAREHOUSE = "index_warehouse"

@@ -34,7 +34,7 @@ TRADER_CSRF_COOKIE = "__Host-gp_trader_csrf"
 ADMIN_CSRF_COOKIE = "__Host-gp_admin_csrf"
 
 TRADER_PHONE = "+989120001001"
-IBAN = "IR060120000000000000000041"
+IBAN = "IR300120000000000000000041"
 
 # One billion rial. The profile version below publishes a limit of exactly this, so a request
 # above it splits and a request at it does not — which is the boundary worth having a fixture
