@@ -117,6 +117,22 @@ for (const path of paths) {
     await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 
+    // **Exactly one main landmark**, which axe is not asked and cannot be without a
+    // decision nobody has made: `landmark-no-duplicate-main` is in the best-practice tag
+    // set and this suite runs the four wcag sets. So the page was opened here, checked,
+    // and the question never put.
+    //
+    // The count is wrong in both directions. Two mains gives "skip to main content" a
+    // second destination; none leaves the document with no body to skip to, which is what
+    // the state pages here rendered until the trader app's copy of this assertion found
+    // the same fault there.
+    const mains = await page.locator("main, [role='main']").count();
+    expect(
+      mains,
+      `${path} renders ${mains} main landmarks; the shell in packages/ui already provides ` +
+        "the one, so a page inside it should render a div",
+    ).toBe(1);
+
     const results = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
       .analyze();

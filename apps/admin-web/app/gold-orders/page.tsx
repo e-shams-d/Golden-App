@@ -1,7 +1,8 @@
 "use client";
 
-import { t } from "@gold/localization";
-import { BidiText, StateView } from "@gold/ui";
+import { t, type MessageKey } from "@gold/localization";
+import { stateForError, type ApplicationState } from "@gold/api-client";
+import { BidiText, StateView, kindForApplicationState } from "@gold/ui";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -27,7 +28,35 @@ import { listOrders, type GoldOrder } from "../../src/gold-orders";
 type Phase =
   | { readonly kind: "loading" }
   | { readonly kind: "ready"; readonly orders: readonly GoldOrder[] }
-  | { readonly kind: "failed" };
+  // **`state`, not `failed`.** A reader who may not price orders also may not read them,
+  // and this screen used to answer that with "the list could not be fetched, please try
+  // again" — a refusal dressed as a hiccup, inviting a retry that can never succeed.
+  // `/admin-users` was the first screen to route failures through `stateForError`, and its
+  // own note says the mapping had been built and used by nothing. This is the second.
+  | { readonly kind: "state"; readonly state: ApplicationState };
+
+/**
+ * What to say about a failure, which is not the same question as how to draw it.
+ *
+ * Changing the icon and leaving the sentence is the original fault with a new colour: a
+ * reader who may not read these orders was told the list "could not be fetched, please
+ * try again", and no number of retries would change the answer. The state's own strings
+ * are the ones written for this; the screen's wording survives only for `error`, where it
+ * says more than the generic string does.
+ */
+function textForState(state: ApplicationState): {
+  readonly title: string;
+  readonly description: string;
+} {
+  const kind = kindForApplicationState(state);
+  if (kind === "error") {
+    return { description: t("gold.failed"), title: t("gold.failedTitle") };
+  }
+  return {
+    description: t(`state.${kind}.description` as MessageKey),
+    title: t(`state.${kind}.title` as MessageKey),
+  };
+}
 
 export default function AdminGoldOrdersPage() {
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
@@ -36,8 +65,11 @@ export default function AdminGoldOrdersPage() {
     const controller = new AbortController();
     listOrders(controller.signal)
       .then((orders) => setPhase({ kind: "ready", orders }))
-      .catch(() => {
-        if (!controller.signal.aborted) setPhase({ kind: "failed" });
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        const state = stateForError(error);
+        // `undefined` is an abort the signal did not report; there is nothing to render.
+        if (state !== undefined) setPhase({ kind: "state", state });
       });
     return () => controller.abort();
   }, []);
@@ -58,12 +90,12 @@ export default function AdminGoldOrdersPage() {
           />
         ) : null}
 
-        {phase.kind === "failed" ? (
+        {phase.kind === "state" ? (
           <StateView
-            description={t("gold.failed")}
+            description={textForState(phase.state).description}
             headingLevel={2}
-            kind="error"
-            title={t("gold.failedTitle")}
+            kind={kindForApplicationState(phase.state)}
+            title={textForState(phase.state).title}
           />
         ) : null}
 
