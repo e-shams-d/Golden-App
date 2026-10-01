@@ -19,7 +19,10 @@ export default async function FoundationStatePage({
   if (!isStateKind(kind)) notFound();
 
   return (
-    <div className="p-[var(--space-page)]">
+    // `main`, not `div`: this page is standalone — outside the shell that provides
+    // the landmark elsewhere — so without one the document has no body to skip to.
+    // `/login` and `/register` are standalone too and already render their own.
+    <main className="p-[var(--space-page)]">
       <StateView
         actions={
           <Link className="rounded-lg border border-current px-4 py-3 font-bold" href="/">
@@ -31,7 +34,7 @@ export default async function FoundationStatePage({
         requestId={kind === "error" ? t("foundation.requestIdExample") : undefined}
         title={t(`state.${kind}.title` as MessageKey)}
       />
-    </div>
+    </main>
   );
 }
 

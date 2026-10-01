@@ -39,7 +39,12 @@ export default function EvidencePage() {
 
   return (
     <TraderShell>
-      <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6">
+      {/* A `div`, not a `main`: `packages/ui/src/application-shell.tsx:107` already renders
+          the page's one `<main id="main-content">`, and a second inside it gives the page two
+          main landmarks — a screen reader's "skip to main" then has two destinations and the
+          document outline no single body. `/login` and `/register` keep their own `main`
+          correctly, because neither is inside the shell. */}
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6">
         <h1 className="text-xl font-semibold">رسید پرداخت</h1>
 
         <FileUploadPanel
@@ -75,7 +80,7 @@ export default function EvidencePage() {
             />
           </section>
         )}
-      </main>
+      </div>
     </TraderShell>
   );
 }

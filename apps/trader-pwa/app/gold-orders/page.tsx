@@ -29,7 +29,17 @@ type Phase =
   | { readonly kind: "ready"; readonly orders: readonly GoldOrder[] }
   | { readonly kind: "failed" };
 
-const UNITS = ["GRAM", "KILOGRAM"] as const;
+// **`MITHQAL`, not `KILOGRAM`.** `db/models/gold_sale.py:106` approves `GRAM` and
+// `MITHQAL` and nothing else, and the comment above it records why: mithqal is the
+// traditional Iranian measure gold is quoted in, and an early draft of that list invented
+// `KILOGRAM` and left mithqal out. The backend found that and corrected it. This list kept
+// the draft, so the form offered a unit the server refuses — and omitted the one most of
+// this market actually trades in, which is the half that cost a trader an order rather
+// than an error message.
+//
+// `tests/backend/test_weight_units_agree.py` compares the two lists, because writing an
+// enumeration in two languages is what let half of one fix land.
+const UNITS = ["GRAM", "MITHQAL"] as const;
 
 export default function TraderGoldOrdersPage() {
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
