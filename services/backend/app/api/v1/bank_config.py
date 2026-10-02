@@ -24,7 +24,7 @@ policy later and an unmasked one cannot be taken back.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, time
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, status
@@ -94,6 +94,15 @@ class CreateProfileRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=160)
     default_transfer_limit_irr: int | None = Field(default=None, gt=0)
     after_cutoff_transfer_limit_irr: int | None = Field(default=None, gt=0)
+    # The hour the second limit starts, without which it never does
+    # (`app/batching/splitting.py:83-89`). It was the one version field with no way in:
+    # at the top level the request refused it as an extra input, and inside `rules` it was
+    # accepted, stored and ignored.
+    #
+    # A wall-clock `time`, not an instant — the column is `TIME` and the model says why: a
+    # cutoff is "16:00 at the bank", and storing an instant would bind it to one date and
+    # move it twice a year wherever daylight saving applies.
+    cutoff_time: time | None = None
     splitting_enabled: bool = False
     supports_description_field: bool = False
     required_fields: dict[str, Any] = Field(default_factory=dict)
@@ -325,6 +334,7 @@ def create_bank_profile(
                 splitting_enabled=request.splitting_enabled,
                 supports_description_field=request.supports_description_field,
                 required_fields=request.required_fields,
+                cutoff_time=request.cutoff_time,
                 rules=request.rules,
             ),
             uow=uow,
