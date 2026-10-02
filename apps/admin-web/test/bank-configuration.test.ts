@@ -116,6 +116,29 @@ describe("the bank configuration screens", () => {
     expect(source).toContain("bank.alreadyInForce");
   });
 
+  it("offers the cutoff hour the other limit depends on", () => {
+    const source = code(LIST);
+
+    // F-14. The form collected `after_cutoff_transfer_limit_irr` and no cutoff, and
+    // `app/batching/splitting.py:83-89` holds the ordinary limit all day without one — so
+    // the field it did collect could never take effect. An operator could configure a
+    // second limit and watch it do nothing, with no indication why.
+    expect(source).toContain('data-testid="bank-profile-cutoff-time"');
+    expect(source).toContain('type="time"');
+  });
+
+  it("posts the cutoff as a time rather than through the digit filter", () => {
+    const source = code(DATA);
+
+    // `digitsOrNull` strips everything that is not a digit, which is right for a rial
+    // figure and turns `16:00` into `1600` — a 422 from a field the form just offered.
+    // The contract types this one `time | null`, so an empty box must post `null` and a
+    // filled one must post what the time control produced.
+    expect(source).not.toMatch(/cutoff_time: digitsOrNull/u);
+    expect(source).toContain("cutoff_time:");
+    expect(source).toMatch(/cutoff_time:[^;]*null/u);
+  });
+
   it("tells a person that creating a profile creates its first version too", () => {
     const source = read(LIST);
 

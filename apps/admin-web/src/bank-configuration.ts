@@ -107,6 +107,7 @@ export async function createBankProfile(
     displayName: string;
     defaultTransferLimitIrr?: string;
     afterCutoffTransferLimitIrr?: string;
+    cutoffTime?: string;
     splittingEnabled: boolean;
     supportsDescriptionField: boolean;
   }>,
@@ -122,6 +123,10 @@ export async function createBankProfile(
       display_name: input.displayName,
       default_transfer_limit_irr: digitsOrNull(input.defaultTransferLimitIrr),
       after_cutoff_transfer_limit_irr: digitsOrNull(input.afterCutoffTransferLimitIrr),
+      // `null`, not `""`: the contract types this `time | null`, and an empty string is a
+      // 422 rather than "no cutoff". Not `digitsOrNull`, which strips everything but
+      // digits and would turn `16:00` into `1600`.
+      cutoff_time: input.cutoffTime?.trim() ? input.cutoffTime.trim() : null,
       splitting_enabled: input.splittingEnabled,
       supports_description_field: input.supportsDescriptionField,
     },
