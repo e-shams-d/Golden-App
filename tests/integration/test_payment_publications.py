@@ -36,7 +36,7 @@ CSRF_HEADER = "X-CSRF-Token"
 ADMIN_CSRF_COOKIE = "__Host-gp_admin_csrf"
 
 TRADER_PHONE = "+989120008001"
-IBAN = "IR060120000000000000000080"
+IBAN = "IR440120000000000000000080"
 
 PUBLISH_ACTION = "payment_publication.created"
 PUBLISH_EVENT = "PaymentResultPublicationCreated"
@@ -478,7 +478,10 @@ def test_the_snapshot_is_derived_and_masks_the_iban(world: dict[str, Any]) -> No
 
     masked = stored["beneficiary_iban_masked"]
     assert masked != IBAN, "the full IBAN was written into a column retained for years"
-    assert masked.startswith("IR06") and masked.endswith(IBAN[-4:]), masked
+    # Both ends read off `IBAN` rather than written out again. The literal that used
+    # to be here said `IR06`, and when the fixture's check digits were corrected it
+    # kept pointing at the old ones — a second literal is the same trap reset.
+    assert masked.startswith(IBAN[:4]) and masked.endswith(IBAN[-4:]), masked
     assert IBAN not in str(stored), f"the full IBAN appears somewhere in {stored}"
 
 

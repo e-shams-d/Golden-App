@@ -160,7 +160,7 @@ def test_an_iban_in_free_text_is_masked() -> None:
     fails — the moment somebody is most likely to paste a log into a chat window.
     """
 
-    masked = redact_text("transfer to IR060120000000000000000066 failed")
+    masked = redact_text("transfer to IR340120000000000000000066 failed")
 
-    assert "IR060120000000000000000066" not in masked
+    assert "IR340120000000000000000066" not in masked
     assert "[REDACTED]" in masked

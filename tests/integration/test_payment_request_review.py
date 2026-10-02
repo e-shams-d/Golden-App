@@ -33,8 +33,8 @@ TRADER_CSRF_COOKIE = "__Host-gp_trader_csrf"
 ADMIN_CSRF_COOKIE = "__Host-gp_admin_csrf"
 
 TRADERS: dict[str, str] = {"ok": "+989120000701", "other": "+989120000702"}
-IBAN_ONE = "IR060120000000000000000011"
-IBAN_TWO = "IR060120000000000000000012"
+IBAN_ONE = "IR640120000000000000000011"
+IBAN_TWO = "IR370120000000000000000012"
 
 # The three accountant routes, by the path suffix and the body each needs. Kept as data so
 # the permission negatives and the refusal matrix iterate rather than repeat.

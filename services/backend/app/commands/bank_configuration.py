@@ -50,6 +50,7 @@ from app.core.hashing import unversioned_digest
 from app.db.models.bank import MAPPING_TYPES as _MODEL_MAPPING_TYPES
 from app.db.models.bank import BankAccount, BankMapping, BankProfile, BankProfileVersion
 from app.db.unit_of_work import SqlAlchemyUnitOfWork
+from app.security.identifiers import InvalidIdentifier, normalize_iban
 
 DRAFT: Final = "draft"
 ACTIVE: Final = "active"
@@ -369,11 +370,24 @@ def create_source_account(
     if profile is None:
         raise NotFoundError()
 
+    # The field is called `normalized_iban` and until now nothing normalised it. The same
+    # `normalize_iban` the beneficiary path uses, for the same three reasons: an operator
+    # typing in a Persian interface produces Persian digits, a bank prints IBANs in groups
+    # of four, and the check digits are the only thing that can tell a mistyped account
+    # number from the intended one. The column's CHECK sees shape alone, so an ordinary
+    # Persian-digit entry reached it as a constraint violation rather than an answer.
+    #
+    # This is the account money leaves from. A beneficiary's IBAN costs one payment; this
+    # one is on every outgoing file the bank executes.
+    normalized_iban = (
+        None if command.normalized_iban is None else _normalized_iban(command.normalized_iban)
+    )
+
     account = BankAccount(
         bank_profile_id=profile.id,
         display_name=command.display_name,
         account_role=command.account_role,
-        normalized_iban=command.normalized_iban,
+        normalized_iban=normalized_iban,
         status=ACTIVE,
     )
     uow.session.add(account)
@@ -398,3 +412,17 @@ def create_source_account(
         context=context,
     )
     return account.id
+
+
+def _normalized_iban(value: str) -> str:
+    """`InvalidIdentifier` turned into the refusal a person reads.
+
+    The same two lines as `app/commands/beneficiary.py`. Not shared: the duplication is
+    four lines and importing one command module from another to save them would couple
+    two command surfaces that have no other reason to know about each other.
+    """
+
+    try:
+        return normalize_iban(value)
+    except InvalidIdentifier as error:
+        raise BusinessRuleViolationError(str(error)) from error

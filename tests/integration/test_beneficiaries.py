@@ -35,13 +35,13 @@ CSRF_HEADER = "X-CSRF-Token"
 TRADER_CSRF_COOKIE = "__Host-gp_trader_csrf"
 ADMIN_CSRF_COOKIE = "__Host-gp_admin_csrf"
 
-IBAN_ONE = "IR060120000000000000000001"
-IBAN_TWO = "IR060120000000000000000002"
+IBAN_ONE = "IR430120000000000000000001"
+IBAN_TWO = "IR160120000000000000000002"
 
 # What a trader actually types in a Persian interface: Persian digits, and the
 # four-character grouping banks print. It must normalise to `IBAN_ONE`, or the
 # duplicate warning misses the duplicate it exists to find.
-IBAN_ONE_AS_TYPED = "IR۰۶ ۰۱۲۰ ۰۰۰۰ ۰۰۰۰ ۰۰۰۰ ۰۰۰۰ ۰۱"
+IBAN_ONE_AS_TYPED = "IR۴۳ ۰۱۲۰ ۰۰۰۰ ۰۰۰۰ ۰۰۰۰ ۰۰۰۰ ۰۱"
 
 
 @pytest.fixture

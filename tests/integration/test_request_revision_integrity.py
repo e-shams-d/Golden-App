@@ -30,7 +30,7 @@ from bootstrap_replay import RuntimeIdentities
 
 pytestmark = pytest.mark.integration
 
-IBAN = "IR060120000000000000000001"
+IBAN = "IR430120000000000000000001"
 
 # Every column of `payment_request_revisions`, with a value of the right type to set
 # it to. Enumerated from the model at collection time rather than listed here, so a
@@ -41,7 +41,7 @@ UPDATE_VALUES: dict[str, str] = {
     "revision_number": "99",
     "beneficiary_id": "gen_random_uuid()",
     "beneficiary_name_snapshot": "'Someone Else'",
-    "beneficiary_iban_snapshot": "'IR060120000000000000000009'",
+    "beneficiary_iban_snapshot": "'IR210120000000000000000009'",
     "beneficiary_national_id_snapshot": "'1234567890'",
     "amount_irr": "999",
     "entered_amount_value": "999",

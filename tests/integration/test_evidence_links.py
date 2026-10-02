@@ -38,7 +38,7 @@ CSRF_HEADER = "X-CSRF-Token"
 ADMIN_CSRF_COOKIE = "__Host-gp_admin_csrf"
 
 TRADER_PHONE = "+989120006201"
-IBAN = "IR060120000000000000000062"
+IBAN = "IR450120000000000000000062"
 
 CONFIRMED = "evidence_link.confirmed"
 REPLACED = "evidence_link.replaced"

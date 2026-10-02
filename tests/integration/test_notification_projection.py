@@ -31,7 +31,7 @@ from bootstrap_replay import RuntimeIdentities
 pytestmark = pytest.mark.integration
 
 TRADER_PHONE = "+989120010001"
-IBAN = "IR060120000000000000000100"
+IBAN = "IR860120000000000000000100"
 AMOUNT = 500_000_000
 
 

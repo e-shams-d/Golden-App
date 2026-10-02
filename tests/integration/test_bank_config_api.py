@@ -65,7 +65,21 @@ def _build(migrated: RuntimeIdentities, tmp_path: Any, app_env: str) -> Any:
         release_built_at="2026-08-16T00:00:00Z",
         log_level="CRITICAL",
         auth_csrf_key_secret="c" * 40,
-        auth_rate_limit_key_secret="r" * 40,
+        # `None`, as the other sixty-three integration suites pass. `_limiter` in
+        # `app/api/v1/auth.py` builds no limiter without a secret, so a secret here —
+        # and only here — switched on a ceiling of ten logins per identifier per five
+        # minutes for a file that asserts nothing about rate limiting. It sat at exactly
+        # ten: the eleventh admin test added to this file failed on `sign_in` with
+        # UNAUTHENTICATED, which reads as a wrong password and sends whoever added it to
+        # look at their fixtures. The limiter has its own tests in
+        # `tests/backend/test_account_state_and_rate_limit.py`, where the window is the
+        # subject rather than a budget other tests spend.
+        #
+        # Production keeps it, and must: `Settings` refuses to start a production app
+        # without at least thirty-two characters here, because an unkeyed limiter hashes
+        # phone numbers reversibly. `test_production_refuses_to_create_bank_configuration`
+        # builds one, which is how removing this everywhere was caught.
+        auth_rate_limit_key_secret=("r" * 40 if app_env == "production" else None),
         operations_health_token="o" * 40,
         file_upload_limits_are_production_approved=True,
     )
@@ -367,7 +381,9 @@ def test_an_account_iban_is_masked_without_the_permission(world: dict[str, Any])
     client = world["client"]
     token = sign_in(client, BUSINESS_ADMIN)
     profile = create_profile(client, token)
-    iban = "IR" + "1" * 24
+    # Check digits that match the body, which `IR` + twenty-four ones did not. The last
+    # four digits are still `1111`, so the masking this test is about is unchanged.
+    iban = "IR460120000000000000001111"
 
     created = client.post(
         "/api/v1/bank-accounts",
@@ -500,3 +516,68 @@ def test_production_refuses_to_create_bank_configuration(
             assert "ADR-007" in response.text
     finally:
         runtime.close()
+
+
+def test_the_centre_s_own_account_rejects_a_mistyped_iban(world: dict[str, Any]) -> None:
+    """F-11, at the other place an IBAN enters the system.
+
+    `CreateAccountRequest.normalized_iban` was a bare string the command assigned straight
+    to the column. The field is named `normalized_iban` and nothing normalised it: the
+    column's CHECK saw shape and no one read the check digits, so `IR` followed by
+    twenty-four ones was stored as the account the centre pays from.
+
+    One beneficiary's mistyped IBAN costs one payment. This one is on every outgoing file.
+    """
+
+    client = world["client"]
+    token = sign_in(client, BUSINESS_ADMIN)
+    profile = create_profile(client, token)
+
+    refused = client.post(
+        "/api/v1/bank-accounts",
+        headers={CSRF_HEADER: token},
+        json={
+            "profile_id": profile.json()["profile_id"],
+            "display_name": "حساب مرکزی",
+            "account_role": "outgoing_source",
+            "normalized_iban": "IR" + "1" * 24,
+        },
+    )
+    # 400, which is what this route declares for a business-rule refusal — the
+    # beneficiary surface answers 422 for the same class of error, and I assumed this one
+    # matched it rather than reading `responses={400: ...}` above the route.
+    assert refused.status_code == 400, refused.text
+    assert "check digits" in refused.text
+
+
+def test_the_centre_s_own_account_folds_what_an_operator_actually_types(
+    world: dict[str, Any],
+) -> None:
+    """Persian digits and the four-character groups a bank prints.
+
+    This is the half that was not a refusal but a crash: nothing folded the value, and
+    `normalized_iban` is `varchar(26)`, so an operator entering the IBAN the way their
+    bank statement prints it overflowed the column — `StringDataRightTruncation`, a 500,
+    before the CHECK constraint was ever reached. Watching this test fail against the old
+    assignment is how that was established; the first version of this docstring said CHECK
+    violation, which was a guess about which error came first.
+
+    The field was named `normalized_iban` throughout.
+    """
+
+    client = world["client"]
+    token = sign_in(client, BUSINESS_ADMIN)
+    profile = create_profile(client, token)
+
+    created = client.post(
+        "/api/v1/bank-accounts",
+        headers={CSRF_HEADER: token},
+        json={
+            "profile_id": profile.json()["profile_id"],
+            "display_name": "حساب مرکزی",
+            "account_role": "outgoing_source",
+            "normalized_iban": "IR۸۲ ۰۵۴۰ ۱۰۲۶ ۸۰۰۲ ۰۸۱۷ ۹۰۹۰ ۰۲",
+        },
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["normalized_iban"] == "IR820540102680020817909002"

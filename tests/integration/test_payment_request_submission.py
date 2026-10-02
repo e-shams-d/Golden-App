@@ -39,7 +39,7 @@ TRADERS: dict[str, tuple[str, str, str]] = {
     "other": ("+989120000404", "active", "approved"),
 }
 
-IBAN = "IR060120000000000000000001"
+IBAN = "IR430120000000000000000001"
 
 
 # Module-scoped, not function-scoped. Each case used to pay a bootstrap replay and a
@@ -343,7 +343,7 @@ def test_editing_the_beneficiary_afterwards_does_not_change_the_submitted_revisi
     current = client.get(f"/api/v1/beneficiaries/{beneficiary_id}").json()
     edited = client.patch(
         f"/api/v1/beneficiaries/{beneficiary_id}",
-        json={"full_name": "Renamed Entirely", "iban": "IR060120000000000000000099"},
+        json={"full_name": "Renamed Entirely", "iban": "IR160120000000000000000099"},
         headers={**csrf(client), "If-Match": f'"rv-{current["record_version"]}"'},
     )
     assert edited.status_code == 200, edited.text
@@ -390,7 +390,7 @@ def test_a_beneficiary_edited_between_drafting_and_submitting_does_not_reach_the
     current = client.get(f"/api/v1/beneficiaries/{beneficiary_id}").json()
     edited = client.patch(
         f"/api/v1/beneficiaries/{beneficiary_id}",
-        json={"full_name": "Changed Before Submit", "iban": "IR060120000000000000000077"},
+        json={"full_name": "Changed Before Submit", "iban": "IR280120000000000000000077"},
         headers={**csrf(client), "If-Match": f'"rv-{current["record_version"]}"'},
     )
     assert edited.status_code == 200, edited.text

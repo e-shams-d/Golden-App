@@ -30,7 +30,7 @@ from app.db.models.payment_request import PaymentRequestRevision
 REQUEST = uuid.uuid4()
 BENEFICIARY = uuid.uuid4()
 ATTACHMENT = uuid.uuid4()
-IBAN = "IR060120000000000000000001"
+IBAN = "IR430120000000000000000001"
 
 
 def revision(**overrides: Any) -> PaymentRequestRevision:
@@ -69,7 +69,7 @@ BOOKKEEPING = [
 CONTENT = [
     ("beneficiary_id", uuid.uuid4()),
     ("beneficiary_name_snapshot", "Someone Else"),
-    ("beneficiary_iban_snapshot", "IR060120000000000000000002"),
+    ("beneficiary_iban_snapshot", "IR160120000000000000000002"),
     ("beneficiary_national_id_snapshot", "1234567890"),
     ("amount_irr", 6_000_000),
     ("entered_amount_value", 600_000),
