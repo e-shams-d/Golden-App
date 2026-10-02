@@ -84,7 +84,7 @@ def world(migrated: RuntimeIdentities, tmp_path_factory: Any) -> Iterator[dict[s
     settings = Settings(
         _env_file=None,
         app_env="test",
-        database_url=migrated.owner_url,
+        database_url=migrated.app_url,
         redis_url="redis://127.0.0.1:6379/0",
         local_storage_root=tmp_path_factory.mktemp("match-storage"),
         release_commit="abcdef1234567",
@@ -498,6 +498,16 @@ def test_the_runtime_cannot_rewrite_a_candidates_evidence(world: dict[str, Any])
         "confirmed_amount_irr",
         "confirmed_at",
         "confirmed_by_admin_user_id",
+        # Added by `20261002_0046`, and this list going red is how that stayed a decision.
+        # `compare_and_swap` writes the version in the same statement as the status, so
+        # without it every confirmation and every rejection of a match was refused by
+        # PostgreSQL — invisible until F-21 ran these suites as the application role
+        # instead of as the database owner.
+        #
+        # It is not evidence. The four columns this test is about — the receipt, the row,
+        # the method and the score — are still frozen, and `test_record_version_is_writable`
+        # now holds the general rule so the omission cannot recur on a new table.
+        "record_version",
         "rejected_at",
         "rejected_by_admin_user_id",
         "rejection_reason",
