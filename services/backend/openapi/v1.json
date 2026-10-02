@@ -2852,6 +2852,18 @@
             "title": "Code",
             "type": "string"
           },
+          "cutoff_time": {
+            "anyOf": [
+              {
+                "format": "time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cutoff Time"
+          },
           "default_transfer_limit_irr": {
             "anyOf": [
               {

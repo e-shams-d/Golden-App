@@ -59,6 +59,7 @@ export default function BankConfigurationPage() {
     displayName: "",
     defaultTransferLimitIrr: "",
     afterCutoffTransferLimitIrr: "",
+    cutoffTime: "",
     splittingEnabled: false,
     supportsDescriptionField: false,
   });
@@ -238,6 +239,24 @@ export default function BankConfigurationPage() {
                     })
                   }
                   value={profileForm.afterCutoffTransferLimitIrr}
+                />
+              </label>
+
+              {/* Without this the field above can never take effect: `splitting.py:83-89`
+                  holds the ordinary limit all day when no cutoff is set, so a second limit
+                  with no cutoff is a limit that never starts. The form collected one and
+                  not the other. */}
+              <label className="block">
+                <span className="font-bold">{t("bank.cutoffTime")}</span>
+                <input
+                  className="mt-1 w-full rounded border p-2"
+                  data-testid="bank-profile-cutoff-time"
+                  disabled={busy}
+                  onChange={(event) =>
+                    setProfileForm({ ...profileForm, cutoffTime: event.target.value })
+                  }
+                  type="time"
+                  value={profileForm.cutoffTime}
                 />
               </label>
 

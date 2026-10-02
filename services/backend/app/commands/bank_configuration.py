@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
+from datetime import time
 from typing import Any, Final
 
 from app.audit import AuditActor, AuditContext, AuditEntry, AuditWriter
@@ -78,6 +79,7 @@ class CreateBankProfile:
     version_number: int = 1
     default_transfer_limit_irr: int | None = None
     after_cutoff_transfer_limit_irr: int | None = None
+    cutoff_time: time | None = None
     splitting_enabled: bool = False
     supports_description_field: bool = False
     required_fields: dict[str, Any] = field(default_factory=dict)
@@ -89,6 +91,7 @@ class CreateBankProfileVersion:
     profile_id: uuid.UUID
     default_transfer_limit_irr: int | None = None
     after_cutoff_transfer_limit_irr: int | None = None
+    cutoff_time: time | None = None
     splitting_enabled: bool = False
     supports_description_field: bool = False
     required_fields: dict[str, Any] = field(default_factory=dict)
@@ -116,6 +119,7 @@ def _version_configuration(
     *,
     default_transfer_limit_irr: int | None,
     after_cutoff_transfer_limit_irr: int | None,
+    cutoff_time: time | None,
     splitting_enabled: bool,
     supports_description_field: bool,
     required_fields: dict[str, Any],
@@ -126,15 +130,59 @@ def _version_configuration(
     Built here rather than at each call site so that a field added to a version and
     forgotten in the digest is one edit rather than two — the failure mode being two
     genuinely different configurations that hash the same and collide on the unique.
+
+    `cutoff_time` belongs in the hash for the same reason as the limits: two versions
+    differing only in when the second limit starts are two different configurations, and
+    without it here they would collide on the unique constraint.
     """
 
-    return {
+    configuration = {
         "default_transfer_limit_irr": default_transfer_limit_irr,
         "after_cutoff_transfer_limit_irr": after_cutoff_transfer_limit_irr,
+        "cutoff_time": cutoff_time,
         "splitting_enabled": splitting_enabled,
         "supports_description_field": supports_description_field,
         "required_fields": required_fields,
         "rules": rules,
+    }
+
+    # A configuration field written inside `rules` is refused rather than stored.
+    #
+    # `rules` is free-form JSONB, so `{"cutoff_time": "16:00"}` was accepted, hashed,
+    # persisted and had no effect whatever — the column stayed null and the second
+    # transfer limit went on never starting. An operator who gets `201` has every reason
+    # to believe the cutoff is set. **Refusing is better than accepting with no effect**,
+    # which is the whole of F-14's worse half.
+    #
+    # The names come from the configuration itself rather than a list beside it: a field
+    # added above is covered here the moment it exists, and there is no second copy to
+    # drift. `rules` is in that set too, so `rules={"rules": …}` is refused as well.
+    misplaced = sorted(set(rules) & set(configuration))
+    if misplaced:
+        raise BusinessRuleViolationError(
+            f"{', '.join(misplaced)} belongs at the top level of the request, not inside "
+            "`rules`. Stored there it is kept and ignored: the column stays empty while "
+            "the response says 201."
+        )
+
+    return configuration
+
+
+def _digest_input(configuration: dict[str, Any]) -> dict[str, Any]:
+    """The configuration in a form `canonical()` will accept.
+
+    `canonical()` refuses a `datetime.time` outright rather than calling `str()` on it,
+    so that the config hash cannot come to depend on a formatting choice nobody made
+    deliberately. `isoformat()` is that deliberate choice: `"16:00:00"`, the same text the
+    read model returns, so the hashed form and the published form agree.
+
+    Rendered here rather than stored as text, because the column is `TIME` and a string
+    in the mapping would reach `BankProfileVersion(**configuration)` as one.
+    """
+
+    return {
+        key: value.isoformat() if isinstance(value, time) else value
+        for key, value in configuration.items()
     }
 
 
@@ -173,6 +221,7 @@ def create_profile(
     configuration = _version_configuration(
         default_transfer_limit_irr=command.default_transfer_limit_irr,
         after_cutoff_transfer_limit_irr=command.after_cutoff_transfer_limit_irr,
+        cutoff_time=command.cutoff_time,
         splitting_enabled=command.splitting_enabled,
         supports_description_field=command.supports_description_field,
         required_fields=command.required_fields,
@@ -187,7 +236,7 @@ def create_profile(
         bank_profile_id=profile.id,
         version_number=command.version_number,
         status=DRAFT,
-        config_hash=unversioned_digest(configuration),
+        config_hash=unversioned_digest(_digest_input(configuration)),
         created_by_admin_user_id=actor.actor_id,
         **configuration,
     )
@@ -240,6 +289,7 @@ def create_version(
     configuration = _version_configuration(
         default_transfer_limit_irr=command.default_transfer_limit_irr,
         after_cutoff_transfer_limit_irr=command.after_cutoff_transfer_limit_irr,
+        cutoff_time=command.cutoff_time,
         splitting_enabled=command.splitting_enabled,
         supports_description_field=command.supports_description_field,
         required_fields=command.required_fields,
@@ -250,7 +300,7 @@ def create_version(
         bank_profile_id=profile.id,
         version_number=next_number,
         status=DRAFT,
-        config_hash=unversioned_digest(configuration),
+        config_hash=unversioned_digest(_digest_input(configuration)),
         created_by_admin_user_id=actor.actor_id,
         **configuration,
     )
