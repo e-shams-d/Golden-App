@@ -581,3 +581,83 @@ def test_the_centre_s_own_account_folds_what_an_operator_actually_types(
     )
     assert created.status_code == 201, created.text
     assert created.json()["normalized_iban"] == "IR820540102680020817909002"
+
+def test_a_cutoff_time_can_be_set_and_read_back(world: dict[str, Any]) -> None:
+    """F-14. The one version field with no way in.
+
+    `after_cutoff_transfer_limit_irr` has been settable from the beginning, and
+    `app/batching/splitting.py:83-89` is explicit about what that means on its own: "a
+    second limit with no cutoff time is a limit that never starts". So the second limit
+    had never once applied, and the engine was right to hold the ordinary one all day.
+
+    Three ways in were tried during the acceptance pass and all three failed: at the top
+    level the request refused it as an extra input, inside `rules` it was accepted and
+    ignored, and the command dataclasses had no such field at all.
+    """
+
+    client = world["client"]
+    token = sign_in(client, BUSINESS_ADMIN)
+
+    created = create_profile(
+        client,
+        token,
+        code="synthetic_bank_cutoff",
+        default_transfer_limit_irr=500_000_000,
+        after_cutoff_transfer_limit_irr=100_000_000,
+        cutoff_time="16:00",
+    )
+    assert created.status_code == 201, created.text
+
+    read = client.get(f"/api/v1/bank-profiles/{created.json()['profile_id']}")
+    assert read.status_code == 200, read.text
+    version = read.json()["versions"][0]
+    assert version["cutoff_time"] == "16:00:00", version
+    assert version["after_cutoff_transfer_limit_irr"] == "100000000", version
+
+
+def test_a_cutoff_time_written_inside_rules_is_refused(world: dict[str, Any]) -> None:
+    """The worse half of F-14: accepted, stored, and with no effect whatever.
+
+    `rules` is free-form JSONB, so `{"cutoff_time": "16:00"}` answered `201`. The operator
+    reads that as saved; the column stays null and the second limit goes on never
+    starting. **Refusing beats accepting with no effect** — a 400 sends someone to the
+    right field, and a 201 sends them away believing the bank is configured.
+    """
+
+    client = world["client"]
+    token = sign_in(client, BUSINESS_ADMIN)
+
+    refused = create_profile(
+        client,
+        token,
+        code="synthetic_bank_rules_cutoff",
+        rules={"cutoff_time": "16:00"},
+    )
+    assert refused.status_code == 400, refused.text
+    assert "cutoff_time" in refused.text
+    assert "rules" in refused.text
+
+
+def test_any_configuration_field_inside_rules_is_refused(world: dict[str, Any]) -> None:
+    """The guard reads the configuration rather than naming one key.
+
+    `cutoff_time` is the field the acceptance pass happened to try. Nothing made it
+    special: every version field could be written into `rules` and kept there, inert. The
+    check compares `rules` against the configuration mapping itself, so a field added to
+    that mapping is covered the moment it exists and there is no second list to drift.
+
+    Asserted with a *different* field for that reason — a test that only ever tried
+    `cutoff_time` could not tell a derived rule from a hard-coded one.
+    """
+
+    client = world["client"]
+    token = sign_in(client, BUSINESS_ADMIN)
+
+    refused = create_profile(
+        client,
+        token,
+        code="synthetic_bank_rules_other",
+        rules={"splitting_enabled": True},
+    )
+    assert refused.status_code == 400, refused.text
+    assert "splitting_enabled" in refused.text
