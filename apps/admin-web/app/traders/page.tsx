@@ -105,7 +105,13 @@ export default function AdminTradersPage() {
         await refresh();
       } catch (error) {
         const status = (error as { status?: number }).status;
-        setNotice(status === 412 ? t("admin.traders.stale") : t("admin.traders.decisionFailed"));
+        setNotice(
+          status === 412
+            ? t("admin.traders.stale")
+            : status === 403
+              ? t("common.forbiddenAction")
+              : t("admin.traders.decisionFailed"),
+        );
         // A stale precondition means somebody else moved; showing them the new truth is
         // more useful than leaving the old rows on screen.
         if (status === 412) await refresh();

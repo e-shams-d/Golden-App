@@ -91,7 +91,13 @@ export default function TraderGoldOrderPage() {
       // 412 here means the centre moved the order while this person was reading — the exact event
       // the precondition exists for, and worth its own sentence.
       const status = (error as { status?: number }).status;
-      setNotice(status === 412 ? t("gold.stale") : t("gold.refused"));
+      setNotice(
+        status === 412
+          ? t("gold.stale")
+          : status === 403
+            ? t("common.forbiddenAction")
+            : t("gold.refused"),
+      );
       try {
         setPhase(await load());
       } catch {
@@ -151,7 +157,13 @@ export default function TraderGoldOrderPage() {
       setPhase(await load());
     } catch (error) {
       const status = (error as { status?: number }).status;
-      setAcknowledgeNotice(status === 412 ? t("gold.stale") : t("dispatch.refused"));
+      setAcknowledgeNotice(
+        status === 412
+          ? t("gold.stale")
+          : status === 403
+            ? t("common.forbiddenAction")
+            : t("dispatch.refused"),
+      );
       try {
         setPhase(await load());
       } catch {

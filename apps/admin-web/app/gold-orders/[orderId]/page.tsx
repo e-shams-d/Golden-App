@@ -106,7 +106,13 @@ export default function AdminGoldOrderPage() {
       setPhase(await load());
     } catch (error) {
       const status = (error as { status?: number }).status;
-      setNotice(status === 412 ? t("pricing.stale") : t("dispatch.refused"));
+      setNotice(
+        status === 412
+          ? t("pricing.stale")
+          : status === 403
+            ? t("common.forbiddenAction")
+            : t("dispatch.refused"),
+      );
       try {
         setPhase(await load());
       } catch {
@@ -137,7 +143,13 @@ export default function AdminGoldOrderPage() {
       // 412 means a colleague priced this order while this person was reading it — the event the
       // precondition exists for, and the one worth naming.
       const status = (error as { status?: number }).status;
-      setNotice(status === 412 ? t("pricing.stale") : t("pricing.refused"));
+      setNotice(
+        status === 412
+          ? t("pricing.stale")
+          : status === 403
+            ? t("common.forbiddenAction")
+            : t("pricing.refused"),
+      );
       try {
         setPhase(await load());
       } catch {

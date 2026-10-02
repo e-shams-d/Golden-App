@@ -144,7 +144,13 @@ export default function TraderRequestPage() {
         await refresh();
       } catch (error) {
         const status = (error as { status?: number }).status;
-        setNotice(status === 412 ? t("trader.request.stale") : t("trader.request.actionFailed"));
+        setNotice(
+          status === 412
+            ? t("trader.request.stale")
+            : status === 403
+              ? t("common.forbiddenAction")
+              : t("trader.request.actionFailed"),
+        );
         if (status === 412) await refresh();
       } finally {
         setBusy(false);

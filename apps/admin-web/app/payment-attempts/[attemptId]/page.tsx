@@ -124,7 +124,13 @@ export default function AdminAttemptPage() {
       setPhase(await load());
     } catch (error) {
       const status = (error as { status?: number }).status;
-      setNotice(status === 412 ? t("attempt.stale") : t("attempt.refused"));
+      setNotice(
+        status === 412
+          ? t("attempt.stale")
+          : status === 403
+            ? t("common.forbiddenAction")
+            : t("attempt.refused"),
+      );
       try {
         setPhase(await load());
       } catch {

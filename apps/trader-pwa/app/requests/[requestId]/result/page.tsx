@@ -151,7 +151,13 @@ export default function TraderResultPage() {
       // request's version exists to catch. Telling them "the result changed, here is the new one"
       // is the difference between a refusal they understand and one that looks like a fault.
       const status = (error as { status?: number }).status;
-      setRefused(status === 412 ? t("result.stale") : t("result.refused"));
+      setRefused(
+        status === 412
+          ? t("result.stale")
+          : status === 403
+            ? t("common.forbiddenAction")
+            : t("result.refused"),
+      );
       await refresh();
     } finally {
       setBusy(false);

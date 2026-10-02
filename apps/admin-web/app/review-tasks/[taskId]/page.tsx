@@ -90,7 +90,13 @@ export default function AdminReviewTaskPage() {
       // 412 here means a colleague decided this item while it was open in front of somebody —
       // the case a shared queue makes ordinary rather than rare.
       const status = (error as { status?: number }).status;
-      setNotice(status === 412 ? t("task.stale") : t("task.refused"));
+      setNotice(
+        status === 412
+          ? t("task.stale")
+          : status === 403
+            ? t("common.forbiddenAction")
+            : t("task.refused"),
+      );
       try {
         setPhase(await load());
       } catch {

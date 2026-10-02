@@ -30,6 +30,10 @@ export const faMessages = {
   "state.empty.description": "با ثبت نخستین مورد، اطلاعات این بخش نمایش داده می‌شود.",
   "state.forbidden.title": "دسترسی مجاز نیست",
   "state.forbidden.description": "برای مشاهده این بخش دسترسی لازم را ندارید.",
+  // A command refused for permission, as distinct from the view-level message above.
+  // Shared by every screen that sends a command, because 'you are not allowed to do
+  // this' is not specific to the action and ten copies would be ten places to drift.
+  "common.forbiddenAction": "حساب شما اجازهٔ این کار را ندارد. تلاش دوباره نتیجه‌ای ندارد؛ از مدیر سامانه دسترسی بخواهید.",
   "state.conflict.title": "اطلاعات این صفحه تغییر کرده است",
   "state.conflict.description": "آخرین نسخه را دریافت و پیش از ادامه دوباره بررسی کنید.",
   // The three kinds slice 10C added. Each of the three had no component, no kind and no
