@@ -181,4 +181,7 @@ from __future__ import annotations
 # could mark one read; M11 slice 1 is that command, so the grant arrives with it. `status` and
 # `read_at` only — a notification is a record of what somebody was told, and a title the runtime
 # could rewrite afterwards would be a message that says something other than what was sent.
-EXPECTED_MIGRATION_HEADS = frozenset({"20260914_0045"})
+# 20261002_0046 grants `record_version` on `incoming_payment_matches`, the one column of
+# that table's confirmation update nobody had granted — found by running the integration
+# suites as the application role instead of as the database owner.
+EXPECTED_MIGRATION_HEADS = frozenset({"20261002_0046"})

@@ -65,7 +65,7 @@ def world(migrated: RuntimeIdentities, tmp_path_factory: Any) -> Iterator[dict[s
     settings = Settings(
         _env_file=None,
         app_env="test",
-        database_url=migrated.owner_url,
+        database_url=migrated.app_url,
         redis_url="redis://127.0.0.1:6379/0",
         local_storage_root=tmp_path_factory.mktemp("storage"),
         release_commit="abcdef1234567",

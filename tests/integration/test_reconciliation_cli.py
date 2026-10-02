@@ -53,7 +53,7 @@ def environment(migrated: RuntimeIdentities, tmp_path: Any) -> Iterator[dict[str
     settings = Settings(
         _env_file=None,
         app_env="test",
-        database_url=migrated.owner_url,
+        database_url=migrated.app_url,
         redis_url="redis://127.0.0.1:6379/0",
         local_storage_root=storage_root,
         release_commit="abcdef1234567",
