@@ -769,6 +769,8 @@ export const faMessages = {
   "admin.traders.status": "وضعیت",
   "admin.traders.actions": "اقدام",
   "admin.traders.approve": "تأیید",
+  "admin.traders.approveConfirm": "تأیید نهایی این کسب‌وکار؟ پس از تأیید راه بازگشتی نیست:",
+  "admin.traders.approveYes": "بله، تأیید کن",
   "admin.traders.reject": "رد",
   "admin.traders.working": "در حال ثبت…",
   "admin.traders.reasonLabel": "دلیل رد",
