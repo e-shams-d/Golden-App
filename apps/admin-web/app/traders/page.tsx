@@ -46,6 +46,9 @@ function statusLabel(value: string): string {
 
 export default function AdminTradersPage() {
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
+  // Which row has been asked to confirm. One at a time: opening a second confirmation
+  // closes the first, so there is never a screen with two armed approvals on it.
+  const [confirmingId, setConfirmingId] = useState<string | undefined>(undefined);
   const [busyId, setBusyId] = useState<string | undefined>(undefined);
   const [notice, setNotice] = useState<string | undefined>(undefined);
   const [reasons, setReasons] = useState<Record<string, string>>({});
@@ -89,6 +92,7 @@ export default function AdminTradersPage() {
       }
 
       setBusyId(trader.id);
+      setConfirmingId(undefined);
       try {
         // Re-read for the precondition. See the note above: one request old, not one
         // page old.
@@ -209,16 +213,55 @@ export default function AdminTradersPage() {
                     <td className="p-3">
                       {trader.approval_status === PENDING ? (
                         <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            className="rounded-lg bg-[var(--gold-700)] px-4 py-2 font-bold text-white disabled:opacity-60"
-                            disabled={busyId === trader.id}
-                            onClick={() => void decide(trader, "approve")}
-                            type="button"
-                          >
-                            {busyId === trader.id
-                              ? t("admin.traders.working")
-                              : t("admin.traders.approve")}
-                          </button>
+                          {/* Two clicks, and the second one names the business. Approval is
+                              audited, it is what lets this business create payment requests,
+                              and the lifecycle has no way back from `approved` — so a stray
+                              click is unrecoverable. Rejecting on this same row already asks
+                              for a typed reason; this is the matching friction on the half
+                              that had none.
+
+                              The name is in the question because a table row is identified by
+                              position, which is exactly what a misplaced click gets wrong. */}
+                          {confirmingId === trader.id ? (
+                            <span
+                              className="flex flex-wrap items-center gap-2 rounded-lg border-2 border-[var(--gold-700)] px-3 py-2"
+                              data-testid="trader-approve-confirm"
+                            >
+                              <span>
+                                {t("admin.traders.approveConfirm")} <b>{trader.display_name}</b>
+                              </span>
+                              <button
+                                className="rounded-lg bg-[var(--gold-700)] px-4 py-2 font-bold text-white disabled:opacity-60"
+                                data-testid="trader-approve-yes"
+                                disabled={busyId === trader.id}
+                                onClick={() => void decide(trader, "approve")}
+                                type="button"
+                              >
+                                {busyId === trader.id
+                                  ? t("admin.traders.working")
+                                  : t("admin.traders.approveYes")}
+                              </button>
+                              <button
+                                className="rounded-lg border border-[var(--border)] px-4 py-2"
+                                disabled={busyId === trader.id}
+                                onClick={() => setConfirmingId(undefined)}
+                                type="button"
+                              >
+                                {t("common.cancel")}
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              className="rounded-lg bg-[var(--gold-700)] px-4 py-2 font-bold text-white disabled:opacity-60"
+                              disabled={busyId === trader.id}
+                              onClick={() => setConfirmingId(trader.id)}
+                              type="button"
+                            >
+                              {busyId === trader.id
+                                ? t("admin.traders.working")
+                                : t("admin.traders.approve")}
+                            </button>
+                          )}
                           <label className="flex items-center gap-2">
                             <span className="sr-only">{t("admin.traders.reasonLabel")}</span>
                             <input
