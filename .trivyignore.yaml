@@ -16,4 +16,44 @@
 # mitigation, so the earlier fix stopped being sufficient and 5.0.8 became
 # affected again — an exception written against the superseded advisory would
 # have covered nothing while appearing to cover it.
-vulnerabilities: []
+vulnerabilities:
+  # braces, stack-overflow denial of service from deeply nested patterns.
+  #
+  # **There is no fixed release to take.** 3.0.3 is the newest published version of
+  # braces; the advisory's fixed-version column is empty. Unlike every dependency raised
+  # in this repository so far, this cannot be closed by a bump, so the choice is an
+  # exception or a red gate for as long as upstream takes.
+  #
+  # **It is not in anything this project ships, and that was measured rather than
+  # assumed.** The path is
+  # braces -> micromatch -> fast-glob -> @next/eslint-plugin-next -> eslint-config-next
+  # -> @gold/config: ESLint tooling, loaded only when linting. The runtime image copies
+  # `.next/standalone`, `.next/static` and `public` and nothing else
+  # (`infra/docker/admin-web.Dockerfile:34-36`), and both apps' standalone output
+  # contains zero `braces` directories. Neither `next.config` enables ESLint during the
+  # build. So the package exists in the builder stage's workspace and never reaches a
+  # running process.
+  #
+  # **Not fixed by moving the dependency.** `eslint-config-next` could be moved to
+  # `devDependencies` and Trivy, which already suppresses those, would stop reporting it.
+  # That is renaming a concept to dodge a scanner — `.gitleaks.toml` argues against
+  # exactly that — and `@gold/config/eslint/next` genuinely imports the package when the
+  # module evaluates. The declaration is accurate; the exposure is nil for a different
+  # reason, and the reason should be the one written down.
+  #
+  # **Scoped to `pnpm-lock.yaml`.** This file is also passed to the image scans
+  # (`m1-verify.yml:318-325`), and an unscoped entry would suppress the finding there too
+  # — in the one place that would tell us braces had started shipping.
+  #
+  # Expires 2026-11-15. If no fix exists then, the exception is re-argued from scratch
+  # rather than extended: three framework advisories have landed in three weeks and the
+  # reason above has to be re-measured, not re-read.
+  - id: CVE-2026-93687
+    paths:
+      - pnpm-lock.yaml
+    expired_at: 2026-11-15
+    statement: >-
+      No fixed release exists (3.0.3 is latest). Reached only through
+      eslint-config-next, which is build-time tooling; the runtime image copies only
+      .next/standalone, .next/static and public, and the standalone output contains no
+      braces. Scoped to the lockfile so the image scans still report it if that changes.
