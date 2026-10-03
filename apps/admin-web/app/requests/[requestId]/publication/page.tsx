@@ -249,7 +249,13 @@ export default function AdminPublicationPage() {
       setPhase(await load());
     } catch (error) {
       const status = (error as { status?: number }).status;
-      setNotice(status === 412 ? t("publication.stale") : t("publication.refused"));
+      setNotice(
+        status === 412
+          ? t("publication.stale")
+          : status === 403
+            ? t("common.forbiddenAction")
+            : t("publication.refused"),
+      );
       try {
         setPhase(await load());
       } catch {

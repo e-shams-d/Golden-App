@@ -96,7 +96,13 @@ export default function AdminIncomingPaymentPage() {
       setPhase(await load());
     } catch (error) {
       const status = (error as { status?: number }).status;
-      setNotice(status === 412 ? t("receipt.stale") : t("receipt.refused"));
+      setNotice(
+        status === 412
+          ? t("receipt.stale")
+          : status === 403
+            ? t("common.forbiddenAction")
+            : t("receipt.refused"),
+      );
       try {
         setPhase(await load());
       } catch {

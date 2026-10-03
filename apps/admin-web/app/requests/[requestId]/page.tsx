@@ -141,7 +141,13 @@ export default function AdminRequestPage() {
         await refresh();
       } catch (error) {
         const status = (error as { status?: number }).status;
-        setNotice(status === 412 ? t("admin.request.stale") : t("admin.request.actionFailed"));
+        setNotice(
+          status === 412
+            ? t("admin.request.stale")
+            : status === 403
+              ? t("common.forbiddenAction")
+              : t("admin.request.actionFailed"),
+        );
         if (status === 412) await refresh();
       } finally {
         setBusy(false);
