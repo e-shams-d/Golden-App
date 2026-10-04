@@ -144,6 +144,9 @@ def recover_admin_password(
     )
     admin.password_changed_at = now
     admin.security_stamp_version = new_stamp
+    # As in `change_own_password`: this path writes the row directly rather than through
+    # `compare_and_swap`, so the stamp the helper maintains has to be set here.
+    admin.updated_at = now
     admin.status = account_state.ACTIVE
     admin.failed_login_count = 0
     admin.locked_until = None

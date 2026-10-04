@@ -89,6 +89,10 @@ def change_own_password(
     )
     identity.password_changed_at = now
     identity.security_stamp_version = new_stamp
+    # `compare_and_swap` would have set this; this path cannot use it, because changing
+    # your own password carries no `If-Match` and so has no version to swap against.
+    # Without the line the row's last-modified stamp says the credential never moved.
+    identity.updated_at = now
 
     owner_column = (
         AuthSession.admin_user_id if audience is Audience.ADMIN else AuthSession.trader_user_id
