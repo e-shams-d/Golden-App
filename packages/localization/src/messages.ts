@@ -1230,6 +1230,57 @@ export const faMessages = {
   "admin.workspace.cancel": "انصراف",
 } as const;
 
+/**
+ * What a person reads when the server refuses, in the language the rest of the screen uses.
+ *
+ * **Only the constant messages are translated.** `ForbiddenError` always sends
+ * "Permission denied." and `NotFoundError` always sends "The requested resource was not
+ * found." — those are labels, and a label in the wrong language is simply wrong.
+ *
+ * `BUSINESS_RULE_VIOLATION`, `VERSION_CONFLICT`, `CONFLICT`, `INVALID_STATE_TRANSITION`
+ * and `IDEMPOTENCY_KEY_REUSED` take their text from the call site: "the IBAN's check
+ * digits do not match the rest of it", "this correction is identical to the current
+ * revision, so there is nothing to correct". That sentence is the only part a reader can
+ * act on, and a generic Persian replacement would delete it. Those pass through. That
+ * they arrive in English is a real and separate problem, recorded as such rather than
+ * papered over here.
+ *
+ * **The fallback carries the code**, for the reason `paymentRequestStatusLabel` below
+ * gives about its own: a plausible invented translation for a code this release does not
+ * know is a claim the software cannot support, and the code is what somebody reads out to
+ * support.
+ */
+const CONSTANT_ERRORS: Readonly<Record<string, string>> = {
+  FORBIDDEN: "حساب شما اجازهٔ این کار را ندارد.",
+  UNAUTHENTICATED: "اطلاعات ورود معتبر نیست.",
+  NOT_FOUND: "چیزی که خواستید پیدا نشد.",
+  RATE_LIMITED: "تلاش‌های بیش از حد. کمی صبر کنید و دوباره امتحان کنید.",
+  PRECONDITION_REQUIRED: "این درخواست بدون پیش‌شرط فرستاده شد. صفحه را تازه کنید.",
+  FILE_TOO_LARGE: "حجم فایل از حد مجاز بیشتر است.",
+  UNSUPPORTED_FILE_TYPE: "نوع این فایل پذیرفته نمی‌شود.",
+  DEPENDENCY_UNAVAILABLE: "سرویس موردنیاز در دسترس نیست. کمی بعد دوباره تلاش کنید.",
+  BACKGROUND_PROCESSING_UNAVAILABLE:
+    "پردازش پس‌زمینه در دسترس نیست. کمی بعد دوباره تلاش کنید.",
+  INTERNAL_ERROR: "خطای داخلی رخ داد. اگر تکرار شد، شناسهٔ درخواست را به پشتیبانی بدهید.",
+  BAD_REQUEST: "درخواست معتبر نیست.",
+} as const;
+
+export function errorMessage(
+  code: string | undefined,
+  serverMessage?: string | undefined,
+): string {
+  if (code !== undefined && code in CONSTANT_ERRORS) {
+    return CONSTANT_ERRORS[code] as string;
+  }
+  // Composed by the server for this case: it says more than any generic text could.
+  if (serverMessage !== undefined && serverMessage.length > 0) {
+    return serverMessage;
+  }
+  return code === undefined
+    ? "درخواست با خطا روبه‌رو شد."
+    : `درخواست با خطا روبه‌رو شد (${code}).`;
+}
+
 export type MessageKey = keyof typeof faMessages;
 
 export function t(key: MessageKey): string {

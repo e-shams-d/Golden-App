@@ -1,6 +1,6 @@
 "use client";
 
-import { t, toPersianDigits } from "@gold/localization";
+import { errorMessage, t, toPersianDigits } from "@gold/localization";
 import { BidiText, StateView } from "@gold/ui";
 import { useCallback, useEffect, useState } from "react";
 
@@ -75,9 +75,14 @@ export function SegmentCandidates({ segment }: { segment: SegmentSummary }) {
     void run()
       .then(async () => setPhase(await load()))
       .catch(async (caught: unknown) => {
-        const message = (caught as { body?: { error?: { message?: string } } }).body?.error
-          ?.message;
-        setNotice(message ?? t("candidate.failed"));
+        const failure = (
+          caught as { body?: { error?: { code?: string; message?: string } } }
+        ).body?.error;
+        setNotice(
+          failure === undefined
+            ? t("candidate.failed")
+            : errorMessage(failure.code, failure.message),
+        );
         try {
           setPhase(await load());
         } catch {

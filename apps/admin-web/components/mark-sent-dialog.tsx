@@ -1,6 +1,6 @@
 "use client";
 
-import { t, toPersianDigits } from "@gold/localization";
+import { errorMessage, t, toPersianDigits } from "@gold/localization";
 import { useState } from "react";
 
 import {
@@ -77,8 +77,12 @@ export function MarkSentDialog({
         onDone();
       })
       .catch((caught: unknown) => {
-        const message = (caught as { body?: { error?: { message?: string } } }).body?.error?.message;
-        setError(message ?? t("admin.export.markSentFailed"));
+        const message = (caught as { body?: { error?: { code?: string; message?: string } } }).body?.error;
+        setError(
+          message === undefined
+            ? t("admin.export.markSentFailed")
+            : errorMessage(message.code, message.message),
+        );
       })
       .finally(() => setBusy(false));
   };

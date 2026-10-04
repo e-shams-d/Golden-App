@@ -1,6 +1,6 @@
 "use client";
 
-import { t, toPersianDigits } from "@gold/localization";
+import { errorMessage, t, toPersianDigits } from "@gold/localization";
 import { StateView } from "@gold/ui";
 import Link from "next/link";
 import { use, useCallback, useEffect, useState } from "react";
@@ -268,9 +268,14 @@ function Decide({
         onDecided();
       })
       .catch((caught: unknown) => {
-        const message = (caught as { body?: { error?: { message?: string } } }).body?.error
-          ?.message;
-        setError(message ?? t("admin.decide.failed"));
+        const failure = (
+          caught as { body?: { error?: { code?: string; message?: string } } }
+        ).body?.error;
+        setError(
+          failure === undefined
+            ? t("admin.decide.failed")
+            : errorMessage(failure.code, failure.message),
+        );
       })
       .finally(() => setBusy(false));
   };

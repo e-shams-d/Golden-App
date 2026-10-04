@@ -87,7 +87,10 @@ describe("a permission refusal is not something to retry", () => {
         const source = flattened(path);
         if (SERVER_MESSAGE.test(source)) continue;
         const hits = source.match(TWO_WAY) ?? [];
-        for (const _ of hits) offenders.push(path.slice(path.indexOf("apps/")));
+        // One entry per call site, so a file with two unfixed handlers is named twice.
+        for (let seen = 0; seen < hits.length; seen += 1) {
+          offenders.push(path.slice(path.indexOf("apps/")));
+        }
       }
     }
     expect(
