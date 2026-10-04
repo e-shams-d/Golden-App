@@ -1,6 +1,6 @@
 "use client";
 
-import { t } from "@gold/localization";
+import { normalizeDigits, t } from "@gold/localization";
 import { BidiText, StateView } from "@gold/ui";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -428,7 +428,11 @@ export default function AdminAttemptPage() {
                   void act(() =>
                     createRetry(attemptId, phase.ifMatch, {
                       paymentRequestRevisionId: revisionId,
-                      amountIrr: Number(amount),
+                      // `normalizeDigits` first: a Persian keyboard is ordinary here, and
+                      // `Number` on Persian digits is `NaN`, which `JSON.stringify` writes
+                      // as `null`. The wire form is ASCII by decision — see
+                      // `test_payment_amount_wire.py` — so folding belongs on this side.
+                      amountIrr: Number(normalizeDigits(amount).trim()),
                       reason,
                     }),
                   );

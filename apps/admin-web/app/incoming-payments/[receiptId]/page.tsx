@@ -1,6 +1,6 @@
 "use client";
 
-import { t } from "@gold/localization";
+import { normalizeDigits, t } from "@gold/localization";
 import { BidiText, StateView } from "@gold/ui";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -342,7 +342,12 @@ export default function AdminIncomingPaymentPage() {
                   void act(async () => {
                     await confirmPayment(receiptId, phase.ifMatch, {
                       incomingPaymentMatchId: confirmMatchId,
-                      confirmedAmountIrr: Number(confirmAmount),
+                      // `normalizeDigits` first: a Persian keyboard is the default on an Iranian phone,
+                      // and `Number` on Persian digits is `NaN`, which `JSON.stringify` writes as
+                      // `null`. The server's wire form is ASCII by decision — see
+                      // `test_payment_amount_wire.py` — so folding is this screen's job, as it
+                      // already is in `requests/new/page.tsx`.
+                      confirmedAmountIrr: Number(normalizeDigits(confirmAmount).trim()),
                       confirmationNote: confirmNote.trim() || null,
                     });
                     setConfirmMatchId("");

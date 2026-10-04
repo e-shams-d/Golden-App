@@ -1,6 +1,6 @@
 "use client";
 
-import { t } from "@gold/localization";
+import { normalizeDigits, t } from "@gold/localization";
 import { BidiText, StateView } from "@gold/ui";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -121,7 +121,12 @@ export default function TraderGoldOrderPage() {
       await submitReceipt(orderId, {
         // Rials have no minor unit, so a number loses nothing here — the opposite of the weight
         // above, and the difference is real rather than an inconsistency.
-        amountIrr: Number(claimAmount),
+        // `normalizeDigits` first: a Persian keyboard is the default on an Iranian phone,
+        // and `Number` on Persian digits is `NaN`, which `JSON.stringify` writes as
+        // `null`. The server's wire form is ASCII by decision — see
+        // `test_payment_amount_wire.py` — so folding is this screen's job, as it
+        // already is in `requests/new/page.tsx`.
+        amountIrr: Number(normalizeDigits(claimAmount).trim()),
         trackingNumber: tracking.trim() || null,
         sourceBankName: sourceBank.trim() || null,
       });
