@@ -31,6 +31,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.api.contract import VALIDATION_ERROR_RESPONSE
 from app.api.dependencies import get_runtime, get_settings
@@ -144,6 +145,13 @@ class ActorSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: uuid.UUID
+    # The name the person is called, which the header showed a UUID in place of because
+    # this field did not exist. Optional rather than required: it is read from the
+    # identity row, and a caller that cannot open one — a session read on a path that
+    # holds no unit of work — says nothing rather than inventing a value. Both
+    # `AdminUser` and `TraderUser` declare it `nullable=False`, so absent here means "not
+    # looked up", never "the person has no name".
+    full_name: str | None = None
     audience: str
     status: str
     trader_id: uuid.UUID | None
@@ -328,19 +336,38 @@ def _login(
                 expires_at=outcome.issued.expires_at,
                 authentication_level=outcome.actor.auth_level,
             ),
-            user=_actor_summary(outcome.actor, status="active"),
+            user=_actor_summary(
+                outcome.actor,
+                status="active",
+                full_name=_display_name(uow.session, outcome.actor),
+            ),
         )
 
 
-def _actor_summary(actor: ActorContext, *, status: str) -> ActorSummary:
+def _actor_summary(
+    actor: ActorContext, *, status: str, full_name: str | None = None
+) -> ActorSummary:
     return ActorSummary(
         id=actor.actor_id,
+        full_name=full_name,
         audience=actor.audience.value,
         status=status,
         trader_id=actor.trader_id,
         roles=sorted(actor.roles),
         permissions=sorted(actor.permissions),
     )
+
+
+def _display_name(session: Session, actor: ActorContext) -> str | None:
+    """The name on the identity row behind this actor.
+
+    One query on a path that already holds a unit of work. `None` only when the row has
+    gone, which for a live session means the account was deleted mid-request — the header
+    then falls back to the id, which is what it showed before this existed.
+    """
+
+    model = AdminUser if actor.audience is Audience.ADMIN else TraderUser
+    return session.scalar(select(model.full_name).where(model.id == actor.actor_id))
 
 
 def _authenticate_request(
@@ -717,6 +744,7 @@ def current_session(
         session = uow.session
         record = session.get(AuthSession, actor.session_id)
         expires_at = record.expires_at if record is not None else utc_now()
+        full_name = _display_name(session, actor)
         uow.rollback()
     return LoginResponse(
         session=SessionSummary(
@@ -724,7 +752,7 @@ def current_session(
             expires_at=expires_at,
             authentication_level=actor.auth_level,
         ),
-        user=_actor_summary(actor, status="active"),
+        user=_actor_summary(actor, status="active", full_name=full_name),
     )
 
 

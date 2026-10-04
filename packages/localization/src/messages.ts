@@ -117,7 +117,8 @@ export const faMessages = {
   // The identifier rather than a name: `/auth/me` returns no display name, and inventing
   // one — or inferring a role from the permission list — would be the screen asserting
   // something the server never told it.
-  "admin.session.signedIn": "شناسه کاربر: {id}",
+  "admin.session.signedIn": "کاربر: {id}",
+  "admin.session.signedInAs": "{id} — {role}",
   "admin.landing.signedInTitle": "شما وارد شده‌اید",
   "admin.landing.signedInBody": "دسترسی‌های شما تعیین‌کنندهٔ بخش‌هایی است که در ناوبری می‌بینید. نبودن یک بخش به معنی نداشتن اختیار آن است، و سرور در هر حال درخواست بدون مجوز را رد می‌کند.",
   "admin.landing.permissionCount": "تعداد دسترسی‌های فعال: {count}",

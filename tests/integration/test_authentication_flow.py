@@ -1061,6 +1061,38 @@ def test_a_password_change_moves_the_row_s_last_modified_stamp(
     )
 
 
+def test_the_session_read_says_who_the_person_is(client: Any) -> None:
+    """F-3. The header showed a UUID because the contract carried no name.
+
+    `admin-shell.tsx` was right about its own half — *"rendering the id is honest;
+    inventing a name from it would not be"* — and the gap was in `ActorSummary`. Both
+    `AdminUser` and `TraderUser` declare `full_name` as a non-null column, so the name
+    existed throughout and had simply never left the database.
+
+    Asserted on `/auth/me` as well as on the login response because the header reads the
+    former on every page load and the latter only once; a name present at sign-in and
+    absent afterwards would show correctly and then turn back into a UUID.
+    """
+
+    signed_in = client.post(
+        "/api/v1/auth/admin/login",
+        json={"identifier": ADMIN_USERNAME, "password": ADMIN_PASSWORD},
+    )
+    assert signed_in.status_code == 200, signed_in.text
+    assert signed_in.json()["user"]["full_name"], "the login response carries no name"
+
+    me = client.get("/api/v1/auth/me")
+    assert me.status_code == 200, me.text
+    body = me.json()["user"]
+    assert body["full_name"] == signed_in.json()["user"]["full_name"], (
+        "the name differs between sign-in and the session read, so the header would "
+        "change after the first navigation"
+    )
+    assert body["full_name"] != body["id"], (
+        "the name is the id, which is the state this finding is about"
+    )
+
+
 def test_a_wrong_current_password_changes_nothing(client: Any, migrated: RuntimeIdentities) -> None:
     """The presence check, and the reason it is not a login.
 
