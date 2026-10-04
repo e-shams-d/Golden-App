@@ -268,7 +268,7 @@ def test_a_confirmed_failure_reaches_its_trader(world: dict[str, Any]) -> None:
     messages = notifications_for(world, case["request_id"])
     assert len(messages) == 1, f"expected one notification, got {messages}"
     assert messages[0][0] == "payment_attempt_failed"
-    assert "did not succeed" in messages[0][2]
+    assert "به نتیجه نرسید" in messages[0][2]  # F-28: the trader reads this, so it is Persian.
     assert "bank_rejected" in messages[0][2]
     assert messages[0][4] == "unread"
 

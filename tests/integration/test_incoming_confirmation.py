@@ -552,7 +552,28 @@ def test_the_trader_is_told_their_order_is_ready(world: dict[str, Any]) -> None:
         f"the title is {title!r} and does not name the order. The order number is what the trader "
         "recognises."
     )
-    assert str(PRICED) in body
+    # **The figure must not be here, and this assertion used to require it.**
+    #
+    # Three things bear on it and they did not agree. `_message`'s docstring states the
+    # rule — "No amount and no IBAN. A notification is delivered outside the authenticated
+    # surface in every channel ADR-009 might eventually choose, and a message that carries
+    # a figure is a figure on somebody's lock screen" — and
+    # `test_a_notification_carries_no_amount_and_no_iban` gates it, with a comment
+    # recording that its first version could not have failed until a negative control said
+    # so. `_gold_order_message`'s docstring argued the amounts must come from the payload
+    # so they cannot drift, which is an argument about *where* a figure comes from once one
+    # is included. And this line required one, with no reason given.
+    #
+    # The rule with a stated motive and a gate behind it wins over a bare assertion. F-35.
+    # The order number above is what opens the screen that shows the amount, which is what
+    # the entity reference is for.
+    #
+    # If ADR-009 settles on in-app delivery only, this inverts back in one line — and that
+    # is then a decision somebody makes, which is why both sides are written down here.
+    assert str(PRICED) not in body, (
+        "the confirmed total reached the notification body; a notification is delivered "
+        "outside the authenticated surface and ADR-009 has not chosen the channel"
+    )
 
 
 # --- Document 06 §11.2 and §11.3 ---------------------------------------------
