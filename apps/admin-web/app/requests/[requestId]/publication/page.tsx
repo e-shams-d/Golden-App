@@ -1,6 +1,6 @@
 "use client";
 
-import { t } from "@gold/localization";
+import { errorMessage, t } from "@gold/localization";
 import { BidiText, StateView } from "@gold/ui";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -224,13 +224,15 @@ export default function AdminPublicationPage() {
       })
       .catch(async (caught: unknown) => {
         const status = (caught as { status?: number }).status;
-        const body = (caught as { body?: { error?: { message?: string } } }).body?.error?.message;
+        const body = (caught as { body?: { error?: { code?: string; message?: string } } }).body?.error;
         setNotice(
           status === 401
             ? t("correction.recentAuthFailed")
             : status === 412
               ? t("publication.stale")
-              : (body ?? t("correction.failed")),
+              : body === undefined
+                ? t("correction.failed")
+                : errorMessage(body.code, body.message),
         );
         try {
           setPhase(await load());

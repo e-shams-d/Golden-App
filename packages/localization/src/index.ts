@@ -1,3 +1,4 @@
+export { errorMessage } from "./messages";
 export { normalizeDigits, toPersianDigits } from "./digits";
 export {
   faMessages,

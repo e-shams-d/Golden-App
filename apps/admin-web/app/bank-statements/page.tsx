@@ -1,7 +1,7 @@
 "use client";
 
 import { stateForError } from "@gold/api-client";
-import { t } from "@gold/localization";
+import { errorMessage, t } from "@gold/localization";
 import { BidiText, StateView, kindForApplicationState } from "@gold/ui";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -96,9 +96,14 @@ export default function BankStatementsPage() {
         setPhase(await load());
       })
       .catch(async (caught: unknown) => {
-        const message = (caught as { body?: { error?: { message?: string } } }).body?.error
-          ?.message;
-        setNotice(message ?? t("statement.failed"));
+        const failure = (
+          caught as { body?: { error?: { code?: string; message?: string } } }
+        ).body?.error;
+        setNotice(
+          failure === undefined
+            ? t("statement.failed")
+            : errorMessage(failure.code, failure.message),
+        );
         try {
           setPhase(await load());
         } catch {
