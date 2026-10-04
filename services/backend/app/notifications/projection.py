@@ -211,9 +211,20 @@ def _gold_order_message(
     notification names a row a person is about to open. The order number in particular is what the
     trader recognises, and reading it back is what keeps the message true if the row moved.
 
-    The amounts stay from the payload. They describe the moment the order became payable and are
-    the one thing that must *not* drift — a message saying "we received 50,000,000,000" has to keep
-    saying it even after a correction, because that is what the trader was told.
+    **No figure in the body, as `_message` below requires of every message here.** That
+    docstring states the rule and `test_a_notification_carries_no_amount_and_no_iban` gates
+    it: a notification is delivered outside the authenticated surface in whatever channel
+    ADR-009 chooses, so a message carrying an amount is an amount on somebody's lock screen.
+    This function was written in a later slice and carried `{confirmed} IRR` until F-28.
+
+    Its earlier note argued the amounts must come from the payload rather than the row, so
+    that a message saying "we received 50,000,000,000" keeps saying it after a correction.
+    That is an argument about *where* a figure comes from once one is included, not about
+    whether to include it — and only one of the two rules has a gate behind it. The order
+    number opens the screen that shows the amount, which is what the entity reference is for.
+
+    If ADR-009 settles on in-app delivery only, putting the figure back is one line and a
+    decision somebody makes knowingly.
     """
 
     raw = payload.get("gold_sale_order_id")
@@ -229,11 +240,10 @@ def _gold_order_message(
             f"gold sale order {raw} does not exist, so the event and the database disagree"
         )
 
-    confirmed = payload.get("confirmed_total_irr")
-    title = f"Payment confirmed for order {order.order_number}"
+    title = f"پرداخت سفارش {order.order_number} تأیید شد"
     body = (
-        f"The centre has confirmed {confirmed} IRR against order {order.order_number}. "
-        "It is ready for dispatch."
+        f"مرکز پرداخت سفارش {order.order_number} را تأیید کرد و سفارش آمادهٔ ارسال است. "
+        "برای دیدن مبلغ، سفارش را در برنامه باز کنید."
     )
     return title, body, ENTITY_GOLD_SALE_ORDER, order.id, order.trader_id
 
@@ -291,8 +301,8 @@ def _message(
     if notification_type == TYPE_RESULT_PUBLISHED:
         publication_id = payload.get("publication_id")
         return (
-            f"Payment result available for {number}",
-            f"The result for request {number} has been published. Sign in to view it.",
+            f"نتیجهٔ پرداخت درخواست {number} منتشر شد",
+            f"نتیجهٔ درخواست {number} منتشر شده است. برای دیدن آن وارد برنامه شوید.",
             ENTITY_PAYMENT_PUBLICATION,
             uuid.UUID(str(publication_id)) if publication_id else request.id,
         )
@@ -300,9 +310,9 @@ def _message(
     if notification_type == TYPE_RESULT_CORRECTED:
         publication_id = payload.get("publication_id")
         return (
-            f"Payment result corrected for {number}",
-            f"The published result for request {number} has been corrected. The previous version "
-            "is preserved and remains viewable.",
+            f"نتیجهٔ پرداخت درخواست {number} اصلاح شد",
+            f"نتیجهٔ منتشرشدهٔ درخواست {number} اصلاح شده است. نسخهٔ پیشین نگهداری می‌شود و "
+            "همچنان قابل مشاهده است.",
             ENTITY_PAYMENT_PUBLICATION,
             uuid.UUID(str(publication_id)) if publication_id else request.id,
         )
@@ -311,11 +321,13 @@ def _message(
     # is the difference between "we are retrying" and "your account details need fixing", and the
     # trader can act on the second.
     code = payload.get("failure_code")
-    detail = f" Reason recorded: {code}." if code else ""
+    # The code itself stays as the bank wrote it: it is an identifier a person reads out to
+    # support, and translating it would make the two sides of that conversation disagree.
+    detail = f" علت ثبت‌شده: {code}." if code else ""
     return (
-        f"Payment attempt failed for {number}",
-        f"An attempt to pay request {number} did not succeed.{detail} The centre is reviewing it; "
-        "no action is needed from you yet.",
+        f"تلاش پرداخت درخواست {number} ناموفق بود",
+        f"تلاشی برای پرداخت درخواست {number} به نتیجه نرسید.{detail} مرکز در حال بررسی است؛ "
+        "فعلاً اقدامی از شما لازم نیست.",
         ENTITY_PAYMENT_REQUEST,
         request.id,
     )
