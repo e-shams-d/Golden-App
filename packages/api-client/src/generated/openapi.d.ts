@@ -449,7 +449,7 @@ export interface components {
   schemas: {
     "AccountListResponse": { bank_accounts: Array<components["schemas"]["AccountSummary"]> };
     "AccountSummary": { account_role: string; display_name: string; id: string; normalized_iban: string | null; status: string };
-    "ActorSummary": { audience: string; id: string; permissions: Array<string>; roles: Array<string>; status: string; trader_id: string | null };
+    "ActorSummary": { audience: string; full_name?: string | null; id: string; permissions: Array<string>; roles: Array<string>; status: string; trader_id: string | null };
     "AdminUserListResponse": { admin_users: Array<components["schemas"]["AdminUserView"]> };
     "AdminUserView": { email: string | null; full_name: string; id: string; phone_number: string | null; record_version: number; role_codes: Array<string>; status: string; username: string };
     "AmendAdminUserRequest": { email?: string | null; full_name?: string | null; phone_number?: string | null };

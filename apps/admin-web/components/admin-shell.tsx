@@ -85,13 +85,38 @@ export function AdminShell({ children }: Readonly<{ children: ReactNode }>) {
 /**
  * What the header says about the current session.
  *
- * The subject id rather than a name, because `/auth/me` returns no display name — the
- * adapter sets `displayName` to the id and says so. Rendering the id is honest; inventing a
- * name from it would not be, and inventing a *role* from the permission list would be worse:
- * the same permissions can arrive from more than one role and the server never says which.
+ * **Both halves of the old note have been overtaken, and one of them was wrong.**
+ *
+ * It said the id was shown "because `/auth/me` returns no display name". True, and the
+ * gap was in the contract rather than here: both `AdminUser` and `TraderUser` carry
+ * `full_name` as a non-null column, and it had never left the database. `ActorSummary`
+ * carries it now.
+ *
+ * It also said that inventing a role from the permission list would be worse because
+ * "the server never says which". The server does say which — `ActorSummary.roles` has
+ * always been in the response, and this app's adapter dropped it before the shell could
+ * see it. The claim was true of the data arriving and false of the contract, which is the
+ * more misleading of the two.
+ *
+ * The id remains the fallback when the server sends no name, because that is still the
+ * honest answer rather than a blank.
  */
 function headerFor(session: AdminSession): string {
   if (session.kind === "loading") return t("admin.session.loading");
   if (session.kind === "anonymous") return t("admin.session.anonymous");
-  return t("admin.session.signedIn").replace("{id}", session.subjectId);
+
+  const who = session.displayName.trim().length > 0 ? session.displayName : session.subjectId;
+  // One role or none. A reader needs to know which hat they are wearing, and the catalogue
+  // grants admins exactly one role today; listing several would be inventing a shape the
+  // seeded data does not have.
+  //
+  // The code as the server sends it, which is what `/roles` prints too. There is no
+  // Persian name for a role anywhere in the catalogue, and inventing one here would give
+  // the header and the roles screen two different words for the same thing — the drift
+  // `paymentRequestStatusLabel` warns about. A role vocabulary is worth having and
+  // belongs in one place serving both, not arriving sideways through a header.
+  const [role] = session.roles;
+  return role === undefined
+    ? t("admin.session.signedIn").replace("{id}", who)
+    : t("admin.session.signedInAs").replace("{id}", who).replace("{role}", role);
 }

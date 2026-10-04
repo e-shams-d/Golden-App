@@ -30,6 +30,8 @@ export type AdminSession =
   | {
       readonly kind: "signed-in";
       readonly subjectId: string;
+      readonly displayName: string;
+      readonly roles: readonly string[];
       readonly permissions: readonly string[];
       readonly expiresAt: string;
     };
@@ -44,6 +46,8 @@ export async function loadAdminSession(signal?: AbortSignal): Promise<AdminSessi
   return {
     kind: "signed-in",
     subjectId: snapshot.identity.subjectId,
+    displayName: snapshot.identity.displayName ?? snapshot.identity.subjectId,
+    roles: snapshot.identity.roles ?? [],
     // Consumed for navigation only. The backend resolves grants on every request
     // (`app/api/v1/auth.py`), so this copy is a hint about what to show and never a
     // decision about what is allowed.

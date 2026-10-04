@@ -78,7 +78,13 @@ export const adminAuthAdapter: AuthAdapter = {
       // duplicate the generated type and drift from it.
       const body = response.data as {
         session: { expires_at: string };
-        user: { id: string; audience: string; permissions: readonly string[] };
+        user: {
+          id: string;
+          full_name?: string | null;
+          audience: string;
+          roles?: readonly string[];
+          permissions: readonly string[];
+        };
       };
 
       return {
@@ -86,13 +92,19 @@ export const adminAuthAdapter: AuthAdapter = {
         expiresAt: body.session.expires_at,
         identity: {
           subjectId: body.user.id,
-          displayName: body.user.id,
+          // The name, when the server knows one. It fell back to the id because
+          // `ActorSummary` carried no name at all, not because showing the id was wanted.
+          displayName: body.user.full_name ?? body.user.id,
           domain: "internal",
           // Consumed for navigation only. The backend is authoritative
           // (`12_Security_RBAC_Audit.md:625-626`), so a hidden item is not a
           // control and a shown one is not a grant — `UI-NAV-001` proves a hidden
           // action still fails server-side when called directly.
           permissions: body.user.permissions,
+          // Kept rather than dropped. The server has always sent these; this adapter's
+          // inline type omitted them, and the shell then recorded that "the server never
+          // says which" role — true of what reached it, false of the contract.
+          roles: body.user.roles ?? [],
         },
       } satisfies SessionSnapshot;
     } catch {

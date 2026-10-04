@@ -12,6 +12,13 @@ export type SessionIdentity = Readonly<{
   subjectId: string;
   displayName: string;
   domain: IdentityDomain;
+  /**
+   * The roles the server resolved, which it has always sent and the admin adapter used to
+   * discard. Optional because a trader has none by design — `04_Database_Schema.md:405`
+   * makes trader access a matter of identity and ownership scope rather than role grants —
+   * so an empty list here is a fact about traders, not a missing lookup.
+   */
+  roles?: readonly string[];
   permissions: readonly string[];
 }>;
 
