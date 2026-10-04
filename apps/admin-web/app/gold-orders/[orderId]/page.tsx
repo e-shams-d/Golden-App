@@ -1,6 +1,6 @@
 "use client";
 
-import { t } from "@gold/localization";
+import { normalizeDigits, t } from "@gold/localization";
 import { BidiText, StateView } from "@gold/ui";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -130,7 +130,10 @@ export default function AdminGoldOrderPage() {
       const created = await createPricingVersion(orderId, ifMatch, {
         // `Number` here and not on the weight: a unit price in rials is a whole number the
         // contract types as an integer, where a weight is a decimal the string protects.
-        unitPriceIrr: Number(unitPrice),
+        // A unit price is money somebody types, and it is not called an amount —
+        // which is why the keyword sweep missed it and the gate did not. `Number` of
+        // a Persian numeral is `NaN`, written as `null` by `JSON.stringify`.
+        unitPriceIrr: Number(normalizeDigits(unitPrice).trim()),
         pricingNote: note.trim() || null,
       });
       const refreshed = await load();
