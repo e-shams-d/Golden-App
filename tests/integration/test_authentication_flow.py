@@ -124,6 +124,23 @@ def _psycopg(url: str) -> str:
     return url.replace("postgresql+psycopg://", "postgresql://", 1)
 
 
+def _admin_row(migrated: RuntimeIdentities, username: str) -> dict[str, object]:
+    """The two timestamps F-5 is about, read as the owner.
+
+    The owner rather than the application role: this is a fixture reading state, which is
+    what migrations do, and reading as the application would be testing the fixture.
+    """
+
+    with psycopg.connect(_psycopg(migrated.owner_url)) as connection:
+        row = connection.execute(
+            "SELECT password_changed_at, updated_at FROM admin_users WHERE username = %s",
+            (username,),
+        ).fetchone()
+    assert row is not None, f"no admin_users row for {username}"
+    return {"password_changed_at": row[0], "updated_at": row[1]}
+
+
+
 def _events(migrated: RuntimeIdentities) -> list[tuple[str, str, Any]]:
     with psycopg.connect(_psycopg(migrated.owner_url)) as connection:
         return connection.execute(
@@ -1001,6 +1018,46 @@ def test_a_password_change_touches_only_the_callers_own_sessions(
     assert refused.status_code == 422, (
         "the route accepted a field naming another account; even ignored, its presence in "
         "the contract invites a client to believe it works"
+    )
+
+
+def test_a_password_change_moves_the_row_s_last_modified_stamp(
+    client: Any, migrated: RuntimeIdentities
+) -> None:
+    """F-5. `password_changed_at` moved and `updated_at` did not.
+
+    `updated_at_column`'s docstring sets the convention — *"maintained by the application
+    inside the same transaction as the change, never by a trigger, so the value belongs to
+    the reviewed unit of work rather than to a side effect"* — and `compare_and_swap`
+    honours it for every path that goes through it.
+
+    This path cannot: changing your own password carries no `If-Match`, so there is no
+    version to swap against, and writing the row directly lost the one thing the helper
+    was doing for free. The row then says the credential was never touched, which is the
+    opposite of what happened.
+
+    Asserted against `password_changed_at` rather than against a wall-clock window: both
+    are written from the same `now`, so requiring them equal is exact and says what the
+    convention actually promises — one instant for one unit of work.
+    """
+
+    before = _admin_row(migrated, ADMIN_USERNAME)
+
+    token = _sign_in(client, ADMIN_USERNAME)
+    changed = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": ADMIN_PASSWORD, "new_password": NEW_PASSWORD},
+        headers={CSRF_HEADER: token},
+    )
+    assert changed.status_code == 200, changed.text
+
+    after = _admin_row(migrated, ADMIN_USERNAME)
+    assert after["password_changed_at"] != before["password_changed_at"], (
+        "the credential did not move, so this test is not measuring what it claims"
+    )
+    assert after["updated_at"] == after["password_changed_at"], (
+        f"updated_at is {after['updated_at']} and the credential changed at "
+        f"{after['password_changed_at']}; the row's last-modified stamp did not move with it"
     )
 
 
