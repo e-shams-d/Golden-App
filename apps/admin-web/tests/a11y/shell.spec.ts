@@ -23,6 +23,10 @@ const paths = [
   "/states/precondition",
   "/states/idempotency",
   "/states/timeout",
+  // The two kinds F-10 added. By hand, for the reason given above: a kind this list
+  // does not name is a kind whose page nobody checks.
+  "/states/success",
+  "/states/info",
   // The approval screen, added with the screen rather than after it. This suite keeps a
   // fixed list precisely so a new page is a visible edit rather than an oversight — a
   // screen outside the list is a screen nobody checks.

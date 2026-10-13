@@ -15,6 +15,15 @@ import type { ReactNode } from "react";
  * ones the plan's own six named and no component had. `timeout` is the important one: it
  * is visually distinct from `error` on purpose, because a person who is told an operation
  * failed will retry it and a person told the outcome is unknown will check first.
+ *
+ * `success` and `info` are not among the eighteen and nothing maps to them: they are not
+ * things an API call reports, they are things a screen says. The names are the design
+ * system's own — document 21 `:256-257` lists `state.info` ("Informational state") and
+ * `state.success` ("Confirmed or complete state") — and they exist because the screens
+ * that needed them had been borrowing `empty`. Four confirmation screens printed
+ * "بدون داده" directly above "گذرواژه تغییر کرد". That fails this component's own test
+ * for a separate kind, stated above for `timeout`: somebody told there is no data after
+ * changing a password wonders whether it worked, and does it again.
  */
 export type StateKind =
   | "loading"
@@ -24,7 +33,9 @@ export type StateKind =
   | "conflict"
   | "precondition"
   | "idempotency"
-  | "timeout";
+  | "timeout"
+  | "success"
+  | "info";
 
 /**
  * The runtime list, so a caller can check a value rather than only a type.
@@ -41,6 +52,8 @@ export const STATE_KINDS = [
   "precondition",
   "idempotency",
   "timeout",
+  "success",
+  "info",
 ] as const satisfies readonly StateKind[];
 
 /**
@@ -109,6 +122,11 @@ const stateLabels: Record<StateKind, string> = {
   // told an operation failed retries it, and this state exists precisely for the case
   // where a retry could apply the same change twice.
   timeout: "نتیجه نامشخص",
+  // Things a screen says rather than states an API reports; see the note on `StateKind`.
+  // `success` is the one that matters: the label is the only text on this panel the
+  // screen does not choose, and "بدون داده" above a completed action contradicts it.
+  success: "انجام شد",
+  info: "اطلاع",
 };
 
 export function StateView({
