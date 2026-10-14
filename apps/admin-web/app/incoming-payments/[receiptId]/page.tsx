@@ -1,7 +1,7 @@
 "use client";
 
 import { normalizeDigits, t } from "@gold/localization";
-import { BidiText, StateView } from "@gold/ui";
+import { BidiText, Instant, StateView } from "@gold/ui";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
@@ -218,7 +218,7 @@ export default function AdminIncomingPaymentPage() {
                       {match.rejected_at !== null ? (
                         <p className="text-sm">
                           <span className="font-medium">{t("receipt.matchRejectedAt")}: </span>
-                          <BidiText>{match.rejected_at}</BidiText>
+                          <Instant value={match.rejected_at} />
                           {match.rejection_reason !== null ? ` — ${match.rejection_reason}` : null}
                         </p>
                       ) : null}

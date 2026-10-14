@@ -1,7 +1,7 @@
 "use client";
 
 import { t } from "@gold/localization";
-import { StateView } from "@gold/ui";
+import { Instant, StateView } from "@gold/ui";
 import { useCallback, useEffect, useState } from "react";
 
 import { AdminShell } from "../../components/admin-shell";
@@ -155,7 +155,9 @@ export default function AdminNotificationsPage() {
                   >
                     <p className="font-medium">{notification.title}</p>
                     <p className="text-sm">{notification.body}</p>
-                    <p className="text-xs opacity-70">{notification.created_at}</p>
+                    <p className="text-xs opacity-70">
+                      <Instant value={notification.created_at} />
+                    </p>
                     {notification.status === "unread" ? (
                       <button
                         type="button"

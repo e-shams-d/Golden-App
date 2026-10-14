@@ -1,7 +1,7 @@
 "use client";
 
 import { errorMessage, t } from "@gold/localization";
-import { BidiText, StateView } from "@gold/ui";
+import { BidiText, Instant, StateView } from "@gold/ui";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -402,7 +402,7 @@ export default function AdminPublicationPage() {
                             <BidiText>{publication.status}</BidiText>
                           </td>
                           <td>
-                            <BidiText>{publication.published_at}</BidiText>
+                            <Instant value={publication.published_at} />
                           </td>
                           <td className="break-all text-xs">
                             <BidiText>{publication.content_hash}</BidiText>

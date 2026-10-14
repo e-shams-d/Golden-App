@@ -11,6 +11,7 @@ export {
   type UploadOutcome,
 } from "./file-upload-panel";
 export { ICON_NAMES, Icon, type IconName, type IconProps } from "./icon";
+export { Instant, formatInstant, type InstantProps } from "./instant";
 export { LoginForm, type LoginFormProps } from "./login-form";
 export { SecureFileViewer, type SecureFileViewerProps } from "./secure-file-viewer";
 export {
