@@ -1,6 +1,6 @@
 "use client";
 
-import { normalizeDigits, t } from "@gold/localization";
+import { normalizeDigits, t, tehranWallClockToInstant } from "@gold/localization";
 import { BidiText, StateView } from "@gold/ui";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -277,10 +277,17 @@ export default function AdminAttemptPage() {
                 className="space-y-3 rounded border p-4"
                 onSubmit={(event) => {
                   event.preventDefault();
+                  // The bank's clock is Tehran's, whatever zone this browser is in. Sent as
+                  // typed, the bank's 10:30 was stored as 14:00 — F-39.
+                  const bankResultAt = tehranWallClockToInstant(resultAt);
+                  if (bankResultAt === null) {
+                    setNotice(t("attempt.resultAtNotAnInstant"));
+                    return;
+                  }
                   void act(() =>
                     confirmPaid(attemptId, phase.ifMatch, {
                       bankTrackingNumber: tracking,
-                      bankResultAt: resultAt,
+                      bankResultAt,
                       // **One or the other, never neither**, which is what `evidence_policy_
                       // satisfied` means. Until M0 slice C this screen could only ever send the
                       // explanation — not by choice, but because nothing listed an attempt's
