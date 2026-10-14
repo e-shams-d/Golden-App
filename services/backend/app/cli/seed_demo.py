@@ -114,12 +114,18 @@ class Colleague:
     role: str
 
 
-# Three staff accounts across the roles whose navigation actually differs, so the
-# role-aware menu can be demonstrated by signing in as two people rather than described.
+# One staff account for every role a person can hold, so each role's menu can be shown by
+# signing in rather than described. `business_admin` is the bootstrap account the decisions
+# are attributed to, and the trader side is each business's primary contact;
+# `tests/backend/test_demo_seed_covers_every_role.py` holds this list to the catalogue.
+# A-3: the warehouse operator was missing, and with it the gold-dispatch path —
+# `gold_sale.dispatch` is that role's alone.
 COLLEAGUES: tuple[Colleague, ...] = (
     Colleague("hesabdar", "زهرا حسابدار", "accountant"),
     Colleague("modir", "علی مدیر", "manager"),
     Colleague("naghsh_khan", "رضا بازرس", "read_only_auditor"),
+    Colleague("anbardar", "حسین انباردار", "warehouse_operator"),
+    Colleague("fanni", "نرگس کارشناس فنی", "technical_admin"),
 )
 
 
@@ -290,7 +296,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         prog="python -m app.cli.seed_demo",
         description=(
             "Populate a demonstration deployment with businesses in every state and staff "
-            "in three roles. Refuses in production and refuses to run twice."
+            "in every role a person can hold. Refuses in production and refuses to run twice."
         ),
     )
     parser.parse_args(argv)
