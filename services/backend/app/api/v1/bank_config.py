@@ -31,7 +31,7 @@ from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
-from app.api.contract import VALIDATION_ERROR_RESPONSE
+from app.api.contract import REFUSED_RESPONSE, UNAUTHENTICATED_RESPONSE, VALIDATION_ERROR_RESPONSE
 from app.api.dependencies import get_runtime
 from app.api.v1.auth import authenticated_actor, requires
 from app.audit.redaction import RedactionPolicy
@@ -220,7 +220,11 @@ class AccountListResponse(BaseModel):
     operation_id="listBankProfiles",
     response_model=BankProfileListResponse,
     dependencies=[requires(declare("bank_profile.read"))],
-    responses={**VALIDATION_ERROR_RESPONSE},
+    responses={
+        **UNAUTHENTICATED_RESPONSE,
+        **REFUSED_RESPONSE,
+        **VALIDATION_ERROR_RESPONSE,
+    },
 )
 def list_bank_profiles(
     runtime: Annotated[RuntimeServices, Depends(get_runtime)],
@@ -242,7 +246,12 @@ def list_bank_profiles(
     operation_id="getBankProfile",
     response_model=BankProfileDetail,
     dependencies=[requires(declare("bank_profile.read"))],
-    responses={404: {"model": ErrorEnvelope}, **VALIDATION_ERROR_RESPONSE},
+    responses={
+        404: {"model": ErrorEnvelope},
+        **UNAUTHENTICATED_RESPONSE,
+        **REFUSED_RESPONSE,
+        **VALIDATION_ERROR_RESPONSE,
+    },
 )
 def get_bank_profile(
     profile_id: uuid.UUID,
@@ -317,7 +326,12 @@ def get_bank_profile(
     status_code=status.HTTP_201_CREATED,
     response_model=ProfileCreatedResponse,
     dependencies=[requires(declare("bank_profile.create_version"))],
-    responses={400: {"model": ErrorEnvelope}, **VALIDATION_ERROR_RESPONSE},
+    responses={
+        400: {"model": ErrorEnvelope},
+        **UNAUTHENTICATED_RESPONSE,
+        **REFUSED_RESPONSE,
+        **VALIDATION_ERROR_RESPONSE,
+    },
 )
 def create_bank_profile(
     request: CreateProfileRequest,
@@ -355,6 +369,8 @@ def create_bank_profile(
     responses={
         400: {"model": ErrorEnvelope},
         404: {"model": ErrorEnvelope},
+        **UNAUTHENTICATED_RESPONSE,
+        **REFUSED_RESPONSE,
         **VALIDATION_ERROR_RESPONSE,
     },
 )
@@ -392,7 +408,11 @@ def activate_bank_profile_version(
     operation_id="listBankAccounts",
     response_model=AccountListResponse,
     dependencies=[requires(declare("bank_profile.read"))],
-    responses={**VALIDATION_ERROR_RESPONSE},
+    responses={
+        **UNAUTHENTICATED_RESPONSE,
+        **REFUSED_RESPONSE,
+        **VALIDATION_ERROR_RESPONSE,
+    },
 )
 def list_bank_accounts(
     runtime: Annotated[RuntimeServices, Depends(get_runtime)],
@@ -423,7 +443,12 @@ def list_bank_accounts(
     status_code=status.HTTP_201_CREATED,
     response_model=AccountSummary,
     dependencies=[requires(declare("source_bank_account.manage"))],
-    responses={400: {"model": ErrorEnvelope}, **VALIDATION_ERROR_RESPONSE},
+    responses={
+        400: {"model": ErrorEnvelope},
+        **UNAUTHENTICATED_RESPONSE,
+        **REFUSED_RESPONSE,
+        **VALIDATION_ERROR_RESPONSE,
+    },
 )
 def create_bank_account(
     request: CreateAccountRequest,

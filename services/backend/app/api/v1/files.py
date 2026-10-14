@@ -33,7 +33,7 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
-from app.api.contract import VALIDATION_ERROR_RESPONSE
+from app.api.contract import REFUSED_RESPONSE, UNAUTHENTICATED_RESPONSE, VALIDATION_ERROR_RESPONSE
 from app.api.dependencies import get_runtime
 from app.api.v1.auth import authenticated_actor, requires
 from app.audit.redaction import RedactionPolicy
@@ -93,6 +93,8 @@ class UploadedFileResponse(BaseModel):
             "model": ErrorEnvelope,
             "description": "The purpose, media type, size or idempotency key was refused.",
         },
+        **UNAUTHENTICATED_RESPONSE,
+        **REFUSED_RESPONSE,
         # Spread, not nested: `VALIDATION_ERROR_RESPONSE` is already keyed by 422.
         **VALIDATION_ERROR_RESPONSE,
     },
@@ -222,7 +224,12 @@ def _no_store(response: Response) -> None:
     operation_id="getFileMetadata",
     response_model=FileMetadataResponse,
     dependencies=[requires(declare("file.read_metadata"))],
-    responses={404: {"model": ErrorEnvelope}, **VALIDATION_ERROR_RESPONSE},
+    responses={
+        404: {"model": ErrorEnvelope},
+        **UNAUTHENTICATED_RESPONSE,
+        **REFUSED_RESPONSE,
+        **VALIDATION_ERROR_RESPONSE,
+    },
 )
 def get_file_metadata(
     file_id: uuid.UUID,
@@ -296,7 +303,12 @@ def _stream(runtime: RuntimeServices, record: FileObject) -> StreamingResponse:
     "/{file_id}/download",
     operation_id="downloadFile",
     dependencies=[requires(declare("file.download"))],
-    responses={404: {"model": ErrorEnvelope}, **VALIDATION_ERROR_RESPONSE},
+    responses={
+        404: {"model": ErrorEnvelope},
+        **UNAUTHENTICATED_RESPONSE,
+        **REFUSED_RESPONSE,
+        **VALIDATION_ERROR_RESPONSE,
+    },
     response_class=StreamingResponse,
 )
 def download_file(
@@ -310,6 +322,8 @@ def download_file(
 PREVIEW_RESPONSES: dict[int | str, dict[str, object]] = {
     400: {"model": ErrorEnvelope, "description": "No such page, or an unsupported rotation."},
     404: {"model": ErrorEnvelope},
+    **UNAUTHENTICATED_RESPONSE,
+    **REFUSED_RESPONSE,
     **VALIDATION_ERROR_RESPONSE,
 }
 
