@@ -33,7 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.contract import VALIDATION_ERROR_RESPONSE
+from app.api.contract import REFUSED_RESPONSE, VALIDATION_ERROR_RESPONSE
 from app.api.dependencies import get_runtime, get_settings
 from app.audit.redaction import RedactionPolicy
 from app.audit.writer import AuditActor, AuditContext
@@ -822,7 +822,8 @@ class ReauthenticateResponse(BaseModel):
     response_model=ReauthenticateResponse,
     operation_id="reauthenticate",
     summary="Prove recent presence for one exact critical action.",
-    responses=AUTH_RESPONSES,
+    # A session route on an unsafe method: a wrong CSRF token or origin is a 403. F-13.
+    responses={**AUTH_RESPONSES, **REFUSED_RESPONSE},
 )
 def reauthenticate(
     request: Request,
@@ -953,7 +954,7 @@ class ApproverReauthenticateResponse(BaseModel):
     response_model=ApproverReauthenticateResponse,
     operation_id="approverReauthenticate",
     summary="A second human proves presence at this machine, for one exact dual-control action.",
-    responses=AUTH_RESPONSES,
+    responses={**AUTH_RESPONSES, **REFUSED_RESPONSE},
 )
 def approver_reauthenticate(
     request: Request,
