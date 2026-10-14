@@ -2,7 +2,7 @@
 
 import { stateForError } from "@gold/api-client";
 import { errorMessage, t } from "@gold/localization";
-import { BidiText, StateView, kindForApplicationState } from "@gold/ui";
+import { BidiText, Instant, StateView, kindForApplicationState } from "@gold/ui";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
@@ -164,7 +164,7 @@ export default function BankStatementsPage() {
                       className="font-medium underline"
                       href={`/bank-statements/${statement.id}`}
                     >
-                      <BidiText>{statement.created_at}</BidiText>
+                      <Instant value={statement.created_at} />
                     </Link>
                     <span className="ms-3">
                       <BidiText>{statement.status}</BidiText>

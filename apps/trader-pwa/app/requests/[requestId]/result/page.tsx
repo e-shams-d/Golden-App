@@ -1,7 +1,7 @@
 "use client";
 
 import { t } from "@gold/localization";
-import { BidiText, StateView } from "@gold/ui";
+import { BidiText, Instant, StateView } from "@gold/ui";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -213,7 +213,7 @@ export default function TraderResultPage() {
               <div>
                 <dt className="text-sm font-medium">{t("result.publishedAt")}</dt>
                 <dd>
-                  <BidiText>{phase.publication.published_at}</BidiText>
+                  <Instant value={phase.publication.published_at} />
                 </dd>
               </div>
               <div>
@@ -249,13 +249,13 @@ export default function TraderResultPage() {
             {phase.publication.acknowledged_at !== null ? (
               <p aria-live="polite" className="rounded border p-3 text-sm">
                 {t("result.acknowledgedAlready")}{" "}
-                <BidiText>{phase.publication.acknowledged_at}</BidiText>
+                <Instant value={phase.publication.acknowledged_at} />
               </p>
             ) : null}
             {phase.publication.disputed_at !== null ? (
               <p aria-live="polite" className="rounded border p-3 text-sm">
                 {t("result.disputedAlready")}{" "}
-                <BidiText>{phase.publication.disputed_at}</BidiText>
+                <Instant value={phase.publication.disputed_at} />
               </p>
             ) : null}
 

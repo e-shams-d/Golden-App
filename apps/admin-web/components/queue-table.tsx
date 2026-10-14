@@ -1,7 +1,7 @@
 "use client";
 
 import { queueSortLabel, t } from "@gold/localization";
-import { BidiText, StateView } from "@gold/ui";
+import { BidiText, Instant, StateView } from "@gold/ui";
 import Link from "next/link";
 
 import type { QueueListing, QueueRow } from "../src/queues";
@@ -190,7 +190,7 @@ export function QueueTable({
                     <BidiText>{row.status}</BidiText>
                   </td>
                   <td>
-                    <BidiText>{row.created_at}</BidiText>
+                    <Instant value={row.created_at} />
                   </td>
                   <td>
                     {row.trader_id === null ? (

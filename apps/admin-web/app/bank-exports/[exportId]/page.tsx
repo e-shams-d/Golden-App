@@ -1,7 +1,7 @@
 "use client";
 
 import { t, toPersianDigits } from "@gold/localization";
-import { StateView } from "@gold/ui";
+import { Instant, StateView } from "@gold/ui";
 import Link from "next/link";
 import { use, useCallback, useEffect, useState } from "react";
 
@@ -201,7 +201,7 @@ function Actions({ onDone, view }: { readonly onDone: () => void; readonly view:
       >
         <p className="font-bold">{t("admin.export.alreadySent")}</p>
         <p className="mt-1 text-[var(--ink-600)]">
-          {view.sent_to_bank_marked_at} — {view.sent_by ?? t("common.unknown")}
+          <Instant value={view.sent_to_bank_marked_at} /> — {view.sent_by ?? t("common.unknown")}
         </p>
       </div>
     );
@@ -434,7 +434,9 @@ function Detail({ view }: { view: ExportDetail }) {
             ? t("common.unknown")
             : toPersianDigits(String(view.bank_profile_version_number))}
         </Cell>
-        <Cell label={t("admin.export.generationTime")}>{view.generated_at}</Cell>
+        <Cell label={t("admin.export.generationTime")}>
+          <Instant value={view.generated_at} />
+        </Cell>
         <Cell label={t("admin.export.generatedBy")}>
           {view.generated_by ?? t("common.unknown")}
         </Cell>
@@ -455,7 +457,11 @@ function Detail({ view }: { view: ExportDetail }) {
           row — which would be a screen implying a record the system does not keep.
         */}
         <Cell label={t("admin.export.lastDownloaded")}>
-          {view.downloaded_at ?? t("admin.export.neverDownloaded")}
+          {view.downloaded_at !== null ? (
+            <Instant value={view.downloaded_at} />
+          ) : (
+            t("admin.export.neverDownloaded")
+          )}
         </Cell>
       </dl>
 

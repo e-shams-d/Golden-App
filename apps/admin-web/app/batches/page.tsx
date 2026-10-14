@@ -1,7 +1,7 @@
 "use client";
 
 import { t, toPersianDigits } from "@gold/localization";
-import { StateView } from "@gold/ui";
+import { Instant, StateView } from "@gold/ui";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
@@ -191,7 +191,11 @@ export default function AdminBatchesPage() {
                       {row.finalized_by ?? t("admin.batches.notFinalized")}
                     </Cell>
                     <Cell label={t("admin.batches.age")}>
-                      {row.version_created_at ?? t("common.unknown")}
+                      {row.version_created_at !== null ? (
+                        <Instant value={row.version_created_at} />
+                      ) : (
+                        t("common.unknown")
+                      )}
                     </Cell>
                   </dl>
                 </li>
