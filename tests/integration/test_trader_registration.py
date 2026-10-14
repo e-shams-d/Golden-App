@@ -724,7 +724,7 @@ def test_reactivating_without_the_permission_is_refused(
 ) -> None:
     """`trader.reactivate`, against a suspended business that could be reactivated.
 
-    Reactivation *does* have a precondition — `:288` refuses unless the business is
+    Reactivation *does* have a precondition — `_values_for` refuses unless the business is
     approved — so the business is walked all the way to suspended before the
     refused call. A pending business here would return 400 whether the guard exists
     or not, and the test would report a working guard on a route that had none.
@@ -787,6 +787,139 @@ def test_reactivating_succeeds_for_a_role_that_holds_the_permission(
 
     assert allowed.status_code == 200, allowed.text
     assert _traders(migrated)[0][4] == "active"
+
+
+def test_a_pending_application_cannot_be_suspended(
+    client: Any, migrated: RuntimeIdentities
+) -> None:
+    """F-8. Document 06 §6.3 suspends from `active` only.
+
+    Suspension used to be accepted on a pending application, and nothing could undo it:
+    reactivation refuses an unapproved business, rightly, so the application sat at pending and
+    suspended until somebody wrote SQL — which is what the acceptance pass had to do.
+    """
+
+    register(client, "09121110021")
+    trader_id = str(_traders(migrated)[0][0])
+    token = sign_in_staff(client)
+
+    refused = client.post(
+        f"/api/v1/traders/{trader_id}/suspend",
+        json={"reason": "a doubt during review"},
+        headers=decision_headers(token, _traders(migrated)[0][5]),
+    )
+
+    assert refused.status_code == 400, refused.text
+    assert _traders(migrated)[0][3:5] == ("pending_approval", "inactive")
+
+
+def test_an_approved_trader_cannot_be_approved_again(
+    client: Any, migrated: RuntimeIdentities
+) -> None:
+    """Document 06 approves a pending application, and only that.
+
+    A second approval used to succeed: it rewrote when and by whom the business was approved,
+    and it wrote `active` — so re-approving a suspended business restored its trading under
+    `trader.approve`, a different permission from the one that exists to do that.
+    """
+
+    register(client, "09121110022")
+    trader_id = str(_traders(migrated)[0][0])
+    _approve(client, migrated, trader_id)
+    with psycopg.connect(_psycopg(migrated.owner_url)) as connection:
+        first_approval = connection.execute("SELECT approved_at FROM traders").fetchone()
+
+    token = sign_in_staff(client)
+    refused = client.post(
+        f"/api/v1/traders/{trader_id}/approve",
+        json={},
+        headers=decision_headers(token, _traders(migrated)[0][5]),
+    )
+
+    assert refused.status_code == 400, refused.text
+    with psycopg.connect(_psycopg(migrated.owner_url)) as connection:
+        assert connection.execute("SELECT approved_at FROM traders").fetchone() == first_approval
+
+
+def test_approval_does_not_lift_a_suspension(client: Any, migrated: RuntimeIdentities) -> None:
+    """F-8. A suspension is lifted by `reactivate`, the decision whose permission says so.
+
+    Rows that are pending and suspended exist from before `suspend` refused a pending
+    application, and approving one wrote `active`: a suspension one operator imposed during
+    review was erased by another operator's approval. Written here as the database holds it,
+    since no route can make one any more.
+    """
+
+    register(client, "09121110023")
+    trader_id = str(_traders(migrated)[0][0])
+    with psycopg.connect(_psycopg(migrated.owner_url)) as connection:
+        connection.execute(
+            "UPDATE traders SET operational_status = 'suspended' WHERE id = %s", (trader_id,)
+        )
+        connection.commit()
+
+    # The other half of F-8: while it is pending, reactivation refuses it, rightly — it
+    # would grant capability approval never gave. That refusal is why there was no way back.
+    token = sign_in_staff(client)
+    still_pending = client.post(
+        f"/api/v1/traders/{trader_id}/reactivate",
+        json={},
+        headers=decision_headers(token, _traders(migrated)[0][5]),
+    )
+    assert still_pending.status_code == 400, still_pending.text
+    assert _traders(migrated)[0][3:5] == ("pending_approval", "suspended")
+
+    _approve(client, migrated, trader_id)
+    assert _traders(migrated)[0][3:5] == ("approved", "suspended"), (
+        "approval lifted a suspension; only reactivation may"
+    )
+
+    token = sign_in_staff(client)
+    reactivated = client.post(
+        f"/api/v1/traders/{trader_id}/reactivate",
+        json={},
+        headers=decision_headers(token, _traders(migrated)[0][5]),
+    )
+
+    assert reactivated.status_code == 200, reactivated.text
+    assert _traders(migrated)[0][3:5] == ("approved", "active")
+
+
+def test_suspension_and_reactivation_each_start_where_document_06_says(
+    client: Any, migrated: RuntimeIdentities
+) -> None:
+    """`suspend` from active, `reactivate` from suspended — refused, not a 200 that did nothing.
+
+    The module's rule for every decision: an operator whose request changed nothing needs to
+    be told so, because a 200 reads as success.
+    """
+
+    register(client, "09121110024")
+    trader_id = str(_traders(migrated)[0][0])
+    _approve(client, migrated, trader_id)
+    token = sign_in_staff(client)
+
+    not_suspended = client.post(
+        f"/api/v1/traders/{trader_id}/reactivate",
+        json={},
+        headers=decision_headers(token, _traders(migrated)[0][5]),
+    )
+    assert not_suspended.status_code == 400, not_suspended.text
+
+    suspended = client.post(
+        f"/api/v1/traders/{trader_id}/suspend",
+        json={"reason": "an unreconciled settlement"},
+        headers=decision_headers(token, _traders(migrated)[0][5]),
+    )
+    assert suspended.status_code == 200, suspended.text
+
+    again = client.post(
+        f"/api/v1/traders/{trader_id}/suspend",
+        json={"reason": "an unreconciled settlement"},
+        headers=decision_headers(token, _traders(migrated)[0][5]),
+    )
+    assert again.status_code == 400, again.text
+    assert _traders(migrated)[0][3:5] == ("approved", "suspended")
 
 
 def test_a_trader_cannot_approve_itself(client: Any, migrated: RuntimeIdentities) -> None:

@@ -263,12 +263,24 @@ def _values_for(
                 "a rejected trader cannot be approved without a fresh registration; "
                 "document 06 permits governed resubmission, which is a separate command"
             )
+        if trader.approval_status == APPROVED:
+            raise BusinessRuleViolationError(
+                "the trader is already approved; document 06 approves a pending "
+                "application, and approving again would rewrite when and by whom"
+            )
         return {
             "approval_status": APPROVED,
             # Approval is what makes a business able to transact, so it moves the
             # operational axis too. Leaving it `inactive` would mean every
             # approval needed a second call nobody would remember to make.
-            "operational_status": ACTIVE,
+            #
+            # **It does not lift a suspension.** `suspend` used to accept a pending
+            # application, so rows exist that are pending and suspended — the acceptance
+            # pass made one — and approving one wrote `active`, erasing a suspension
+            # somebody imposed during review. Such a business is approved and stays
+            # suspended until `reactivate`, the decision whose permission says it may
+            # trade again. F-8.
+            "operational_status": SUSPENDED if trader.operational_status == SUSPENDED else ACTIVE,
             "approved_at": now,
             "approved_by_admin_user_id": actor.actor_id,
         }
@@ -282,6 +294,15 @@ def _values_for(
         return {"approval_status": REJECTED, "operational_status": INACTIVE}
 
     if names is SUSPEND_TRADER:
+        # Document 06 §6.3 suspends from `active` only: an approved business that may
+        # trade, which `operational_status` says alone — nothing reaches `active` without
+        # approval. Suspending a pending application used to succeed, and nothing could
+        # undo it: reactivation rightly refuses an unapproved business. F-8.
+        if trader.operational_status != ACTIVE:
+            raise BusinessRuleViolationError(
+                "only an approved, active trader can be suspended; this one is "
+                f"{trader.approval_status} and {trader.operational_status}"
+            )
         return {"operational_status": SUSPENDED}
 
     if names is REACTIVATE_TRADER:
@@ -289,6 +310,11 @@ def _values_for(
             raise BusinessRuleViolationError(
                 "only an approved trader can be reactivated; reactivating an "
                 "unapproved business would grant it capability approval never gave"
+            )
+        if trader.operational_status != SUSPENDED:
+            raise BusinessRuleViolationError(
+                f"only a suspended trader can be reactivated; this one is "
+                f"{trader.operational_status}"
             )
         return {"operational_status": ACTIVE}
 
