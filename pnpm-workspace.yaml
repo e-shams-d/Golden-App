@@ -145,14 +145,30 @@ allowBuilds:
 #
 # The note above says to re-check sharp whenever Next.js is upgraded, because Next pulls it for
 # image optimization. Checked: still 0.35.4 through the override, unchanged by this bump.
+#
+# --- 2026-10-14: two floors, both from advisories published since the last bump ---
+#
+# Trivy's database refreshed and the scan went red on a change that touched no JavaScript — the
+# shape of the 2026-10-01 entry above.
+#
+# **sharp 0.35.4 -> 0.35.5**, for GHSA-wq5f-xc86-pv6w: CVE-2026-96889 in the librsvg that sharp
+# bundles. sharp is the one package in this block that is fed untrusted bytes — previews and crops
+# of uploaded bank documents — and the pin does not rest on an argument about which formats can
+# reach it. Next.js is unchanged at 16.3.8, so this override still decides sharp's version.
+#
+# **source-map-js 1.2.1 -> 1.2.2**, a new entry, for CVE-2026-93749: a denial of service from a
+# malformed indexed source map. It reaches the tree through postcss (both copies) and
+# `@tailwindcss/node`, all build tooling; nothing this project ships reads a source map from a
+# request. Pinned rather than excepted, because a fixed release exists.
 overrides:
   "postcss@<8.5.18": "8.5.18"
   "nanoid@<3.3.18": "3.3.18"
-  "sharp@<0.35.4": "0.35.4"
+  "sharp@<0.35.5": "0.35.5"
   "brace-expansion@^5.0.0": "5.0.11"
   "brace-expansion@^1.0.0": "1.1.20"
   "js-yaml@<4.3.2": "4.3.2"
   "browserslist@<4.28.7": "4.28.7"
+  "source-map-js@<1.2.2": "1.2.2"
 
 minimumReleaseAgeExclude:
   - '@next/env@16.3.8'
