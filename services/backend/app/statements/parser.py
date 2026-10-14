@@ -27,13 +27,13 @@ are read from separate mapped columns and never inferred from a sign.
 from __future__ import annotations
 
 import io
-import re
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any, Final
 
 from openpyxl import load_workbook
 
+from app.core.external_dates import parse_external_date_time
 from app.core.hashing import unversioned_digest
 
 # The canonical fields a mapping may name. Anything else fails the run.
@@ -77,13 +77,6 @@ _DIGIT_FOLD: Final = str.maketrans(
     {ord(char): str(index) for index, char in enumerate(_PERSIAN_DIGITS)}
     | {ord(char): str(index) for index, char in enumerate(_ARABIC_DIGITS)}
 )
-
-_JALALI_DATE = re.compile(r"^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$")
-_TIME = re.compile(r"^(\d{1,2}):(\d{2})(?::(\d{2}))?$")
-
-# Jalali months: the first six are 31 days, the next five 30, and Esfand is 29 or 30. Used only to
-# reject an impossible date, never to convert one — see `_normalized_instant`.
-_JALALI_MONTH_LENGTHS: Final = (31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, 30)
 
 
 class MappingConfigurationError(Exception):
@@ -369,8 +362,9 @@ def _status_for(problems: list[str], *, amount_in: int | None, amount_out: int |
     """§8.6's states, and the line between two of them.
 
     `invalid` when the row cannot be used for matching at all — no amount, or an amount that is
-    not a number. `warning` when it can be, but something about it needs a human: a Jalali date
-    left unconverted is the common case, and such a row is still matchable by amount and tracking
+    not a number. `warning` when it can be, but something about it needs a human: a date that
+    cannot be read exactly — an hour a daylight-saving change skipped or repeated, a Jalali year
+    outside the verified window — and such a row is still matchable by amount and tracking
     number.
 
     A row is never silently `valid` when it carries a problem, which is the whole difference
@@ -437,51 +431,23 @@ def _normalized_instant(date_text: str | None, time_text: str | None) -> tuple[
 ]:
     """A timezone-aware instant, or a reason there is none.
 
-    **Jalali dates are validated and not converted.** ADR-006 makes the business timezone
-    configuration and the calendar conversion a decision this milestone has no mandate to make; a
-    parser that guessed a Gregorian equivalent would write an instant nobody approved into the
-    column slice 5 matches on. So a Jalali date is recognised, checked for plausibility, kept
-    verbatim in `transaction_date_raw`, and leaves the instant null — which §8.4 explicitly
-    permits and this row's status records.
+    **One reader for every external date, and this is no longer a second one.** This function
+    used to carry its own copy of the rules in `app/core/external_dates.py`, and the copies
+    disagreed: it read a zoneless wall clock as UTC and called the row valid, so a transfer the
+    bank recorded at 22:15 was stored three and a half hours late and filed on the next business
+    day, while the module that had refused to assume anything had no caller at all. F-37.
 
-    A Gregorian ISO date is converted, because that needs no calendar decision.
+    Since the owner's decision of 2026-10-14 the module reads a Jalali date exactly inside the
+    years where three independent references agree, and reads a bank's wall clock in
+    `Asia/Tehran` — document 08 §8.4's canonical row is `1405/04/27` `09:15:23` read as
+    `2026-07-18T09:15:23+03:30`, `valid`. What it still refuses goes back to the row as a reason,
+    and the row becomes a `warning`.
     """
 
     if date_text is None:
         return None, "the row has no transaction date"
 
-    hour, minute, second = 0, 0, 0
-    if time_text is not None:
-        match = _TIME.match(time_text)
-        if match is None:
-            return None, f"time {time_text!r} is not readable"
-        hour, minute = int(match.group(1)), int(match.group(2))
-        second = int(match.group(3) or 0)
-        if hour > 23 or minute > 59 or second > 59:
-            return None, f"time {time_text!r} is not a time of day"
-
-    try:
-        parsed = datetime.fromisoformat(date_text)
-    except ValueError:
-        parsed = None
-
-    if parsed is not None:
-        instant = parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
-        if time_text is not None:
-            instant = instant.replace(hour=hour, minute=minute, second=second, microsecond=0)
-        return instant, None
-
-    jalali = _JALALI_DATE.match(date_text)
-    if jalali is None:
-        return None, f"date {date_text!r} is neither an ISO date nor a Jalali one"
-
-    year, month, day = (int(group) for group in jalali.groups())
-    if not 1 <= month <= 12 or day < 1 or day > _JALALI_MONTH_LENGTHS[month - 1]:
-        return None, f"date {date_text!r} is not a date in the Jalali calendar"
-    if year < 1300 or year > 1500:
-        return None, f"date {date_text!r} has an implausible Jalali year"
-
-    return None, (
-        "the date is Jalali and is preserved raw; ADR-006 leaves the calendar conversion "
-        "undecided, so no instant is invented"
-    )
+    parsed = parse_external_date_time(date_text, time_text)
+    if parsed.needs_review:
+        return None, parsed.reason
+    return parsed.normalised_utc, None

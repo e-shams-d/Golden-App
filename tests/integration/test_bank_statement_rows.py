@@ -21,6 +21,7 @@ import hashlib
 import io
 import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from typing import Any
 
 import psycopg
@@ -75,8 +76,8 @@ STATEMENT_ROWS: list[list[Any]] = [
         "2026-08-12", "10:00:00", "۳۰۰۰۰۰۰۰۰۰", "", "۱۵۳۰۰۰۰۰۰۰۰۰",
         "TRK-1002", "واریز", "رضایی", "۱۲",
     ],
-    # 3. A Jalali date. Preserved raw and left unconverted — ADR-006 has not chosen the calendar
-    #    conversion, so the row is a `warning` with an instant of null rather than a guess.
+    # 3. A Jalali date. Preserved raw, and since the owner's decision of 2026-10-14 converted
+    #    exactly: 1405/05/22 11:30 in Tehran is 2026-08-13T08:00:00Z, and the row is `valid`.
     ["1405/05/22", "11:30:00", "500000000", "", "15800000000", "TRK-1003", "واریز", "کریمی", "۹"],
     # 4. An outgoing amount, which must never be read as incoming. §8.5: "Do not silently convert
     #    debit to credit or vice versa."
@@ -437,14 +438,26 @@ def test_raw_and_normalized_values_are_both_kept(world: dict[str, Any]) -> None:
 
     jalali = stored[2]
     assert jalali["transaction_date_raw"] == "1405/05/22"
-    assert jalali["transaction_at_normalized"] is None, (
-        "a Jalali date was converted to an instant. ADR-006 leaves the calendar conversion "
-        "undecided, and inventing one would write an unapproved timestamp into the column slice 5 "
-        "matches on."
+    # Inverted on the owner's decision of 2026-10-14. This assertion used to require a null
+    # instant, because converting would have written "an unapproved timestamp into the column
+    # slice 5 matches on". The conversion is approved now, exact inside the years three
+    # independent references agree on, and named in the run's `parser_version`.
+    assert jalali["transaction_at_normalized"] == datetime(2026, 8, 13, 8, 0, tzinfo=UTC), (
+        f"1405/05/22 11:30 in Tehran is 2026-08-13T08:00:00Z; the row says "
+        f"{jalali['transaction_at_normalized']!r}"
     )
-    assert jalali["status"] == "warning", (
-        f"the Jalali row is {jalali['status']!r}. It is matchable by amount and tracking number, "
-        "so it is not invalid — but something about it needs a human, so it is not valid either."
+    assert jalali["status"] == "valid", (
+        f"the Jalali row is {jalali['status']!r}. Its date is now read exactly, so nothing about "
+        "it needs a human — a warning here would bury the rows that do."
+    )
+
+    # F-37. The ordinary Gregorian row, whose clock is the bank's — Tehran time. The parser used
+    # to store it as UTC: three and a half hours late, on the next business day after 20:30, and
+    # marked valid. No assertion anywhere read a Gregorian row's instant, which is how it lasted.
+    ordinary = stored[0]
+    assert ordinary["transaction_at_normalized"] == datetime(2026, 8, 11, 5, 45, 23, tzinfo=UTC), (
+        f"the bank wrote 2026-08-11 09:15:23 in Tehran, which is 05:45:23Z; the row says "
+        f"{ordinary['transaction_at_normalized']!r}"
     )
 
 

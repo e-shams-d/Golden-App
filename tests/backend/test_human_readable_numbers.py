@@ -170,10 +170,11 @@ def test_the_generated_request_number_matches_the_documented_shape(
 def test_the_date_is_gregorian_because_adr_006_says_so() -> None:
     """The one departure from the documents, and the authority for it.
 
-    `to_business_time` rather than a Jalali conversion, and no Jalali conversion exists in
-    the backend to reach for: `app/core/external_dates.py` refuses one in terms. This test
-    pins the *reason* in the register, so the departure cannot survive the row that
-    authorises it.
+    `to_business_time` rather than a Jalali conversion. One exists in the backend since
+    2026-10-14 — `app/core/jalali.py`, for reading bank statements — but it converts *into*
+    Gregorian, and this identifier is stored and transported, which ADR-006 keeps Gregorian
+    whatever a screen shows. This test pins the *reason* in the register, so the departure
+    cannot survive the row that authorises it.
     """
 
     register = REGISTER.read_text(encoding="utf-8")
