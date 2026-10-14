@@ -259,7 +259,7 @@ export default function BankProfilePage() {
             <StateView
               description={t("bank.newVersionBlocked")}
               headingLevel={2}
-              kind="empty"
+              kind="info"
               title={t("bank.newVersionBlockedTitle")}
             />
           </>

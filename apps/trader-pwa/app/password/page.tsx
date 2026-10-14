@@ -69,7 +69,7 @@ export default function TraderPasswordPage() {
           <StateView
             description={t("password.doneDescription")}
             headingLevel={2}
-            kind="empty"
+            kind="success"
             title={t("password.doneTitle")}
           />
         ) : null}

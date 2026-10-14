@@ -28,6 +28,10 @@ export const faMessages = {
   "state.error.description": "ارتباط با سامانه برقرار نشد. دوباره تلاش کنید.",
   "state.empty.title": "هنوز موردی وجود ندارد",
   "state.empty.description": "با ثبت نخستین مورد، اطلاعات این بخش نمایش داده می‌شود.",
+  "state.success.title": "انجام شد",
+  "state.success.description": "تغییر شما ثبت شد و نیازی به تکرار آن نیست.",
+  "state.info.title": "برای اطلاع شما",
+  "state.info.description": "این پیام یک توضیح است و نیازی به اقدام شما ندارد.",
   "state.forbidden.title": "دسترسی مجاز نیست",
   "state.forbidden.description": "برای مشاهده این بخش دسترسی لازم را ندارید.",
   // A command refused for permission, as distinct from the view-level message above.

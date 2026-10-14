@@ -91,7 +91,7 @@ export default function RecoverPasswordPage() {
           }
           description={t("recover.doneDescription")}
           headingLevel={2}
-          kind="empty"
+          kind="success"
           title={t("recover.doneTitle")}
         />
       ) : (

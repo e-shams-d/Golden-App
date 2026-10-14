@@ -14,6 +14,10 @@ const paths = [
   "/states/precondition",
   "/states/idempotency",
   "/states/timeout",
+  // The two kinds F-10 added. By hand, for the reason given above: a kind this list
+  // does not name is a kind whose page nobody checks.
+  "/states/success",
+  "/states/info",
   // The business's own account screen, added with the screen for the same reason the
   // admin list is: a page outside this fixed list is a page nobody checks. Against no
   // backend it renders its failure state, which is the one worth holding to the standard.

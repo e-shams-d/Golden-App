@@ -146,7 +146,7 @@ export default function TraderRegisterPage() {
             </Link>
           }
           description={t("trader.register.done")}
-          kind="empty"
+          kind="success"
           title={t("trader.register.doneTitle")}
         />
       </main>

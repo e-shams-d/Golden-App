@@ -38,6 +38,7 @@ from app.audit.redaction import RedactionPolicy
 from app.audit.registry import CREATE_BANK_STATEMENT_FILE, CREATE_STATEMENT_IMPORT_RUN
 from app.audit.writer import AuditActor, AuditContext, AuditEntry, AuditWriter
 from app.core.errors import BusinessRuleViolationError, NotFoundError
+from app.core.jalali import CALENDAR_RULE
 from app.db.claiming import new_job
 from app.db.models.bank import BankAccount, BankMapping, BankProfileVersion
 from app.db.models.bank_statement import (
@@ -80,7 +81,12 @@ APPROVED_MAPPING_STATUS: Final = "active"
 # be told apart from one a later parser produces against the same file — §10.5's whole reason for
 # the column, and M8's `renderer_version` precedent.
 PARSER_NAME: Final = "gold-statement-xlsx"
-PARSER_VERSION: Final = "1.0.0"
+# 2.0.0 reads Jalali dates and reads a bank's wall clock in Asia/Tehran (the owner's decision of
+# 2026-10-14). The build metadata names the calendar rule and the zone, which is what ADR-006
+# asks files and workers to persist: "parser, timezone, and calendar/cutoff rule versions".
+# It must fit `processing_jobs.provider_version`, which is 40 characters, as well as the
+# run's own 64 — `tests/backend/test_parser_version_fits.py` reads both widths from the models.
+PARSER_VERSION: Final = f"2.0.0+{CALENDAR_RULE}.tehran"
 
 # The parse runs on the file queue, like M8's crop: it reads an uploaded object and is far too slow
 # for a request. `celery_app.py` routes `app.workers.tasks.files.*` there.

@@ -19,6 +19,11 @@
       "dependsOn": ["^typecheck"],
       "outputs": []
     },
+    "@gold/admin-web#test": {
+      "dependsOn": ["^typecheck"],
+      "cache": false,
+      "outputs": []
+    },
     "test:platform": {
       "cache": false,
       "outputs": ["playwright-report/**", "test-results/**"]
