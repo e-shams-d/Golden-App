@@ -34,7 +34,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -101,7 +101,7 @@ class ManualFieldsRequest(BaseModel):
     destination_iban: str | None = Field(default=None, min_length=26, max_length=26)
     amount_irr: str | None = Field(default=None, max_length=32)
     tracking_number: str | None = Field(default=None, max_length=128)
-    payment_at: datetime | None = None
+    payment_at: AwareDatetime | None = None
 
 
 class AttachExternalRequest(BaseModel):

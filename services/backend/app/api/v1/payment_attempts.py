@@ -28,7 +28,7 @@ from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, Query, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from app.api.contract import VALIDATION_ERROR_RESPONSE
@@ -77,7 +77,10 @@ class ConfirmPaidRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     bank_tracking_number: str = Field(min_length=1, max_length=128)
-    bank_result_at: datetime
+    # Zoned, or refused. A browser's `datetime-local` submits `2026-10-14T10:30`, and PostgreSQL,
+    # whose session zone is UTC, stored that as 10:30 UTC — the bank's 10:30 in Tehran recorded
+    # as 14:00. ADR-006 point 2 makes an API timestamp a UTC instant. F-39.
+    bank_result_at: AwareDatetime
     primary_evidence_link_id: uuid.UUID | None = None
     evidence_unavailable_reason: str | None = Field(default=None, max_length=4000)
     confirmation_note: str | None = Field(default=None, max_length=4000)

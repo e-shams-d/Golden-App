@@ -26,7 +26,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -184,7 +184,7 @@ class MarkSentRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    sent_at: datetime
+    sent_at: AwareDatetime
     submission_channel: str = Field(min_length=1, max_length=64)
     note: str | None = Field(default=None, max_length=2000)
 

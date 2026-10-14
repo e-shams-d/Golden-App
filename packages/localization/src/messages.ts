@@ -264,7 +264,11 @@ export const faMessages = {
   "attempt.amount": "مبلغ تلاش (ریال)",
   "attempt.requestStatus": "وضعیت درخواست",
   "attempt.tracking": "شماره پیگیری بانک",
-  "attempt.resultAt": "زمان نتیجه بانک",
+  "attempt.resultAt": "زمان نتیجه بانک (به وقت تهران)",
+  // F-39. Reachable only for a time inside a daylight-saving change, which Iran last made
+  // in 2021; the browser refuses anything that is not a date and a time.
+  "attempt.resultAtNotAnInstant":
+    "این زمان به وقت تهران یک لحظهٔ مشخص نیست: در تغییر ساعت تابستانی (تا سال ۱۴۰۰) یا حذف شده یا دو بار تکرار شده. زمان را از روی رسید بانک دوباره بررسی کنید.",
   "attempt.failureCode": "کد ناموفقی",
   "attempt.failureReason": "شرح ناموفقی",
   "attempt.evidenceUnavailable": "دلیل نبودن مستند",

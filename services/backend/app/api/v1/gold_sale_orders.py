@@ -24,7 +24,7 @@ from decimal import Decimal
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from app.api.contract import VALIDATION_ERROR_RESPONSE
@@ -556,7 +556,7 @@ class DispatchRequest(BaseModel):
     recipient_name: str | None = Field(default=None, max_length=255)
     tracking_or_delivery_note: str | None = None
     evidence_file_id: uuid.UUID | None = None
-    dispatched_at: datetime | None = None
+    dispatched_at: AwareDatetime | None = None
     guard_override_reason: str | None = Field(default=None, max_length=2000)
 
 
@@ -906,7 +906,7 @@ class IncomingReceiptRequest(BaseModel):
     # a Jalali presentation must not become the stored value, and discarding it would make a later
     # mismatch unexaminable.
     raw_payment_date: str | None = Field(default=None, max_length=64)
-    payment_at_normalized: datetime | None = None
+    payment_at_normalized: AwareDatetime | None = None
     source_bank_name: str | None = Field(default=None, max_length=160)
     source_account_hint: str | None = Field(default=None, max_length=64)
     destination_bank_account_id: uuid.UUID | None = None
